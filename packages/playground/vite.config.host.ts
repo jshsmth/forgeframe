@@ -5,6 +5,11 @@ import mkcert from 'vite-plugin-mkcert';
 export default defineConfig(({ command }) => ({
   plugins: command === 'serve' ? [mkcert()] : [],
   root: resolve(__dirname, 'host'),
+  resolve: {
+    alias: {
+      forgeframe: resolve(__dirname, '../forgeframe/src/index.ts'),
+    },
+  },
   server: {
     port: 5174,
   },

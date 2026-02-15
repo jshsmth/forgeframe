@@ -401,8 +401,8 @@ export type ChildrenDefinition<P = Record<string, unknown>> = (props: {
 export interface HostComponentRef {
   /** Component tag name */
   tag: string;
-  /** Component URL (or stringified function) */
-  url: string | ((props: Record<string, unknown>) => string);
+  /** Component URL */
+  url: string;
   /** Prop definitions */
   props?: PropsDefinition<Record<string, unknown>>;
   /** Default dimensions */

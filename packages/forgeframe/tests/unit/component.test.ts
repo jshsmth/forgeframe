@@ -118,6 +118,35 @@ describe('Component Creation', () => {
 
     expect(PopupComponent).toBeDefined();
   });
+
+  it('should support function url options that depend on props', () => {
+    const DynamicUrlComponent = create<{ path: string }>({
+      tag: 'dynamic-url-component',
+      url: (props) => `https://example.com/${props.path}`,
+      props: {
+        path: { schema: prop.string(), required: true },
+      },
+    });
+
+    expect(() =>
+      DynamicUrlComponent({ path: 'checkout' })
+    ).not.toThrow();
+  });
+
+  it('should support function dimensions options that depend on props', () => {
+    const DynamicDimensionsComponent = create<{ height: number }>({
+      tag: 'dynamic-dimensions-component',
+      url: 'https://example.com',
+      props: {
+        height: { schema: prop.number(), required: true },
+      },
+      dimensions: (props) => ({ width: '100%', height: props.height }),
+    });
+
+    expect(() =>
+      DynamicDimensionsComponent({ height: 420 })
+    ).not.toThrow();
+  });
 });
 
 describe('Component Instance', () => {
@@ -156,6 +185,108 @@ describe('Component Instance', () => {
 
     expect(cloned).toBeDefined();
     expect(cloned).not.toBe(instance);
+  });
+
+  it('should call component validate on render and updateProps', async () => {
+    const validate = vi.fn();
+    const MyComponent = create<{ amount: number }>({
+      tag: 'validate-option-component',
+      url: 'https://example.com',
+      props: {
+        amount: { schema: prop.number(), required: true },
+      },
+      validate,
+    });
+
+    const instance = MyComponent({ amount: 10 });
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    const instanceInternal = instance as unknown as {
+      prerender: () => Promise<void>;
+      open: () => Promise<void>;
+      waitForHost: () => Promise<void>;
+    };
+
+    vi.spyOn(instanceInternal, 'prerender').mockResolvedValue(undefined);
+    vi.spyOn(instanceInternal, 'open').mockResolvedValue(undefined);
+    vi.spyOn(instanceInternal, 'waitForHost').mockResolvedValue(undefined);
+
+    await instance.render(container);
+    await instance.updateProps({ amount: 20 });
+
+    expect(validate).toHaveBeenCalledTimes(2);
+    expect(validate).toHaveBeenNthCalledWith(1, {
+      props: expect.objectContaining({ amount: 10 }),
+    });
+    expect(validate).toHaveBeenNthCalledWith(2, {
+      props: expect.objectContaining({ amount: 20 }),
+    });
+
+    container.remove();
+  });
+
+  it('should build nested host refs from component metadata', () => {
+    const ChildComponent = create({
+      tag: 'child-component-meta',
+      url: 'https://example.com/child',
+      dimensions: { width: 250, height: 140 },
+      defaultContext: CONTEXT.POPUP,
+      props: {
+        value: prop.string(),
+      },
+    });
+
+    const ParentComponent = create({
+      tag: 'parent-component-meta',
+      url: 'https://example.com/parent',
+      children: () => ({
+        ChildComponent,
+      }),
+    });
+
+    const instance = ParentComponent({});
+    const refs = (
+      instance as unknown as {
+        buildNestedHostRefs: () => Record<string, unknown> | undefined;
+      }
+    ).buildNestedHostRefs();
+
+    expect(refs?.ChildComponent).toEqual({
+      tag: 'child-component-meta',
+      url: 'https://example.com/child',
+      props: expect.any(Object),
+      dimensions: { width: 250, height: 140 },
+      defaultContext: CONTEXT.POPUP,
+    });
+  });
+
+  it('should throw when nested child component uses dynamic url', () => {
+    const DynamicChild = create<{ childPath: string }>({
+      tag: 'dynamic-child-url-component',
+      url: (props) => `https://example.com/${props.childPath}`,
+      props: {
+        childPath: { schema: prop.string(), required: true },
+      },
+    });
+
+    const ParentComponent = create({
+      tag: 'parent-with-dynamic-child',
+      url: 'https://example.com/parent',
+      children: () => ({
+        DynamicChild,
+      }),
+    });
+
+    const instance = ParentComponent({});
+
+    expect(() =>
+      (
+        instance as unknown as {
+          buildNestedHostRefs: () => Record<string, unknown> | undefined;
+        }
+      ).buildNestedHostRefs()
+    ).toThrow('must use a static string URL');
   });
 });
 
@@ -284,6 +415,20 @@ describe('Component Destruction', () => {
 
       // Manually emit destroy event to test the listener
       instance.event.emit('destroy');
+
+      expect(MyComponent.instances.length).toBe(0);
+    });
+
+    it('should remove instance from instances array when close is called', async () => {
+      const MyComponent = create({
+        tag: 'destroy-removal-close-test',
+        url: 'https://example.com',
+      });
+
+      const instance = MyComponent({});
+      expect(MyComponent.instances.length).toBe(1);
+
+      await instance.close();
 
       expect(MyComponent.instances.length).toBe(0);
     });

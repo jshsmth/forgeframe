@@ -49,6 +49,8 @@ This file defines working conventions for autonomous coding agents in this repos
 
 - Use ESM imports/exports.
 - Keep types explicit at API boundaries.
+- Use [TSDoc](https://tsdoc.org/) conventions for TypeScript documentation comments; prefer TSDoc over JSDoc.
+- Use [Standard Schema](https://standardschema.dev/schema) for schema definitions/interoperability where schema standards are needed.
 - Reuse existing module boundaries (`core`, `communication`, `props`, `render`, `window`, `drivers`).
 - Prefer small, composable functions and avoid unnecessary dependencies.
 - Maintain origin/sandbox safety checks for any cross-window messaging changes.

@@ -164,6 +164,20 @@ describe('createReactComponent', () => {
     expect(mockReact.useEffect).toHaveBeenCalled();
   });
 
+  it('should use live props object for prop-sync effect dependencies', () => {
+    const ReactComponent = createReactComponent(mockComponent, { React: mockReact as never });
+    const onAction = vi.fn();
+
+    ReactComponent({ onAction });
+
+    // Effects are registered in order: mount, prop-sync, ref-forwarding
+    const propSyncDeps = mockReact.useEffect.mock.calls[1]?.[1] as unknown[] | undefined;
+
+    expect(Array.isArray(propSyncDeps)).toBe(true);
+    expect(propSyncDeps?.[0]).toEqual(expect.objectContaining({ onAction }));
+    expect(typeof propSyncDeps?.[0]).toBe('object');
+  });
+
   it('should call useState for error state', () => {
     const ReactComponent = createReactComponent(mockComponent, { React: mockReact as never });
 

@@ -18,7 +18,6 @@ import type {
   SiblingInfo,
   GetPeerInstancesOptions,
   HostComponentRef,
-  ForgeFrameComponent,
 } from '../types';
 import type { ContextType } from '../constants';
 import { CONTEXT, EVENT, MESSAGE_NAME } from '../constants';
@@ -61,7 +60,7 @@ import {
   defaultPrerenderTemplate,
   swapPrerenderContent,
 } from '../render/templates';
-import { getComponent } from './component';
+import { getComponent, getComponentOptions } from './component';
 
 /**
  * Normalized and validated component options.
@@ -72,7 +71,7 @@ interface NormalizedOptions<P> {
   url: string | ((props: P) => string);
   props: PropsDefinition<P>;
   defaultContext: ContextType;
-  dimensions: Dimensions;
+  dimensions: Dimensions | ((props: P) => Dimensions);
   timeout: number;
   domain?: ComponentOptions<P>['domain'];
   allowedConsumerDomains?: ComponentOptions<P>['allowedConsumerDomains'];
@@ -184,13 +183,13 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     this.event = new EventEmitter();
     this.cleanup = new CleanupManager();
 
+    const propContext = this.createPropContext();
+    this.props = normalizeProps(props as Partial<P>, this.options.props, propContext);
+
     // Create messenger with trusted domains for security
     const trustedDomains = this.buildTrustedDomains();
     this.messenger = new Messenger(this.uid, window, getDomain(), trustedDomains);
     this.bridge = new FunctionBridge(this.messenger);
-
-    const propContext = this.createPropContext();
-    this.props = normalizeProps(props as Partial<P>, this.options.props, propContext);
 
     this.setupMessageHandlers();
     this.setupCleanup();
@@ -203,12 +202,8 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
   private buildTrustedDomains(): string | string[] | RegExp | undefined {
     const domains: string[] = [];
 
-    const url = typeof this.options.url === 'function'
-      ? this.options.url(this.props as P)
-      : this.options.url;
-
     try {
-      const targetUrl = new URL(url);
+      const targetUrl = new URL(this.resolveUrl(), window.location.origin);
       domains.push(targetUrl.origin);
     } catch {
       // Invalid URL, will be caught during render
@@ -261,6 +256,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
 
     this.checkEligibility();
     validateProps(this.props, this.options.props);
+    this.options.validate?.({ props: this.props });
     this.container = this.resolveContainer(container);
 
     this.event.emit(EVENT.PRERENDER);
@@ -402,6 +398,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
       this.options.props,
       propContext
     );
+    this.options.validate?.({ props: this.props });
 
     if (this.hostWindow && !isWindowClosed(this.hostWindow)) {
       const hostDomain = this.getHostDomain();
@@ -459,13 +456,30 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
       ...options,
       props: options.props ?? ({} as PropsDefinition<P>),
       defaultContext: options.defaultContext ?? CONTEXT.IFRAME,
-      dimensions:
-        typeof options.dimensions === 'function'
-          ? options.dimensions(this.props)
-          : options.dimensions ?? { width: '100%', height: '100%' },
+      dimensions: options.dimensions ?? { width: '100%', height: '100%' },
       timeout: options.timeout ?? 10000,
       children: options.children,
     };
+  }
+
+  /**
+   * Resolves the host URL from static or function options.
+   * @internal
+   */
+  private resolveUrl(): string {
+    return typeof this.options.url === 'function'
+      ? this.options.url(this.props)
+      : this.options.url;
+  }
+
+  /**
+   * Resolves dimensions from static or function options.
+   * @internal
+   */
+  private resolveDimensions(): Dimensions {
+    return typeof this.options.dimensions === 'function'
+      ? this.options.dimensions(this.props)
+      : this.options.dimensions;
   }
 
   /**
@@ -530,7 +544,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     const containerTemplateFn =
       this.options.containerTemplate ?? defaultContainerTemplate;
 
-    const dimensions = this.options.dimensions;
+    const dimensions = this.resolveDimensions();
     const cspNonce = (this.props as Record<string, unknown>).cspNonce as string | undefined;
 
     // Pre-create iframe element for iframe context (zoid-style)
@@ -598,7 +612,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    */
   private createIframeElement(windowName: string): HTMLIFrameElement {
     const iframe = document.createElement('iframe');
-    const dimensions = this.options.dimensions;
+    const dimensions = this.resolveDimensions();
     const attributes = typeof this.options.attributes === 'function'
       ? this.options.attributes(this.props)
       : this.options.attributes ?? {};
@@ -673,7 +687,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
       this.hostWindow = openPopup({
         url,
         name: windowName,
-        dimensions: this.options.dimensions,
+        dimensions: this.resolveDimensions(),
       });
 
       const stopWatching = watchPopupClose(this.hostWindow, () => {
@@ -692,10 +706,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * @internal
    */
   private buildUrl(): string {
-    const baseUrl =
-      typeof this.options.url === 'function'
-        ? this.options.url(this.props)
-        : this.options.url;
+    const baseUrl = this.resolveUrl();
 
     const queryParams = propsToQueryParams(this.props, this.options.props);
     const queryString = queryParams.toString();
@@ -751,17 +762,26 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     const refs: Record<string, HostComponentRef> = {};
 
     for (const [name, component] of Object.entries(nestedComponents)) {
-      const componentAny = component as ForgeFrameComponent & {
-        _options?: ComponentOptions<Record<string, unknown>>;
-        tag?: string;
-        url?: string | ((props: Record<string, unknown>) => string);
-      };
+      const nestedOptions = getComponentOptions(component);
+      if (!nestedOptions) {
+        throw new Error(`Nested component "${name}" is missing component metadata`);
+      }
+
+      if (typeof nestedOptions.url !== 'string') {
+        throw new Error(
+          `Nested component "${name}" must use a static string URL. Function URLs are not supported in children.`
+        );
+      }
 
       refs[name] = {
-        tag: componentAny.tag ?? name,
-        url: typeof componentAny.url === 'function'
-          ? componentAny.url.toString()
-          : componentAny.url ?? '',
+        tag: nestedOptions.tag,
+        url: nestedOptions.url,
+        props: nestedOptions.props as PropsDefinition<Record<string, unknown>> | undefined,
+        dimensions:
+          typeof nestedOptions.dimensions === 'function'
+            ? undefined
+            : nestedOptions.dimensions,
+        defaultContext: nestedOptions.defaultContext,
       };
     }
 
@@ -790,13 +810,8 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * @internal
    */
   private getHostDomain(): string {
-    const url =
-      typeof this.options.url === 'function'
-        ? this.options.url(this.props)
-        : this.options.url;
-
     try {
-      return new URL(url, window.location.origin).origin;
+      return new URL(this.resolveUrl(), window.location.origin).origin;
     } catch {
       return '*';
     }
@@ -910,7 +925,6 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     this.cleanup.register(() => {
       this.messenger.destroy();
       this.bridge.destroy();
-      this.event.removeAllListeners();
       unregisterWindow(this.uid);
     });
   }
@@ -981,5 +995,6 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
 
     this.event.emit(EVENT.DESTROY);
     this.callPropCallback('onDestroy');
+    this.event.removeAllListeners();
   }
 }

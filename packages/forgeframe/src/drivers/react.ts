@@ -107,6 +107,34 @@ export interface ReactComponentProps<_P = unknown> {
 type FullReactComponentProps<P> = ReactComponentProps<P> & Partial<P>;
 
 /**
+ * Performs a shallow equality check for prop objects.
+ * @internal
+ */
+function shallowEqualProps(
+  prev: Record<string, unknown>,
+  next: Record<string, unknown>
+): boolean {
+  const prevKeys = Object.keys(prev);
+  const nextKeys = Object.keys(next);
+
+  if (prevKeys.length !== nextKeys.length) {
+    return false;
+  }
+
+  for (const key of prevKeys) {
+    if (!Object.prototype.hasOwnProperty.call(next, key)) {
+      return false;
+    }
+
+    if (!Object.is(prev[key], next[key])) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
  * Configuration options for creating a React driver.
  *
  * @remarks
@@ -220,6 +248,7 @@ export function createReactComponent<P extends Record<string, unknown>, X = unkn
 
       const containerRef = useRef<HTMLDivElement>(null);
       const instanceRef = useRef<ForgeFrameComponentInstance<P, X> | null>(null);
+      const syncedPropsRef = useRef<Partial<P> | null>(null);
       const [error, setError] = useState<Error | null>(null);
 
       /** Effect: Initialize component instance and render on mount */
@@ -256,6 +285,7 @@ export function createReactComponent<P extends Record<string, unknown>, X = unkn
             /** Silently ignore close errors during cleanup to prevent React warnings */
           });
           instanceRef.current = null;
+          syncedPropsRef.current = null;
         };
       }, []); /** Empty dependency array ensures this only runs on mount */
 
@@ -264,10 +294,18 @@ export function createReactComponent<P extends Record<string, unknown>, X = unkn
         const instance = instanceRef.current;
         if (!instance) return;
 
-        instance.updateProps(componentProps as Partial<P>).catch((err: Error) => {
+        const nextProps = componentProps as Partial<P>;
+        const prevProps = syncedPropsRef.current as Record<string, unknown> | null;
+        const nextPropsRecord = nextProps as Record<string, unknown>;
+        if (prevProps && shallowEqualProps(prevProps, nextPropsRecord)) {
+          return;
+        }
+
+        syncedPropsRef.current = nextProps;
+        instance.updateProps(nextProps).catch((err: Error) => {
           onError?.(err);
         });
-      }, [JSON.stringify(componentProps)]); /** JSON stringify for deep comparison of props */
+      }, [componentProps, onError]);
 
       /** Effect: Forward the ref to the container element for external access */
       useEffect(() => {

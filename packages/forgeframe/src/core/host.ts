@@ -18,6 +18,7 @@ import type {
   GetPeerInstancesOptions,
   ForgeFrameComponent,
   HostComponentRef,
+  DomainMatcher,
 } from '../types';
 import { MESSAGE_NAME, EVENT } from '../constants';
 import { EventEmitter } from '../events/emitter';
@@ -29,6 +30,7 @@ import {
   getOpener,
   isIframe,
   isPopup,
+  matchDomain,
 } from '../window/helpers';
 import {
   isForgeFrameWindow,
@@ -97,14 +99,17 @@ export class HostComponent<P extends Record<string, unknown>> {
    *
    * @param payload - The payload parsed from window.name
    * @param propDefinitions - Optional prop definitions for deserialization
+   * @param allowedConsumerDomains - Optional allowlist of consumer domains
    */
   constructor(
     payload: WindowNamePayload<P>,
-    private propDefinitions: PropsDefinition<P> = {}
+    private propDefinitions: PropsDefinition<P> = {},
+    private allowedConsumerDomains?: DomainMatcher
   ) {
     this.uid = payload.uid;
     this.tag = payload.tag;
     this.consumerDomain = payload.consumerDomain;
+    this.validateConsumerDomain();
     this.event = new EventEmitter();
 
     // Create messenger with consumer domain as trusted origin for security
@@ -121,6 +126,22 @@ export class HostComponent<P extends Record<string, unknown>> {
     (window as unknown as { hostProps: HostProps<P> }).hostProps = this.hostProps;
 
     this.sendInit();
+  }
+
+  /**
+   * Validates that the consumer domain is allowed.
+   * @internal
+   */
+  private validateConsumerDomain(): void {
+    if (!this.allowedConsumerDomains) {
+      return;
+    }
+
+    if (!matchDomain(this.allowedConsumerDomains, this.consumerDomain)) {
+      throw new Error(
+        `Consumer domain "${this.consumerDomain}" is not allowed for component "${this.tag}"`
+      );
+    }
   }
 
   /**
@@ -467,9 +488,21 @@ let hostInstance: HostComponent<Record<string, unknown>> | null = null;
  * @public
  */
 export function initHost<P extends Record<string, unknown>>(
-  propDefinitions?: PropsDefinition<P>
+  propDefinitions?: PropsDefinition<P>,
+  allowedConsumerDomains?: DomainMatcher
 ): HostComponent<P> | null {
   if (hostInstance) {
+    if (allowedConsumerDomains) {
+      const consumerDomain = hostInstance.getProps().getConsumerDomain();
+      if (!matchDomain(allowedConsumerDomains, consumerDomain)) {
+        hostInstance.destroy();
+        hostInstance = null;
+        throw new Error(
+          `Consumer domain "${consumerDomain}" is not allowed for this host component`
+        );
+      }
+    }
+
     return hostInstance as HostComponent<P>;
   }
 
@@ -485,7 +518,8 @@ export function initHost<P extends Record<string, unknown>>(
 
   hostInstance = new HostComponent(
     payload,
-    propDefinitions
+    propDefinitions,
+    allowedConsumerDomains
   ) as HostComponent<Record<string, unknown>>;
 
   return hostInstance as HostComponent<P>;
@@ -571,4 +605,18 @@ export function isEmbedded(): boolean {
  */
 export function getHostProps<P extends Record<string, unknown>>(): HostProps<P> | undefined {
   return (window as unknown as { hostProps?: HostProps<P> }).hostProps;
+}
+
+/**
+ * Clears and destroys the global host instance.
+ * Primarily intended for testing.
+ * @internal
+ */
+export function clearHostInstance(): void {
+  if (hostInstance) {
+    hostInstance.destroy();
+    hostInstance = null;
+  }
+
+  delete (window as unknown as { hostProps?: HostProps<Record<string, unknown>> }).hostProps;
 }
