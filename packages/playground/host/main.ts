@@ -267,6 +267,9 @@ function renderStandalone() {
   `;
 }
 
+// Explicitly flush host initialization in embedded contexts.
+ForgeFrame.initHost();
+
 // Check if running as ForgeFrame host
 if (ForgeFrame.isHost()) {
   renderEmbedded();

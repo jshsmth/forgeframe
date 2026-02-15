@@ -58,8 +58,8 @@ import { isStandardSchema } from './props/schema';
 
 import { prop } from './props/prop';
 
-// Auto-initialize host if in a ForgeFrame window.
-// This makes window.hostProps available automatically in host contexts.
+// Pre-initialize host state if in a ForgeFrame window.
+// INIT is deferred until initHost() is explicitly flushed or a host component definition does so.
 initHost(undefined, undefined, { deferInit: true });
 
 /**
@@ -160,6 +160,17 @@ export const ForgeFrame = {
   getHostProps,
 
   /**
+   * Initialize or flush host initialization in embedded contexts.
+   *
+   * @remarks
+   * Call this explicitly in host pages that rely on `window.hostProps`
+   * without defining components via `ForgeFrame.create(...)`.
+   *
+   * @returns The host component instance if running embedded, otherwise null
+   */
+  initHost,
+
+  /**
    * Serialization strategy constants.
    * @see {@link PROP_SERIALIZATION}
    */
@@ -245,6 +256,7 @@ export {
   isHost,
   isEmbedded,
   getHostProps,
+  initHost,
 } from './core';
 
 export {

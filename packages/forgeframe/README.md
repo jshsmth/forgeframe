@@ -180,7 +180,7 @@ const LoginForm = ForgeFrame.create<LoginProps>({
 The host page runs inside the iframe at the URL you specified. It receives props via `window.hostProps`.
 
 ```typescript
-import { type HostProps } from 'forgeframe';
+import ForgeFrame, { type HostProps } from 'forgeframe';
 
 interface LoginProps {
   email?: string;
@@ -193,6 +193,8 @@ declare global {
     hostProps: HostProps<LoginProps>;
   }
 }
+
+ForgeFrame.initHost();
 
 const { email, onLogin, onCancel, close } = window.hostProps;
 
@@ -218,7 +220,8 @@ document.getElementById('cancel')!.onclick = async () => {
 <summary>Explanation</summary>
 
 - **`HostProps<LoginProps>`**: Combines your props with built-in methods (`close`, `resize`, etc.)
-- **`window.hostProps`**: Automatically available in ForgeFrame hosts, contains all props passed from the consumer
+- **`ForgeFrame.initHost()`**: Flushes host initialization so the consumer can complete render
+- **`window.hostProps`**: Contains all props passed from the consumer plus built-in methods
 - **`close()`**: Built-in method to close the iframe/popup
 
 </details>
@@ -404,7 +407,7 @@ In host windows, `window.hostProps` provides access to props and control methods
 ### TypeScript Setup
 
 ```typescript
-import { type HostProps } from 'forgeframe';
+import ForgeFrame, { type HostProps } from 'forgeframe';
 
 interface MyProps {
   email: string;
@@ -416,6 +419,8 @@ declare global {
     hostProps?: HostProps<MyProps>;
   }
 }
+
+ForgeFrame.initHost();
 
 const { email, onLogin, close, resize } = window.hostProps!;
 ```
@@ -740,6 +745,7 @@ ForgeFrame.destroyByTag(tag)      // Destroy all instances of a tag
 ForgeFrame.destroyAll()           // Destroy all instances
 ForgeFrame.isHost()               // Check if in host context
 ForgeFrame.isEmbedded()           // Alias for isHost() - more intuitive naming
+ForgeFrame.initHost()             // Initialize/flush host handshake in embedded contexts
 ForgeFrame.getHostProps()         // Get hostProps in host context
 ForgeFrame.isStandardSchema(val)  // Check if value is a Standard Schema
 

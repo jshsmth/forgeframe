@@ -291,6 +291,13 @@ describe('Component Instance', () => {
       })
     ).rejects.toThrow('Cannot change component URL origin after render');
 
+    const resolvedUrlAfterFailedUpdate = (
+      instance as unknown as {
+        resolveUrl: () => string;
+      }
+    ).resolveUrl();
+    expect(resolvedUrlAfterFailedUpdate).toBe('https://origin-a.example.com/widget');
+
     await instance.close();
     container.remove();
   });

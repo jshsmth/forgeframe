@@ -33,8 +33,6 @@ describe('Host security', () => {
   });
 
   it('should clear window.hostProps when existing host fails allowlist recheck', () => {
-    vi.useFakeTimers();
-
     vi
       .spyOn(
         HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
@@ -61,8 +59,7 @@ describe('Host security', () => {
     expect((window as unknown as { hostProps?: unknown }).hostProps).toBeUndefined();
   });
 
-  it('should cancel deferred init when allowlist recheck fails', () => {
-    vi.useFakeTimers();
+  it('should keep deferred init unsent until explicitly flushed', () => {
     vi
       .spyOn(
         HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
@@ -88,9 +85,38 @@ describe('Host security', () => {
     const hostInternal = host as unknown as { sendInit: () => Promise<void> };
     const sendInitSpy = vi.spyOn(hostInternal, 'sendInit').mockResolvedValue(undefined);
 
-    expect(() => initHost({}, 'https://trusted.example.com')).toThrow('is not allowed');
+    expect(sendInitSpy).not.toHaveBeenCalled();
+    initHost();
+    expect(sendInitSpy).toHaveBeenCalledTimes(1);
+  });
 
-    vi.runAllTimers();
+  it('should not send deferred init before allowlist recheck', () => {
+    vi
+      .spyOn(
+        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
+        'resolveConsumerWindow'
+      )
+      .mockReturnValue(window);
+
+    const payload: WindowNamePayload<Record<string, unknown>> = {
+      uid: 'host-uid-deferred-allowlist',
+      tag: 'secure-component-deferred-allowlist',
+      version: VERSION,
+      context: CONTEXT.IFRAME,
+      consumerDomain: 'https://evil.example.com',
+      props: {},
+      exports: {},
+    };
+
+    window.name = buildWindowName(payload);
+
+    const host = initHost(undefined, undefined, { deferInit: true });
+    expect(host).not.toBeNull();
+
+    const hostInternal = host as unknown as { sendInit: () => Promise<void> };
+    const sendInitSpy = vi.spyOn(hostInternal, 'sendInit').mockResolvedValue(undefined);
+
+    expect(() => initHost({}, 'https://trusted.example.com')).toThrow('is not allowed');
     expect(sendInitSpy).not.toHaveBeenCalled();
     expect((window as unknown as { hostProps?: unknown }).hostProps).toBeUndefined();
   });

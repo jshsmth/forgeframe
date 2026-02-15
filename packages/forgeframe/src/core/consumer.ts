@@ -398,18 +398,17 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    */
   async updateProps(newProps: Partial<P>): Promise<void> {
     const propContext = this.createPropContext();
-    this.props = normalizeProps(
+    const nextProps = normalizeProps(
       { ...this.props, ...newProps },
       this.options.props,
       propContext
     );
-    this.options.validate?.({ props: this.props });
+    this.options.validate?.({ props: nextProps });
 
-    const resolvedUrl = this.resolveUrl();
+    const resolvedUrl = this.resolveUrl(nextProps);
     const nextHostOrigin = this.resolveUrlOrigin(resolvedUrl);
-    if (!this.rendered) {
-      this.syncTrustedDomainForUrl(resolvedUrl);
-    } else if (
+    if (
+      this.rendered &&
       this.openedHostDomain &&
       nextHostOrigin &&
       nextHostOrigin !== this.openedHostDomain
@@ -419,10 +418,16 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
       );
     }
 
+    this.props = nextProps;
+
+    if (!this.rendered) {
+      this.syncTrustedDomainForUrl(resolvedUrl);
+    }
+
     if (this.hostWindow && !isWindowClosed(this.hostWindow)) {
       const hostDomain = this.openedHostDomain ?? this.getHostDomain();
       const propsForHost = getPropsForHost(
-        this.props,
+        nextProps,
         this.options.props,
         hostDomain,
         isSameDomain(this.hostWindow)
@@ -485,9 +490,9 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * Resolves the host URL from static or function options.
    * @internal
    */
-  private resolveUrl(): string {
+  private resolveUrl(props: P = this.props): string {
     return typeof this.options.url === 'function'
-      ? this.options.url(this.props)
+      ? this.options.url(props)
       : this.options.url;
   }
 

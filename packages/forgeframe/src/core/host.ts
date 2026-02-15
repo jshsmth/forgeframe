@@ -100,16 +100,13 @@ export class HostComponent<P extends Record<string, unknown>> {
   /** @internal */
   private initSent = false;
 
-  /** @internal */
-  private deferredInitTimeout: ReturnType<typeof setTimeout> | null = null;
-
   /**
    * Creates a new HostComponent instance.
    *
    * @param payload - The payload parsed from window.name
    * @param propDefinitions - Optional prop definitions for deserialization
    * @param allowedConsumerDomains - Optional allowlist of consumer domains
-   * @param deferInit - Whether to defer the initial INIT handshake to the next tick
+   * @param deferInit - Whether to defer INIT until a later explicit flush
    */
   constructor(
     payload: WindowNamePayload<P>,
@@ -136,11 +133,7 @@ export class HostComponent<P extends Record<string, unknown>> {
     this.hostProps = this.buildHostProps(payload);
     (window as unknown as { hostProps: HostProps<P> }).hostProps = this.hostProps;
 
-    if (this.deferInit) {
-      this.deferredInitTimeout = setTimeout(() => {
-        this.flushInit();
-      }, 0);
-    } else {
+    if (!this.deferInit) {
       this.flushInit();
     }
   }
@@ -152,11 +145,6 @@ export class HostComponent<P extends Record<string, unknown>> {
   flushInit(): void {
     if (this.destroyed || this.initSent) {
       return;
-    }
-
-    if (this.deferredInitTimeout) {
-      clearTimeout(this.deferredInitTimeout);
-      this.deferredInitTimeout = null;
     }
 
     this.initSent = true;
@@ -491,11 +479,6 @@ export class HostComponent<P extends Record<string, unknown>> {
     }
 
     this.destroyed = true;
-
-    if (this.deferredInitTimeout) {
-      clearTimeout(this.deferredInitTimeout);
-      this.deferredInitTimeout = null;
-    }
 
     this.messenger.destroy();
     this.bridge.destroy();
