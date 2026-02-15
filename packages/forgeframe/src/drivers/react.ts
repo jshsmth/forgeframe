@@ -251,16 +251,13 @@ export function createReactComponent<P extends Record<string, unknown>, X = unkn
       const syncedPropsRef = useRef<Partial<P> | null>(null);
       const [error, setError] = useState<Error | null>(null);
 
-      /** Effect: Initialize component instance and render on mount */
       useEffect(() => {
         const container = containerRef.current;
         if (!container) return;
 
-        /** Create a new ForgeFrame component instance with the provided props */
         const instance = Component(componentProps as P);
         instanceRef.current = instance;
 
-        /** Attach event listeners for lifecycle callbacks */
         if (onRendered) {
           instance.event.once('rendered', onRendered);
         }
@@ -273,23 +270,18 @@ export function createReactComponent<P extends Record<string, unknown>, X = unkn
           instance.event.on('error', onError);
         }
 
-        /** Render the cross-domain component into the container */
         instance.render(container, context).catch((err: Error) => {
           setError(err);
           onError?.(err);
         });
 
-        /** Cleanup function: close the component instance on unmount */
         return () => {
-          instance.close().catch(() => {
-            /** Silently ignore close errors during cleanup to prevent React warnings */
-          });
+          instance.close().catch(() => undefined);
           instanceRef.current = null;
           syncedPropsRef.current = null;
         };
-      }, []); /** Empty dependency array ensures this only runs on mount */
+      }, []);
 
-      /** Effect: Synchronize prop changes to the cross-domain component */
       useEffect(() => {
         const instance = instanceRef.current;
         if (!instance) return;
@@ -307,14 +299,12 @@ export function createReactComponent<P extends Record<string, unknown>, X = unkn
         });
       }, [componentProps, onError]);
 
-      /** Effect: Forward the ref to the container element for external access */
       useEffect(() => {
         if (ref && typeof ref === 'object' && containerRef.current) {
           ref.current = containerRef.current;
         }
       }, [ref]);
 
-      /** Render error state when component fails to load */
       if (error) {
         return createElement(
           'div',
@@ -326,7 +316,6 @@ export function createReactComponent<P extends Record<string, unknown>, X = unkn
         );
       }
 
-      /** Render the container div that will host the iframe or popup anchor */
       return createElement('div', {
         ref: containerRef,
         className,
@@ -338,7 +327,6 @@ export function createReactComponent<P extends Record<string, unknown>, X = unkn
     }
   );
 
-  /** Set display name for React DevTools debugging */
   const displayName = `ForgeFrame(${(Component as { name?: string }).name || 'Component'})`;
   (ReactComponent as ReactComponentType<FullReactComponentProps<P>>).displayName = displayName;
 
