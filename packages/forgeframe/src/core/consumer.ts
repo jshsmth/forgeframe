@@ -399,6 +399,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
       propContext
     );
     this.options.validate?.({ props: this.props });
+    this.syncTrustedDomainForUrl(this.resolveUrl());
 
     if (this.hostWindow && !isWindowClosed(this.hostWindow)) {
       const hostDomain = this.getHostDomain();
@@ -480,6 +481,19 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     return typeof this.options.dimensions === 'function'
       ? this.options.dimensions(this.props)
       : this.options.dimensions;
+  }
+
+  /**
+   * Ensures the messenger trusts the origin for a resolved host URL.
+   * @internal
+   */
+  private syncTrustedDomainForUrl(url: string): void {
+    try {
+      const origin = new URL(url, window.location.origin).origin;
+      this.messenger.addTrustedDomain(origin);
+    } catch {
+      // Ignore invalid URLs here; render/open will surface URL issues.
+    }
   }
 
   /**
@@ -671,7 +685,9 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * @internal
    */
   private async open(): Promise<void> {
-    const url = this.buildUrl();
+    const baseUrl = this.resolveUrl();
+    this.syncTrustedDomainForUrl(baseUrl);
+    const url = this.buildUrl(baseUrl);
 
     if (this.context === CONTEXT.IFRAME) {
       // Iframe was pre-created in prerender() with name already set
@@ -705,9 +721,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * Builds the URL for the host window including query parameters.
    * @internal
    */
-  private buildUrl(): string {
-    const baseUrl = this.resolveUrl();
-
+  private buildUrl(baseUrl: string = this.resolveUrl()): string {
     const queryParams = propsToQueryParams(this.props, this.options.props);
     const queryString = queryParams.toString();
 

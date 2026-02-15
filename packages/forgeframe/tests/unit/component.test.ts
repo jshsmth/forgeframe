@@ -226,6 +226,41 @@ describe('Component Instance', () => {
     container.remove();
   });
 
+  it('should trust updated url origin before first render', async () => {
+    const DynamicUrlComponent = create<{ targetUrl: string }>({
+      tag: 'dynamic-origin-trust-component',
+      url: (props) => props.targetUrl,
+      props: {
+        targetUrl: { schema: prop.string(), required: true },
+      },
+    });
+
+    const instance = DynamicUrlComponent({
+      targetUrl: 'https://origin-a.example.com/widget',
+    });
+
+    await instance.updateProps({
+      targetUrl: 'https://origin-b.example.com/widget',
+    });
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    const instanceInternal = instance as unknown as {
+      waitForHost: () => Promise<void>;
+      messenger: { allowedOrigins: Set<string> };
+    };
+
+    vi.spyOn(instanceInternal, 'waitForHost').mockResolvedValue(undefined);
+    await instance.render(container);
+
+    const allowedOrigins = Array.from(instanceInternal.messenger.allowedOrigins);
+    expect(allowedOrigins).toContain('https://origin-b.example.com');
+
+    await instance.close();
+    container.remove();
+  });
+
   it('should build nested host refs from component metadata', () => {
     const ChildComponent = create({
       tag: 'child-component-meta',
