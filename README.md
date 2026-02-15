@@ -1,5 +1,8 @@
 # ForgeFrame
 
+[![npm version](https://img.shields.io/npm/v/forgeframe.svg)](https://www.npmjs.com/package/forgeframe)
+[![GitHub Release](https://img.shields.io/github/v/release/jshsmth/ForgeFrame)](https://github.com/jshsmth/ForgeFrame/releases)
+
 A TypeScript-first framework for embedding cross-domain iframes and popups with seamless communication. Pass data and callbacks across domains — perfect for payment forms, auth widgets, third-party integrations, and micro-frontends. Zero dependencies, ~21KB gzipped (ESM) / ~12KB gzipped (UMD).
 
 ### Terminology
