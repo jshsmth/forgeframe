@@ -108,7 +108,7 @@ await payment.render('#payment-container');
 > **`Host`**
 
 ```typescript
-import ForgeFrame, { type HostProps } from 'forgeframe';
+import { type HostProps } from 'forgeframe';
 
 interface PaymentProps {
   amount: number;
@@ -121,10 +121,6 @@ declare global {
   }
 }
 
-// Required when the host page doesn't use ForgeFrame.create().
-// If your host defines a component via create(), init is handled automatically.
-ForgeFrame.initHost();
-
 const { amount, onSuccess, close } = window.hostProps;
 
 document.getElementById('total')!.textContent = `$${amount}`;
@@ -135,6 +131,7 @@ document.getElementById('pay-btn')!.onclick = async () => {
 ```
 
 That's it! ForgeFrame handles all the cross-domain communication automatically.
+If you need to force host initialization before first `window.hostProps` access, see [Manual Host Init with initHost](#manual-host-init-with-inithost).
 
 ---
 
@@ -184,7 +181,7 @@ const LoginForm = ForgeFrame.create<LoginProps>({
 The host page runs inside the iframe at the URL you specified. It receives props via `window.hostProps`.
 
 ```typescript
-import ForgeFrame, { type HostProps } from 'forgeframe';
+import { type HostProps } from 'forgeframe';
 
 interface LoginProps {
   email?: string;
@@ -197,10 +194,6 @@ declare global {
     hostProps: HostProps<LoginProps>;
   }
 }
-
-// Required when the host page doesn't use ForgeFrame.create().
-// If your host defines a component via create(), init is handled automatically.
-ForgeFrame.initHost();
 
 const { email, onLogin, onCancel, close } = window.hostProps;
 
@@ -226,7 +219,7 @@ document.getElementById('cancel')!.onclick = async () => {
 <summary>Explanation</summary>
 
 - **`HostProps<LoginProps>`**: Combines your props with built-in methods (`close`, `resize`, etc.)
-- **`ForgeFrame.initHost()`**: Flushes host initialization so the consumer can complete render. Only required when the host page doesn't use `ForgeFrame.create()` — if your host defines a component via `create()`, init is handled automatically.
+- **Host init**: Accessing `window.hostProps` flushes host initialization automatically. Use `ForgeFrame.initHost()` only when you need to force init before first `hostProps` access.
 - **`window.hostProps`**: Contains all props passed from the consumer plus built-in methods
 - **`close()`**: Built-in method to close the iframe/popup
 
@@ -413,7 +406,7 @@ In host windows, `window.hostProps` provides access to props and control methods
 ### TypeScript Setup
 
 ```typescript
-import ForgeFrame, { type HostProps } from 'forgeframe';
+import { type HostProps } from 'forgeframe';
 
 interface MyProps {
   email: string;
@@ -426,12 +419,19 @@ declare global {
   }
 }
 
-// Required when the host page doesn't use ForgeFrame.create().
-// If your host defines a component via create(), init is handled automatically.
-ForgeFrame.initHost();
-
 const { email, onLogin, close, resize } = window.hostProps!;
 ```
+
+### Manual Host Init with initHost
+
+`ForgeFrame.initHost()` is optional and only needed to force the host handshake early.
+
+Use it when:
+- You need initialization to complete before the first read of `window.hostProps`.
+- Your host boot flow delays that first `window.hostProps` access (for example: lazy-loaded modules, async startup, or gated initialization).
+- You want deterministic init timing in tests or instrumentation.
+
+You can skip it when normal startup reads `window.hostProps` directly, since that first access flushes host initialization automatically.
 
 ### Available Methods
 
@@ -753,7 +753,7 @@ ForgeFrame.destroyByTag(tag)      // Destroy all instances of a tag
 ForgeFrame.destroyAll()           // Destroy all instances
 ForgeFrame.isHost()               // Check if in host context
 ForgeFrame.isEmbedded()           // Alias for isHost() - more intuitive naming
-ForgeFrame.initHost()             // Flush host handshake (only needed when create() is not used on the host)
+ForgeFrame.initHost()             // Optional: flush host handshake before first hostProps access
 ForgeFrame.getHostProps()         // Get hostProps in host context
 ForgeFrame.isStandardSchema(val)  // Check if value is a Standard Schema
 
