@@ -160,11 +160,12 @@ export const ForgeFrame = {
   getHostProps,
 
   /**
-   * Initialize or flush host initialization in embedded contexts.
+   * Flush host initialization in embedded contexts.
    *
    * @remarks
-   * Call this explicitly in host pages that rely on `window.hostProps`
-   * without defining components via `ForgeFrame.create(...)`.
+   * Only required in host pages that access `window.hostProps` directly
+   * without defining a component via `ForgeFrame.create(...)`.
+   * When `create()` is used on the host side, init is flushed automatically.
    *
    * @returns The host component instance if running embedded, otherwise null
    */

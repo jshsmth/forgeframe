@@ -38,6 +38,31 @@ describe('Window Registry', () => {
       const retrieved = getWindowByUID('same-uid');
       expect(retrieved).toBe(mockWindow2);
     });
+
+    it('should cleanup closed windows when registry reaches capacity', () => {
+      for (let i = 0; i < 99; i++) {
+        registerWindow(`open-${i}`, { closed: false } as unknown as Window);
+      }
+      registerWindow('closed-window', { closed: true } as unknown as Window);
+
+      registerWindow('new-window', { closed: false } as unknown as Window);
+
+      expect(getWindowByUID('closed-window')).toBeNull();
+      expect(getWindowByUID('new-window')).toBeDefined();
+      expect(getWindowByUID('open-0')).toBeDefined();
+    });
+
+    it('should evict oldest entry when registry stays full after cleanup', () => {
+      for (let i = 0; i < 100; i++) {
+        registerWindow(`uid-${i}`, { closed: false } as unknown as Window);
+      }
+
+      registerWindow('overflow', { closed: false } as unknown as Window);
+
+      expect(getWindowByUID('uid-0')).toBeNull();
+      expect(getWindowByUID('uid-1')).toBeDefined();
+      expect(getWindowByUID('overflow')).toBeDefined();
+    });
   });
 
   describe('unregisterWindow', () => {
@@ -136,6 +161,39 @@ describe('Window References', () => {
 
       expect(ref).toEqual({ type: 'direct', win: mockTarget });
     });
+
+    it('should include correct parent distance for nested ancestors', () => {
+      const target = { id: 'target' } as unknown as Window;
+      const middle = {
+        parent: target,
+      } as unknown as Window;
+      const source = {
+        opener: null,
+        parent: middle,
+      } as unknown as Window;
+      Object.defineProperty(target, 'parent', { value: target });
+
+      const ref = createWindowRef(target, source);
+
+      expect(ref).toEqual({ type: 'parent', distance: 2 });
+    });
+
+    it('should fall back to direct ref after ancestor traversal safety limit', () => {
+      const target = { id: 'target' } as unknown as Window;
+      const frameA = {} as { parent: Window };
+      const frameB = {} as { parent: Window };
+      frameA.parent = frameB as unknown as Window;
+      frameB.parent = frameA as unknown as Window;
+
+      const source = {
+        opener: null,
+        parent: frameA as unknown as Window,
+      } as unknown as Window;
+
+      const ref = createWindowRef(target, source);
+
+      expect(ref).toEqual({ type: 'direct', win: target });
+    });
   });
 
   describe('resolveWindowRef', () => {
@@ -149,6 +207,22 @@ describe('Window References', () => {
       const resolved = resolveWindowRef(ref, mockSource);
 
       expect(resolved).toBe(mockOpener);
+    });
+
+    it('should resolve parent reference by ancestor distance', () => {
+      const grandparent = { id: 'grandparent' } as unknown as Window;
+      const parent = {
+        parent: grandparent,
+      } as unknown as Window;
+      const source = {
+        parent,
+      } as unknown as Window;
+      Object.defineProperty(grandparent, 'parent', { value: grandparent });
+
+      const ref: WindowRef = { type: 'parent', distance: 2 };
+      const resolved = resolveWindowRef(ref, source);
+
+      expect(resolved).toBe(grandparent);
     });
 
     it('should resolve global reference from registry', () => {

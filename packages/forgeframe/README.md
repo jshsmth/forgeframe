@@ -121,6 +121,8 @@ declare global {
   }
 }
 
+// Required when the host page doesn't use ForgeFrame.create().
+// If your host defines a component via create(), init is handled automatically.
 ForgeFrame.initHost();
 
 const { amount, onSuccess, close } = window.hostProps;
@@ -196,6 +198,8 @@ declare global {
   }
 }
 
+// Required when the host page doesn't use ForgeFrame.create().
+// If your host defines a component via create(), init is handled automatically.
 ForgeFrame.initHost();
 
 const { email, onLogin, onCancel, close } = window.hostProps;
@@ -222,7 +226,7 @@ document.getElementById('cancel')!.onclick = async () => {
 <summary>Explanation</summary>
 
 - **`HostProps<LoginProps>`**: Combines your props with built-in methods (`close`, `resize`, etc.)
-- **`ForgeFrame.initHost()`**: Flushes host initialization so the consumer can complete render
+- **`ForgeFrame.initHost()`**: Flushes host initialization so the consumer can complete render. Only required when the host page doesn't use `ForgeFrame.create()` — if your host defines a component via `create()`, init is handled automatically.
 - **`window.hostProps`**: Contains all props passed from the consumer plus built-in methods
 - **`close()`**: Built-in method to close the iframe/popup
 
@@ -422,6 +426,8 @@ declare global {
   }
 }
 
+// Required when the host page doesn't use ForgeFrame.create().
+// If your host defines a component via create(), init is handled automatically.
 ForgeFrame.initHost();
 
 const { email, onLogin, close, resize } = window.hostProps!;
@@ -747,7 +753,7 @@ ForgeFrame.destroyByTag(tag)      // Destroy all instances of a tag
 ForgeFrame.destroyAll()           // Destroy all instances
 ForgeFrame.isHost()               // Check if in host context
 ForgeFrame.isEmbedded()           // Alias for isHost() - more intuitive naming
-ForgeFrame.initHost()             // Initialize/flush host handshake in embedded contexts
+ForgeFrame.initHost()             // Flush host handshake (only needed when create() is not used on the host)
 ForgeFrame.getHostProps()         // Get hostProps in host context
 ForgeFrame.isStandardSchema(val)  // Check if value is a Standard Schema
 
