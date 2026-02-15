@@ -40,6 +40,7 @@ import {
   getPropsForHost,
   serializeProps,
   propsToQueryParams,
+  propsToBodyParams,
 } from '../props';
 import {
   destroyIframe,
@@ -750,6 +751,8 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     this.syncTrustedDomainForUrl(baseUrl);
     this.openedHostDomain = this.resolveUrlOrigin(baseUrl);
     const url = this.buildUrl(baseUrl);
+    const bodyParams = this.buildBodyParams();
+    const hasBodyParams = bodyParams.toString().length > 0;
 
     if (this.context === CONTEXT.IFRAME) {
       // Iframe was pre-created in prerender() with name already set
@@ -758,15 +761,23 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
         throw new Error('Iframe not created during prerender');
       }
 
-      this.iframe.src = url;
+      if (hasBodyParams) {
+        this.submitBodyForm(this.iframe.name, url, bodyParams);
+      } else {
+        this.iframe.src = url;
+      }
       this.hostWindow = this.iframe.contentWindow;
     } else {
       const windowName = this.buildWindowName();
       this.hostWindow = openPopup({
-        url,
+        url: hasBodyParams ? 'about:blank' : url,
         name: windowName,
         dimensions: this.resolveDimensions(),
       });
+
+      if (hasBodyParams) {
+        this.submitBodyForm(windowName, url, bodyParams);
+      }
 
       const stopWatching = watchPopupClose(this.hostWindow, () => {
         this.destroy();
@@ -791,6 +802,51 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
 
     const separator = baseUrl.includes('?') ? '&' : '?';
     return `${baseUrl}${separator}${queryString}`;
+  }
+
+  /**
+   * Builds POST body parameters from props marked with bodyParam.
+   * @internal
+   */
+  private buildBodyParams(): URLSearchParams {
+    return propsToBodyParams(this.props, this.options.props);
+  }
+
+  /**
+   * Submits a hidden form to navigate a target window via POST.
+   * @internal
+   */
+  private submitBodyForm(
+    target: string,
+    actionUrl: string,
+    params: URLSearchParams
+  ): void {
+    const doc = this.container?.ownerDocument ?? document;
+    const root = doc.body ?? doc.documentElement;
+    if (!root) {
+      throw new Error('Document root is unavailable for bodyParam form submission');
+    }
+
+    const form = doc.createElement('form');
+    form.method = 'POST';
+    form.action = actionUrl;
+    form.target = target;
+    form.style.display = 'none';
+
+    for (const [key, value] of params.entries()) {
+      const input = doc.createElement('input');
+      input.type = 'hidden';
+      input.name = key;
+      input.value = value;
+      form.appendChild(input);
+    }
+
+    root.appendChild(form);
+    try {
+      form.submit();
+    } finally {
+      form.remove();
+    }
   }
 
   /**

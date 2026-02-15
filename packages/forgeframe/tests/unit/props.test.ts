@@ -4,6 +4,7 @@ import {
   validateProps,
   getPropsForHost,
   propsToQueryParams,
+  propsToBodyParams,
 } from '@/props/normalize';
 import { cloneProps } from '@/props/serialize';
 import { BUILTIN_PROP_DEFINITIONS } from '@/props/definitions';
@@ -385,6 +386,74 @@ describe('Props to Query Params', () => {
 
     const params = propsToQueryParams({ optional: undefined } as { optional?: string }, definitions);
 
+    expect(params.get('optional')).toBeNull();
+  });
+});
+
+describe('Props to Body Params', () => {
+  it('should convert props with bodyParam: true', () => {
+    const definitions: PropsDefinition<{ token: string; secret: string }> = {
+      token: { schema: prop.string(), bodyParam: true },
+      secret: { schema: prop.string() },
+    };
+
+    const params = propsToBodyParams(
+      { token: 'abc123', secret: 'hidden' },
+      definitions
+    );
+
+    expect(params.get('token')).toBe('abc123');
+    expect(params.get('secret')).toBeNull();
+  });
+
+  it('should use custom body param name', () => {
+    const definitions: PropsDefinition<{ userId: string }> = {
+      userId: { schema: prop.string(), bodyParam: 'user_id' },
+    };
+
+    const params = propsToBodyParams({ userId: '123' }, definitions);
+
+    expect(params.get('user_id')).toBe('123');
+  });
+
+  it('should use custom body transform function', () => {
+    const definitions: PropsDefinition<{ data: { a: number } }> = {
+      data: {
+        schema: prop.object(),
+        bodyParam: ({ value }) => btoa(JSON.stringify(value)),
+      },
+    };
+
+    const params = propsToBodyParams({ data: { a: 1 } }, definitions);
+
+    expect(params.get('data')).toBe(btoa(JSON.stringify({ a: 1 })));
+  });
+
+  it('should JSON stringify objects in body params', () => {
+    const definitions: PropsDefinition<{ config: Record<string, unknown> }> = {
+      config: { schema: prop.object(), bodyParam: true },
+    };
+
+    const params = propsToBodyParams(
+      { config: { key: 'value' } },
+      definitions
+    );
+
+    expect(params.get('config')).toBe(JSON.stringify({ key: 'value' }));
+  });
+
+  it('should skip function props and undefined values', () => {
+    const definitions: PropsDefinition<{ callback: () => void; optional?: string }> = {
+      callback: { schema: prop.function(), bodyParam: true },
+      optional: { schema: prop.string().optional(), bodyParam: true },
+    };
+
+    const params = propsToBodyParams(
+      { callback: () => {}, optional: undefined } as { callback: () => void; optional?: string },
+      definitions
+    );
+
+    expect(params.get('callback')).toBeNull();
     expect(params.get('optional')).toBeNull();
   });
 });

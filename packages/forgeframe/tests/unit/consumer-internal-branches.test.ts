@@ -389,6 +389,103 @@ describe('Consumer internal branches', () => {
     expect(registerWindowSpy).toHaveBeenCalledWith(consumer.uid, popupWindow);
   });
 
+  it('should submit iframe body params via hidden form when bodyParam props exist', async () => {
+    const consumer = createConsumer(
+      {
+        props: {
+          token: { schema: prop.string(), bodyParam: true },
+          mode: { schema: prop.string(), queryParam: true },
+        },
+      },
+      { token: 'abc123', mode: 'embedded' }
+    );
+
+    const iframe = document.createElement('iframe');
+    iframe.name = 'target-iframe';
+    (
+      consumer as unknown as {
+        context: string;
+        iframe: HTMLIFrameElement | null;
+      }
+    ).context = CONTEXT.IFRAME;
+    (
+      consumer as unknown as {
+        iframe: HTMLIFrameElement | null;
+      }
+    ).iframe = iframe;
+
+    const submitBodyFormSpy = vi.spyOn(
+      consumer as unknown as {
+        submitBodyForm: (target: string, actionUrl: string, params: URLSearchParams) => void;
+      },
+      'submitBodyForm'
+    ).mockImplementation(() => {});
+
+    await (
+      consumer as unknown as {
+        open: () => Promise<void>;
+      }
+    ).open();
+
+    expect(submitBodyFormSpy).toHaveBeenCalledTimes(1);
+    expect(submitBodyFormSpy).toHaveBeenCalledWith(
+      'target-iframe',
+      'https://host.example.com/widget?mode=embedded',
+      expect.any(URLSearchParams)
+    );
+    expect((consumer as unknown as { hostWindow: Window | null }).hostWindow).toBe(iframe.contentWindow);
+  });
+
+  it('should open popup on about:blank and submit body params when bodyParam props exist', async () => {
+    const consumer = createConsumer(
+      {
+        props: {
+          token: { schema: prop.string(), bodyParam: true },
+          mode: { schema: prop.string(), queryParam: true },
+        },
+      },
+      { token: 'abc123', mode: 'embedded' }
+    );
+
+    const popupWindow = { closed: false } as unknown as Window;
+    const stopWatching = vi.fn();
+    const openPopupSpy = vi.spyOn(popupRender, 'openPopup').mockReturnValue(popupWindow);
+    vi.spyOn(popupRender, 'watchPopupClose').mockReturnValue(stopWatching);
+    vi.spyOn(windowProxy, 'registerWindow').mockImplementation(() => {});
+
+    (
+      consumer as unknown as {
+        context: string;
+      }
+    ).context = CONTEXT.POPUP;
+
+    const submitBodyFormSpy = vi.spyOn(
+      consumer as unknown as {
+        submitBodyForm: (target: string, actionUrl: string, params: URLSearchParams) => void;
+      },
+      'submitBodyForm'
+    ).mockImplementation(() => {});
+
+    await (
+      consumer as unknown as {
+        open: () => Promise<void>;
+      }
+    ).open();
+
+    expect(openPopupSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'about:blank',
+      })
+    );
+    const popupName = openPopupSpy.mock.calls[0]?.[0]?.name;
+    expect(typeof popupName).toBe('string');
+    expect(submitBodyFormSpy).toHaveBeenCalledWith(
+      popupName,
+      'https://host.example.com/widget?mode=embedded',
+      expect.any(URLSearchParams)
+    );
+  });
+
   it('should append query params with ampersand when base URL already has query', () => {
     const consumer = createConsumer(
       {

@@ -58,6 +58,7 @@ Imagine a payment company (like Stripe) wants to let merchants embed a checkout 
 ## Table of Contents
 
 - [Installation](#installation)
+- [Start Here (Most Users)](#start-here-most-users)
 - [Quick Start](#quick-start)
 - [Step-by-Step Guide](#step-by-step-guide)
   - [1. Define a Component](#1-define-a-component)
@@ -66,8 +67,8 @@ Imagine a payment company (like Stripe) wants to let merchants embed a checkout 
   - [4. Handle Events](#4-handle-events)
 - [Props System](#props-system)
 - [Host Window API (hostProps)](#host-window-api-hostprops)
-- [Templates](#templates)
-- [React Integration](#react-integration)
+- [Templates (Advanced)](#templates-advanced)
+- [React Integration (Optional)](#react-integration-optional)
 - [Advanced Features](#advanced-features)
 - [API Reference](#api-reference)
 - [TypeScript](#typescript)
@@ -80,6 +81,17 @@ Imagine a payment company (like Stripe) wants to let merchants embed a checkout 
 ```bash
 npm install forgeframe
 ```
+
+---
+
+## Start Here (Most Users)
+
+Use this path for typical integrations:
+
+1. Follow [Quick Start](#quick-start) to get a working component.
+2. Use [Step-by-Step Guide](#step-by-step-guide) to add typed props and callbacks.
+3. Use [Props System](#props-system) and [Host Window API (hostProps)](#host-window-api-hostprops) as your primary references.
+4. Treat sections marked **Advanced** as optional unless you specifically need them.
 
 ---
 
@@ -277,6 +289,8 @@ await instance.render('#container');
 | `resize` | Component was resized |
 | `focus` | Component received focus |
 
+If all you need is embed + typed props + callbacks, you can stop here and use the API reference as needed.
+
 ---
 
 ## Props System
@@ -381,6 +395,28 @@ const MyComponent = ForgeFrame.create({
   },
 });
 ```
+
+### Passing Props via URL or POST Body (Advanced)
+
+Use prop definition flags to include specific values in the host page's initial HTTP request:
+
+```typescript
+const Checkout = ForgeFrame.create({
+  tag: 'checkout',
+  url: 'https://payments.example.com/checkout',
+  props: {
+    sessionToken: { schema: prop.string(), queryParam: true }, // ?sessionToken=...
+    csrf: { schema: prop.string(), bodyParam: true }, // POST body field "csrf"
+    userId: { schema: prop.string(), bodyParam: 'user_id' }, // custom body field name
+  },
+});
+```
+
+- `queryParam`: appends to the URL query string for initial load.
+- `bodyParam`: sends values in a hidden form `POST` for initial load (iframe and popup).
+- `bodyParam` only affects the initial navigation; later `updateProps()` uses postMessage.
+- Object values are JSON-stringified. Function and `undefined` values are skipped.
+- Most apps do not need this unless the host server requires initial URL/body parameters.
 
 ### Updating Props
 
@@ -510,7 +546,9 @@ const data = await instance.exports.getFormData();
 
 ---
 
-## Templates
+## Templates (Advanced)
+
+Use this section only when you need custom containers/loading UI beyond the default behavior.
 
 ### Container Template
 
@@ -584,7 +622,7 @@ const MyComponent = ForgeFrame.create({
 
 ---
 
-## React Integration
+## React Integration (Optional)
 
 ### Basic Usage
 
@@ -654,6 +692,8 @@ const ProfileReact = createComponent(ProfileComponent);
 ---
 
 ## Advanced Features
+
+Most integrations can skip this section initially and return only when a specific requirement appears.
 
 ### Popup Windows
 
