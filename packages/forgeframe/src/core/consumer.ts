@@ -152,6 +152,12 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
   private hostWindow: Window | null = null;
 
   /** @internal */
+  private openedHostDomain: string | null = null;
+
+  /** @internal */
+  private dynamicUrlTrustedOrigin: string | null = null;
+
+  /** @internal */
   private iframe: HTMLIFrameElement | null = null;
 
   /** @internal */
@@ -202,11 +208,10 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
   private buildTrustedDomains(): string | string[] | RegExp | undefined {
     const domains: string[] = [];
 
-    try {
-      const targetUrl = new URL(this.resolveUrl(), window.location.origin);
-      domains.push(targetUrl.origin);
-    } catch {
-      // Invalid URL, will be caught during render
+    const hostOrigin = this.resolveUrlOrigin(this.resolveUrl());
+    if (hostOrigin) {
+      domains.push(hostOrigin);
+      this.dynamicUrlTrustedOrigin = hostOrigin;
     }
 
     if (this.options.domain) {
@@ -399,10 +404,23 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
       propContext
     );
     this.options.validate?.({ props: this.props });
-    this.syncTrustedDomainForUrl(this.resolveUrl());
+
+    const resolvedUrl = this.resolveUrl();
+    const nextHostOrigin = this.resolveUrlOrigin(resolvedUrl);
+    if (!this.rendered) {
+      this.syncTrustedDomainForUrl(resolvedUrl);
+    } else if (
+      this.openedHostDomain &&
+      nextHostOrigin &&
+      nextHostOrigin !== this.openedHostDomain
+    ) {
+      throw new Error(
+        `Cannot change component URL origin after render (from "${this.openedHostDomain}" to "${nextHostOrigin}")`
+      );
+    }
 
     if (this.hostWindow && !isWindowClosed(this.hostWindow)) {
-      const hostDomain = this.getHostDomain();
+      const hostDomain = this.openedHostDomain ?? this.getHostDomain();
       const propsForHost = getPropsForHost(
         this.props,
         this.options.props,
@@ -484,16 +502,54 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
   }
 
   /**
+   * Resolves a URL to an origin, supporting relative URLs.
+   * @internal
+   */
+  private resolveUrlOrigin(url: string): string | null {
+    try {
+      return new URL(url, window.location.origin).origin;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Returns true when the domain option explicitly includes this origin.
+   * @internal
+   */
+  private isExplicitDomainTrust(origin: string): boolean {
+    if (!this.options.domain || this.options.domain instanceof RegExp) {
+      return false;
+    }
+
+    if (typeof this.options.domain === 'string') {
+      return this.options.domain === origin;
+    }
+
+    return this.options.domain.includes(origin);
+  }
+
+  /**
    * Ensures the messenger trusts the origin for a resolved host URL.
    * @internal
    */
   private syncTrustedDomainForUrl(url: string): void {
-    try {
-      const origin = new URL(url, window.location.origin).origin;
-      this.messenger.addTrustedDomain(origin);
-    } catch {
-      // Ignore invalid URLs here; render/open will surface URL issues.
+    const origin = this.resolveUrlOrigin(url);
+    if (!origin) {
+      return;
     }
+
+    const previousOrigin = this.dynamicUrlTrustedOrigin;
+    if (
+      previousOrigin &&
+      previousOrigin !== origin &&
+      !this.isExplicitDomainTrust(previousOrigin)
+    ) {
+      this.messenger.removeTrustedDomain(previousOrigin);
+    }
+
+    this.messenger.addTrustedDomain(origin);
+    this.dynamicUrlTrustedOrigin = origin;
   }
 
   /**
@@ -687,6 +743,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
   private async open(): Promise<void> {
     const baseUrl = this.resolveUrl();
     this.syncTrustedDomainForUrl(baseUrl);
+    this.openedHostDomain = this.resolveUrlOrigin(baseUrl);
     const url = this.buildUrl(baseUrl);
 
     if (this.context === CONTEXT.IFRAME) {
@@ -824,11 +881,11 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * @internal
    */
   private getHostDomain(): string {
-    try {
-      return new URL(this.resolveUrl(), window.location.origin).origin;
-    } catch {
-      return '*';
+    if (this.openedHostDomain) {
+      return this.openedHostDomain;
     }
+
+    return this.resolveUrlOrigin(this.resolveUrl()) ?? '*';
   }
 
   /**
@@ -999,6 +1056,8 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     }
 
     this.hostWindow = null;
+    this.openedHostDomain = null;
+    this.dynamicUrlTrustedOrigin = null;
 
     if (this.prerenderElement) {
       this.prerenderElement.remove();

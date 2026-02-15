@@ -60,7 +60,7 @@ import { prop } from './props/prop';
 
 // Auto-initialize host if in a ForgeFrame window.
 // This makes window.hostProps available automatically in host contexts.
-initHost();
+initHost(undefined, undefined, { deferInit: true });
 
 /**
  * Main ForgeFrame API object.

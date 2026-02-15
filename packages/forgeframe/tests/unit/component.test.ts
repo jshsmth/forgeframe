@@ -256,6 +256,40 @@ describe('Component Instance', () => {
 
     const allowedOrigins = Array.from(instanceInternal.messenger.allowedOrigins);
     expect(allowedOrigins).toContain('https://origin-b.example.com');
+    expect(allowedOrigins).not.toContain('https://origin-a.example.com');
+
+    await instance.close();
+    container.remove();
+  });
+
+  it('should reject url origin changes after render', async () => {
+    const DynamicUrlComponent = create<{ targetUrl: string }>({
+      tag: 'dynamic-origin-after-render-component',
+      url: (props) => props.targetUrl,
+      props: {
+        targetUrl: { schema: prop.string(), required: true },
+      },
+    });
+
+    const instance = DynamicUrlComponent({
+      targetUrl: 'https://origin-a.example.com/widget',
+    });
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    const instanceInternal = instance as unknown as {
+      waitForHost: () => Promise<void>;
+    };
+
+    vi.spyOn(instanceInternal, 'waitForHost').mockResolvedValue(undefined);
+    await instance.render(container);
+
+    await expect(
+      instance.updateProps({
+        targetUrl: 'https://origin-b.example.com/widget',
+      })
+    ).rejects.toThrow('Cannot change component URL origin after render');
 
     await instance.close();
     container.remove();

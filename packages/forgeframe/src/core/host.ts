@@ -94,17 +94,28 @@ export class HostComponent<P extends Record<string, unknown>> {
   /** @internal */
   private initError: Error | null = null;
 
+  /** @internal */
+  private destroyed = false;
+
+  /** @internal */
+  private initSent = false;
+
+  /** @internal */
+  private deferredInitTimeout: ReturnType<typeof setTimeout> | null = null;
+
   /**
    * Creates a new HostComponent instance.
    *
    * @param payload - The payload parsed from window.name
    * @param propDefinitions - Optional prop definitions for deserialization
    * @param allowedConsumerDomains - Optional allowlist of consumer domains
+   * @param deferInit - Whether to defer the initial INIT handshake to the next tick
    */
   constructor(
     payload: WindowNamePayload<P>,
     private propDefinitions: PropsDefinition<P> = {},
-    private allowedConsumerDomains?: DomainMatcher
+    private allowedConsumerDomains?: DomainMatcher,
+    private deferInit = false
   ) {
     this.uid = payload.uid;
     this.tag = payload.tag;
@@ -125,7 +136,31 @@ export class HostComponent<P extends Record<string, unknown>> {
     this.hostProps = this.buildHostProps(payload);
     (window as unknown as { hostProps: HostProps<P> }).hostProps = this.hostProps;
 
-    this.sendInit();
+    if (this.deferInit) {
+      this.deferredInitTimeout = setTimeout(() => {
+        this.flushInit();
+      }, 0);
+    } else {
+      this.flushInit();
+    }
+  }
+
+  /**
+   * Ensures the INIT handshake is sent at most once.
+   * @internal
+   */
+  flushInit(): void {
+    if (this.destroyed || this.initSent) {
+      return;
+    }
+
+    if (this.deferredInitTimeout) {
+      clearTimeout(this.deferredInitTimeout);
+      this.deferredInitTimeout = null;
+    }
+
+    this.initSent = true;
+    void this.sendInit();
   }
 
   /**
@@ -451,6 +486,17 @@ export class HostComponent<P extends Record<string, unknown>> {
    * Destroys the host component and cleans up resources.
    */
   destroy(): void {
+    if (this.destroyed) {
+      return;
+    }
+
+    this.destroyed = true;
+
+    if (this.deferredInitTimeout) {
+      clearTimeout(this.deferredInitTimeout);
+      this.deferredInitTimeout = null;
+    }
+
     this.messenger.destroy();
     this.bridge.destroy();
     this.event.removeAllListeners();
@@ -489,18 +535,22 @@ let hostInstance: HostComponent<Record<string, unknown>> | null = null;
  */
 export function initHost<P extends Record<string, unknown>>(
   propDefinitions?: PropsDefinition<P>,
-  allowedConsumerDomains?: DomainMatcher
+  allowedConsumerDomains?: DomainMatcher,
+  options: { deferInit?: boolean } = {}
 ): HostComponent<P> | null {
   if (hostInstance) {
     if (allowedConsumerDomains) {
       const consumerDomain = hostInstance.getProps().getConsumerDomain();
       if (!matchDomain(allowedConsumerDomains, consumerDomain)) {
-        hostInstance.destroy();
-        hostInstance = null;
+        clearHostInstance();
         throw new Error(
           `Consumer domain "${consumerDomain}" is not allowed for this host component`
         );
       }
+    }
+
+    if (!options.deferInit) {
+      hostInstance.flushInit();
     }
 
     return hostInstance as HostComponent<P>;
@@ -519,7 +569,8 @@ export function initHost<P extends Record<string, unknown>>(
   hostInstance = new HostComponent(
     payload,
     propDefinitions,
-    allowedConsumerDomains
+    allowedConsumerDomains,
+    options.deferInit ?? false
   ) as HostComponent<Record<string, unknown>>;
 
   return hostInstance as HostComponent<P>;
