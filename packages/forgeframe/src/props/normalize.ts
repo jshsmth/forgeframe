@@ -234,3 +234,53 @@ export function propsToQueryParams<P extends Record<string, unknown>>(
 
   return params;
 }
+
+/**
+ * Builds POST body parameters from props with bodyParam option.
+ *
+ * @typeParam P - The props type
+ * @param props - Props to convert
+ * @param definitions - Prop definitions
+ * @returns URLSearchParams with body parameters
+ *
+ * @public
+ */
+export function propsToBodyParams<P extends Record<string, unknown>>(
+  props: P,
+  definitions: PropsDefinition<P>
+): URLSearchParams {
+  const params = new URLSearchParams();
+  const allDefs = {
+    ...BUILTIN_PROP_DEFINITIONS,
+    ...definitions,
+  } as PropsDefinition<P>;
+
+  for (const [key, def] of Object.entries(allDefs)) {
+    // Support passing schema directly: `name: prop.string()` or `name: { schema: ... }`
+    const isDirectSchema = isStandardSchema(def);
+    const definition = isDirectSchema
+      ? ({ schema: def } as PropDefinition<unknown, P>)
+      : (def as PropDefinition<unknown, P>);
+    const value = props[key as keyof P];
+
+    if (value === undefined) continue;
+    if (typeof value === 'function') continue;
+    if (!definition.bodyParam) continue;
+
+    const paramName =
+      typeof definition.bodyParam === 'string' ? definition.bodyParam : key;
+
+    let paramValue: string;
+    if (typeof definition.bodyParam === 'function') {
+      paramValue = definition.bodyParam({ value });
+    } else if (typeof value === 'object') {
+      paramValue = JSON.stringify(value);
+    } else {
+      paramValue = String(value);
+    }
+
+    params.set(paramName, paramValue);
+  }
+
+  return params;
+}
