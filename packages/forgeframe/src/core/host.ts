@@ -100,6 +100,9 @@ export class HostComponent<P extends Record<string, unknown>> {
   /** @internal */
   private initSent = false;
 
+  /** @internal */
+  private deferredInitFlushScheduled = false;
+
   /**
    * Creates a new HostComponent instance.
    *
@@ -131,7 +134,7 @@ export class HostComponent<P extends Record<string, unknown>> {
     this.consumerWindow = this.resolveConsumerWindow();
     this.bridge = new FunctionBridge(this.messenger);
     this.hostProps = this.buildHostProps(payload);
-    (window as unknown as { hostProps: HostProps<P> }).hostProps = this.hostProps;
+    this.exposeHostProps();
 
     if (!this.deferInit) {
       this.flushInit();
@@ -149,6 +152,53 @@ export class HostComponent<P extends Record<string, unknown>> {
 
     this.initSent = true;
     void this.sendInit();
+  }
+
+  /**
+   * Schedules deferred INIT flush on the next microtask.
+   * This preserves legacy hostProps-only usage while giving same-tick
+   * host configuration a chance to run allowlist checks first.
+   * @internal
+   */
+  private scheduleDeferredInitFlush(): void {
+    if (this.deferredInitFlushScheduled || this.destroyed || this.initSent) {
+      return;
+    }
+
+    this.deferredInitFlushScheduled = true;
+    queueMicrotask(() => {
+      this.deferredInitFlushScheduled = false;
+      this.flushInit();
+    });
+  }
+
+  /**
+   * Exposes hostProps on window and lazily flushes deferred init on first access.
+   * @internal
+   */
+  private exposeHostProps(): void {
+    const hostWindow = window as unknown as { hostProps?: HostProps<P> };
+
+    try {
+      Object.defineProperty(hostWindow, 'hostProps', {
+        configurable: true,
+        enumerable: true,
+        get: () => {
+          if (this.deferInit && !this.initSent && !this.destroyed) {
+            this.scheduleDeferredInitFlush();
+          }
+          return this.hostProps;
+        },
+        set: (value: HostProps<P> | undefined) => {
+          if (value) {
+            this.hostProps = value;
+          }
+        },
+      });
+    } catch {
+      // Fallback for environments where hostProps cannot be redefined.
+      hostWindow.hostProps = this.hostProps;
+    }
   }
 
   /**
@@ -479,6 +529,7 @@ export class HostComponent<P extends Record<string, unknown>> {
     }
 
     this.destroyed = true;
+    this.deferredInitFlushScheduled = false;
 
     this.messenger.destroy();
     this.bridge.destroy();

@@ -108,7 +108,7 @@ await payment.render('#payment-container');
 > **`Host`**
 
 ```typescript
-import { type HostProps } from 'forgeframe';
+import ForgeFrame, { type HostProps } from 'forgeframe';
 
 interface PaymentProps {
   amount: number;
@@ -120,6 +120,8 @@ declare global {
     hostProps: HostProps<PaymentProps>;
   }
 }
+
+ForgeFrame.initHost();
 
 const { amount, onSuccess, close } = window.hostProps;
 
