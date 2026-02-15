@@ -122,6 +122,23 @@ export class Messenger {
   }
 
   /**
+   * Removes a trusted domain from this messenger.
+   *
+   * @param domain - Domain pattern to remove (string, RegExp, or array)
+   */
+  removeTrustedDomain(domain: DomainMatcher): void {
+    if (Array.isArray(domain)) {
+      for (const d of domain) {
+        this.allowedOrigins.delete(d);
+      }
+    } else if (domain instanceof RegExp) {
+      this.allowedOriginPatterns = this.allowedOriginPatterns.filter((pattern) => pattern !== domain);
+    } else {
+      this.allowedOrigins.delete(domain);
+    }
+  }
+
+  /**
    * Checks if an origin is trusted.
    *
    * @param origin - The origin to check

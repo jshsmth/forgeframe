@@ -210,12 +210,12 @@ describe('createWindowPayload', () => {
       props: {},
       exports: {},
       children: {
-        child1: { uid: 'child-1', tag: 'child-component' },
+        child1: { tag: 'child-component', url: 'https://example.com/child' },
       },
     });
 
     expect(payload.children).toEqual({
-      child1: { uid: 'child-1', tag: 'child-component' },
+      child1: { tag: 'child-component', url: 'https://example.com/child' },
     });
   });
 });

@@ -18,7 +18,6 @@ import type {
   SiblingInfo,
   GetPeerInstancesOptions,
   HostComponentRef,
-  ForgeFrameComponent,
 } from '../types';
 import type { ContextType } from '../constants';
 import { CONTEXT, EVENT, MESSAGE_NAME } from '../constants';
@@ -61,7 +60,7 @@ import {
   defaultPrerenderTemplate,
   swapPrerenderContent,
 } from '../render/templates';
-import { getComponent } from './component';
+import { getComponent, getComponentOptions } from './component';
 
 /**
  * Normalized and validated component options.
@@ -72,7 +71,7 @@ interface NormalizedOptions<P> {
   url: string | ((props: P) => string);
   props: PropsDefinition<P>;
   defaultContext: ContextType;
-  dimensions: Dimensions;
+  dimensions: Dimensions | ((props: P) => Dimensions);
   timeout: number;
   domain?: ComponentOptions<P>['domain'];
   allowedConsumerDomains?: ComponentOptions<P>['allowedConsumerDomains'];
@@ -153,6 +152,12 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
   private hostWindow: Window | null = null;
 
   /** @internal */
+  private openedHostDomain: string | null = null;
+
+  /** @internal */
+  private dynamicUrlTrustedOrigin: string | null = null;
+
+  /** @internal */
   private iframe: HTMLIFrameElement | null = null;
 
   /** @internal */
@@ -184,13 +189,13 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     this.event = new EventEmitter();
     this.cleanup = new CleanupManager();
 
+    const propContext = this.createPropContext();
+    this.props = normalizeProps(props as Partial<P>, this.options.props, propContext);
+
     // Create messenger with trusted domains for security
     const trustedDomains = this.buildTrustedDomains();
     this.messenger = new Messenger(this.uid, window, getDomain(), trustedDomains);
     this.bridge = new FunctionBridge(this.messenger);
-
-    const propContext = this.createPropContext();
-    this.props = normalizeProps(props as Partial<P>, this.options.props, propContext);
 
     this.setupMessageHandlers();
     this.setupCleanup();
@@ -203,15 +208,10 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
   private buildTrustedDomains(): string | string[] | RegExp | undefined {
     const domains: string[] = [];
 
-    const url = typeof this.options.url === 'function'
-      ? this.options.url(this.props as P)
-      : this.options.url;
-
-    try {
-      const targetUrl = new URL(url);
-      domains.push(targetUrl.origin);
-    } catch {
-      // Invalid URL, will be caught during render
+    const hostOrigin = this.resolveUrlOrigin(this.resolveUrl());
+    if (hostOrigin) {
+      domains.push(hostOrigin);
+      this.dynamicUrlTrustedOrigin = hostOrigin;
     }
 
     if (this.options.domain) {
@@ -261,6 +261,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
 
     this.checkEligibility();
     validateProps(this.props, this.options.props);
+    this.options.validate?.({ props: this.props });
     this.container = this.resolveContainer(container);
 
     this.event.emit(EVENT.PRERENDER);
@@ -397,16 +398,36 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    */
   async updateProps(newProps: Partial<P>): Promise<void> {
     const propContext = this.createPropContext();
-    this.props = normalizeProps(
+    const nextProps = normalizeProps(
       { ...this.props, ...newProps },
       this.options.props,
       propContext
     );
+    this.options.validate?.({ props: nextProps });
+
+    const resolvedUrl = this.resolveUrl(nextProps);
+    const nextHostOrigin = this.resolveUrlOrigin(resolvedUrl);
+    if (
+      this.rendered &&
+      this.openedHostDomain &&
+      nextHostOrigin &&
+      nextHostOrigin !== this.openedHostDomain
+    ) {
+      throw new Error(
+        `Cannot change component URL origin after render (from "${this.openedHostDomain}" to "${nextHostOrigin}")`
+      );
+    }
+
+    this.props = nextProps;
+
+    if (!this.rendered) {
+      this.syncTrustedDomainForUrl(resolvedUrl);
+    }
 
     if (this.hostWindow && !isWindowClosed(this.hostWindow)) {
-      const hostDomain = this.getHostDomain();
+      const hostDomain = this.openedHostDomain ?? this.getHostDomain();
       const propsForHost = getPropsForHost(
-        this.props,
+        nextProps,
         this.options.props,
         hostDomain,
         isSameDomain(this.hostWindow)
@@ -459,13 +480,81 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
       ...options,
       props: options.props ?? ({} as PropsDefinition<P>),
       defaultContext: options.defaultContext ?? CONTEXT.IFRAME,
-      dimensions:
-        typeof options.dimensions === 'function'
-          ? options.dimensions(this.props)
-          : options.dimensions ?? { width: '100%', height: '100%' },
+      dimensions: options.dimensions ?? { width: '100%', height: '100%' },
       timeout: options.timeout ?? 10000,
       children: options.children,
     };
+  }
+
+  /**
+   * Resolves the host URL from static or function options.
+   * @internal
+   */
+  private resolveUrl(props: P = this.props): string {
+    return typeof this.options.url === 'function'
+      ? this.options.url(props)
+      : this.options.url;
+  }
+
+  /**
+   * Resolves dimensions from static or function options.
+   * @internal
+   */
+  private resolveDimensions(): Dimensions {
+    return typeof this.options.dimensions === 'function'
+      ? this.options.dimensions(this.props)
+      : this.options.dimensions;
+  }
+
+  /**
+   * Resolves a URL to an origin, supporting relative URLs.
+   * @internal
+   */
+  private resolveUrlOrigin(url: string): string | null {
+    try {
+      return new URL(url, window.location.origin).origin;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Returns true when the domain option explicitly includes this origin.
+   * @internal
+   */
+  private isExplicitDomainTrust(origin: string): boolean {
+    if (!this.options.domain || this.options.domain instanceof RegExp) {
+      return false;
+    }
+
+    if (typeof this.options.domain === 'string') {
+      return this.options.domain === origin;
+    }
+
+    return this.options.domain.includes(origin);
+  }
+
+  /**
+   * Ensures the messenger trusts the origin for a resolved host URL.
+   * @internal
+   */
+  private syncTrustedDomainForUrl(url: string): void {
+    const origin = this.resolveUrlOrigin(url);
+    if (!origin) {
+      return;
+    }
+
+    const previousOrigin = this.dynamicUrlTrustedOrigin;
+    if (
+      previousOrigin &&
+      previousOrigin !== origin &&
+      !this.isExplicitDomainTrust(previousOrigin)
+    ) {
+      this.messenger.removeTrustedDomain(previousOrigin);
+    }
+
+    this.messenger.addTrustedDomain(origin);
+    this.dynamicUrlTrustedOrigin = origin;
   }
 
   /**
@@ -530,7 +619,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     const containerTemplateFn =
       this.options.containerTemplate ?? defaultContainerTemplate;
 
-    const dimensions = this.options.dimensions;
+    const dimensions = this.resolveDimensions();
     const cspNonce = (this.props as Record<string, unknown>).cspNonce as string | undefined;
 
     // Pre-create iframe element for iframe context (zoid-style)
@@ -598,7 +687,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    */
   private createIframeElement(windowName: string): HTMLIFrameElement {
     const iframe = document.createElement('iframe');
-    const dimensions = this.options.dimensions;
+    const dimensions = this.resolveDimensions();
     const attributes = typeof this.options.attributes === 'function'
       ? this.options.attributes(this.props)
       : this.options.attributes ?? {};
@@ -657,7 +746,10 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * @internal
    */
   private async open(): Promise<void> {
-    const url = this.buildUrl();
+    const baseUrl = this.resolveUrl();
+    this.syncTrustedDomainForUrl(baseUrl);
+    this.openedHostDomain = this.resolveUrlOrigin(baseUrl);
+    const url = this.buildUrl(baseUrl);
 
     if (this.context === CONTEXT.IFRAME) {
       // Iframe was pre-created in prerender() with name already set
@@ -673,7 +765,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
       this.hostWindow = openPopup({
         url,
         name: windowName,
-        dimensions: this.options.dimensions,
+        dimensions: this.resolveDimensions(),
       });
 
       const stopWatching = watchPopupClose(this.hostWindow, () => {
@@ -691,12 +783,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * Builds the URL for the host window including query parameters.
    * @internal
    */
-  private buildUrl(): string {
-    const baseUrl =
-      typeof this.options.url === 'function'
-        ? this.options.url(this.props)
-        : this.options.url;
-
+  private buildUrl(baseUrl: string = this.resolveUrl()): string {
     const queryParams = propsToQueryParams(this.props, this.options.props);
     const queryString = queryParams.toString();
 
@@ -751,17 +838,26 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     const refs: Record<string, HostComponentRef> = {};
 
     for (const [name, component] of Object.entries(nestedComponents)) {
-      const componentAny = component as ForgeFrameComponent & {
-        _options?: ComponentOptions<Record<string, unknown>>;
-        tag?: string;
-        url?: string | ((props: Record<string, unknown>) => string);
-      };
+      const nestedOptions = getComponentOptions(component);
+      if (!nestedOptions) {
+        throw new Error(`Nested component "${name}" is missing component metadata`);
+      }
+
+      if (typeof nestedOptions.url !== 'string') {
+        throw new Error(
+          `Nested component "${name}" must use a static string URL. Function URLs are not supported in children.`
+        );
+      }
 
       refs[name] = {
-        tag: componentAny.tag ?? name,
-        url: typeof componentAny.url === 'function'
-          ? componentAny.url.toString()
-          : componentAny.url ?? '',
+        tag: nestedOptions.tag,
+        url: nestedOptions.url,
+        props: nestedOptions.props as PropsDefinition<Record<string, unknown>> | undefined,
+        dimensions:
+          typeof nestedOptions.dimensions === 'function'
+            ? undefined
+            : nestedOptions.dimensions,
+        defaultContext: nestedOptions.defaultContext,
       };
     }
 
@@ -790,16 +886,11 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * @internal
    */
   private getHostDomain(): string {
-    const url =
-      typeof this.options.url === 'function'
-        ? this.options.url(this.props)
-        : this.options.url;
-
-    try {
-      return new URL(url, window.location.origin).origin;
-    } catch {
-      return '*';
+    if (this.openedHostDomain) {
+      return this.openedHostDomain;
     }
+
+    return this.resolveUrlOrigin(this.resolveUrl()) ?? '*';
   }
 
   /**
@@ -910,7 +1001,6 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     this.cleanup.register(() => {
       this.messenger.destroy();
       this.bridge.destroy();
-      this.event.removeAllListeners();
       unregisterWindow(this.uid);
     });
   }
@@ -971,6 +1061,8 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     }
 
     this.hostWindow = null;
+    this.openedHostDomain = null;
+    this.dynamicUrlTrustedOrigin = null;
 
     if (this.prerenderElement) {
       this.prerenderElement.remove();
@@ -981,5 +1073,6 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
 
     this.event.emit(EVENT.DESTROY);
     this.callPropCallback('onDestroy');
+    this.event.removeAllListeners();
   }
 }

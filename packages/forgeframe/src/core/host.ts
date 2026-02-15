@@ -18,6 +18,7 @@ import type {
   GetPeerInstancesOptions,
   ForgeFrameComponent,
   HostComponentRef,
+  DomainMatcher,
 } from '../types';
 import { MESSAGE_NAME, EVENT } from '../constants';
 import { EventEmitter } from '../events/emitter';
@@ -29,6 +30,7 @@ import {
   getOpener,
   isIframe,
   isPopup,
+  matchDomain,
 } from '../window/helpers';
 import {
   isForgeFrameWindow,
@@ -92,19 +94,33 @@ export class HostComponent<P extends Record<string, unknown>> {
   /** @internal */
   private initError: Error | null = null;
 
+  /** @internal */
+  private destroyed = false;
+
+  /** @internal */
+  private initSent = false;
+
+  /** @internal */
+  private deferredInitFlushScheduled = false;
+
   /**
    * Creates a new HostComponent instance.
    *
    * @param payload - The payload parsed from window.name
    * @param propDefinitions - Optional prop definitions for deserialization
+   * @param allowedConsumerDomains - Optional allowlist of consumer domains
+   * @param deferInit - Whether to defer INIT until a later explicit flush
    */
   constructor(
     payload: WindowNamePayload<P>,
-    private propDefinitions: PropsDefinition<P> = {}
+    private propDefinitions: PropsDefinition<P> = {},
+    private allowedConsumerDomains?: DomainMatcher,
+    private deferInit = false
   ) {
     this.uid = payload.uid;
     this.tag = payload.tag;
     this.consumerDomain = payload.consumerDomain;
+    this.validateConsumerDomain();
     this.event = new EventEmitter();
 
     // Create messenger with consumer domain as trusted origin for security
@@ -118,9 +134,87 @@ export class HostComponent<P extends Record<string, unknown>> {
     this.consumerWindow = this.resolveConsumerWindow();
     this.bridge = new FunctionBridge(this.messenger);
     this.hostProps = this.buildHostProps(payload);
-    (window as unknown as { hostProps: HostProps<P> }).hostProps = this.hostProps;
+    this.exposeHostProps();
 
-    this.sendInit();
+    if (!this.deferInit) {
+      this.flushInit();
+    }
+  }
+
+  /**
+   * Ensures the INIT handshake is sent at most once.
+   * @internal
+   */
+  flushInit(): void {
+    if (this.destroyed || this.initSent) {
+      return;
+    }
+
+    this.initSent = true;
+    void this.sendInit();
+  }
+
+  /**
+   * Schedules deferred INIT flush on the next microtask.
+   * This preserves legacy hostProps-only usage while giving same-tick
+   * host configuration a chance to run allowlist checks first.
+   * @internal
+   */
+  private scheduleDeferredInitFlush(): void {
+    if (this.deferredInitFlushScheduled || this.destroyed || this.initSent) {
+      return;
+    }
+
+    this.deferredInitFlushScheduled = true;
+    queueMicrotask(() => {
+      this.deferredInitFlushScheduled = false;
+      this.flushInit();
+    });
+  }
+
+  /**
+   * Exposes hostProps on window and lazily flushes deferred init on first access.
+   * @internal
+   */
+  private exposeHostProps(): void {
+    const hostWindow = window as unknown as { hostProps?: HostProps<P> };
+
+    try {
+      Object.defineProperty(hostWindow, 'hostProps', {
+        configurable: true,
+        enumerable: true,
+        get: () => {
+          if (this.deferInit && !this.initSent && !this.destroyed) {
+            this.scheduleDeferredInitFlush();
+          }
+          return this.hostProps;
+        },
+        set: (value: HostProps<P> | undefined) => {
+          if (value) {
+            this.hostProps = value;
+          }
+        },
+      });
+    } catch {
+      // Fallback for environments where hostProps cannot be redefined.
+      hostWindow.hostProps = this.hostProps;
+    }
+  }
+
+  /**
+   * Validates that the consumer domain is allowed.
+   * @internal
+   */
+  private validateConsumerDomain(): void {
+    if (!this.allowedConsumerDomains) {
+      return;
+    }
+
+    if (!matchDomain(this.allowedConsumerDomains, this.consumerDomain)) {
+      throw new Error(
+        `Consumer domain "${this.consumerDomain}" is not allowed for component "${this.tag}"`
+      );
+    }
   }
 
   /**
@@ -430,6 +524,13 @@ export class HostComponent<P extends Record<string, unknown>> {
    * Destroys the host component and cleans up resources.
    */
   destroy(): void {
+    if (this.destroyed) {
+      return;
+    }
+
+    this.destroyed = true;
+    this.deferredInitFlushScheduled = false;
+
     this.messenger.destroy();
     this.bridge.destroy();
     this.event.removeAllListeners();
@@ -467,9 +568,25 @@ let hostInstance: HostComponent<Record<string, unknown>> | null = null;
  * @public
  */
 export function initHost<P extends Record<string, unknown>>(
-  propDefinitions?: PropsDefinition<P>
+  propDefinitions?: PropsDefinition<P>,
+  allowedConsumerDomains?: DomainMatcher,
+  options: { deferInit?: boolean } = {}
 ): HostComponent<P> | null {
   if (hostInstance) {
+    if (allowedConsumerDomains) {
+      const consumerDomain = hostInstance.getProps().getConsumerDomain();
+      if (!matchDomain(allowedConsumerDomains, consumerDomain)) {
+        clearHostInstance();
+        throw new Error(
+          `Consumer domain "${consumerDomain}" is not allowed for this host component`
+        );
+      }
+    }
+
+    if (!options.deferInit) {
+      hostInstance.flushInit();
+    }
+
     return hostInstance as HostComponent<P>;
   }
 
@@ -485,7 +602,9 @@ export function initHost<P extends Record<string, unknown>>(
 
   hostInstance = new HostComponent(
     payload,
-    propDefinitions
+    propDefinitions,
+    allowedConsumerDomains,
+    options.deferInit ?? false
   ) as HostComponent<Record<string, unknown>>;
 
   return hostInstance as HostComponent<P>;
@@ -571,4 +690,18 @@ export function isEmbedded(): boolean {
  */
 export function getHostProps<P extends Record<string, unknown>>(): HostProps<P> | undefined {
   return (window as unknown as { hostProps?: HostProps<P> }).hostProps;
+}
+
+/**
+ * Clears and destroys the global host instance.
+ * Primarily intended for testing.
+ * @internal
+ */
+export function clearHostInstance(): void {
+  if (hostInstance) {
+    hostInstance.destroy();
+    hostInstance = null;
+  }
+
+  delete (window as unknown as { hostProps?: HostProps<Record<string, unknown>> }).hostProps;
 }

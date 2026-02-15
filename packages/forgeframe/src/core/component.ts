@@ -26,6 +26,23 @@ import { isSameDomain } from '../window/helpers';
 const componentRegistry = new Map<string, ForgeFrameComponent<Record<string, unknown>>>();
 
 /**
+ * Internal symbol used to attach component options metadata to component factories.
+ * @internal
+ */
+const INTERNAL_COMPONENT_OPTIONS = Symbol('forgeframe.component.options');
+
+/**
+ * Component factory augmented with internal metadata.
+ * @internal
+ */
+type InternalForgeFrameComponent<
+  P extends Record<string, unknown> = Record<string, unknown>,
+  X = unknown,
+> = ForgeFrameComponent<P, X> & {
+  [INTERNAL_COMPONENT_OPTIONS]?: ComponentOptions<P>;
+};
+
+/**
  * Validates component configuration options.
  *
  * @param options - The component options to validate
@@ -105,7 +122,7 @@ export function create<P extends Record<string, unknown> = Record<string, unknow
 
   let componentHostProps: HostProps<P> | undefined;
   if (isHostOfComponent(options.tag)) {
-    const host = initHost<P>(options.props);
+    const host = initHost<P>(options.props, options.allowedConsumerDomains);
     if (host) {
       componentHostProps = host.hostProps;
     }
@@ -142,6 +159,8 @@ export function create<P extends Record<string, unknown> = Record<string, unknow
   };
 
   Component.hostProps = componentHostProps;
+
+  (Component as InternalForgeFrameComponent<P, X>)[INTERNAL_COMPONENT_OPTIONS] = options;
 
   Component.canRenderTo = async (win: Window): Promise<boolean> => {
     try {
@@ -189,6 +208,17 @@ export function getComponent<P extends Record<string, unknown> = Record<string, 
   tag: string
 ): ForgeFrameComponent<P, X> | undefined {
   return componentRegistry.get(tag) as ForgeFrameComponent<P, X> | undefined;
+}
+
+/**
+ * Returns the internal options metadata for a component factory.
+ * @internal
+ */
+export function getComponentOptions<
+  P extends Record<string, unknown> = Record<string, unknown>,
+  X = unknown,
+>(component: ForgeFrameComponent<P, X>): ComponentOptions<P> | undefined {
+  return (component as InternalForgeFrameComponent<P, X>)[INTERNAL_COMPONENT_OPTIONS];
 }
 
 /**
