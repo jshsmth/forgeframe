@@ -20,7 +20,8 @@
   "scripts": {
     "clean": "rm -rf dist",
     "build": "vite build && tsc --emitDeclarationOnly",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && npm run typecheck:tests",
+    "typecheck:tests": "tsc -p tests/typecheck/tsconfig.json --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage"
@@ -43,5 +44,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/jshsmth/ForgeFrame.git"
+  },
+  "devDependencies": {
+    "valibot": "^1.2.0",
+    "zod": "^4.3.6"
   }
 }
