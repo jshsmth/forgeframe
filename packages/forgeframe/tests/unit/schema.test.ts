@@ -18,7 +18,14 @@ import type { PropsDefinition } from '@/types';
 function createMockSchema<T>(
   validator: (
     value: unknown
-  ) => { value: T } | { issues: Array<{ message: string; path?: Array<string | { key: string }> }> }
+  ) =>
+    | { value: T }
+    | {
+        issues: Array<{
+          message: string;
+          path?: Array<PropertyKey | { key?: PropertyKey; index?: number }>;
+        }>;
+      }
 ): StandardSchemaV1<unknown, T> {
   return {
     '~standard': {
@@ -101,6 +108,27 @@ describe('isStandardSchema', () => {
     ).toBe(false);
   });
 
+  it('should reject objects without vendor string', () => {
+    expect(
+      isStandardSchema({
+        '~standard': {
+          version: 1,
+          validate: () => ({ value: 'test' }),
+        },
+      })
+    ).toBe(false);
+
+    expect(
+      isStandardSchema({
+        '~standard': {
+          version: 1,
+          vendor: 123,
+          validate: () => ({ value: 'test' }),
+        },
+      })
+    ).toBe(false);
+  });
+
   it('should reject objects with null ~standard', () => {
     expect(isStandardSchema({ '~standard': null })).toBe(false);
   });
@@ -157,6 +185,15 @@ describe('validateWithSchema', () => {
   it('should format paths with PathSegment objects', () => {
     const schema = createMockSchema(() => ({
       issues: [{ message: 'Invalid', path: [{ key: 'items' }, { key: '0' }] }],
+    }));
+    expect(() => validateWithSchema(schema, {}, 'data')).toThrow(
+      'Validation failed: data.items.0: Invalid'
+    );
+  });
+
+  it('should format paths with PathSegment index objects', () => {
+    const schema = createMockSchema(() => ({
+      issues: [{ message: 'Invalid', path: [{ key: 'items' }, { index: 0 }] }],
     }));
     expect(() => validateWithSchema(schema, {}, 'data')).toThrow(
       'Validation failed: data.items.0: Invalid'
