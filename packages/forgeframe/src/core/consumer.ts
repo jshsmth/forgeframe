@@ -10,6 +10,7 @@
 
 import type {
   ComponentOptions,
+  DomainMatcher,
   ForgeFrameComponentInstance,
   Dimensions,
   PropsDefinition,
@@ -29,6 +30,7 @@ import { Messenger } from '../communication/messenger';
 import { FunctionBridge } from '../communication/bridge';
 import {
   getDomain,
+  matchDomain,
   isSameDomain,
   isWindowClosed,
 } from '../window/helpers';
@@ -171,6 +173,9 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
   private initPromise: ReturnType<typeof createDeferred<void>> | null = null;
 
   /** @internal */
+  private hostInitialized = false;
+
+  /** @internal */
   private rendered = false;
 
   /** @internal */
@@ -206,8 +211,8 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * Builds the list of trusted domains for messenger communication.
    * @internal
    */
-  private buildTrustedDomains(): string | string[] | RegExp | undefined {
-    const domains: string[] = [];
+  private buildTrustedDomains(): DomainMatcher | undefined {
+    const domains: Array<string | RegExp> = [];
 
     const hostOrigin = this.resolveUrlOrigin(this.resolveUrl());
     if (hostOrigin) {
@@ -221,11 +226,15 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
       } else if (Array.isArray(this.options.domain)) {
         domains.push(...this.options.domain);
       } else if (this.options.domain instanceof RegExp) {
-        return this.options.domain;
+        domains.push(this.options.domain);
       }
     }
 
-    return domains.length > 0 ? domains : undefined;
+    if (domains.length === 0) {
+      return undefined;
+    }
+
+    return domains.length === 1 ? domains[0] : domains;
   }
 
   /**
@@ -524,15 +533,11 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * @internal
    */
   private isExplicitDomainTrust(origin: string): boolean {
-    if (!this.options.domain || this.options.domain instanceof RegExp) {
+    if (!this.options.domain) {
       return false;
     }
 
-    if (typeof this.options.domain === 'string') {
-      return this.options.domain === origin;
-    }
-
-    return this.options.domain.includes(origin);
+    return matchDomain(this.options.domain, origin);
   }
 
   /**
@@ -954,6 +959,10 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * @internal
    */
   private async waitForHost(): Promise<void> {
+    if (this.hostInitialized) {
+      return;
+    }
+
     this.initPromise = createDeferred<void>();
 
     try {
@@ -975,6 +984,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    */
   private setupMessageHandlers(): void {
     this.messenger.on(MESSAGE_NAME.INIT, () => {
+      this.hostInitialized = true;
       if (this.initPromise) {
         this.initPromise.resolve();
       }
@@ -1106,6 +1116,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
       );
       this.initPromise = null;
     }
+    this.hostInitialized = false;
 
     if (this.iframe) {
       destroyIframe(this.iframe);

@@ -1,5 +1,22 @@
 import type { DomainMatcher } from '../types';
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function wildcardToRegExp(pattern: string): RegExp | null {
+  if (!pattern.includes('*')) {
+    return null;
+  }
+
+  const escaped = pattern
+    .split('*')
+    .map((segment) => escapeRegExp(segment))
+    .join('.*');
+
+  return new RegExp(`^${escaped}$`);
+}
+
 /**
  * Gets the domain (origin) of the specified window.
  *
@@ -69,7 +86,8 @@ export function isSameDomain(win: Window, reference: Window = window): boolean {
  * @remarks
  * Pattern matching rules:
  * - `"*"` matches any domain
- * - String patterns require exact match
+ * - String patterns without wildcards require exact match
+ * - String patterns with `*` use wildcard matching (for example, `'https://*.example.com'`)
  * - RegExp patterns use `.test()` method
  * - Array patterns return `true` if any element matches (OR logic)
  *
@@ -80,6 +98,9 @@ export function isSameDomain(win: Window, reference: Window = window): boolean {
  *
  * // Exact match
  * matchDomain('https://example.com', 'https://example.com'); // true
+ *
+ * // Wildcard string match
+ * matchDomain('https://*.example.com', 'https://sub.example.com'); // true
  *
  * // RegExp match
  * matchDomain(/\.example\.com$/, 'https://sub.example.com'); // true
@@ -96,6 +117,10 @@ export function matchDomain(
 ): boolean {
   if (typeof pattern === 'string') {
     if (pattern === '*') return true;
+    const wildcardPattern = wildcardToRegExp(pattern);
+    if (wildcardPattern) {
+      return wildcardPattern.test(domain);
+    }
     return pattern === domain;
   }
 

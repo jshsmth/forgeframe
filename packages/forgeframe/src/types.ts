@@ -23,7 +23,8 @@ import type { StandardSchemaV1, InferOutput } from './props/schema';
  * Pattern for matching domains in security configurations.
  *
  * @remarks
- * Can be a single domain string, a RegExp pattern, or an array of domain strings.
+ * Can be a single domain string, a RegExp pattern, or an array of string/RegExp patterns.
+ * String patterns support `*` wildcards (for example, `'https://*.example.com'`).
  *
  * @example
  * ```typescript
@@ -33,13 +34,14 @@ import type { StandardSchemaV1, InferOutput } from './props/schema';
  * // RegExp pattern
  * const pattern: DomainMatcher = /^https:\/\/.*\.example\.com$/;
  *
- * // Multiple domains
- * const domains: DomainMatcher = ['https://a.com', 'https://b.com'];
+ * // Multiple patterns (can mix strings and RegExp)
+ * const domains: DomainMatcher = ['https://*.example.com', /^https:\/\/api\d+\.example\.com$/];
  * ```
  *
  * @public
  */
-export type DomainMatcher = string | RegExp | string[];
+type DomainPattern = string | RegExp;
+export type DomainMatcher = DomainPattern | DomainPattern[];
 
 /**
  * Component dimension specification.

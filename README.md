@@ -726,6 +726,7 @@ const AutoResizeComponent = ForgeFrame.create({
 ### Domain Security
 
 Restrict which domains can embed or communicate.
+String domain patterns support `*` wildcards (for example, `'https://*.myapp.com'`), and arrays can mix strings and `RegExp`.
 
 ```typescript
 const SecureComponent = ForgeFrame.create({
@@ -820,8 +821,8 @@ interface ComponentOptions<P> {
   defaultContext?: 'iframe' | 'popup';
   containerTemplate?: (ctx: TemplateContext) => HTMLElement;
   prerenderTemplate?: (ctx: TemplateContext) => HTMLElement;
-  domain?: string;
-  allowedConsumerDomains?: Array<string | RegExp>;
+  domain?: string | RegExp | Array<string | RegExp>;
+  allowedConsumerDomains?: string | RegExp | Array<string | RegExp>;
   eligible?: (opts: { props: P }) => { eligible: boolean; reason?: string };
   validate?: (opts: { props: P }) => void;
   attributes?: IframeAttributes;

@@ -413,6 +413,47 @@ describe('Messenger', () => {
 
       regexMessenger.destroy();
     });
+
+    it('should support wildcard string patterns for trusted domains', async () => {
+      const wildcardMessenger = new Messenger('wildcard-uid', mockWindow, 'https://consumer.com', 'https://*.trusted.com');
+
+      const handler = vi.fn().mockReturnValue({ ok: true });
+      wildcardMessenger.on('test', handler);
+
+      const request = createRequestMessage('req-1', 'test', {}, {
+        uid: 'wildcard-uid',
+        domain: 'https://api.trusted.com',
+      });
+
+      dispatchMessage(serializeMessage(request), { postMessage: vi.fn() } as unknown as Window, 'https://api.trusted.com');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(handler).toHaveBeenCalled();
+
+      wildcardMessenger.destroy();
+    });
+
+    it('should support mixed string and RegExp patterns in trusted domain arrays', async () => {
+      const mixedMessenger = new Messenger('mixed-uid', mockWindow, 'https://consumer.com', [
+        'https://trusted.com',
+        /^https:\/\/.*\.trusted-regex\.com$/,
+      ]);
+
+      const handler = vi.fn().mockReturnValue({ ok: true });
+      mixedMessenger.on('test', handler);
+
+      const request = createRequestMessage('req-1', 'test', {}, {
+        uid: 'mixed-uid',
+        domain: 'https://sub.trusted-regex.com',
+      });
+
+      dispatchMessage(serializeMessage(request), { postMessage: vi.fn() } as unknown as Window, 'https://sub.trusted-regex.com');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(handler).toHaveBeenCalled();
+
+      mixedMessenger.destroy();
+    });
   });
 
   describe('destroy', () => {
