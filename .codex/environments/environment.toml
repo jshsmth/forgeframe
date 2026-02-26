@@ -3,9 +3,19 @@ version = 1
 name = "ForgeFrame"
 
 [setup]
-script = ""
+script = "npm install"
 
 [[actions]]
-name = "Run"
+name = "Start Playground"
 icon = "run"
 command = "npm run dev"
+
+[[actions]]
+name = "Test"
+icon = "test"
+command = "npm run test"
+
+[[actions]]
+name = "Build"
+icon = "run"
+command = "npm run build"
