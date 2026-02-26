@@ -1,6 +1,6 @@
 {
   "name": "forgeframe",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Modern cross-domain iframe component framework - a TypeScript alternative to zoid",
   "type": "module",
   "module": "./dist/forgeframe.js",
