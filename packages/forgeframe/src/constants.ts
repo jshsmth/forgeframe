@@ -170,4 +170,17 @@ export const WINDOW_NAME_PREFIX = '__forgeframe__';
  * Current library version.
  * @public
  */
-export const VERSION = '0.0.1';
+declare const __FORGEFRAME_VERSION__: string | undefined;
+
+export const VERSION = (() => {
+  if (
+    typeof __FORGEFRAME_VERSION__ !== 'string' ||
+    __FORGEFRAME_VERSION__.trim().length === 0
+  ) {
+    throw new Error(
+      'ForgeFrame VERSION injection is missing. Configure __FORGEFRAME_VERSION__ in build/test tooling.'
+    );
+  }
+
+  return __FORGEFRAME_VERSION__;
+})();

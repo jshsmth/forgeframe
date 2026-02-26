@@ -396,6 +396,8 @@ const MyComponent = ForgeFrame.create({
 });
 ```
 
+Note: ForgeFrame runs schema validation synchronously. Schemas with async `~standard.validate` are not supported.
+
 ### Passing Props via URL or POST Body (Advanced)
 
 Use prop definition flags to include specific values in the host page's initial HTTP request:
