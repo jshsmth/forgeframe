@@ -65,6 +65,21 @@ describe('Consumer internal branches', () => {
     expect(allowedOrigins).toContain('https://trusted-b.example.com');
   });
 
+  it('should trust mixed array domain option entries including RegExp', () => {
+    const consumer = createConsumer({
+      domain: ['https://trusted-a.example.com', /^https:\/\/.*\.trusted\.example\.com$/],
+    });
+    const internalMessenger = (
+      consumer as unknown as {
+        messenger: { allowedOrigins: Set<string>; allowedOriginPatterns: RegExp[] };
+      }
+    ).messenger;
+
+    expect(Array.from(internalMessenger.allowedOrigins)).toContain('https://trusted-a.example.com');
+    expect(internalMessenger.allowedOriginPatterns).toHaveLength(1);
+    expect(internalMessenger.allowedOriginPatterns[0]?.test('https://api.trusted.example.com')).toBe(true);
+  });
+
   it('should trust domain option when configured as RegExp', () => {
     const consumer = createConsumer({
       domain: /^https:\/\/.*\.trusted\.example\.com$/,
@@ -214,6 +229,29 @@ describe('Consumer internal branches', () => {
 
     expect(isTrustedString).toBe(true);
     expect(isTrustedArray).toBe(true);
+  });
+
+  it('should evaluate explicit domain trust for wildcard and RegExp domain options', () => {
+    const wildcardDomainConsumer = createConsumer({
+      domain: 'https://*.trusted.example.com',
+    });
+    const regexDomainConsumer = createConsumer({
+      domain: /^https:\/\/.*\.trusted\.example\.com$/,
+    });
+
+    const isTrustedWildcard = (
+      wildcardDomainConsumer as unknown as {
+        isExplicitDomainTrust: (origin: string) => boolean;
+      }
+    ).isExplicitDomainTrust('https://api.trusted.example.com');
+    const isTrustedRegex = (
+      regexDomainConsumer as unknown as {
+        isExplicitDomainTrust: (origin: string) => boolean;
+      }
+    ).isExplicitDomainTrust('https://api.trusted.example.com');
+
+    expect(isTrustedWildcard).toBe(true);
+    expect(isTrustedRegex).toBe(true);
   });
 
   it('should skip trusted-domain sync when URL origin is invalid', () => {

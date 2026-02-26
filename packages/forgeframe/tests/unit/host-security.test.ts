@@ -32,6 +32,29 @@ describe('Host security', () => {
     );
   });
 
+  it('should allow wildcard consumer domains during host initialization', () => {
+    vi
+      .spyOn(
+        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
+        'resolveConsumerWindow'
+      )
+      .mockReturnValue(window);
+
+    const payload: WindowNamePayload<Record<string, unknown>> = {
+      uid: 'host-uid-wildcard',
+      tag: 'secure-component-wildcard',
+      version: VERSION,
+      context: CONTEXT.IFRAME,
+      consumerDomain: 'https://api.trusted.example.com',
+      props: {},
+      exports: {},
+    };
+
+    window.name = buildWindowName(payload);
+
+    expect(() => initHost({}, 'https://*.trusted.example.com', { deferInit: true })).not.toThrow();
+  });
+
   it('should clear window.hostProps when existing host fails allowlist recheck', () => {
     vi
       .spyOn(

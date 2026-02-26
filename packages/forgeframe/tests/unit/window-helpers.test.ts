@@ -60,6 +60,13 @@ describe('matchDomain', () => {
     expect(matchDomain('https://example.com', 'https://other.com')).toBe(false);
   });
 
+  it('should match wildcard string patterns', () => {
+    expect(matchDomain('https://*.example.com', 'https://sub.example.com')).toBe(true);
+    expect(matchDomain('https://api.*.example.com', 'https://api.us.example.com')).toBe(true);
+    expect(matchDomain('https://*.example.com', 'https://example.com')).toBe(false);
+    expect(matchDomain('https://*.example.com', 'https://evil.com')).toBe(false);
+  });
+
   it('should match RegExp', () => {
     expect(matchDomain(/example\.com$/, 'https://example.com')).toBe(true);
     expect(matchDomain(/example\.com$/, 'https://sub.example.com')).toBe(true);

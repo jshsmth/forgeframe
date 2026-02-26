@@ -80,6 +80,21 @@ describe('Consumer lifecycle behavior', () => {
     await expect(waitPromise).resolves.toBeUndefined();
   });
 
+  it('should resolve waitForHost when INIT arrives before waiting starts', async () => {
+    vi.useFakeTimers();
+    const consumer = createConsumer({ timeout: 50 });
+    const waitForHost = (
+      consumer as unknown as {
+        waitForHost: () => Promise<void>;
+      }
+    ).waitForHost;
+    const initHandler = getHandlers(consumer).get(MESSAGE_NAME.INIT);
+
+    expect(initHandler).toBeDefined();
+    expect(initHandler!({})).toEqual({ success: true });
+    await expect(waitForHost.call(consumer)).resolves.toBeUndefined();
+  });
+
   it('should route host control messages to instance methods', async () => {
     const consumer = createConsumer();
     const handlers = getHandlers(consumer);

@@ -11,6 +11,7 @@ import type { Message, DomainMatcher } from '../types';
 import { MESSAGE_TYPE } from '../constants';
 import { generateShortUID } from '../utils/uid';
 import { createDeferred, type Deferred } from '../utils/promise';
+import { matchDomain } from '../window/helpers';
 import {
   serializeMessage,
   deserializeMessage,
@@ -112,7 +113,7 @@ export class Messenger {
   addTrustedDomain(domain: DomainMatcher): void {
     if (Array.isArray(domain)) {
       for (const d of domain) {
-        this.allowedOrigins.add(d);
+        this.addTrustedDomain(d);
       }
     } else if (domain instanceof RegExp) {
       this.allowedOriginPatterns.push(domain);
@@ -129,7 +130,7 @@ export class Messenger {
   removeTrustedDomain(domain: DomainMatcher): void {
     if (Array.isArray(domain)) {
       for (const d of domain) {
-        this.allowedOrigins.delete(d);
+        this.removeTrustedDomain(d);
       }
     } else if (domain instanceof RegExp) {
       this.allowedOriginPatterns = this.allowedOriginPatterns.filter((pattern) => pattern !== domain);
@@ -148,6 +149,12 @@ export class Messenger {
   private isOriginTrusted(origin: string): boolean {
     if (this.allowedOrigins.has(origin)) {
       return true;
+    }
+
+    for (const allowedOrigin of this.allowedOrigins) {
+      if (allowedOrigin !== origin && matchDomain(allowedOrigin, origin)) {
+        return true;
+      }
     }
 
     for (const pattern of this.allowedOriginPatterns) {
