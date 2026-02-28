@@ -255,6 +255,35 @@ describe('Host internal branches', () => {
     expect(host).toBeNull();
   });
 
+  it('should fail soft when consumer window cannot be resolved', () => {
+    const payload = createPayload();
+    const addEventListenerSpy = vi.spyOn(window, 'addEventListener');
+    const removeEventListenerSpy = vi.spyOn(window, 'removeEventListener');
+    vi.spyOn(namePayload, 'isForgeFrameWindow').mockReturnValue(true);
+    vi.spyOn(namePayload, 'getInitialPayload').mockReturnValue(payload);
+    vi
+      .spyOn(
+        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
+        'resolveConsumerWindow'
+      )
+      .mockImplementation(() => {
+        throw new Error('Could not resolve consumer window');
+      });
+
+    const host = initHost();
+    const messageAddCount = addEventListenerSpy.mock.calls.filter(
+      ([eventName]) => eventName === 'message'
+    ).length;
+    const messageRemoveCount = removeEventListenerSpy.mock.calls.filter(
+      ([eventName]) => eventName === 'message'
+    ).length;
+
+    expect(host).toBeNull();
+    expect(getHost()).toBeNull();
+    expect(messageAddCount).toBeGreaterThan(0);
+    expect(messageRemoveCount).toBe(messageAddCount);
+  });
+
   it('should log and return null when ForgeFrame payload parsing fails', () => {
     vi.spyOn(namePayload, 'isForgeFrameWindow').mockReturnValue(true);
     vi.spyOn(namePayload, 'getInitialPayload').mockReturnValue(null);
