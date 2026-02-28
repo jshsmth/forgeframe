@@ -39,6 +39,8 @@ import {
 import { deserializeProps } from '../props/serialize';
 import { create } from './component';
 
+const CONSUMER_WINDOW_RESOLUTION_ERROR = 'Could not resolve consumer window';
+
 /**
  * Host-side component implementation.
  *
@@ -125,19 +127,29 @@ export class HostComponent<P extends Record<string, unknown>> {
 
     // Create messenger with consumer domain as trusted origin for security
     this.messenger = new Messenger(this.uid, window, getDomain(), this.consumerDomain);
+    let bridge: FunctionBridge | null = null;
 
-    // IMPORTANT: Set up message handlers immediately after creating messenger
-    // to prevent race conditions where consumer messages arrive before handlers exist
-    this.setupMessageHandlers();
+    try {
+      // IMPORTANT: Set up message handlers immediately after creating messenger
+      // to prevent race conditions where consumer messages arrive before handlers exist
+      this.setupMessageHandlers();
 
-    // Now safe to resolve consumer and build hostProps
-    this.consumerWindow = this.resolveConsumerWindow();
-    this.bridge = new FunctionBridge(this.messenger);
-    this.hostProps = this.buildHostProps(payload);
-    this.exposeHostProps();
+      // Now safe to resolve consumer and build hostProps
+      this.consumerWindow = this.resolveConsumerWindow();
+      bridge = new FunctionBridge(this.messenger);
+      this.bridge = bridge;
+      this.hostProps = this.buildHostProps(payload);
+      this.exposeHostProps();
 
-    if (!this.deferInit) {
-      this.flushInit();
+      if (!this.deferInit) {
+        this.flushInit();
+      }
+    } catch (error) {
+      bridge?.destroy();
+      this.messenger.destroy();
+      this.event.removeAllListeners();
+      this.propsHandlers.clear();
+      throw error;
     }
   }
 
@@ -241,7 +253,7 @@ export class HostComponent<P extends Record<string, unknown>> {
       if (opener) return opener;
     }
 
-    throw new Error('Could not resolve consumer window');
+    throw new Error(CONSUMER_WINDOW_RESOLUTION_ERROR);
   }
 
   /**
@@ -602,12 +614,23 @@ export function initHost<P extends Record<string, unknown>>(
     return null;
   }
 
-  hostInstance = new HostComponent(
-    payload,
-    propDefinitions,
-    allowedConsumerDomains,
-    options.deferInit ?? false
-  ) as HostComponent<Record<string, unknown>>;
+  try {
+    hostInstance = new HostComponent(
+      payload,
+      propDefinitions,
+      allowedConsumerDomains,
+      options.deferInit ?? false
+    ) as HostComponent<Record<string, unknown>>;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === CONSUMER_WINDOW_RESOLUTION_ERROR
+    ) {
+      return null;
+    }
+
+    throw error;
+  }
 
   return hostInstance as HostComponent<P>;
 }
