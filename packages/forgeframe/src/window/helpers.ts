@@ -17,6 +17,15 @@ function wildcardToRegExp(pattern: string): RegExp | null {
   return new RegExp(`^${escaped}$`);
 }
 
+function testRegExpStateless(pattern: RegExp, value: string): boolean {
+  if (pattern.global || pattern.sticky) {
+    const stateless = new RegExp(pattern.source, pattern.flags.replace(/[gy]/g, ''));
+    return stateless.test(value);
+  }
+
+  return pattern.test(value);
+}
+
 /**
  * Gets the domain (origin) of the specified window.
  *
@@ -125,7 +134,7 @@ export function matchDomain(
   }
 
   if (pattern instanceof RegExp) {
-    return pattern.test(domain);
+    return testRegExpStateless(pattern, domain);
   }
 
   if (Array.isArray(pattern)) {

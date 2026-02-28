@@ -371,6 +371,53 @@ describe('Messenger', () => {
       expect(handler).toHaveBeenCalled();
     });
 
+    it('should use event origin instead of claimed message source domain', async () => {
+      const handler = vi.fn().mockReturnValue({ ok: true });
+      messenger.on('test', handler);
+
+      const sourceWindow = { postMessage: vi.fn() } as unknown as Window;
+      const request = createRequestMessage('req-1', 'test', { data: 'value' }, {
+        uid: 'trusted-uid',
+        domain: 'https://spoofed.example.com',
+      });
+
+      dispatchMessage(serializeMessage(request), sourceWindow, 'https://host.com');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(handler).toHaveBeenCalledWith(
+        { data: 'value' },
+        { uid: 'trusted-uid', domain: 'https://host.com' }
+      );
+    });
+
+    it('should keep first bound uid for a source window', async () => {
+      const handler = vi.fn().mockReturnValue({ ok: true });
+      messenger.on('test', handler);
+
+      const sourceWindow = { postMessage: vi.fn() } as unknown as Window;
+      const first = createRequestMessage('req-1', 'test', {}, {
+        uid: 'original-uid',
+        domain: 'https://host.com',
+      });
+      const second = createRequestMessage('req-2', 'test', {}, {
+        uid: 'spoofed-uid',
+        domain: 'https://host.com',
+      });
+
+      dispatchMessage(serializeMessage(first), sourceWindow, 'https://host.com');
+      dispatchMessage(serializeMessage(second), sourceWindow, 'https://host.com');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(handler).toHaveBeenNthCalledWith(1, {}, {
+        uid: 'original-uid',
+        domain: 'https://host.com',
+      });
+      expect(handler).toHaveBeenNthCalledWith(2, {}, {
+        uid: 'original-uid',
+        domain: 'https://host.com',
+      });
+    });
+
     it('should allow adding trusted domains dynamically', async () => {
       const handler = vi.fn().mockReturnValue({ ok: true });
       messenger.on('test', handler);

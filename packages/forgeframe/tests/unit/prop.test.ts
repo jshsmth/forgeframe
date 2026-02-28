@@ -174,6 +174,13 @@ describe('prop.string()', () => {
       'Only lowercase letters'
     );
   });
+
+  it('should validate global regex patterns consistently', () => {
+    const schema = prop.string().pattern(/^[a-z]+$/g);
+
+    expect(schema['~standard'].validate('abc')).toEqual({ value: 'abc' });
+    expect(schema['~standard'].validate('abc')).toEqual({ value: 'abc' });
+  });
 });
 
 // ============================================================================

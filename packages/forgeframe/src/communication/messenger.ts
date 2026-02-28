@@ -11,7 +11,6 @@ import type { Message, DomainMatcher } from '../types';
 import { MESSAGE_TYPE } from '../constants';
 import { generateShortUID } from '../utils/uid';
 import { createDeferred, type Deferred } from '../utils/promise';
-import { matchDomain } from '../window/helpers';
 import {
   serializeMessage,
   deserializeMessage,
@@ -38,6 +37,37 @@ export type MessageHandler<T = unknown, R = unknown> = (
 interface PendingRequest {
   deferred: Deferred<unknown>;
   timeout: ReturnType<typeof setTimeout>;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function wildcardToRegExp(pattern: string): RegExp | null {
+  if (!pattern.includes('*')) {
+    return null;
+  }
+
+  const escaped = pattern
+    .split('*')
+    .map((segment) => escapeRegExp(segment))
+    .join('.*');
+
+  return new RegExp(`^${escaped}$`);
+}
+
+function testPattern(pattern: RegExp, origin: string): boolean {
+  if (pattern.global || pattern.sticky) {
+    const stateless = new RegExp(pattern.source, pattern.flags.replace(/[gy]/g, ''));
+    return stateless.test(origin);
+  }
+
+  return pattern.test(origin);
+}
+
+interface VerifiedSource {
+  uid: string;
+  domain: string;
 }
 
 /**
@@ -82,6 +112,12 @@ export class Messenger {
   /** @internal */
   private allowedOriginPatterns: RegExp[] = [];
 
+  /** @internal */
+  private wildcardPatternRegistry = new Map<string, RegExp>();
+
+  /** @internal */
+  private sourceUidRegistry = new WeakMap<object, string>();
+
   /**
    * Creates a new Messenger instance.
    *
@@ -118,7 +154,15 @@ export class Messenger {
     } else if (domain instanceof RegExp) {
       this.allowedOriginPatterns.push(domain);
     } else {
-      this.allowedOrigins.add(domain);
+      const wildcardPattern = wildcardToRegExp(domain);
+      if (wildcardPattern) {
+        if (!this.wildcardPatternRegistry.has(domain)) {
+          this.wildcardPatternRegistry.set(domain, wildcardPattern);
+          this.allowedOriginPatterns.push(wildcardPattern);
+        }
+      } else {
+        this.allowedOrigins.add(domain);
+      }
     }
   }
 
@@ -135,6 +179,13 @@ export class Messenger {
     } else if (domain instanceof RegExp) {
       this.allowedOriginPatterns = this.allowedOriginPatterns.filter((pattern) => pattern !== domain);
     } else {
+      const wildcardPattern = this.wildcardPatternRegistry.get(domain);
+      if (wildcardPattern) {
+        this.allowedOriginPatterns = this.allowedOriginPatterns.filter(
+          (pattern) => pattern !== wildcardPattern
+        );
+        this.wildcardPatternRegistry.delete(domain);
+      }
       this.allowedOrigins.delete(domain);
     }
   }
@@ -151,19 +202,38 @@ export class Messenger {
       return true;
     }
 
-    for (const allowedOrigin of this.allowedOrigins) {
-      if (allowedOrigin !== origin && matchDomain(allowedOrigin, origin)) {
-        return true;
-      }
-    }
-
     for (const pattern of this.allowedOriginPatterns) {
-      if (pattern.test(origin)) {
+      if (testPattern(pattern, origin)) {
         return true;
       }
     }
 
     return false;
+  }
+
+  /**
+   * Resolves source identity from the browser event context.
+   * @internal
+   */
+  private resolveVerifiedSource(
+    sourceWin: Window,
+    origin: string,
+    claimedSource: Message['source']
+  ): VerifiedSource {
+    const sourceObject = sourceWin as unknown as object;
+    const existingUid = this.sourceUidRegistry.get(sourceObject);
+
+    if (existingUid) {
+      return { uid: existingUid, domain: origin };
+    }
+
+    const claimedUid =
+      claimedSource && typeof claimedSource.uid === 'string' && claimedSource.uid.length > 0
+        ? claimedSource.uid
+        : generateShortUID();
+
+    this.sourceUidRegistry.set(sourceObject, claimedUid);
+    return { uid: claimedUid, domain: origin };
   }
 
   /**
@@ -281,7 +351,12 @@ export class Messenger {
       const message = deserializeMessage(event.data);
       if (!message) return;
 
-      this.handleMessage(message, event.source as Window, event.origin);
+      const sourceWin = event.source;
+      if (!sourceWin || typeof (sourceWin as { postMessage?: unknown }).postMessage !== 'function') {
+        return;
+      }
+
+      this.handleMessage(message, sourceWin as Window, event.origin);
     };
 
     this.win.addEventListener('message', this.listener);
@@ -323,7 +398,12 @@ export class Messenger {
       let responseError: Error | undefined;
 
       try {
-        responseData = await handler(message.data, message.source);
+        const verifiedSource = this.resolveVerifiedSource(
+          sourceWin,
+          origin,
+          message.source
+        );
+        responseData = await handler(message.data, verifiedSource);
       } catch (err) {
         responseError = err instanceof Error ? err : new Error(String(err));
       }

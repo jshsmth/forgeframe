@@ -3,6 +3,7 @@ import { ConsumerComponent } from '@/core/consumer';
 import { clearComponents, create } from '@/core/component';
 import { CONTEXT, MESSAGE_NAME } from '@/constants';
 import { prop } from '@/props/prop';
+import * as popupRender from '@/render/popup';
 
 const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
 
@@ -200,6 +201,104 @@ describe('Consumer lifecycle behavior', () => {
         }
       ).open()
     ).rejects.toThrow('Iframe not created during prerender');
+  });
+
+  it('should destroy instance when render fails during open or init wait', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    const openFailure = createConsumer();
+    vi.spyOn(
+      openFailure as unknown as { prerender: () => Promise<void> },
+      'prerender'
+    ).mockResolvedValue(undefined);
+    vi.spyOn(
+      openFailure as unknown as { open: () => Promise<void> },
+      'open'
+    ).mockRejectedValue(new Error('open failed'));
+    const openDestroySpy = vi.spyOn(
+      openFailure as unknown as { destroy: () => Promise<void> },
+      'destroy'
+    );
+
+    await expect(openFailure.render(container)).rejects.toThrow('open failed');
+    expect(openDestroySpy).toHaveBeenCalledTimes(1);
+
+    const waitFailure = createConsumer();
+    vi.spyOn(
+      waitFailure as unknown as { prerender: () => Promise<void> },
+      'prerender'
+    ).mockResolvedValue(undefined);
+    vi.spyOn(
+      waitFailure as unknown as { open: () => Promise<void> },
+      'open'
+    ).mockResolvedValue(undefined);
+    vi.spyOn(
+      waitFailure as unknown as { waitForHost: () => Promise<void> },
+      'waitForHost'
+    ).mockRejectedValue(new Error('init failed'));
+    const waitDestroySpy = vi.spyOn(
+      waitFailure as unknown as { destroy: () => Promise<void> },
+      'destroy'
+    );
+
+    await expect(waitFailure.render(container)).rejects.toThrow('init failed');
+    expect(waitDestroySpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('should route popup close watcher through close()', async () => {
+    const hostWindow = {
+      closed: false,
+      focus: vi.fn(),
+      close: vi.fn(),
+    } as unknown as Window;
+
+    const closeCallbackRef: { current: (() => void) | null } = { current: null };
+    vi.spyOn(popupRender, 'openPopup').mockReturnValue(hostWindow);
+    vi.spyOn(popupRender, 'watchPopupClose').mockImplementation((_win, callback) => {
+      closeCallbackRef.current = callback;
+      return () => undefined;
+    });
+
+    const consumer = createConsumer({
+      defaultContext: CONTEXT.POPUP,
+    });
+    const closeSpy = vi.spyOn(consumer, 'close');
+
+    (
+      consumer as unknown as {
+        context: string;
+        container: HTMLElement | null;
+      }
+    ).context = CONTEXT.POPUP;
+    (
+      consumer as unknown as {
+        container: HTMLElement | null;
+      }
+    ).container = document.createElement('div');
+
+    vi.spyOn(
+      consumer as unknown as { buildWindowName: () => string },
+      'buildWindowName'
+    ).mockReturnValue('forgeframe-test-window');
+    vi.spyOn(
+      consumer as unknown as { buildUrl: () => string },
+      'buildUrl'
+    ).mockReturnValue('https://host.example.com/widget');
+    vi.spyOn(
+      consumer as unknown as { buildBodyParams: () => URLSearchParams },
+      'buildBodyParams'
+    ).mockReturnValue(new URLSearchParams());
+
+    await (
+      consumer as unknown as {
+        open: () => Promise<void>;
+      }
+    ).open();
+
+    expect(closeCallbackRef.current).toBeTypeOf('function');
+    closeCallbackRef.current?.();
+    expect(closeSpy).toHaveBeenCalledTimes(1);
   });
 
   it('should enforce render guards before opening', async () => {

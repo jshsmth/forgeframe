@@ -1,6 +1,32 @@
 import type { TemplateContext, Dimensions } from '../types';
 import { normalizeDimensionToCSS } from '../utils/dimension';
 
+const SPINNER_STYLE_ID = 'forgeframe-spinner-style';
+
+function ensureSpinnerKeyframes(doc: Document, nonce?: string): void {
+  const existing = doc.getElementById(SPINNER_STYLE_ID);
+  if (existing) {
+    const existingNonce = existing.getAttribute('nonce');
+    if (!nonce || existingNonce === nonce) {
+      return;
+    }
+    existing.remove();
+  }
+
+  const style = doc.createElement('style');
+  style.id = SPINNER_STYLE_ID;
+  if (nonce) {
+    style.setAttribute('nonce', nonce);
+  }
+  style.textContent = `
+    @keyframes forgeframe-spin {
+      to { transform: rotate(360deg); }
+    }
+  `;
+
+  (doc.head ?? doc.documentElement).appendChild(style);
+}
+
 /**
  * Creates the default container element for ForgeFrame components.
  *
@@ -92,6 +118,7 @@ export function defaultPrerenderTemplate<P>(
   ctx: TemplateContext<P> & { cspNonce?: string }
 ): HTMLElement {
   const { doc, dimensions, cspNonce } = ctx;
+  ensureSpinnerKeyframes(doc, cspNonce);
 
   const wrapper = doc.createElement('div');
   Object.assign(wrapper.style, {
@@ -117,17 +144,6 @@ export function defaultPrerenderTemplate<P>(
     animation: 'forgeframe-spin 1s linear infinite',
   });
 
-  const style = doc.createElement('style');
-  if (cspNonce) {
-    style.setAttribute('nonce', cspNonce);
-  }
-  style.textContent = `
-    @keyframes forgeframe-spin {
-      to { transform: rotate(360deg); }
-    }
-  `;
-
-  wrapper.appendChild(style);
   wrapper.appendChild(spinner);
 
   return wrapper;

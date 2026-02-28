@@ -263,6 +263,26 @@ describe('serializeFunctions', () => {
     expect(serializeFunctions(true, bridge)).toBe(true);
     expect(serializeFunctions(null, bridge)).toBe(null);
   });
+
+  it('should allow shared object references that are not circular', () => {
+    const shared = { fn: () => 'ok' };
+    const value = { first: shared, second: shared };
+
+    const result = serializeFunctions(value, bridge) as {
+      first: { fn: unknown };
+      second: { fn: unknown };
+    };
+
+    expect(FunctionBridge.isFunctionRef(result.first.fn)).toBe(true);
+    expect(FunctionBridge.isFunctionRef(result.second.fn)).toBe(true);
+  });
+
+  it('should throw on circular object references', () => {
+    const value: Record<string, unknown> = {};
+    value.self = value;
+
+    expect(() => serializeFunctions(value, bridge)).toThrow('Circular reference detected');
+  });
 });
 
 describe('deserializeFunctions', () => {
@@ -329,6 +349,28 @@ describe('deserializeFunctions', () => {
     expect(deserializeFunctions(42, bridge, targetWin, targetDomain)).toBe(42);
     expect(deserializeFunctions(true, bridge, targetWin, targetDomain)).toBe(true);
     expect(deserializeFunctions(null, bridge, targetWin, targetDomain)).toBe(null);
+  });
+
+  it('should allow shared object references that are not circular', () => {
+    const shared = { __type__: 'function' as const, __id__: 'shared', __name__: 'sharedFn' };
+    const value = { first: shared, second: shared };
+
+    const result = deserializeFunctions(value, bridge, targetWin, targetDomain) as {
+      first: unknown;
+      second: unknown;
+    };
+
+    expect(typeof result.first).toBe('function');
+    expect(typeof result.second).toBe('function');
+  });
+
+  it('should throw on circular serialized references', () => {
+    const value: Record<string, unknown> = {};
+    value.self = value;
+
+    expect(() =>
+      deserializeFunctions(value, bridge, targetWin, targetDomain)
+    ).toThrow('Circular reference detected');
   });
 });
 
