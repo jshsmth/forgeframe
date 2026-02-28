@@ -692,6 +692,9 @@ export interface ForgeFrameComponentInstance<P = Record<string, unknown>, X = un
   /**
    * Update the component's props.
    *
+   * @remarks
+   * Props are normalized and validated before being sent to the host.
+   *
    * @param props - Partial props to merge with existing
    * @returns Promise that resolves when props are updated
    */

@@ -402,7 +402,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * Updates the component props and sends them to the host.
    *
    * @remarks
-   * Props are normalized and serialized before being sent to the host window.
+   * Props are normalized and validated before being sent to the host window.
    *
    * @param newProps - Partial props object to merge with existing props
    */
@@ -413,6 +413,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
       this.options.props,
       propContext
     );
+    validateProps(nextProps, this.options.props);
     this.options.validate?.({ props: nextProps });
 
     const resolvedUrl = this.resolveUrl(nextProps);
