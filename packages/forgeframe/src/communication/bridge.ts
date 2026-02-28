@@ -274,30 +274,38 @@ export class FunctionBridge {
 export function serializeFunctions(
   obj: unknown,
   bridge: FunctionBridge,
-  seen: WeakSet<object> = new WeakSet()
+  stack: WeakSet<object> = new WeakSet()
 ): unknown {
   if (typeof obj === 'function') {
     return bridge.serialize(obj as CallableFunction);
   }
 
   if (Array.isArray(obj)) {
-    if (seen.has(obj)) {
+    if (stack.has(obj)) {
       throw new Error('Circular reference detected in props - arrays cannot contain circular references');
     }
-    seen.add(obj);
-    return obj.map((item) => serializeFunctions(item, bridge, seen));
+    stack.add(obj);
+    try {
+      return obj.map((item) => serializeFunctions(item, bridge, stack));
+    } finally {
+      stack.delete(obj);
+    }
   }
 
   if (typeof obj === 'object' && obj !== null) {
-    if (seen.has(obj)) {
+    if (stack.has(obj)) {
       throw new Error('Circular reference detected in props - objects cannot contain circular references');
     }
-    seen.add(obj);
-    const result: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(obj)) {
-      result[key] = serializeFunctions(value, bridge, seen);
+    stack.add(obj);
+    try {
+      const result: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(obj)) {
+        result[key] = serializeFunctions(value, bridge, stack);
+      }
+      return result;
+    } finally {
+      stack.delete(obj);
     }
-    return result;
   }
 
   return obj;
@@ -320,32 +328,40 @@ export function deserializeFunctions(
   bridge: FunctionBridge,
   targetWin: Window,
   targetDomain: string,
-  seen: WeakSet<object> = new WeakSet()
+  stack: WeakSet<object> = new WeakSet()
 ): unknown {
   if (FunctionBridge.isFunctionRef(obj)) {
     return bridge.deserialize(obj, targetWin, targetDomain);
   }
 
   if (Array.isArray(obj)) {
-    if (seen.has(obj)) {
+    if (stack.has(obj)) {
       throw new Error('Circular reference detected in serialized props');
     }
-    seen.add(obj);
-    return obj.map((item) =>
-      deserializeFunctions(item, bridge, targetWin, targetDomain, seen)
-    );
+    stack.add(obj);
+    try {
+      return obj.map((item) =>
+        deserializeFunctions(item, bridge, targetWin, targetDomain, stack)
+      );
+    } finally {
+      stack.delete(obj);
+    }
   }
 
   if (typeof obj === 'object' && obj !== null) {
-    if (seen.has(obj)) {
+    if (stack.has(obj)) {
       throw new Error('Circular reference detected in serialized props');
     }
-    seen.add(obj);
-    const result: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(obj)) {
-      result[key] = deserializeFunctions(value, bridge, targetWin, targetDomain, seen);
+    stack.add(obj);
+    try {
+      const result: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(obj)) {
+        result[key] = deserializeFunctions(value, bridge, targetWin, targetDomain, stack);
+      }
+      return result;
+    } finally {
+      stack.delete(obj);
     }
-    return result;
   }
 
   return obj;

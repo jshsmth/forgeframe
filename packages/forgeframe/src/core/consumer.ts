@@ -285,16 +285,21 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     this.event.emit(EVENT.RENDER);
     this.callPropCallback('onRender');
 
-    await this.open();
-    await this.waitForHost();
+    try {
+      await this.open();
+      await this.waitForHost();
 
-    if (this.context === CONTEXT.IFRAME && this.iframe && this.prerenderElement) {
-      await swapPrerenderContent(
-        this.container,
-        this.prerenderElement,
-        this.iframe
-      );
-      this.prerenderElement = null;
+      if (this.context === CONTEXT.IFRAME && this.iframe && this.prerenderElement) {
+        await swapPrerenderContent(
+          this.container,
+          this.prerenderElement,
+          this.iframe
+        );
+        this.prerenderElement = null;
+      }
+    } catch (err) {
+      await this.destroy().catch(() => undefined);
+      throw err;
     }
 
     this.rendered = true;
@@ -786,7 +791,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
       }
 
       const stopWatching = watchPopupClose(this.hostWindow, () => {
-        this.destroy();
+        void this.close();
       });
       this.cleanup.register(stopWatching);
     }
@@ -964,11 +969,12 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
       return;
     }
 
-    this.initPromise = createDeferred<void>();
+    const initPromise = createDeferred<void>();
+    this.initPromise = initPromise;
 
     try {
       await promiseTimeout(
-        this.initPromise.promise,
+        initPromise.promise,
         this.options.timeout,
         `Host component "${this.options.tag}" (uid: ${this._uid}) did not initialize within ${this.options.timeout}ms. ` +
         `Check that the host page loads correctly and calls the initialization code.`
@@ -976,6 +982,10 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     } catch (err) {
       this.handleError(err as Error);
       throw err;
+    } finally {
+      if (this.initPromise === initPromise) {
+        this.initPromise = null;
+      }
     }
   }
 
@@ -984,6 +994,15 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * @internal
    */
   private setupMessageHandlers(): void {
+    this.setupHostLifecycleHandlers();
+    this.setupHostDataHandlers();
+  }
+
+  /**
+   * Sets up host lifecycle command handlers.
+   * @internal
+   */
+  private setupHostLifecycleHandlers(): void {
     this.messenger.on(MESSAGE_NAME.INIT, () => {
       this.hostInitialized = true;
       if (this.initPromise) {
@@ -1026,7 +1045,13 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
         return { success: true };
       }
     );
+  }
 
+  /**
+   * Sets up host data exchange handlers.
+   * @internal
+   */
+  private setupHostDataHandlers(): void {
     this.messenger.on<X>(MESSAGE_NAME.EXPORT, async (exports) => {
       this.exports = exports;
       return { success: true };
@@ -1040,24 +1065,38 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     this.messenger.on<{ uid: string; tag: string; options?: GetPeerInstancesOptions }>(
       MESSAGE_NAME.GET_SIBLINGS,
       async (request) => {
-        const siblings: SiblingInfo[] = [];
-
-        const component = getComponent(request.tag);
-        if (component) {
-          for (const instance of component.instances) {
-            if (instance.uid === request.uid) continue;
-
-            siblings.push({
-              uid: instance.uid,
-              tag: request.tag,
-              exports: instance.exports,
-            });
-          }
-        }
-
-        return siblings;
+        return this.getSiblingInstances(request);
       }
     );
+  }
+
+  /**
+   * Gets sibling component instances for a request.
+   * @internal
+   */
+  private getSiblingInstances(request: {
+    uid: string;
+    tag: string;
+    options?: GetPeerInstancesOptions;
+  }): SiblingInfo[] {
+    const siblings: SiblingInfo[] = [];
+
+    const component = getComponent(request.tag);
+    if (!component) {
+      return siblings;
+    }
+
+    for (const instance of component.instances) {
+      if (instance.uid === request.uid) continue;
+
+      siblings.push({
+        uid: instance.uid,
+        tag: request.tag,
+        exports: instance.exports,
+      });
+    }
+
+    return siblings;
   }
 
   /**

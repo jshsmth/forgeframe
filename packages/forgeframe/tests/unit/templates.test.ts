@@ -13,10 +13,12 @@ import type { TemplateContext, Dimensions } from '@/types';
 describe('Template Functions', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    document.getElementById('forgeframe-spinner-style')?.remove();
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    document.getElementById('forgeframe-spinner-style')?.remove();
   });
 
   describe('defaultContainerTemplate', () => {
@@ -96,7 +98,7 @@ describe('Template Functions', () => {
       const wrapper = defaultPrerenderTemplate(ctx);
 
       expect(wrapper.tagName).toBe('DIV');
-      expect(wrapper.children.length).toBe(2); // style + spinner
+      expect(wrapper.children.length).toBe(1); // spinner
     });
 
     it('should apply dimensions to wrapper', () => {
@@ -142,9 +144,32 @@ describe('Template Functions', () => {
       };
 
       const wrapper = defaultPrerenderTemplate(ctx);
-      const styleElement = wrapper.querySelector('style');
+      const styleElement = document.getElementById('forgeframe-spinner-style');
 
       expect(styleElement?.getAttribute('nonce')).toBe('my-nonce-123');
+      expect(wrapper.querySelector('style')).toBeNull();
+    });
+
+    it('should replace existing spinner style when nonce changes', () => {
+      const staleStyle = document.createElement('style');
+      staleStyle.id = 'forgeframe-spinner-style';
+      staleStyle.textContent = '@keyframes forgeframe-spin { to { transform: rotate(360deg); } }';
+      document.head.appendChild(staleStyle);
+
+      const ctx: TemplateContext<Record<string, unknown>> & { cspNonce?: string } = {
+        doc: document,
+        dimensions: { width: 400, height: 300 },
+        uid: 'test-uid',
+        tag: 'test',
+        props: {},
+        cspNonce: 'fresh-nonce',
+      };
+
+      defaultPrerenderTemplate(ctx);
+
+      const styleElements = document.querySelectorAll('#forgeframe-spinner-style');
+      expect(styleElements).toHaveLength(1);
+      expect(styleElements[0]?.getAttribute('nonce')).toBe('fresh-nonce');
     });
 
     it('should include keyframe animation in style', () => {
@@ -156,10 +181,26 @@ describe('Template Functions', () => {
         props: {},
       };
 
-      const wrapper = defaultPrerenderTemplate(ctx);
-      const styleElement = wrapper.querySelector('style');
+      defaultPrerenderTemplate(ctx);
+      const styleElement = document.getElementById('forgeframe-spinner-style');
 
       expect(styleElement?.textContent).toContain('@keyframes forgeframe-spin');
+    });
+
+    it('should inject spinner keyframes once per document', () => {
+      const ctx: TemplateContext<Record<string, unknown>> = {
+        doc: document,
+        dimensions: { width: 400, height: 300 },
+        uid: 'first',
+        tag: 'test',
+        props: {},
+      };
+
+      defaultPrerenderTemplate(ctx);
+      defaultPrerenderTemplate({ ...ctx, uid: 'second' });
+
+      const styleElements = document.querySelectorAll('#forgeframe-spinner-style');
+      expect(styleElements).toHaveLength(1);
     });
   });
 

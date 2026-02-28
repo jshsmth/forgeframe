@@ -31,6 +31,15 @@ import type {
   StandardSchemaV1Issue,
 } from './schema';
 
+function testRegExpStateless(pattern: RegExp, value: string): boolean {
+  if (pattern.global || pattern.sticky) {
+    const stateless = new RegExp(pattern.source, pattern.flags.replace(/[gy]/g, ''));
+    return stateless.test(value);
+  }
+
+  return pattern.test(value);
+}
+
 // ============================================================================
 // Base Schema Class
 // ============================================================================
@@ -201,7 +210,7 @@ export class StringSchema extends PropSchema<string> {
         ],
       };
     }
-    if (this._pattern && !this._pattern.test(str)) {
+    if (this._pattern && !testRegExpStateless(this._pattern, str)) {
       return {
         issues: [
           {

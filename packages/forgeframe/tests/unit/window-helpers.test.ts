@@ -73,6 +73,13 @@ describe('matchDomain', () => {
     expect(matchDomain(/example\.com$/, 'https://other.com')).toBe(false);
   });
 
+  it('should handle global RegExp patterns consistently', () => {
+    const pattern = /example\.com$/g;
+
+    expect(matchDomain(pattern, 'https://example.com')).toBe(true);
+    expect(matchDomain(pattern, 'https://example.com')).toBe(true);
+  });
+
   it('should match array of patterns (OR logic)', () => {
     const patterns = ['https://a.com', 'https://b.com'];
 
