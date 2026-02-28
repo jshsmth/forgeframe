@@ -261,6 +261,74 @@ describe('Consumer lifecycle behavior', () => {
     );
   });
 
+  it('should reject updateProps when a required prop becomes undefined', async () => {
+    const consumer = createConsumer(
+      {
+        props: {
+          amount: { schema: prop.number(), required: true },
+        },
+      },
+      { amount: 1 }
+    );
+
+    await expect(consumer.updateProps({ amount: undefined })).rejects.toThrow(
+      'Prop "amount" is required but was not provided'
+    );
+  });
+
+  it('should reject updateProps when a prop violates its schema', async () => {
+    const consumer = createConsumer(
+      {
+        props: {
+          amount: { schema: prop.number(), required: true },
+        },
+      },
+      { amount: 1 }
+    );
+
+    await expect(consumer.updateProps({ amount: 'two' })).rejects.toThrow(
+      'Validation failed: amount'
+    );
+  });
+
+  it('should not run custom validation, mutate props, or send props when built-in validation fails', async () => {
+    const validate = vi.fn();
+    const consumer = createConsumer(
+      {
+        props: {
+          amount: { schema: prop.number(), required: true },
+        },
+        validate,
+      },
+      { amount: 1 }
+    );
+
+    const hostWindow = {
+      closed: false,
+      postMessage: vi.fn(),
+      location: { origin: 'https://host.example.com' },
+    } as unknown as Window;
+    const internal = consumer as unknown as {
+      hostWindow: Window | null;
+      openedHostDomain: string | null;
+      props: Record<string, unknown>;
+      messenger: { send: (...args: unknown[]) => Promise<unknown> };
+    };
+    internal.hostWindow = hostWindow;
+    internal.openedHostDomain = 'https://host.example.com';
+
+    const previousProps = { ...internal.props };
+    const sendSpy = vi.spyOn(internal.messenger, 'send').mockResolvedValue(undefined);
+
+    await expect(consumer.updateProps({ amount: undefined })).rejects.toThrow(
+      'Prop "amount" is required but was not provided'
+    );
+
+    expect(validate).not.toHaveBeenCalled();
+    expect(sendSpy).not.toHaveBeenCalled();
+    expect(internal.props).toEqual(previousProps);
+  });
+
   it('should send updated props to the opened host domain', async () => {
     const consumer = createConsumer(
       {

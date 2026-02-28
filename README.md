@@ -844,7 +844,7 @@ await instance.focus()                       // Focus
 await instance.resize({ width, height })     // Resize
 await instance.show()                        // Show
 await instance.hide()                        // Hide
-await instance.updateProps(newProps)         // Update props
+await instance.updateProps(newProps)         // Update props (normalized + validated)
 instance.clone()                             // Clone with same props
 instance.isEligible()                        // Check eligibility
 
