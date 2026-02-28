@@ -498,7 +498,9 @@ export class HostComponent<P extends Record<string, unknown>> {
           this.consumerDomain
         );
 
+        this.consumerProps = newProps;
         Object.assign(this.hostProps, newProps);
+        this.hostProps.consumer.props = this.consumerProps;
 
         for (const handler of this.propsHandlers) {
           try {

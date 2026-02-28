@@ -122,6 +122,7 @@ describe('Host lifecycle behavior', () => {
       (host as unknown as { messenger: { handlers: Map<string, (data: unknown) => unknown> } })
         .messenger.handlers
     ).get(MESSAGE_NAME.PROPS);
+    const initialConsumerProps = host.hostProps.consumer.props;
 
     expect(propsHandler).toBeDefined();
 
@@ -132,6 +133,11 @@ describe('Host lifecycle behavior', () => {
 
     expect(result).toEqual({ success: true });
     expect(host.hostProps.amount).toBe(42);
+    expect(host.hostProps.consumer.props).toEqual({ amount: 42 });
+    expect(host.hostProps.consumer.props).not.toBe(initialConsumerProps);
+    expect(
+      (host as unknown as { consumerProps: Record<string, unknown> }).consumerProps
+    ).toBe(host.hostProps.consumer.props);
     expect(subscriber).toHaveBeenCalledWith({ amount: 42 });
   });
 
