@@ -9,6 +9,7 @@ import { PROP_SERIALIZATION } from '@/constants';
 import { prop } from '@/props/prop';
 import { serializeProps, deserializeProps } from '@/props/serialize';
 import type { Messenger } from '@/communication/messenger';
+import type { SerializedProps } from '@/types';
 
 type GenericHandler = (...args: unknown[]) => unknown;
 
@@ -167,5 +168,80 @@ describe('Props serialization behavior', () => {
 
     expect(serialized).toEqual({ defined: 'ok' });
     expect('missing' in serialized).toBe(false);
+  });
+
+  it('should block __proto__ while preserving safe top-level keys during deserialization', () => {
+    const { messenger, bridge } = createBridgeWithMessenger();
+    const serialized: SerializedProps = {
+      safe: 'ok',
+      ['__proto__']: 'unsafe',
+      constructor: 'allowed-constructor',
+      prototype: 'allowed-prototype',
+    };
+
+    const deserialized = deserializeProps(
+      serialized,
+      { safe: prop.string() },
+      messenger,
+      bridge,
+      window,
+      'https://consumer.example.com'
+    ) as Record<string, unknown>;
+
+    expect(deserialized.safe).toBe('ok');
+    expect(Object.getPrototypeOf(deserialized)).toBe(Object.prototype);
+    expect(Object.prototype.hasOwnProperty.call(deserialized, '__proto__')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(deserialized, 'constructor')).toBe(true);
+    expect(Object.prototype.hasOwnProperty.call(deserialized, 'prototype')).toBe(true);
+    expect(deserialized.constructor).toBe('allowed-constructor');
+    expect(deserialized.prototype).toBe('allowed-prototype');
+  });
+
+  it('should block __proto__ DOTIFY paths while preserving constructor/prototype keys', () => {
+    const { messenger, bridge } = createBridgeWithMessenger();
+    const definitions = {
+      payload: {
+        schema: prop.object(),
+        serialization: PROP_SERIALIZATION.DOTIFY,
+      },
+    };
+    const prototypePollutionKey = '__forgeframe_dotify_polluted__';
+
+    delete (Object.prototype as Record<string, unknown>)[prototypePollutionKey];
+    try {
+      const deserialized = deserializeProps(
+        {
+          payload: {
+            __type__: 'dotify',
+            __value__: [
+              'safe.value=1',
+              `__proto__.${prototypePollutionKey}=true`,
+              'constructor.prototype.version="v1"',
+            ].join('&'),
+          },
+        },
+        definitions,
+        messenger,
+        bridge,
+        window,
+        'https://consumer.example.com'
+      ) as { payload: Record<string, unknown> };
+
+      expect(
+        (Object.prototype as Record<string, unknown>)[prototypePollutionKey]
+      ).toBeUndefined();
+      expect(deserialized.payload).toEqual({
+        constructor: {
+          prototype: {
+            version: 'v1',
+          },
+        },
+        safe: {
+          value: 1,
+        },
+      });
+    } finally {
+      delete (Object.prototype as Record<string, unknown>)[prototypePollutionKey];
+    }
   });
 });

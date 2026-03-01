@@ -17,6 +17,16 @@ import {
 import type { Messenger } from '../communication/messenger';
 import { BUILTIN_PROP_DEFINITIONS } from './definitions';
 
+const UNSAFE_OBJECT_KEYS = new Set(['__proto__']);
+
+/**
+ * Returns true when a key can be safely assigned on reconstructed objects.
+ * @internal
+ */
+function isSafeObjectKey(key: string): boolean {
+  return !UNSAFE_OBJECT_KEYS.has(key);
+}
+
 /**
  * Converts a nested object to dot notation string.
  *
@@ -76,17 +86,26 @@ function fromDotNotation(str: string): Record<string, unknown> {
     }
 
     const keys = path.split('.');
+    if (keys.some((key) => !isSafeObjectKey(key))) continue;
+
     let current = result;
 
     for (let i = 0; i < keys.length - 1; i++) {
       const key = keys[i];
-      if (!(key in current) || typeof current[key] !== 'object') {
+      const existing = current[key];
+      if (
+        !Object.prototype.hasOwnProperty.call(current, key) ||
+        typeof existing !== 'object' ||
+        existing === null ||
+        Array.isArray(existing)
+      ) {
         current[key] = {};
       }
       current = current[key] as Record<string, unknown>;
     }
 
-    current[keys[keys.length - 1]] = value;
+    const leafKey = keys[keys.length - 1];
+    current[leafKey] = value;
   }
 
   return result;
@@ -216,6 +235,8 @@ export function deserializeProps<P extends Record<string, unknown>>(
   const result = {} as P;
 
   for (const [key, value] of Object.entries(serialized)) {
+    if (!isSafeObjectKey(key)) continue;
+
     const definition = (allDefs as Record<string, PropDefinition>)[key];
 
     (result as Record<string, unknown>)[key] = deserializeValue(
@@ -297,6 +318,8 @@ export function cloneProps<P extends Record<string, unknown>>(
   const result = {} as P;
 
   for (const [key, value] of Object.entries(props)) {
+    if (!isSafeObjectKey(key)) continue;
+
     if (typeof value === 'function') {
       (result as Record<string, unknown>)[key] = value;
     } else if (typeof value === 'object' && value !== null) {

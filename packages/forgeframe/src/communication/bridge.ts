@@ -23,6 +23,15 @@ type CallableFunction = (...args: unknown[]) => unknown | Promise<unknown>;
  * @internal
  */
 const MAX_FUNCTIONS = 500;
+const UNSAFE_OBJECT_KEYS = new Set(['__proto__']);
+
+/**
+ * Checks if a key is safe to assign on reconstructed objects.
+ * @internal
+ */
+function isSafeObjectKey(key: string): boolean {
+  return !UNSAFE_OBJECT_KEYS.has(key);
+}
 
 /**
  * Handles serialization and deserialization of functions for cross-domain calls.
@@ -300,6 +309,7 @@ export function serializeFunctions(
     try {
       const result: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(obj)) {
+        if (!isSafeObjectKey(key)) continue;
         result[key] = serializeFunctions(value, bridge, stack);
       }
       return result;
@@ -356,6 +366,7 @@ export function deserializeFunctions(
     try {
       const result: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(obj)) {
+        if (!isSafeObjectKey(key)) continue;
         result[key] = deserializeFunctions(value, bridge, targetWin, targetDomain, stack);
       }
       return result;
