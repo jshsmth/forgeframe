@@ -9,6 +9,7 @@ import { clearComponents, create } from '@/core/component';
 import { CONTEXT, MESSAGE_NAME } from '@/constants';
 import { prop } from '@/props/prop';
 import * as popupRender from '@/render/popup';
+import * as templateRender from '@/render/templates';
 
 const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
 
@@ -255,6 +256,37 @@ describe('Consumer lifecycle behavior', () => {
 
     await expect(waitFailure.render(container)).rejects.toThrow('init failed');
     expect(waitDestroySpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('should swap and reveal iframe even when prerender template returns null', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    const consumer = createConsumer({
+      prerenderTemplate: () => null,
+    });
+
+    vi.spyOn(
+      consumer as unknown as { open: () => Promise<void> },
+      'open'
+    ).mockResolvedValue(undefined);
+    vi.spyOn(
+      consumer as unknown as { waitForHost: () => Promise<void> },
+      'waitForHost'
+    ).mockResolvedValue(undefined);
+
+    const swapSpy = vi
+      .spyOn(templateRender, 'swapPrerenderContent')
+      .mockResolvedValue(undefined);
+
+    await consumer.render(container);
+
+    expect(swapSpy).toHaveBeenCalledTimes(1);
+    expect(swapSpy).toHaveBeenCalledWith(
+      expect.any(HTMLElement),
+      null,
+      expect.any(HTMLIFrameElement)
+    );
   });
 
   it('should route popup close watcher through close()', async () => {

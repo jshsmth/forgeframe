@@ -268,7 +268,6 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
     if (
       this.context === CONTEXT.IFRAME &&
       this.iframe &&
-      this.prerenderElement &&
       this.container
     ) {
       await swapPrerenderContent(this.container, this.prerenderElement, this.iframe);
