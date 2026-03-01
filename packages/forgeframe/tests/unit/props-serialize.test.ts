@@ -170,13 +170,13 @@ describe('Props serialization behavior', () => {
     expect('missing' in serialized).toBe(false);
   });
 
-  it('should ignore unsafe top-level keys during deserialization', () => {
+  it('should block __proto__ while preserving safe top-level keys during deserialization', () => {
     const { messenger, bridge } = createBridgeWithMessenger();
     const serialized: SerializedProps = {
       safe: 'ok',
       ['__proto__']: 'unsafe',
-      constructor: 'unsafe',
-      prototype: 'unsafe',
+      constructor: 'allowed-constructor',
+      prototype: 'allowed-prototype',
     };
 
     const deserialized = deserializeProps(
@@ -189,13 +189,15 @@ describe('Props serialization behavior', () => {
     ) as Record<string, unknown>;
 
     expect(deserialized.safe).toBe('ok');
-    expect(Object.getPrototypeOf(deserialized)).toBeNull();
+    expect(Object.getPrototypeOf(deserialized)).toBe(Object.prototype);
     expect(Object.prototype.hasOwnProperty.call(deserialized, '__proto__')).toBe(false);
-    expect(Object.prototype.hasOwnProperty.call(deserialized, 'constructor')).toBe(false);
-    expect(Object.prototype.hasOwnProperty.call(deserialized, 'prototype')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(deserialized, 'constructor')).toBe(true);
+    expect(Object.prototype.hasOwnProperty.call(deserialized, 'prototype')).toBe(true);
+    expect(deserialized.constructor).toBe('allowed-constructor');
+    expect(deserialized.prototype).toBe('allowed-prototype');
   });
 
-  it('should ignore unsafe DOTIFY paths to prevent prototype pollution', () => {
+  it('should block __proto__ DOTIFY paths while preserving constructor/prototype keys', () => {
     const { messenger, bridge } = createBridgeWithMessenger();
     const definitions = {
       payload: {
@@ -214,7 +216,7 @@ describe('Props serialization behavior', () => {
             __value__: [
               'safe.value=1',
               `__proto__.${prototypePollutionKey}=true`,
-              'constructor.prototype.ignore=true',
+              'constructor.prototype.version="v1"',
             ].join('&'),
           },
         },
@@ -229,6 +231,11 @@ describe('Props serialization behavior', () => {
         (Object.prototype as Record<string, unknown>)[prototypePollutionKey]
       ).toBeUndefined();
       expect(deserialized.payload).toEqual({
+        constructor: {
+          prototype: {
+            version: 'v1',
+          },
+        },
         safe: {
           value: 1,
         },

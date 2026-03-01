@@ -23,15 +23,7 @@ type CallableFunction = (...args: unknown[]) => unknown | Promise<unknown>;
  * @internal
  */
 const MAX_FUNCTIONS = 500;
-const UNSAFE_OBJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
-
-/**
- * Creates an object with no prototype chain for safe key assignment.
- * @internal
- */
-function createNullPrototypeObject(): Record<string, unknown> {
-  return Object.create(null) as Record<string, unknown>;
-}
+const UNSAFE_OBJECT_KEYS = new Set(['__proto__']);
 
 /**
  * Checks if a key is safe to assign on reconstructed objects.
@@ -315,7 +307,7 @@ export function serializeFunctions(
     }
     stack.add(obj);
     try {
-      const result: Record<string, unknown> = createNullPrototypeObject();
+      const result: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(obj)) {
         if (!isSafeObjectKey(key)) continue;
         result[key] = serializeFunctions(value, bridge, stack);
@@ -372,7 +364,7 @@ export function deserializeFunctions(
     }
     stack.add(obj);
     try {
-      const result: Record<string, unknown> = createNullPrototypeObject();
+      const result: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(obj)) {
         if (!isSafeObjectKey(key)) continue;
         result[key] = deserializeFunctions(value, bridge, targetWin, targetDomain, stack);
