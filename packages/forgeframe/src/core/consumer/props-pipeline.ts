@@ -1,0 +1,125 @@
+import { normalizeProps, validateProps } from '../../props';
+import type { PropContext } from '../../types';
+import type { NormalizedOptions } from './types';
+
+/**
+ * Hooks used by the props pipeline to coordinate host synchronization behavior.
+ * @internal
+ */
+export interface ConsumerPropsUpdateHooks<P extends Record<string, unknown>> {
+  resolveUrl: (props: P) => string;
+  resolveUrlOrigin: (url: string) => string | null;
+  assertStableRenderedOrigin: (nextHostOrigin: string | null) => void;
+  isRendered: () => boolean;
+  syncTrustedDomainForUrl: (url: string) => void;
+  shouldSendPropsToHost: () => boolean;
+  sendPropsUpdateToHost: (nextProps: P) => Promise<void>;
+  emitPropsUpdated: (nextProps: P) => void;
+}
+
+/**
+ * Owns consumer prop normalization, validation, and update queueing.
+ * @internal
+ */
+export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
+  /** Current normalized prop snapshot. */
+  public props: P;
+
+  /** Last input props snapshot prior to normalization. */
+  public inputProps: Partial<P>;
+
+  /** Active in-flight update chain when host synchronization is occurring. */
+  public pendingPropsUpdate: Promise<void> | null = null;
+
+  constructor(
+    private options: NormalizedOptions<P>,
+    initialInputProps: Partial<P>,
+    private createPropContext: (props: P) => PropContext<P>
+  ) {
+    this.inputProps = { ...initialInputProps };
+    const initialProps = this.inputProps as P;
+    const propContext = this.createPropContext(initialProps);
+    this.props = normalizeProps(initialProps, this.options.props, propContext);
+  }
+
+  /**
+   * Builds and validates the next props snapshot.
+   */
+  buildNextProps(newProps: Partial<P>): {
+    nextInputProps: Partial<P>;
+    nextProps: P;
+  } {
+    const nextInputProps = { ...this.inputProps, ...newProps };
+    const mergedProps = { ...this.props, ...newProps } as P;
+    const propContext = this.createPropContext(mergedProps);
+    const nextProps = normalizeProps(mergedProps, this.options.props, propContext);
+    validateProps(nextProps, this.options.props);
+    this.options.validate?.({ props: nextProps });
+    return { nextInputProps, nextProps };
+  }
+
+  /**
+   * Applies a props update and synchronizes it to the host when connected.
+   */
+  updateProps(
+    newProps: Partial<P>,
+    hooks: ConsumerPropsUpdateHooks<P>
+  ): Promise<void> {
+    return this.queuePropsUpdate(async () => {
+      const { nextInputProps, nextProps } = this.buildNextProps(newProps);
+      const resolvedUrl = hooks.resolveUrl(nextProps);
+      const nextHostOrigin = hooks.resolveUrlOrigin(resolvedUrl);
+      hooks.assertStableRenderedOrigin(nextHostOrigin);
+
+      this.inputProps = nextInputProps;
+      this.props = nextProps;
+
+      if (!hooks.isRendered()) {
+        hooks.syncTrustedDomainForUrl(resolvedUrl);
+      }
+
+      if (hooks.shouldSendPropsToHost()) {
+        await hooks.sendPropsUpdateToHost(nextProps);
+      }
+      hooks.emitPropsUpdated(nextProps);
+    }, hooks.shouldSendPropsToHost);
+  }
+
+  /**
+   * Queues prop updates when a previous host sync is in flight.
+   */
+  private queuePropsUpdate(
+    updateFn: () => Promise<void>,
+    shouldTrackFollowingUpdates: () => boolean
+  ): Promise<void> {
+    if (!this.pendingPropsUpdate) {
+      const immediateUpdate = updateFn();
+      if (shouldTrackFollowingUpdates()) {
+        this.trackPendingUpdate(immediateUpdate);
+      }
+      return immediateUpdate;
+    }
+
+    const queuedUpdate = this.pendingPropsUpdate.then(updateFn, updateFn);
+    this.trackPendingUpdate(queuedUpdate);
+    return queuedUpdate;
+  }
+
+  /**
+   * Tracks a promise as the active queued update and clears it when settled.
+   */
+  private trackPendingUpdate(updatePromise: Promise<void>): void {
+    const settledUpdate = updatePromise.then(
+      () => undefined,
+      () => undefined
+    );
+
+    this.pendingPropsUpdate = settledUpdate;
+
+    settledUpdate.finally(() => {
+      if (this.pendingPropsUpdate === settledUpdate) {
+        this.pendingPropsUpdate = null;
+      }
+    });
+  }
+}
