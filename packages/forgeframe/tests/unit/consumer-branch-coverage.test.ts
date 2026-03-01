@@ -120,6 +120,26 @@ describe('Consumer branch coverage and edge paths', () => {
     expect(renderSpy).toHaveBeenCalledWith(container, CONTEXT.POPUP);
   });
 
+  it('should throw when renderTo receives a different window', async () => {
+    const consumer = createConsumer();
+    const renderSpy = vi.spyOn(consumer, 'render').mockResolvedValue(undefined);
+    const otherWindow = {} as Window;
+
+    await expect(
+      (
+        consumer as unknown as {
+          renderTo: (
+            win: Window,
+            container?: string | HTMLElement,
+            context?: 'iframe' | 'popup'
+          ) => Promise<void>;
+        }
+      ).renderTo(otherWindow)
+    ).rejects.toThrow('Cross-window renderTo is not supported; pass the current window');
+
+    expect(renderSpy).not.toHaveBeenCalled();
+  });
+
   it('should focus iframe and popup contexts through dedicated render helpers', async () => {
     const consumer = createConsumer();
     const iframe = document.createElement('iframe');

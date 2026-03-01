@@ -832,7 +832,7 @@ interface ComponentOptions<P> {
 const instance = MyComponent(props);
 
 await instance.render(container?, context?)  // Render
-await instance.renderTo(window, container?)  // Render to another window
+await instance.renderTo(window, container?)  // Supports only current window; throws for other windows
 await instance.close()                       // Close and destroy
 await instance.focus()                       // Focus
 await instance.resize({ width, height })     // Resize

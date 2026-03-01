@@ -640,10 +640,14 @@ export interface ForgeFrameComponentInstance<P = Record<string, unknown>, X = un
   ): Promise<void>;
 
   /**
-   * Render into a different window's container.
+   * Render into a container using the current window.
+   *
+   * @remarks
+   * Passing a window other than the current `window` throws because
+   * cross-window rendering is not currently implemented.
    *
    * @param win - Target window
-   * @param container - CSS selector or element in target window
+   * @param container - CSS selector or element to render into
    * @param context - Override the default context
    * @returns Promise that resolves when rendering is complete
    */
@@ -800,6 +804,10 @@ export interface ForgeFrameComponent<P = Record<string, unknown>, X = unknown> {
 
   /**
    * Check if we can render to a target window.
+   *
+   * @remarks
+   * Returns `true` only when `win` is the current `window`. Cross-window
+   * rendering targets are not currently supported.
    *
    * @param win - Target window to check
    * @returns Promise resolving to whether rendering is allowed

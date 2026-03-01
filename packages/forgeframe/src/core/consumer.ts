@@ -381,18 +381,22 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * Renders the component into a container in a different window.
    *
    * @remarks
-   * Currently delegates to regular render. Full cross-window rendering
-   * would require additional complexity.
+   * Only rendering into the current window is supported. Passing a
+   * different window throws explicitly to prevent silent misuse.
    *
-   * @param _win - Target window (currently unused)
+   * @param win - Target window
    * @param container - CSS selector or HTMLElement to render into
    * @param context - Override the default rendering context
    */
   async renderTo(
-    _win: Window,
+    win: Window,
     container?: string | HTMLElement,
     context?: ContextType
   ): Promise<void> {
+    if (win !== window) {
+      throw new Error('Cross-window renderTo is not supported; pass the current window');
+    }
+
     return this.render(container, context);
   }
 
