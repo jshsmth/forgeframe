@@ -103,7 +103,7 @@ describe('Messenger', () => {
         { uid: 'target-uid', domain: 'https://target.com' }
       );
 
-      dispatchMessage(serializeMessage(response), targetWindow);
+      dispatchMessage(serializeMessage(response), targetWindow, 'https://target.com');
 
       const result = await sendPromise;
       expect(result).toEqual({ greeting: 'Hello, World!' });
@@ -157,11 +157,165 @@ describe('Messenger', () => {
         new Error('Handler failed')
       );
 
-      dispatchMessage(serializeMessage(response), targetWindow);
+      dispatchMessage(serializeMessage(response), targetWindow, 'https://target.com');
 
       await expect(sendPromise).rejects.toThrow('Handler failed');
 
       vi.useRealTimers();
+    });
+
+    it('should ignore responses from unexpected source windows', async () => {
+      const sendPromise = messenger.send(
+        targetWindow,
+        'https://target.com',
+        'sourceCheck'
+      );
+
+      const sentMessage = JSON.parse(
+        (targetWindow.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0].slice(
+          'forgeframe:'.length
+        )
+      );
+
+      const spoofedResponse = createResponseMessage(
+        sentMessage.id,
+        { from: 'spoofed' },
+        { uid: 'spoofed-uid', domain: 'https://target.com' }
+      );
+      const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
+      dispatchMessage(
+        serializeMessage(spoofedResponse),
+        spoofedWindow,
+        'https://target.com'
+      );
+
+      const trustedResponse = createResponseMessage(
+        sentMessage.id,
+        { from: 'trusted' },
+        { uid: 'target-uid', domain: 'https://target.com' }
+      );
+      dispatchMessage(
+        serializeMessage(trustedResponse),
+        targetWindow,
+        'https://target.com'
+      );
+
+      await expect(sendPromise).resolves.toEqual({ from: 'trusted' });
+    });
+
+    it('should ignore responses from unexpected origins for fixed target domains', async () => {
+      const sendPromise = messenger.send(
+        targetWindow,
+        'https://target.com',
+        'originCheck'
+      );
+
+      const sentMessage = JSON.parse(
+        (targetWindow.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0].slice(
+          'forgeframe:'.length
+        )
+      );
+
+      const wrongOriginResponse = createResponseMessage(
+        sentMessage.id,
+        { from: 'wrong-origin' },
+        { uid: 'target-uid', domain: 'https://host.com' }
+      );
+      dispatchMessage(
+        serializeMessage(wrongOriginResponse),
+        targetWindow,
+        'https://host.com'
+      );
+
+      const trustedResponse = createResponseMessage(
+        sentMessage.id,
+        { from: 'trusted-origin' },
+        { uid: 'target-uid', domain: 'https://target.com' }
+      );
+      dispatchMessage(
+        serializeMessage(trustedResponse),
+        targetWindow,
+        'https://target.com'
+      );
+
+      await expect(sendPromise).resolves.toEqual({ from: 'trusted-origin' });
+    });
+
+    it('should allow responses from any origin when target domain is wildcard', async () => {
+      const sendPromise = messenger.send(
+        targetWindow,
+        '*',
+        'wildcardOrigin'
+      );
+
+      const sentMessage = JSON.parse(
+        (targetWindow.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0].slice(
+          'forgeframe:'.length
+        )
+      );
+
+      const response = createResponseMessage(
+        sentMessage.id,
+        { ok: true },
+        { uid: 'target-uid', domain: 'https://host.com' }
+      );
+      dispatchMessage(serializeMessage(response), targetWindow, 'https://host.com');
+
+      await expect(sendPromise).resolves.toEqual({ ok: true });
+    });
+
+    it('should normalize URL-like targetDomain values when matching response origins', async () => {
+      const sendPromise = messenger.send(
+        targetWindow,
+        'https://TARGET.com/path/to/page?foo=bar#hash',
+        'normalizedOrigin'
+      );
+
+      const sentMessage = JSON.parse(
+        (targetWindow.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0].slice(
+          'forgeframe:'.length
+        )
+      );
+
+      const response = createResponseMessage(
+        sentMessage.id,
+        { ok: 'normalized' },
+        { uid: 'target-uid', domain: 'https://target.com' }
+      );
+      dispatchMessage(serializeMessage(response), targetWindow, 'https://target.com');
+
+      await expect(sendPromise).resolves.toEqual({ ok: 'normalized' });
+    });
+
+    it('should treat "/" targetDomain as same-origin for response correlation', async () => {
+      const sameOriginWindow = {
+        postMessage: vi.fn(),
+      } as unknown as Window;
+
+      const sendPromise = messenger.send(
+        sameOriginWindow,
+        '/',
+        'sameOriginToken'
+      );
+
+      const sentMessage = JSON.parse(
+        (sameOriginWindow.postMessage as ReturnType<typeof vi.fn>).mock.calls[0][0].slice(
+          'forgeframe:'.length
+        )
+      );
+
+      const response = createResponseMessage(
+        sentMessage.id,
+        { ok: 'same-origin' },
+        { uid: 'consumer-uid', domain: 'https://consumer.com' }
+      );
+      dispatchMessage(
+        serializeMessage(response),
+        sameOriginWindow,
+        'https://consumer.com'
+      );
+
+      await expect(sendPromise).resolves.toEqual({ ok: 'same-origin' });
     });
 
     it('should cleanup pending request when postMessage throws', async () => {
