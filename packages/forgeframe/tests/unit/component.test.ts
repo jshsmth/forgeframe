@@ -105,8 +105,13 @@ describe('Component Creation', () => {
       url: 'https://example.com',
       dimensions: { width: 400, height: 300 },
     });
+    const instance = MyComponent({});
+    const resolvedDimensions = (
+      instance as unknown as { resolveDimensions: () => { width: number; height: number } }
+    ).resolveDimensions();
 
     expect(MyComponent).toBeDefined();
+    expect(resolvedDimensions).toEqual({ width: 400, height: 300 });
   });
 
   it('should support default context', () => {
@@ -115,8 +120,12 @@ describe('Component Creation', () => {
       url: 'https://example.com',
       defaultContext: CONTEXT.POPUP,
     });
+    const instance = PopupComponent({});
 
     expect(PopupComponent).toBeDefined();
+    expect((instance as unknown as { context: string }).context).toBe(
+      CONTEXT.POPUP
+    );
   });
 
   it('should support function url options that depend on props', () => {
@@ -127,10 +136,14 @@ describe('Component Creation', () => {
         path: { schema: prop.string(), required: true },
       },
     });
+    const instance = DynamicUrlComponent({ path: 'checkout' });
 
     expect(() =>
       DynamicUrlComponent({ path: 'checkout' })
     ).not.toThrow();
+    expect((instance as unknown as { resolveUrl: () => string }).resolveUrl()).toBe(
+      'https://example.com/checkout'
+    );
   });
 
   it('should support function dimensions options that depend on props', () => {
@@ -142,10 +155,17 @@ describe('Component Creation', () => {
       },
       dimensions: (props) => ({ width: '100%', height: props.height }),
     });
+    const instance = DynamicDimensionsComponent({ height: 420 });
+    const resolvedDimensions = (
+      instance as unknown as {
+        resolveDimensions: () => { width: string; height: number };
+      }
+    ).resolveDimensions();
 
     expect(() =>
       DynamicDimensionsComponent({ height: 420 })
     ).not.toThrow();
+    expect(resolvedDimensions).toEqual({ width: '100%', height: 420 });
   });
 });
 
@@ -262,6 +282,33 @@ describe('Component Instance', () => {
     container.remove();
   });
 
+  it('should apply idle updateProps synchronously before awaiting', async () => {
+    const DynamicUrlComponent = create<{ targetUrl: string }>({
+      tag: 'dynamic-origin-sync-update-component',
+      url: (props) => props.targetUrl,
+      props: {
+        targetUrl: { schema: prop.string(), required: true },
+      },
+    });
+
+    const instance = DynamicUrlComponent({
+      targetUrl: 'https://origin-a.example.com/widget',
+    });
+
+    const pendingUpdate = instance.updateProps({
+      targetUrl: 'https://origin-b.example.com/widget',
+    });
+
+    const resolvedUrlAfterUpdateCall = (
+      instance as unknown as {
+        resolveUrl: () => string;
+      }
+    ).resolveUrl();
+
+    expect(resolvedUrlAfterUpdateCall).toBe('https://origin-b.example.com/widget');
+    await pendingUpdate;
+  });
+
   it('should reject url origin changes after render', async () => {
     const DynamicUrlComponent = create<{ targetUrl: string }>({
       tag: 'dynamic-origin-after-render-component',
@@ -280,6 +327,7 @@ describe('Component Instance', () => {
 
     const instanceInternal = instance as unknown as {
       waitForHost: () => Promise<void>;
+      hostWindow: Window | null;
     };
 
     vi.spyOn(instanceInternal, 'waitForHost').mockResolvedValue(undefined);
@@ -290,6 +338,9 @@ describe('Component Instance', () => {
         targetUrl: 'https://origin-b.example.com/widget',
       })
     ).rejects.toThrow('Cannot change component URL origin after render');
+
+    instanceInternal.hostWindow = null;
+    await expect(instance.updateProps({})).resolves.toBeUndefined();
 
     const resolvedUrlAfterFailedUpdate = (
       instance as unknown as {
@@ -671,6 +722,103 @@ describe('Host Context Detection', () => {
       const canRender = await MyComponent.canRenderTo(window);
 
       expect(canRender).toBe(true);
+    });
+
+    it('should require configured domain match for cross-domain windows', async () => {
+      const MyComponent = create({
+        tag: 'render-to-domain-test',
+        url: 'https://example.com',
+        domain: ['https://widgets.example.com', /^https:\/\/.*\.trusted\.example\.com$/],
+      });
+
+      const trustedWindow = {
+        location: { origin: 'https://widgets.example.com' },
+      } as unknown as Window;
+      const untrustedWindow = {
+        location: { origin: 'https://evil.example.com' },
+      } as unknown as Window;
+
+      await expect(MyComponent.canRenderTo(trustedWindow)).resolves.toBe(true);
+      await expect(MyComponent.canRenderTo(untrustedWindow)).resolves.toBe(false);
+    });
+
+    it('should allow cross-domain windows with unreadable origin when domain is configured', async () => {
+      const MyComponent = create({
+        tag: 'render-to-cross-origin-window-test',
+        url: 'https://example.com',
+        domain: 'https://widgets.example.com',
+      });
+
+      const crossOriginWindow = {
+        get location() {
+          throw new Error('Cross-origin access denied');
+        },
+      } as unknown as Window;
+
+      await expect(MyComponent.canRenderTo(crossOriginWindow)).resolves.toBe(true);
+    });
+  });
+
+  describe('Component peer discovery', () => {
+    it('should include all registered component tags when anyConsumer is true', async () => {
+      const AlphaComponent = create({
+        tag: 'peer-alpha',
+        url: 'https://example.com/alpha',
+      });
+      const BetaComponent = create({
+        tag: 'peer-beta',
+        url: 'https://example.com/beta',
+      });
+
+      const alphaPrimary = AlphaComponent({});
+      const alphaSibling = AlphaComponent({});
+      const betaSibling = BetaComponent({});
+
+      const getSiblingInstances = (
+        alphaPrimary as unknown as {
+          getSiblingInstances: (request: {
+            uid: string;
+            tag: string;
+            options?: { anyConsumer?: boolean };
+          }) => Array<{ uid: string; tag: string }>;
+        }
+      ).getSiblingInstances.bind(alphaPrimary);
+
+      const sameTagSiblings = getSiblingInstances({
+        uid: alphaPrimary.uid,
+        tag: 'peer-alpha',
+      });
+      const anyConsumerSiblings = getSiblingInstances({
+        uid: alphaPrimary.uid,
+        tag: 'peer-alpha',
+        options: { anyConsumer: true },
+      });
+
+      expect(sameTagSiblings).toEqual([
+        expect.objectContaining({
+          uid: alphaSibling.uid,
+          tag: 'peer-alpha',
+        }),
+      ]);
+      expect(anyConsumerSiblings).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            uid: alphaSibling.uid,
+            tag: 'peer-alpha',
+          }),
+          expect.objectContaining({
+            uid: betaSibling.uid,
+            tag: 'peer-beta',
+          }),
+        ])
+      );
+      expect(anyConsumerSiblings.some((sibling) => sibling.uid === alphaPrimary.uid)).toBe(false);
+
+      await Promise.all([
+        alphaPrimary.close(),
+        alphaSibling.close(),
+        betaSibling.close(),
+      ]);
     });
   });
 });

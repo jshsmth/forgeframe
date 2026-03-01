@@ -141,6 +141,25 @@ describe('Host lifecycle behavior', () => {
     expect(subscriber).toHaveBeenCalledWith({ amount: 42 });
   });
 
+  it('should clear stale hostProps keys when omitted from a later PROPS payload', () => {
+    const host = createHost();
+    const propsHandler = (
+      (host as unknown as { messenger: { handlers: Map<string, (data: unknown) => unknown> } })
+        .messenger.handlers
+    ).get(MESSAGE_NAME.PROPS);
+
+    expect(propsHandler).toBeDefined();
+
+    const first = propsHandler!({ amount: 42, currency: 'USD' });
+    const second = propsHandler!({ amount: 42 });
+
+    expect(first).toEqual({ success: true });
+    expect(second).toEqual({ success: true });
+    expect(host.hostProps.amount).toBe(42);
+    expect('currency' in (host.hostProps as Record<string, unknown>)).toBe(false);
+    expect(host.hostProps.consumer.props).toEqual({ amount: 42 });
+  });
+
   it('should isolate failing props subscribers and continue notifying others', () => {
     const host = createHost();
     const propsHandler = (

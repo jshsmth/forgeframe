@@ -11,6 +11,7 @@
 import type {
   ComponentOptions,
   DomainMatcher,
+  SerializedProps,
   ForgeFrameComponentInstance,
   Dimensions,
   PropsDefinition,
@@ -63,7 +64,11 @@ import {
   defaultPrerenderTemplate,
   swapPrerenderContent,
 } from '../render/templates';
-import { getComponent, getComponentOptions } from './component';
+import {
+  getComponent,
+  getComponentOptions,
+  getRegisteredComponents,
+} from './component';
 
 /**
  * Normalized and validated component options.
@@ -140,6 +145,9 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
   private props: P;
 
   /** @internal */
+  private inputProps: Partial<P>;
+
+  /** @internal */
   private context: ContextType;
 
   /** @internal */
@@ -181,6 +189,9 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
   /** @internal */
   private destroyed = false;
 
+  /** @internal */
+  private pendingPropsUpdate: Promise<void> | null = null;
+
   /**
    * Creates a new ConsumerComponent instance.
    *
@@ -191,12 +202,14 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     this._uid = generateUID();
     this.options = this.normalizeOptions(options);
     this.context = this.options.defaultContext;
+    this.inputProps = { ...props };
 
     this.event = new EventEmitter();
     this.cleanup = new CleanupManager();
 
-    const propContext = this.createPropContext();
-    this.props = normalizeProps(props as Partial<P>, this.options.props, propContext);
+    const initialProps = this.inputProps as P;
+    const propContext = this.createPropContext(initialProps);
+    this.props = normalizeProps(initialProps, this.options.props, propContext);
 
     // Create messenger with trusted domains for security
     const trustedDomains = this.buildTrustedDomains();
@@ -412,17 +425,58 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * @param newProps - Partial props object to merge with existing props
    */
   async updateProps(newProps: Partial<P>): Promise<void> {
-    const propContext = this.createPropContext();
+    return this.queuePropsUpdate(() => this.applyPropsUpdate(newProps));
+  }
+
+  /**
+   * Applies a props update and synchronizes it to the host when connected.
+   * @internal
+   */
+  private async applyPropsUpdate(newProps: Partial<P>): Promise<void> {
+    const { nextInputProps, nextProps } = this.buildNextProps(newProps);
+    const resolvedUrl = this.resolveUrl(nextProps);
+    const nextHostOrigin = this.resolveUrlOrigin(resolvedUrl);
+    this.assertStableRenderedOrigin(nextHostOrigin);
+
+    this.inputProps = nextInputProps;
+    this.props = nextProps;
+
+    if (!this.rendered) {
+      this.syncTrustedDomainForUrl(resolvedUrl);
+    }
+
+    if (this.hostWindow && !isWindowClosed(this.hostWindow)) {
+      await this.sendPropsUpdateToHost(nextProps);
+    }
+    this.emitPropsUpdated();
+  }
+
+  /**
+   * Builds and validates the next props snapshot.
+   * @internal
+   */
+  private buildNextProps(newProps: Partial<P>): {
+    nextInputProps: Partial<P>;
+    nextProps: P;
+  } {
+    const nextInputProps = { ...this.inputProps, ...newProps };
+    const mergedProps = nextInputProps as P;
+    const propContext = this.createPropContext(mergedProps);
     const nextProps = normalizeProps(
-      { ...this.props, ...newProps },
+      mergedProps,
       this.options.props,
       propContext
     );
     validateProps(nextProps, this.options.props);
     this.options.validate?.({ props: nextProps });
+    return { nextInputProps, nextProps };
+  }
 
-    const resolvedUrl = this.resolveUrl(nextProps);
-    const nextHostOrigin = this.resolveUrlOrigin(resolvedUrl);
+  /**
+   * Prevents origin changes after render for security and routing consistency.
+   * @internal
+   */
+  private assertStableRenderedOrigin(nextHostOrigin: string | null): void {
     if (
       this.rendered &&
       this.openedHostDomain &&
@@ -433,37 +487,101 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
         `Cannot change component URL origin after render (from "${this.openedHostDomain}" to "${nextHostOrigin}")`
       );
     }
+  }
 
-    this.props = nextProps;
-
-    if (!this.rendered) {
-      this.syncTrustedDomainForUrl(resolvedUrl);
+  /**
+   * Sends the current props snapshot to the host window when available.
+   * @internal
+   */
+  private async sendPropsUpdateToHost(nextProps: P): Promise<void> {
+    if (!this.hostWindow || isWindowClosed(this.hostWindow)) {
+      return;
     }
 
-    if (this.hostWindow && !isWindowClosed(this.hostWindow)) {
-      const hostDomain = this.openedHostDomain ?? this.getHostDomain();
-      const propsForHost = getPropsForHost(
-        nextProps,
-        this.options.props,
-        hostDomain,
-        isSameDomain(this.hostWindow)
-      );
-      const serialized = serializeProps(
-        propsForHost as Record<string, unknown>,
-        this.options.props as PropsDefinition<Record<string, unknown>>,
-        this.bridge
-      );
+    const hostDomain = this.openedHostDomain ?? this.getHostDomain();
+    const propsForHost = getPropsForHost(
+      nextProps,
+      this.options.props,
+      hostDomain,
+      isSameDomain(this.hostWindow)
+    );
+    const serialized = this.serializePropsForHost(
+      propsForHost as Record<string, unknown>,
+      { finishBatch: false }
+    );
 
+    try {
       await this.messenger.send(
         this.hostWindow,
         hostDomain,
         MESSAGE_NAME.PROPS,
         serialized
       );
+      this.bridge.finishBatch();
+    } catch (error) {
+      this.bridge.finishBatch(true);
+      throw error;
     }
+  }
 
+  /**
+   * Emits prop update lifecycle hooks.
+   * @internal
+   */
+  private emitPropsUpdated(): void {
     this.event.emit(EVENT.PROPS, this.props);
     this.callPropCallback('onProps', this.props);
+  }
+
+  /**
+   * Queues prop updates when a previous host sync is in flight.
+   * @internal
+   */
+  private queuePropsUpdate(updateFn: () => Promise<void>): Promise<void> {
+    if (!this.pendingPropsUpdate) {
+      const immediateUpdate = updateFn();
+      this.trackPendingUpdateIfHostConnected(immediateUpdate);
+      return immediateUpdate;
+    }
+
+    const queuedUpdate = this.pendingPropsUpdate.then(updateFn, updateFn);
+    this.trackPendingUpdate(queuedUpdate);
+    return queuedUpdate;
+  }
+
+  /**
+   * Tracks pending updates only when host synchronization is active.
+   * @internal
+   */
+  private trackPendingUpdateIfHostConnected(updatePromise: Promise<void>): void {
+    const shouldQueueFollowingUpdates = Boolean(
+      this.hostWindow && !isWindowClosed(this.hostWindow)
+    );
+
+    if (!shouldQueueFollowingUpdates) {
+      return;
+    }
+
+    this.trackPendingUpdate(updatePromise);
+  }
+
+  /**
+   * Tracks a promise as the active queued update and clears it when settled.
+   * @internal
+   */
+  private trackPendingUpdate(updatePromise: Promise<void>): void {
+    const settledUpdate = updatePromise.then(
+      () => undefined,
+      () => undefined
+    );
+
+    this.pendingPropsUpdate = settledUpdate;
+
+    settledUpdate.finally(() => {
+      if (this.pendingPropsUpdate === settledUpdate) {
+        this.pendingPropsUpdate = null;
+      }
+    });
   }
 
   /**
@@ -472,7 +590,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * @returns A new unrendered component instance with identical configuration
    */
   clone(): ForgeFrameComponentInstance<P, X> {
-    return new ConsumerComponent(this.options, this.props);
+    return new ConsumerComponent(this.options, this.inputProps);
   }
 
   /**
@@ -573,9 +691,9 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * Creates the prop context passed to prop callbacks and validators.
    * @internal
    */
-  private createPropContext() {
+  private createPropContext(props: P = this.props) {
     return {
-      props: this.props,
+      props,
       state: this.state,
       close: () => this.close(),
       focus: () => this.focus(),
@@ -873,10 +991,8 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
       false // Assume cross-domain for initial payload
     );
 
-    const serializedProps = serializeProps(
-      propsForHost as Record<string, unknown>,
-      this.options.props as PropsDefinition<Record<string, unknown>>,
-      this.bridge
+    const serializedProps = this.serializePropsForHost(
+      propsForHost as Record<string, unknown>
     );
 
     const nestedHostRefs = this.buildNestedHostRefs();
@@ -892,6 +1008,32 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     });
 
     return buildWindowName(payload);
+  }
+
+  /**
+   * Serializes host props while keeping function bridge references in sync.
+   * @internal
+   */
+  private serializePropsForHost(
+    propsForHost: Record<string, unknown>,
+    options?: { finishBatch?: boolean }
+  ): SerializedProps {
+    this.bridge.startBatch();
+    const finishBatch = options?.finishBatch ?? true;
+    try {
+      const serialized = serializeProps(
+        propsForHost,
+        this.options.props as PropsDefinition<Record<string, unknown>>,
+        this.bridge
+      );
+      if (finishBatch) {
+        this.bridge.finishBatch();
+      }
+      return serialized;
+    } catch (error) {
+      this.bridge.finishBatch(true);
+      throw error;
+    }
   }
 
   /**
@@ -1080,6 +1222,20 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     options?: GetPeerInstancesOptions;
   }): SiblingInfo[] {
     const siblings: SiblingInfo[] = [];
+
+    if (request.options?.anyConsumer) {
+      for (const [tag, component] of getRegisteredComponents()) {
+        for (const instance of component.instances) {
+          if (instance.uid === request.uid) continue;
+          siblings.push({
+            uid: instance.uid,
+            tag,
+            exports: instance.exports,
+          });
+        }
+      }
+      return siblings;
+    }
 
     const component = getComponent(request.tag);
     if (!component) {

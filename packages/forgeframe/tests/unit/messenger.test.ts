@@ -158,6 +158,24 @@ describe('Messenger', () => {
 
       vi.useRealTimers();
     });
+
+    it('should cleanup pending request when postMessage throws', async () => {
+      const postMessageError = new Error('postMessage blocked');
+      targetWindow = {
+        postMessage: vi.fn(() => {
+          throw postMessageError;
+        }),
+      } as unknown as Window;
+
+      await expect(
+        messenger.send(targetWindow, 'https://target.com', 'throwing-send')
+      ).rejects.toThrow('postMessage blocked');
+
+      const pending = (
+        messenger as unknown as { pending: Map<string, unknown> }
+      ).pending;
+      expect(pending.size).toBe(0);
+    });
   });
 
   describe('post', () => {
@@ -439,6 +457,116 @@ describe('Messenger', () => {
       dispatchMessage(serializeMessage(request), { postMessage: vi.fn() } as unknown as Window, 'https://new-trusted.com');
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(handler).toHaveBeenCalled();
+    });
+
+    it('should stop trusting a dynamically added string domain after removal', async () => {
+      const handler = vi.fn().mockReturnValue({ ok: true });
+      messenger.on('test-remove-string', handler);
+
+      const request = createRequestMessage('req-rm-1', 'test-remove-string', {}, {
+        uid: 'remove-string-uid',
+        domain: 'https://remove-string.com',
+      });
+      const source = { postMessage: vi.fn() } as unknown as Window;
+
+      messenger.addTrustedDomain('https://remove-string.com');
+      dispatchMessage(serializeMessage(request), source, 'https://remove-string.com');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(handler).toHaveBeenCalledTimes(1);
+
+      messenger.removeTrustedDomain('https://remove-string.com');
+      dispatchMessage(serializeMessage(request), source, 'https://remove-string.com');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it('should stop trusting wildcard domains after wildcard removal', async () => {
+      const handler = vi.fn().mockReturnValue({ ok: true });
+      messenger.on('test-remove-wildcard', handler);
+
+      const request = createRequestMessage(
+        'req-rm-2',
+        'test-remove-wildcard',
+        {},
+        {
+          uid: 'remove-wildcard-uid',
+          domain: 'https://api.remove-wildcard.com',
+        }
+      );
+      const source = { postMessage: vi.fn() } as unknown as Window;
+
+      messenger.addTrustedDomain('https://*.remove-wildcard.com');
+      dispatchMessage(
+        serializeMessage(request),
+        source,
+        'https://api.remove-wildcard.com'
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(handler).toHaveBeenCalledTimes(1);
+
+      messenger.removeTrustedDomain('https://*.remove-wildcard.com');
+      dispatchMessage(
+        serializeMessage(request),
+        source,
+        'https://api.remove-wildcard.com'
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it('should remove mixed trusted domains when removed as an array', async () => {
+      const handler = vi.fn().mockReturnValue({ ok: true });
+      messenger.on('test-remove-array', handler);
+
+      const regexDomain = /^https:\/\/.*\.remove-array\.com$/;
+      messenger.addTrustedDomain([
+        'https://remove-array.com',
+        regexDomain,
+      ]);
+
+      const source = { postMessage: vi.fn() } as unknown as Window;
+      const stringRequest = createRequestMessage(
+        'req-rm-3',
+        'test-remove-array',
+        {},
+        { uid: 'remove-array-string-uid', domain: 'https://remove-array.com' }
+      );
+      const regexRequest = createRequestMessage(
+        'req-rm-4',
+        'test-remove-array',
+        {},
+        {
+          uid: 'remove-array-regex-uid',
+          domain: 'https://sub.remove-array.com',
+        }
+      );
+
+      dispatchMessage(
+        serializeMessage(stringRequest),
+        source,
+        'https://remove-array.com'
+      );
+      dispatchMessage(
+        serializeMessage(regexRequest),
+        source,
+        'https://sub.remove-array.com'
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(handler).toHaveBeenCalledTimes(2);
+
+      messenger.removeTrustedDomain(['https://remove-array.com', regexDomain]);
+      dispatchMessage(
+        serializeMessage(stringRequest),
+        source,
+        'https://remove-array.com'
+      );
+      dispatchMessage(
+        serializeMessage(regexRequest),
+        source,
+        'https://sub.remove-array.com'
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(handler).toHaveBeenCalledTimes(2);
     });
 
     it('should support RegExp patterns for trusted domains', async () => {

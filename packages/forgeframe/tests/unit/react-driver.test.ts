@@ -164,18 +164,15 @@ describe('createReactComponent', () => {
     expect(mockReact.useEffect).toHaveBeenCalled();
   });
 
-  it('should use live props object for prop-sync effect dependencies', () => {
+  it('should run prop-sync effect without dependency array and guard with shallow equality', () => {
     const ReactComponent = createReactComponent(mockComponent, { React: mockReact as never });
     const onAction = vi.fn();
 
     ReactComponent({ onAction });
 
-    // Effects are registered in order: mount, prop-sync, ref-forwarding
-    const propSyncDeps = mockReact.useEffect.mock.calls[1]?.[1] as unknown[] | undefined;
-
-    expect(Array.isArray(propSyncDeps)).toBe(true);
-    expect(propSyncDeps?.[0]).toEqual(expect.objectContaining({ onAction }));
-    expect(typeof propSyncDeps?.[0]).toBe('object');
+    // Effects are registered in order: onError ref sync, mount, prop-sync, ref-forwarding
+    const propSyncDeps = mockReact.useEffect.mock.calls[2]?.[1] as unknown[] | undefined;
+    expect(propSyncDeps).toBeUndefined();
   });
 
   it('should call useState for error state', () => {
@@ -247,37 +244,69 @@ describe('ReactComponentProps', () => {
   it('should accept onRendered callback', () => {
     const ReactComponent = createReactComponent(mockComponent, { React: mockReact as never });
     const onRendered = vi.fn();
+    const container = document.createElement('div');
 
     ReactComponent({ onRendered });
+    const ref = mockReact.getRef(0);
+    if (!ref) {
+      throw new Error('Expected container ref to be initialized');
+    }
+    ref.current = container;
+    const mountEffect = mockReact.useEffect.mock.calls[1]?.[0] as (() => void) | undefined;
+    mountEffect?.();
 
-    // Component should be created with the callback available
-    expect(mockReact.useEffect).toHaveBeenCalled();
+    expect(mockComponent).toHaveBeenCalledWith({});
+    expect(mockComponent.mockInstance.event?.once).toHaveBeenCalledWith('rendered', onRendered);
   });
 
   it('should accept onError callback', () => {
     const ReactComponent = createReactComponent(mockComponent, { React: mockReact as never });
     const onError = vi.fn();
+    const container = document.createElement('div');
 
     ReactComponent({ onError });
+    const ref = mockReact.getRef(0);
+    if (!ref) {
+      throw new Error('Expected container ref to be initialized');
+    }
+    ref.current = container;
+    const mountEffect = mockReact.useEffect.mock.calls[1]?.[0] as (() => void) | undefined;
+    mountEffect?.();
 
-    expect(mockReact.useEffect).toHaveBeenCalled();
+    expect(mockComponent.mockInstance.event?.on).toHaveBeenCalledWith('error', expect.any(Function));
   });
 
   it('should accept onClose callback', () => {
     const ReactComponent = createReactComponent(mockComponent, { React: mockReact as never });
     const onClose = vi.fn();
+    const container = document.createElement('div');
 
     ReactComponent({ onClose });
+    const ref = mockReact.getRef(0);
+    if (!ref) {
+      throw new Error('Expected container ref to be initialized');
+    }
+    ref.current = container;
+    const mountEffect = mockReact.useEffect.mock.calls[1]?.[0] as (() => void) | undefined;
+    mountEffect?.();
 
-    expect(mockReact.useEffect).toHaveBeenCalled();
+    expect(mockComponent.mockInstance.event?.once).toHaveBeenCalledWith('close', onClose);
   });
 
   it('should accept context prop', () => {
     const ReactComponent = createReactComponent(mockComponent, { React: mockReact as never });
+    const container = document.createElement('div');
 
     ReactComponent({ context: 'popup' });
+    const ref = mockReact.getRef(0);
+    if (!ref) {
+      throw new Error('Expected container ref to be initialized');
+    }
+    ref.current = container;
+    const mountEffect = mockReact.useEffect.mock.calls[1]?.[0] as (() => void) | undefined;
+    mountEffect?.();
 
-    expect(mockReact.useEffect).toHaveBeenCalled();
+    expect(mockComponent.mockInstance.render).toHaveBeenCalledWith(container, 'popup');
   });
 
   it('should pass component-specific props to ForgeFrame component', () => {
@@ -288,14 +317,27 @@ describe('ReactComponentProps', () => {
 
     const typedMockComponent = createMockComponent<TestProps>();
     const ReactComponent = createReactComponent(typedMockComponent, { React: mockReact as never });
+    const container = document.createElement('div');
 
     ReactComponent({
       customProp: 'test',
       anotherProp: 42,
+      context: 'popup',
+      className: 'wrapper',
+      onClose: vi.fn(),
     });
+    const ref = mockReact.getRef(0);
+    if (!ref) {
+      throw new Error('Expected container ref to be initialized');
+    }
+    ref.current = container;
+    const mountEffect = mockReact.useEffect.mock.calls[1]?.[0] as (() => void) | undefined;
+    mountEffect?.();
 
-    // The component factory should receive the props
-    expect(mockReact.useEffect).toHaveBeenCalled();
+    expect(typedMockComponent).toHaveBeenCalledWith({
+      customProp: 'test',
+      anotherProp: 42,
+    });
   });
 });
 
@@ -350,9 +392,10 @@ describe('Error handling', () => {
 });
 
 describe('Lifecycle integration', () => {
-  it('should integrate with ForgeFrame event system', () => {
+  it('should integrate with ForgeFrame event system and cleanup on unmount', () => {
     const mockReact = createMockReact();
     const mockComponent = createMockComponent();
+    const container = document.createElement('div');
 
     const onRendered = vi.fn();
     const onError = vi.fn();
@@ -365,8 +408,21 @@ describe('Lifecycle integration', () => {
       onError,
       onClose,
     });
+    const ref = mockReact.getRef(0);
+    if (!ref) {
+      throw new Error('Expected container ref to be initialized');
+    }
+    ref.current = container;
+    const mountEffect = mockReact.useEffect.mock.calls[1]?.[0] as
+      | (() => void | (() => void))
+      | undefined;
+    const cleanup = mountEffect?.();
 
-    // The useEffect hook should be set up to handle these
-    expect(mockReact.useEffect).toHaveBeenCalled();
+    expect(mockComponent.mockInstance.event?.once).toHaveBeenCalledWith('rendered', onRendered);
+    expect(mockComponent.mockInstance.event?.on).toHaveBeenCalledWith('error', expect.any(Function));
+    expect(mockComponent.mockInstance.event?.once).toHaveBeenCalledWith('close', onClose);
+
+    (cleanup as (() => void) | undefined)?.();
+    expect(mockComponent.mockInstance.close).toHaveBeenCalledTimes(1);
   });
 });

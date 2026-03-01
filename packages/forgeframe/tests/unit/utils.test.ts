@@ -83,8 +83,26 @@ describe('CleanupManager', () => {
 
     await manager.cleanup();
     manager.register(executed);
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(executed).toHaveBeenCalled();
+  });
+
+  it('should catch async errors for tasks registered after cleanup', async () => {
+    const manager = new CleanupManager();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await manager.cleanup();
+    manager.register(async () => {
+      throw new Error('late async cleanup failure');
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      'Error in cleanup task:',
+      expect.any(Error)
+    );
   });
 
   it('should reset manager to initial state', async () => {
@@ -111,7 +129,7 @@ describe('CleanupManager', () => {
     expect(manager.isCleaned()).toBe(true);
   });
 
-  it('should clear pending tasks on reset', () => {
+  it('should clear pending tasks on reset', async () => {
     const manager = new CleanupManager();
     const task1 = vi.fn();
     const task2 = vi.fn();
@@ -123,7 +141,7 @@ describe('CleanupManager', () => {
     manager.reset();
 
     // Cleanup should not execute the cleared tasks
-    manager.cleanup();
+    await manager.cleanup();
 
     expect(task1).not.toHaveBeenCalled();
     expect(task2).not.toHaveBeenCalled();
