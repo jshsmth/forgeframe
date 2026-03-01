@@ -879,5 +879,90 @@ describe('Host Context Detection', () => {
         betaSibling.close(),
       ]);
     });
+
+    it('should update indexed peers when sibling instances are destroyed', async () => {
+      const IndexedComponent = create({
+        tag: 'peer-index-cleanup',
+        url: 'https://example.com/peer-index-cleanup',
+      });
+
+      const primary = IndexedComponent({});
+      const sibling = IndexedComponent({});
+
+      const getSiblingInstances = (
+        primary as unknown as {
+          getSiblingInstances: (request: {
+            uid: string;
+            tag: string;
+            options?: { anyConsumer?: boolean };
+          }) => Array<{ uid: string; tag: string }>;
+        }
+      ).getSiblingInstances.bind(primary);
+
+      expect(
+        getSiblingInstances({
+          uid: primary.uid,
+          tag: 'peer-index-cleanup',
+        })
+      ).toEqual([
+        expect.objectContaining({
+          uid: sibling.uid,
+          tag: 'peer-index-cleanup',
+        }),
+      ]);
+
+      await sibling.close();
+
+      expect(
+        getSiblingInstances({
+          uid: primary.uid,
+          tag: 'peer-index-cleanup',
+        })
+      ).toEqual([]);
+
+      await primary.close();
+    });
+
+    it('should exclude unregistered tags from anyConsumer sibling lookup', async () => {
+      const AlphaComponent = create({
+        tag: 'peer-index-unregister-alpha',
+        url: 'https://example.com/peer-index-unregister-alpha',
+      });
+      const BetaComponent = create({
+        tag: 'peer-index-unregister-beta',
+        url: 'https://example.com/peer-index-unregister-beta',
+      });
+
+      const alphaPrimary = AlphaComponent({});
+      const betaSibling = BetaComponent({});
+
+      const getSiblingInstances = (
+        alphaPrimary as unknown as {
+          getSiblingInstances: (request: {
+            uid: string;
+            tag: string;
+            options?: { anyConsumer?: boolean };
+          }) => Array<{ uid: string; tag: string }>;
+        }
+      ).getSiblingInstances.bind(alphaPrimary);
+
+      const siblingsBeforeUnregister = getSiblingInstances({
+        uid: alphaPrimary.uid,
+        tag: 'peer-index-unregister-alpha',
+        options: { anyConsumer: true },
+      });
+      expect(siblingsBeforeUnregister.some((sibling) => sibling.uid === betaSibling.uid)).toBe(true);
+
+      unregisterComponent('peer-index-unregister-beta');
+
+      const siblingsAfterUnregister = getSiblingInstances({
+        uid: alphaPrimary.uid,
+        tag: 'peer-index-unregister-alpha',
+        options: { anyConsumer: true },
+      });
+      expect(siblingsAfterUnregister.some((sibling) => sibling.uid === betaSibling.uid)).toBe(false);
+
+      await Promise.all([alphaPrimary.close(), betaSibling.close()]);
+    });
   });
 });

@@ -15,6 +15,15 @@ import type {
   HostProps,
 } from '../types';
 import { ConsumerComponent } from './consumer';
+import {
+  clearIndexedInstances,
+  clearIndexedInstancesByTag,
+  getComponentInstancesByTag as getComponentInstancesByTagFromIndex,
+  getIndexedComponentInstances as getIndexedComponentInstancesFromIndex,
+  indexComponentInstance,
+  removeIndexedComponentInstance,
+  type IndexedComponentInstance,
+} from './component-instance-index';
 import { initHost } from './host';
 import { isHostOfComponent } from '../window/name-payload';
 
@@ -136,12 +145,15 @@ export function create<P extends Record<string, unknown> = Record<string, unknow
     const instance = new ConsumerComponent<P, X>(options, props);
 
     instances.push(instance);
+    indexComponentInstance(options.tag, instance);
 
     instance.event.once('destroy', () => {
       const index = instances.indexOf(instance);
       if (index !== -1) {
         instances.splice(index, 1);
       }
+
+      removeIndexedComponentInstance(instance.uid);
     });
 
     return instance;
@@ -203,6 +215,22 @@ export function getRegisteredComponents(): Array<
   [string, ForgeFrameComponent<Record<string, unknown>>]
 > {
   return Array.from(componentRegistry.entries());
+}
+
+/**
+ * Returns active instances for a specific component tag using an internal index.
+ * @internal
+ */
+export function getComponentInstancesByTag(tag: string): IndexedComponentInstance[] {
+  return getComponentInstancesByTagFromIndex(tag);
+}
+
+/**
+ * Returns all active indexed instances across tags.
+ * @internal
+ */
+export function getIndexedComponentInstances(): Array<{ tag: string; instance: IndexedComponentInstance }> {
+  return getIndexedComponentInstancesFromIndex();
 }
 
 /**
@@ -299,6 +327,7 @@ export async function destroyAll(): Promise<void> {
  */
 export function unregisterComponent(tag: string): void {
   componentRegistry.delete(tag);
+  clearIndexedInstancesByTag(tag);
 }
 
 /**
@@ -311,4 +340,5 @@ export function unregisterComponent(tag: string): void {
  */
 export function clearComponents(): void {
   componentRegistry.clear();
+  clearIndexedInstances();
 }
