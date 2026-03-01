@@ -17,7 +17,6 @@ import type {
 import { ConsumerComponent } from './consumer';
 import { initHost } from './host';
 import { isHostOfComponent } from '../window/name-payload';
-import { getDomain, isSameDomain, matchDomain } from '../window/helpers';
 
 /**
  * Global registry of all defined components.
@@ -163,27 +162,8 @@ export function create<P extends Record<string, unknown> = Record<string, unknow
   (Component as InternalForgeFrameComponent<P, X>)[INTERNAL_COMPONENT_OPTIONS] = options;
 
   Component.canRenderTo = async (win: Window): Promise<boolean> => {
-    try {
-      // Can always render to same-domain windows
-      if (isSameDomain(win)) {
-        return true;
-      }
-
-      const targetDomain = getDomain(win);
-      if (!options.domain) {
-        return false;
-      }
-
-      // Browsers block reading location.origin for true cross-origin Window refs.
-      // In that case we cannot pre-verify, so treat configured cross-domain as renderable.
-      if (!targetDomain) {
-        return true;
-      }
-
-      return matchDomain(options.domain, targetDomain);
-    } catch {
-      return false;
-    }
+    // Cross-window render targets are not currently supported.
+    return win === window;
   };
 
   componentRegistry.set(options.tag, Component as ForgeFrameComponent<Record<string, unknown>>);

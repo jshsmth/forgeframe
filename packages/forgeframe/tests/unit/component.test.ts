@@ -780,37 +780,28 @@ describe('Host Context Detection', () => {
   });
 
   describe('Component.canRenderTo', () => {
-    it('should return true for same-domain window', async () => {
+    it('should return true for current window', async () => {
       const MyComponent = create({
         tag: 'render-to-test',
         url: 'https://example.com',
       });
 
-      // window is same domain as itself
       const canRender = await MyComponent.canRenderTo(window);
 
       expect(canRender).toBe(true);
     });
 
-    it('should require configured domain match for cross-domain windows', async () => {
+    it('should return false for other windows', async () => {
       const MyComponent = create({
         tag: 'render-to-domain-test',
         url: 'https://example.com',
-        domain: ['https://widgets.example.com', /^https:\/\/.*\.trusted\.example\.com$/],
       });
 
-      const trustedWindow = {
-        location: { origin: 'https://widgets.example.com' },
-      } as unknown as Window;
-      const untrustedWindow = {
-        location: { origin: 'https://evil.example.com' },
-      } as unknown as Window;
-
-      await expect(MyComponent.canRenderTo(trustedWindow)).resolves.toBe(true);
-      await expect(MyComponent.canRenderTo(untrustedWindow)).resolves.toBe(false);
+      const otherWindow = { location: { origin: window.location.origin } } as unknown as Window;
+      await expect(MyComponent.canRenderTo(otherWindow)).resolves.toBe(false);
     });
 
-    it('should allow cross-domain windows with unreadable origin when domain is configured', async () => {
+    it('should return false for cross-domain windows even when domain is configured', async () => {
       const MyComponent = create({
         tag: 'render-to-cross-origin-window-test',
         url: 'https://example.com',
@@ -823,7 +814,7 @@ describe('Host Context Detection', () => {
         },
       } as unknown as Window;
 
-      await expect(MyComponent.canRenderTo(crossOriginWindow)).resolves.toBe(true);
+      await expect(MyComponent.canRenderTo(crossOriginWindow)).resolves.toBe(false);
     });
   });
 
