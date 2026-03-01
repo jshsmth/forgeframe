@@ -15,6 +15,15 @@ import type {
   HostProps,
 } from '../types';
 import { ConsumerComponent } from './consumer';
+import {
+  clearIndexedInstances,
+  clearIndexedInstancesByTag,
+  getComponentInstancesByTag as getComponentInstancesByTagFromIndex,
+  getIndexedComponentInstances as getIndexedComponentInstancesFromIndex,
+  indexComponentInstance,
+  removeIndexedComponentInstance,
+  type IndexedComponentInstance,
+} from './component-instance-index';
 import { initHost } from './host';
 import { isHostOfComponent } from '../window/name-payload';
 
@@ -23,77 +32,6 @@ import { isHostOfComponent } from '../window/name-payload';
  * @internal
  */
 const componentRegistry = new Map<string, ForgeFrameComponent<Record<string, unknown>>>();
-
-type IndexedComponentInstance = ForgeFrameComponentInstance<Record<string, unknown>, unknown>;
-
-/**
- * Fast lookup index for active instances by UID and component tag.
- * @internal
- */
-const componentInstanceIndexByUid = new Map<string, { tag: string; instance: IndexedComponentInstance }>();
-const componentInstanceIndexByTag = new Map<string, Map<string, IndexedComponentInstance>>();
-
-/**
- * Adds an instance to the internal lookup index.
- * @internal
- */
-function indexComponentInstance<P extends Record<string, unknown>, X>(
-  tag: string,
-  instance: ForgeFrameComponentInstance<P, X>
-): void {
-  const indexedInstance = instance as IndexedComponentInstance;
-  const existing = componentInstanceIndexByUid.get(indexedInstance.uid);
-  if (existing) {
-    removeIndexedComponentInstance(indexedInstance.uid);
-  }
-
-  let instancesByUid = componentInstanceIndexByTag.get(tag);
-  if (!instancesByUid) {
-    instancesByUid = new Map<string, IndexedComponentInstance>();
-    componentInstanceIndexByTag.set(tag, instancesByUid);
-  }
-
-  instancesByUid.set(indexedInstance.uid, indexedInstance);
-  componentInstanceIndexByUid.set(indexedInstance.uid, { tag, instance: indexedInstance });
-}
-
-/**
- * Removes an instance from the internal lookup index.
- * @internal
- */
-function removeIndexedComponentInstance(uid: string): void {
-  const indexed = componentInstanceIndexByUid.get(uid);
-  if (!indexed) {
-    return;
-  }
-
-  componentInstanceIndexByUid.delete(uid);
-  const taggedInstances = componentInstanceIndexByTag.get(indexed.tag);
-  if (!taggedInstances) {
-    return;
-  }
-
-  taggedInstances.delete(uid);
-  if (taggedInstances.size === 0) {
-    componentInstanceIndexByTag.delete(indexed.tag);
-  }
-}
-
-/**
- * Removes all indexed instances for a specific component tag.
- * @internal
- */
-function clearIndexedInstancesByTag(tag: string): void {
-  const taggedInstances = componentInstanceIndexByTag.get(tag);
-  if (!taggedInstances) {
-    return;
-  }
-
-  for (const uid of taggedInstances.keys()) {
-    componentInstanceIndexByUid.delete(uid);
-  }
-  componentInstanceIndexByTag.delete(tag);
-}
 
 /**
  * Internal symbol used to attach component options metadata to component factories.
@@ -284,7 +222,7 @@ export function getRegisteredComponents(): Array<
  * @internal
  */
 export function getComponentInstancesByTag(tag: string): IndexedComponentInstance[] {
-  return Array.from(componentInstanceIndexByTag.get(tag)?.values() ?? []);
+  return getComponentInstancesByTagFromIndex(tag);
 }
 
 /**
@@ -292,7 +230,7 @@ export function getComponentInstancesByTag(tag: string): IndexedComponentInstanc
  * @internal
  */
 export function getIndexedComponentInstances(): Array<{ tag: string; instance: IndexedComponentInstance }> {
-  return Array.from(componentInstanceIndexByUid.values());
+  return getIndexedComponentInstancesFromIndex();
 }
 
 /**
@@ -402,6 +340,5 @@ export function unregisterComponent(tag: string): void {
  */
 export function clearComponents(): void {
   componentRegistry.clear();
-  componentInstanceIndexByUid.clear();
-  componentInstanceIndexByTag.clear();
+  clearIndexedInstances();
 }
