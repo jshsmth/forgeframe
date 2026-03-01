@@ -46,9 +46,10 @@ export class CleanupManager {
    * @param task - The cleanup function to register
    *
    * @remarks
-   * If cleanup has already been performed, the task is executed immediately
-   * rather than being registered. This ensures late-registered tasks are
-   * still handled appropriately.
+   * If cleanup has already been performed, the task is scheduled on a microtask
+   * and executed asynchronously rather than being registered. This ensures
+   * late-registered tasks are still handled appropriately while safely capturing
+   * both sync and async task failures.
    *
    * @example
    * ```typescript
@@ -65,11 +66,11 @@ export class CleanupManager {
    */
   register(task: CleanupTask): void {
     if (this.cleaned) {
-      try {
-        task();
-      } catch (err) {
-        console.error('Error in cleanup task:', err);
-      }
+      void Promise.resolve()
+        .then(() => task())
+        .catch((err) => {
+          console.error('Error in cleanup task:', err);
+        });
       return;
     }
     this.tasks.push(task);

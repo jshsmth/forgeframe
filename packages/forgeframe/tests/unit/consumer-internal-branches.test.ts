@@ -300,6 +300,222 @@ describe('Consumer internal branches', () => {
     expect(handleErrorSpy).toHaveBeenCalledWith(expect.any(Error));
   });
 
+  it('should provide initial user props to value callbacks during construction', () => {
+    const consumer = createConsumer(
+      {
+        props: {
+          derived: {
+            schema: prop.string(),
+            value: (ctx: { props: Record<string, unknown> }) => `seed:${ctx.props.seed}`,
+          },
+        },
+      },
+      { seed: 'abc' }
+    );
+
+    const internalProps = (
+      consumer as unknown as { props: Record<string, unknown> }
+    ).props;
+    expect(internalProps.derived).toBe('seed:abc');
+  });
+
+  it('should preserve materialized value props on unrelated updateProps patches', async () => {
+    let derivedCalls = 0;
+    const consumer = createConsumer(
+      {
+        props: {
+          seed: {
+            schema: prop.string(),
+            required: true,
+          },
+          amount: {
+            schema: prop.number().optional(),
+          },
+          derived: {
+            schema: prop.string(),
+            value: (ctx: { props: Record<string, unknown> }) => {
+              derivedCalls += 1;
+              return `seed:${ctx.props.seed}`;
+            },
+          },
+        },
+      },
+      { seed: 'abc' }
+    );
+
+    await consumer.updateProps({ amount: 1 });
+
+    const internalProps = (
+      consumer as unknown as { props: Record<string, unknown> }
+    ).props;
+    expect(internalProps.seed).toBe('abc');
+    expect(internalProps.amount).toBe(1);
+    expect(internalProps.derived).toBe('seed:abc');
+    expect(derivedCalls).toBe(1);
+  });
+
+  it('should prune stale function refs after each host serialization batch', async () => {
+    const consumer = createConsumer(
+      {
+        props: {
+          onSubmit: prop.function().optional(),
+        },
+      },
+      {
+        onSubmit: vi.fn(),
+      }
+    );
+
+    (
+      consumer as unknown as { hostWindow: Window | null }
+    ).hostWindow = window;
+
+    vi.spyOn(
+      (
+        consumer as unknown as {
+          messenger: { send: (...args: unknown[]) => Promise<unknown> };
+        }
+      ).messenger,
+      'send'
+    ).mockResolvedValue(undefined);
+
+    await consumer.updateProps({ onSubmit: vi.fn() });
+    const firstBatchCount = (
+      consumer as unknown as { bridge: { localFunctionCount: number } }
+    ).bridge.localFunctionCount;
+
+    await consumer.updateProps({ onSubmit: vi.fn() });
+    const secondBatchCount = (
+      consumer as unknown as { bridge: { localFunctionCount: number } }
+    ).bridge.localFunctionCount;
+
+    expect(firstBatchCount).toBe(1);
+    expect(secondBatchCount).toBe(1);
+  });
+
+  it('should keep previous function refs until host props update is sent', async () => {
+    const consumer = createConsumer(
+      {
+        props: {
+          onSubmit: prop.function().optional(),
+        },
+      },
+      {
+        onSubmit: vi.fn(),
+      }
+    );
+
+    (
+      consumer as unknown as { hostWindow: Window | null }
+    ).hostWindow = window;
+
+    const bridge = (
+      consumer as unknown as {
+        bridge: {
+          localFunctionCount: number;
+          localFunctions: Map<string, unknown>;
+        };
+      }
+    ).bridge;
+
+    const sendSpy = vi.spyOn(
+      (
+        consumer as unknown as {
+          messenger: { send: (...args: unknown[]) => Promise<unknown> };
+        }
+      ).messenger,
+      'send'
+    ).mockResolvedValue(undefined);
+
+    await consumer.updateProps({ onSubmit: vi.fn() });
+    const previousRefId = Array.from(bridge.localFunctions.keys())[0];
+    expect(previousRefId).toBeDefined();
+    if (!previousRefId) {
+      throw new Error('Expected previous function ref ID');
+    }
+
+    sendSpy.mockImplementationOnce(async () => {
+      if (!bridge.localFunctions.has(previousRefId)) {
+        throw new Error(
+          'Previous function ref was pruned before host acknowledged prop update'
+        );
+      }
+      return undefined;
+    });
+
+    await expect(consumer.updateProps({ onSubmit: vi.fn() })).resolves.toBeUndefined();
+    expect(bridge.localFunctions.has(previousRefId)).toBe(false);
+    expect(bridge.localFunctionCount).toBe(1);
+  });
+
+  it('should serialize concurrent prop updates to avoid batch ref races', async () => {
+    const consumer = createConsumer(
+      {
+        props: {
+          onSubmit: prop.function().optional(),
+        },
+      },
+      {
+        onSubmit: vi.fn(),
+      }
+    );
+
+    (
+      consumer as unknown as { hostWindow: Window | null }
+    ).hostWindow = window;
+
+    const bridge = (
+      consumer as unknown as {
+        bridge: {
+          localFunctionCount: number;
+        };
+      }
+    ).bridge;
+
+    let resolveFirstSend: (() => void) | null = null;
+    let resolveSecondSend: (() => void) | null = null;
+    const firstSend = new Promise<void>((resolve) => {
+      resolveFirstSend = resolve;
+    });
+    const secondSend = new Promise<void>((resolve) => {
+      resolveSecondSend = resolve;
+    });
+
+    const sendSpy = vi.spyOn(
+      (
+        consumer as unknown as {
+          messenger: { send: (...args: unknown[]) => Promise<unknown> };
+        }
+      ).messenger,
+      'send'
+    ).mockImplementation(async () => {
+      return sendSpy.mock.calls.length === 1 ? firstSend : secondSend;
+    });
+
+    const firstUpdate = consumer.updateProps({ onSubmit: vi.fn() });
+    const secondUpdate = consumer.updateProps({ onSubmit: vi.fn() });
+
+    await Promise.resolve();
+    expect(sendSpy).toHaveBeenCalledTimes(1);
+
+    if (!resolveFirstSend) {
+      throw new Error('Expected first send resolver to be initialized');
+    }
+    resolveFirstSend();
+    await firstUpdate;
+
+    await Promise.resolve();
+    expect(sendSpy).toHaveBeenCalledTimes(2);
+
+    if (!resolveSecondSend) {
+      throw new Error('Expected second send resolver to be initialized');
+    }
+    resolveSecondSend();
+
+    await expect(secondUpdate).resolves.toBeUndefined();
+    expect(bridge.localFunctionCount).toBe(1);
+  });
+
   it('should resolve existing selector containers to HTMLElement', () => {
     const consumer = createConsumer();
     const container = document.createElement('div');

@@ -81,12 +81,13 @@ describe('createReactComponent lifecycle integration', () => {
     const container = document.createElement('div');
     refs[0].current = container;
 
-    const cleanup = effects[0]?.();
+    effects[0]?.(); // onError ref sync
+    const cleanup = effects[1]?.(); // mount
 
     expect(component).toHaveBeenCalledWith({ amount: 10 });
     expect(event.once).toHaveBeenCalledWith('rendered', onRendered);
     expect(event.once).toHaveBeenCalledWith('close', onClose);
-    expect(event.on).toHaveBeenCalledWith('error', onError);
+    expect(event.on).toHaveBeenCalledWith('error', expect.any(Function));
     expect(instance.render).toHaveBeenCalledWith(container, 'popup');
 
     (cleanup as (() => void) | undefined)?.();
@@ -100,7 +101,8 @@ describe('createReactComponent lifecycle integration', () => {
     const ReactComponent = createReactComponent(component as never, { React: React as never });
     ReactComponent({ amount: 10 });
 
-    const cleanup = effects[0]?.();
+    effects[0]?.(); // onError ref sync
+    const cleanup = effects[1]?.(); // mount
 
     expect(cleanup).toBeUndefined();
     expect(component).not.toHaveBeenCalled();
@@ -115,15 +117,17 @@ describe('createReactComponent lifecycle integration', () => {
 
     ReactComponent({ amount: 1, onError });
     refs[0].current = document.createElement('div');
-    effects[0]?.(); // mount
-    effects[1]?.(); // initial prop sync
-    effects[1]?.(); // same props, should no-op
+    effects[0]?.(); // onError ref sync
+    effects[1]?.(); // mount
+    effects[2]?.(); // initial prop sync
+    effects[2]?.(); // same props, should no-op
 
     expect(instance.updateProps).toHaveBeenCalledTimes(1);
     expect(instance.updateProps).toHaveBeenCalledWith({ amount: 1 });
 
     ReactComponent({ amount: 2, onError });
-    effects[1]?.(); // changed props
+    effects[0]?.(); // onError ref sync
+    effects[2]?.(); // changed props
 
     expect(instance.updateProps).toHaveBeenCalledTimes(2);
     expect(instance.updateProps).toHaveBeenLastCalledWith({ amount: 2 });
@@ -139,10 +143,12 @@ describe('createReactComponent lifecycle integration', () => {
     const ReactComponent = createReactComponent(component as never, { React: React as never });
     ReactComponent({ amount: 1, onError });
     refs[0].current = document.createElement('div');
-    effects[0]?.(); // mount
+    effects[0]?.(); // onError ref sync
+    effects[1]?.(); // mount
 
     ReactComponent({ amount: 2, onError });
-    effects[1]?.(); // prop sync with changed value
+    effects[0]?.(); // onError ref sync
+    effects[2]?.(); // prop sync with changed value
     await Promise.resolve();
 
     expect(onError).toHaveBeenCalledWith(updateError);
@@ -158,7 +164,8 @@ describe('createReactComponent lifecycle integration', () => {
     const ReactComponent = createReactComponent(component as never, { React: React as never });
     ReactComponent({ amount: 1, onError });
     refs[0].current = document.createElement('div');
-    effects[0]?.();
+    effects[0]?.(); // onError ref sync
+    effects[1]?.(); // mount
     await Promise.resolve();
 
     expect(setState).toHaveBeenCalledWith(renderError);
@@ -180,7 +187,7 @@ describe('createReactComponent lifecycle integration', () => {
 
     const container = document.createElement('div');
     refs[0].current = container;
-    effects[2]?.();
+    effects[3]?.();
 
     expect(forwardedRef.current).toBe(container);
   });

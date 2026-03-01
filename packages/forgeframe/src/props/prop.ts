@@ -913,15 +913,18 @@ export class LiteralSchema<T extends string | number | boolean> extends PropSche
 export class EnumSchema<T extends string | number> extends PropSchema<T> {
   /** @internal */
   private _values: readonly T[];
+  /** @internal */
+  private _valueSet: ReadonlySet<T>;
 
   constructor(values: readonly T[]) {
     super();
     this._values = values;
+    this._valueSet = new Set(values);
   }
 
   /** @internal */
   protected _validate(value: unknown): StandardSchemaV1Result<T> {
-    if (!this._values.includes(value as T)) {
+    if (!this._valueSet.has(value as T)) {
       return {
         issues: [
           {

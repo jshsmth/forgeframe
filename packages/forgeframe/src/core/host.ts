@@ -40,6 +40,23 @@ import { deserializeProps } from '../props/serialize';
 import { create } from './component';
 
 const CONSUMER_WINDOW_RESOLUTION_ERROR = 'Could not resolve consumer window';
+const HOST_PROPS_BUILTIN_KEYS = new Set([
+  'uid',
+  'tag',
+  'close',
+  'focus',
+  'resize',
+  'show',
+  'hide',
+  'onProps',
+  'onError',
+  'getConsumer',
+  'getConsumerDomain',
+  'export',
+  'consumer',
+  'getPeerInstances',
+  'children',
+]);
 
 /**
  * Host-side component implementation.
@@ -501,6 +518,7 @@ export class HostComponent<P extends Record<string, unknown>> {
   private setupMessageHandlers(): void {
     this.messenger.on<SerializedProps>(MESSAGE_NAME.PROPS, (serializedProps) => {
       try {
+        const previousProps = this.consumerProps;
         const newProps = deserializeProps(
           serializedProps,
           this.propDefinitions,
@@ -510,6 +528,7 @@ export class HostComponent<P extends Record<string, unknown>> {
           this.consumerDomain
         );
 
+        this.removeStaleHostProps(previousProps, newProps);
         this.consumerProps = newProps;
         Object.assign(this.hostProps, newProps);
         this.hostProps.consumer.props = this.consumerProps;
@@ -532,6 +551,22 @@ export class HostComponent<P extends Record<string, unknown>> {
         throw error; // Propagate to consumer so it knows the update failed
       }
     });
+  }
+
+  /**
+   * Removes stale prop keys that are no longer present in the latest consumer payload.
+   * @internal
+   */
+  private removeStaleHostProps(previousProps: P, nextProps: P): void {
+    for (const key of Object.keys(previousProps)) {
+      if (key in nextProps) {
+        continue;
+      }
+      if (HOST_PROPS_BUILTIN_KEYS.has(key)) {
+        continue;
+      }
+      delete (this.hostProps as Record<string, unknown>)[key];
+    }
   }
 
   /**

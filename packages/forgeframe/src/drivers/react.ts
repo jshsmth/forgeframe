@@ -249,7 +249,12 @@ export function createReactComponent<P extends Record<string, unknown>, X = unkn
       const containerRef = useRef<HTMLDivElement>(null);
       const instanceRef = useRef<ForgeFrameComponentInstance<P, X> | null>(null);
       const syncedPropsRef = useRef<Partial<P> | null>(null);
+      const onErrorRef = useRef<typeof onError>(onError);
       const [error, setError] = useState<Error | null>(null);
+
+      useEffect(() => {
+        onErrorRef.current = onError;
+      }, [onError]);
 
       useEffect(() => {
         const container = containerRef.current;
@@ -266,13 +271,13 @@ export function createReactComponent<P extends Record<string, unknown>, X = unkn
           instance.event.once('close', onClose);
         }
 
-        if (onError) {
-          instance.event.on('error', onError);
-        }
+        instance.event.on('error', (err: Error) => {
+          onErrorRef.current?.(err);
+        });
 
         instance.render(container, context).catch((err: Error) => {
           setError(err);
-          onError?.(err);
+          onErrorRef.current?.(err);
         });
 
         return () => {
@@ -295,9 +300,9 @@ export function createReactComponent<P extends Record<string, unknown>, X = unkn
 
         syncedPropsRef.current = nextProps;
         instance.updateProps(nextProps).catch((err: Error) => {
-          onError?.(err);
+          onErrorRef.current?.(err);
         });
-      }, [componentProps, onError]);
+      });
 
       useEffect(() => {
         if (ref && typeof ref === 'object' && containerRef.current) {

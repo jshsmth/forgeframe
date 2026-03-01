@@ -95,4 +95,45 @@ describe('EventEmitter', () => {
     expect(normalHandler).toHaveBeenCalledWith('data');
     consoleSpy.mockRestore();
   });
+
+  it('should catch rejected async handlers and continue notifying others', async () => {
+    const emitter = new EventEmitter();
+    const asyncErrorHandler = vi.fn(async () => {
+      throw new Error('Async handler error');
+    });
+    const normalHandler = vi.fn();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    emitter.on('test', asyncErrorHandler);
+    emitter.on('test', normalHandler);
+    emitter.emit('test', 'data');
+    await Promise.resolve();
+
+    expect(normalHandler).toHaveBeenCalledWith('data');
+    expect(consoleSpy).toHaveBeenCalledWith(
+      'Error in async event handler for "test":',
+      expect.any(Error)
+    );
+    consoleSpy.mockRestore();
+  });
+
+  it('should report listener counts as handlers are added and removed', () => {
+    const emitter = new EventEmitter();
+    const handler1 = vi.fn();
+    const handler2 = vi.fn();
+
+    const unsubscribe = emitter.on('count-test', handler1);
+    emitter.on('count-test', handler2);
+    expect(emitter.listenerCount('count-test')).toBe(2);
+
+    unsubscribe();
+    expect(emitter.listenerCount('count-test')).toBe(1);
+
+    emitter.off('count-test', handler2);
+    expect(emitter.listenerCount('count-test')).toBe(0);
+
+    emitter.on('other-event', vi.fn());
+    emitter.removeAllListeners();
+    expect(emitter.listenerCount('other-event')).toBe(0);
+  });
 });

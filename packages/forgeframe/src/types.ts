@@ -866,7 +866,8 @@ export interface SiblingInfo {
  */
 export interface GetPeerInstancesOptions {
   /**
-   * If true, get peers from any consumer window (not just same consumer).
+   * If true, include peers from all registered component tags in the current
+   * consumer context.
    * @defaultValue false
    */
   anyConsumer?: boolean;

@@ -235,7 +235,7 @@ describe('resizeIframe', () => {
     resizeIframe(iframe, { width: 200 });
 
     expect(iframe.style.width).toBe('200px');
-    // Height should be unchanged by resizeIframe if only width is provided
+    expect(iframe.style.height).toBe('100px');
   });
 });
 

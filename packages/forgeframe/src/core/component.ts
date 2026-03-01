@@ -17,7 +17,7 @@ import type {
 import { ConsumerComponent } from './consumer';
 import { initHost } from './host';
 import { isHostOfComponent } from '../window/name-payload';
-import { isSameDomain } from '../window/helpers';
+import { getDomain, isSameDomain, matchDomain } from '../window/helpers';
 
 /**
  * Global registry of all defined components.
@@ -169,13 +169,18 @@ export function create<P extends Record<string, unknown> = Record<string, unknow
         return true;
       }
 
-      // Check if allowed domains specified
-      if (options.domain) {
-        // For cross-domain, we'd need more complex checks
+      const targetDomain = getDomain(win);
+      if (!options.domain) {
+        return false;
+      }
+
+      // Browsers block reading location.origin for true cross-origin Window refs.
+      // In that case we cannot pre-verify, so treat configured cross-domain as renderable.
+      if (!targetDomain) {
         return true;
       }
 
-      return false;
+      return matchDomain(options.domain, targetDomain);
     } catch {
       return false;
     }
@@ -208,6 +213,16 @@ export function getComponent<P extends Record<string, unknown> = Record<string, 
   tag: string
 ): ForgeFrameComponent<P, X> | undefined {
   return componentRegistry.get(tag) as ForgeFrameComponent<P, X> | undefined;
+}
+
+/**
+ * Returns all registered components as tag/component pairs.
+ * @internal
+ */
+export function getRegisteredComponents(): Array<
+  [string, ForgeFrameComponent<Record<string, unknown>>]
+> {
+  return Array.from(componentRegistry.entries());
 }
 
 /**

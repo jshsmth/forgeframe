@@ -1,5 +1,8 @@
 import type { DomainMatcher } from '../types';
 
+const wildcardPatternCache = new Map<string, RegExp>();
+const WILDCARD_CACHE_LIMIT = 200;
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -9,12 +12,25 @@ function wildcardToRegExp(pattern: string): RegExp | null {
     return null;
   }
 
+  const cachedPattern = wildcardPatternCache.get(pattern);
+  if (cachedPattern) {
+    return cachedPattern;
+  }
+
   const escaped = pattern
     .split('*')
     .map((segment) => escapeRegExp(segment))
     .join('.*');
 
-  return new RegExp(`^${escaped}$`);
+  const compiledPattern = new RegExp(`^${escaped}$`);
+  if (wildcardPatternCache.size >= WILDCARD_CACHE_LIMIT) {
+    const oldestKey = wildcardPatternCache.keys().next().value;
+    if (oldestKey) {
+      wildcardPatternCache.delete(oldestKey);
+    }
+  }
+  wildcardPatternCache.set(pattern, compiledPattern);
+  return compiledPattern;
 }
 
 function testRegExpStateless(pattern: RegExp, value: string): boolean {

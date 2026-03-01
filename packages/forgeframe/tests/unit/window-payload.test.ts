@@ -45,6 +45,39 @@ describe('buildWindowName', () => {
     // Should be valid base64
     expect(() => atob(encoded)).not.toThrow();
   });
+
+  it('should throw when payload exceeds the maximum size limit', () => {
+    const payload: WindowNamePayload<{ oversized: string }> = {
+      uid: 'oversized-uid',
+      tag: 'oversized-component',
+      version: VERSION,
+      context: CONTEXT.IFRAME,
+      consumerDomain: 'https://consumer.com',
+      props: { oversized: 'x'.repeat(70 * 1024) },
+      exports: {},
+    };
+
+    expect(() => buildWindowName(payload)).toThrow(
+      'exceeds maximum allowed size'
+    );
+  });
+
+  it('should wrap encoding failures with a descriptive error', () => {
+    const circular = {} as Record<string, unknown>;
+    circular.self = circular;
+
+    const payload: WindowNamePayload<Record<string, unknown>> = {
+      uid: 'encode-failure-uid',
+      tag: 'encode-failure-component',
+      version: VERSION,
+      context: CONTEXT.IFRAME,
+      consumerDomain: 'https://consumer.com',
+      props: circular,
+      exports: {},
+    };
+
+    expect(() => buildWindowName(payload)).toThrow('Failed to encode payload');
+  });
 });
 
 describe('parseWindowName', () => {
