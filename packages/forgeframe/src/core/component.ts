@@ -24,6 +24,77 @@ import { isHostOfComponent } from '../window/name-payload';
  */
 const componentRegistry = new Map<string, ForgeFrameComponent<Record<string, unknown>>>();
 
+type IndexedComponentInstance = ForgeFrameComponentInstance<Record<string, unknown>, unknown>;
+
+/**
+ * Fast lookup index for active instances by UID and component tag.
+ * @internal
+ */
+const componentInstanceIndexByUid = new Map<string, { tag: string; instance: IndexedComponentInstance }>();
+const componentInstanceIndexByTag = new Map<string, Map<string, IndexedComponentInstance>>();
+
+/**
+ * Adds an instance to the internal lookup index.
+ * @internal
+ */
+function indexComponentInstance<P extends Record<string, unknown>, X>(
+  tag: string,
+  instance: ForgeFrameComponentInstance<P, X>
+): void {
+  const indexedInstance = instance as IndexedComponentInstance;
+  const existing = componentInstanceIndexByUid.get(indexedInstance.uid);
+  if (existing) {
+    removeIndexedComponentInstance(indexedInstance.uid);
+  }
+
+  let instancesByUid = componentInstanceIndexByTag.get(tag);
+  if (!instancesByUid) {
+    instancesByUid = new Map<string, IndexedComponentInstance>();
+    componentInstanceIndexByTag.set(tag, instancesByUid);
+  }
+
+  instancesByUid.set(indexedInstance.uid, indexedInstance);
+  componentInstanceIndexByUid.set(indexedInstance.uid, { tag, instance: indexedInstance });
+}
+
+/**
+ * Removes an instance from the internal lookup index.
+ * @internal
+ */
+function removeIndexedComponentInstance(uid: string): void {
+  const indexed = componentInstanceIndexByUid.get(uid);
+  if (!indexed) {
+    return;
+  }
+
+  componentInstanceIndexByUid.delete(uid);
+  const taggedInstances = componentInstanceIndexByTag.get(indexed.tag);
+  if (!taggedInstances) {
+    return;
+  }
+
+  taggedInstances.delete(uid);
+  if (taggedInstances.size === 0) {
+    componentInstanceIndexByTag.delete(indexed.tag);
+  }
+}
+
+/**
+ * Removes all indexed instances for a specific component tag.
+ * @internal
+ */
+function clearIndexedInstancesByTag(tag: string): void {
+  const taggedInstances = componentInstanceIndexByTag.get(tag);
+  if (!taggedInstances) {
+    return;
+  }
+
+  for (const uid of taggedInstances.keys()) {
+    componentInstanceIndexByUid.delete(uid);
+  }
+  componentInstanceIndexByTag.delete(tag);
+}
+
 /**
  * Internal symbol used to attach component options metadata to component factories.
  * @internal
@@ -136,12 +207,15 @@ export function create<P extends Record<string, unknown> = Record<string, unknow
     const instance = new ConsumerComponent<P, X>(options, props);
 
     instances.push(instance);
+    indexComponentInstance(options.tag, instance);
 
     instance.event.once('destroy', () => {
       const index = instances.indexOf(instance);
       if (index !== -1) {
         instances.splice(index, 1);
       }
+
+      removeIndexedComponentInstance(instance.uid);
     });
 
     return instance;
@@ -203,6 +277,22 @@ export function getRegisteredComponents(): Array<
   [string, ForgeFrameComponent<Record<string, unknown>>]
 > {
   return Array.from(componentRegistry.entries());
+}
+
+/**
+ * Returns active instances for a specific component tag using an internal index.
+ * @internal
+ */
+export function getComponentInstancesByTag(tag: string): IndexedComponentInstance[] {
+  return Array.from(componentInstanceIndexByTag.get(tag)?.values() ?? []);
+}
+
+/**
+ * Returns all active indexed instances across tags.
+ * @internal
+ */
+export function getIndexedComponentInstances(): Array<{ tag: string; instance: IndexedComponentInstance }> {
+  return Array.from(componentInstanceIndexByUid.values());
 }
 
 /**
@@ -299,6 +389,7 @@ export async function destroyAll(): Promise<void> {
  */
 export function unregisterComponent(tag: string): void {
   componentRegistry.delete(tag);
+  clearIndexedInstancesByTag(tag);
 }
 
 /**
@@ -311,4 +402,6 @@ export function unregisterComponent(tag: string): void {
  */
 export function clearComponents(): void {
   componentRegistry.clear();
+  componentInstanceIndexByUid.clear();
+  componentInstanceIndexByTag.clear();
 }

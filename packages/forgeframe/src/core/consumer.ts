@@ -31,9 +31,9 @@ import {
   propsToBodyParams,
 } from '../props';
 import {
-  getComponent,
+  getComponentInstancesByTag,
   getComponentOptions,
-  getRegisteredComponents,
+  getIndexedComponentInstances,
 } from './component';
 import {
   ConsumerPropsPipeline,
@@ -862,25 +862,18 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     const siblings: SiblingInfo[] = [];
 
     if (request.options?.anyConsumer) {
-      for (const [tag, component] of getRegisteredComponents()) {
-        for (const instance of component.instances) {
-          if (instance.uid === request.uid) continue;
-          siblings.push({
-            uid: instance.uid,
-            tag,
-            exports: instance.exports,
-          });
-        }
+      for (const indexed of getIndexedComponentInstances()) {
+        if (indexed.instance.uid === request.uid) continue;
+        siblings.push({
+          uid: indexed.instance.uid,
+          tag: indexed.tag,
+          exports: indexed.instance.exports,
+        });
       }
       return siblings;
     }
 
-    const component = getComponent(request.tag);
-    if (!component) {
-      return siblings;
-    }
-
-    for (const instance of component.instances) {
+    for (const instance of getComponentInstancesByTag(request.tag)) {
       if (instance.uid === request.uid) continue;
 
       siblings.push({
