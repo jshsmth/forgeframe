@@ -17,6 +17,32 @@ import {
 import type { Messenger } from '../communication/messenger';
 import { BUILTIN_PROP_DEFINITIONS } from './definitions';
 
+const UNSAFE_OBJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+/**
+ * Creates an object without a prototype chain to avoid prototype setters/getters.
+ * @internal
+ */
+function createNullPrototypeObject(): Record<string, unknown> {
+  return Object.create(null) as Record<string, unknown>;
+}
+
+/**
+ * Returns true when a key can be safely assigned on reconstructed objects.
+ * @internal
+ */
+function isSafeObjectKey(key: string): boolean {
+  return !UNSAFE_OBJECT_KEYS.has(key);
+}
+
+/**
+ * Checks for an own property without traversing the prototype chain.
+ * @internal
+ */
+function hasOwnKey(obj: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
 /**
  * Converts a nested object to dot notation string.
  *
@@ -58,7 +84,7 @@ function toDotNotation(
  * @internal
  */
 function fromDotNotation(str: string): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
+  const result = createNullPrototypeObject();
 
   if (!str) return result;
 
@@ -76,17 +102,26 @@ function fromDotNotation(str: string): Record<string, unknown> {
     }
 
     const keys = path.split('.');
+    if (keys.some((key) => !isSafeObjectKey(key))) continue;
+
     let current = result;
 
     for (let i = 0; i < keys.length - 1; i++) {
       const key = keys[i];
-      if (!(key in current) || typeof current[key] !== 'object') {
-        current[key] = {};
+      const existing = current[key];
+      if (
+        !hasOwnKey(current, key) ||
+        typeof existing !== 'object' ||
+        existing === null ||
+        Array.isArray(existing)
+      ) {
+        current[key] = createNullPrototypeObject();
       }
       current = current[key] as Record<string, unknown>;
     }
 
-    current[keys[keys.length - 1]] = value;
+    const leafKey = keys[keys.length - 1];
+    current[leafKey] = value;
   }
 
   return result;
@@ -213,9 +248,11 @@ export function deserializeProps<P extends Record<string, unknown>>(
     ...definitions,
   } as PropsDefinition<P>;
 
-  const result = {} as P;
+  const result = createNullPrototypeObject() as P;
 
   for (const [key, value] of Object.entries(serialized)) {
+    if (!isSafeObjectKey(key)) continue;
+
     const definition = (allDefs as Record<string, PropDefinition>)[key];
 
     (result as Record<string, unknown>)[key] = deserializeValue(
@@ -294,9 +331,11 @@ function isBase64Encoded(
 export function cloneProps<P extends Record<string, unknown>>(
   props: P
 ): P {
-  const result = {} as P;
+  const result = createNullPrototypeObject() as P;
 
   for (const [key, value] of Object.entries(props)) {
+    if (!isSafeObjectKey(key)) continue;
+
     if (typeof value === 'function') {
       (result as Record<string, unknown>)[key] = value;
     } else if (typeof value === 'object' && value !== null) {

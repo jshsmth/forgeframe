@@ -291,6 +291,27 @@ describe('serializeFunctions', () => {
 
     expect(() => serializeFunctions(value, bridge)).toThrow('Circular reference detected');
   });
+
+  it('should ignore unsafe keys when serializing objects', () => {
+    const value: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+    value.safe = 42;
+    value.__proto__ = {
+      leaked: true,
+    };
+    value.constructor = {
+      prototype: {
+        ignored: true,
+      },
+    };
+
+    const result = serializeFunctions(value, bridge) as Record<string, unknown>;
+
+    expect(result.safe).toBe(42);
+    expect(Object.getPrototypeOf(result)).toBeNull();
+    expect('leaked' in result).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(result, '__proto__')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(result, 'constructor')).toBe(false);
+  });
 });
 
 describe('deserializeFunctions', () => {
@@ -379,6 +400,32 @@ describe('deserializeFunctions', () => {
     expect(() =>
       deserializeFunctions(value, bridge, targetWin, targetDomain)
     ).toThrow('Circular reference detected');
+  });
+
+  it('should ignore unsafe keys when deserializing objects', () => {
+    const value: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+    value.safe = 42;
+    value.__proto__ = {
+      leaked: true,
+    };
+    value.constructor = {
+      prototype: {
+        ignored: true,
+      },
+    };
+
+    const result = deserializeFunctions(
+      value,
+      bridge,
+      targetWin,
+      targetDomain
+    ) as Record<string, unknown>;
+
+    expect(result.safe).toBe(42);
+    expect(Object.getPrototypeOf(result)).toBeNull();
+    expect('leaked' in result).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(result, '__proto__')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(result, 'constructor')).toBe(false);
   });
 });
 

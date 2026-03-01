@@ -9,6 +9,7 @@ import { PROP_SERIALIZATION } from '@/constants';
 import { prop } from '@/props/prop';
 import { serializeProps, deserializeProps } from '@/props/serialize';
 import type { Messenger } from '@/communication/messenger';
+import type { SerializedProps } from '@/types';
 
 type GenericHandler = (...args: unknown[]) => unknown;
 
@@ -167,5 +168,73 @@ describe('Props serialization behavior', () => {
 
     expect(serialized).toEqual({ defined: 'ok' });
     expect('missing' in serialized).toBe(false);
+  });
+
+  it('should ignore unsafe top-level keys during deserialization', () => {
+    const { messenger, bridge } = createBridgeWithMessenger();
+    const serialized: SerializedProps = {
+      safe: 'ok',
+      ['__proto__']: 'unsafe',
+      constructor: 'unsafe',
+      prototype: 'unsafe',
+    };
+
+    const deserialized = deserializeProps(
+      serialized,
+      { safe: prop.string() },
+      messenger,
+      bridge,
+      window,
+      'https://consumer.example.com'
+    ) as Record<string, unknown>;
+
+    expect(deserialized.safe).toBe('ok');
+    expect(Object.getPrototypeOf(deserialized)).toBeNull();
+    expect(Object.prototype.hasOwnProperty.call(deserialized, '__proto__')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(deserialized, 'constructor')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(deserialized, 'prototype')).toBe(false);
+  });
+
+  it('should ignore unsafe DOTIFY paths to prevent prototype pollution', () => {
+    const { messenger, bridge } = createBridgeWithMessenger();
+    const definitions = {
+      payload: {
+        schema: prop.object(),
+        serialization: PROP_SERIALIZATION.DOTIFY,
+      },
+    };
+    const prototypePollutionKey = '__forgeframe_dotify_polluted__';
+
+    delete (Object.prototype as Record<string, unknown>)[prototypePollutionKey];
+    try {
+      const deserialized = deserializeProps(
+        {
+          payload: {
+            __type__: 'dotify',
+            __value__: [
+              'safe.value=1',
+              `__proto__.${prototypePollutionKey}=true`,
+              'constructor.prototype.ignore=true',
+            ].join('&'),
+          },
+        },
+        definitions,
+        messenger,
+        bridge,
+        window,
+        'https://consumer.example.com'
+      ) as { payload: Record<string, unknown> };
+
+      expect(
+        (Object.prototype as Record<string, unknown>)[prototypePollutionKey]
+      ).toBeUndefined();
+      expect(deserialized.payload).toEqual({
+        safe: {
+          value: 1,
+        },
+      });
+    } finally {
+      delete (Object.prototype as Record<string, unknown>)[prototypePollutionKey];
+    }
   });
 });
