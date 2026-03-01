@@ -194,17 +194,36 @@ describe('Component Instance', () => {
     expect(ineligibleInstance.isEligible()).toBe(false);
   });
 
-  it('should clone an instance', () => {
-    const MyComponent = create({
+  it('should clone an instance with the same normalized props snapshot', () => {
+    let tokenCounter = 0;
+    const MyComponent = create<{ token?: string }>({
       tag: 'clone-test',
-      url: 'https://example.com',
+      url: (props) => `https://example.com/${props.token}`,
+      props: {
+        token: {
+          schema: prop.string().optional(),
+          value: () => `token-${++tokenCounter}`,
+        },
+      },
     });
 
-    const instance = MyComponent({ value: 42 });
+    const instance = MyComponent({});
     const cloned = instance.clone();
+
+    const originalInternal = instance as unknown as {
+      props: { token?: string };
+      resolveUrl: () => string;
+    };
+    const clonedInternal = cloned as unknown as {
+      props: { token?: string };
+      resolveUrl: () => string;
+    };
 
     expect(cloned).toBeDefined();
     expect(cloned).not.toBe(instance);
+    expect(clonedInternal.props.token).toBe(originalInternal.props.token);
+    expect(clonedInternal.resolveUrl()).toBe(originalInternal.resolveUrl());
+    expect(tokenCounter).toBe(1);
   });
 
   it('should call component validate on render and updateProps', async () => {

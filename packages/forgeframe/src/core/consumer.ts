@@ -590,7 +590,9 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * @returns A new unrendered component instance with identical configuration
    */
   clone(): ForgeFrameComponentInstance<P, X> {
-    return new ConsumerComponent(this.options, this.inputProps);
+    const cloned = new ConsumerComponent(this.options, this.props);
+    cloned.inputProps = { ...this.inputProps };
+    return cloned;
   }
 
   /**
