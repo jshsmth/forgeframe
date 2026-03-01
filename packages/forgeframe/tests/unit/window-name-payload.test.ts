@@ -1,3 +1,8 @@
+/**
+ * Unit tests for window name payload helpers in `@/window/name-payload`.
+ *
+ * Covers payload encoding/parsing, ForgeFrame window detection, payload mutation helpers, and size/error guardrails.
+ */
 import { describe, it, expect } from 'vitest';
 import {
   buildWindowName,

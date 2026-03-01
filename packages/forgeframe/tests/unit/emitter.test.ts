@@ -1,3 +1,8 @@
+/**
+ * Unit tests for `@/events/emitter`.
+ *
+ * Covers listener registration/removal semantics, once handlers, error isolation, and listener count bookkeeping.
+ */
 import { describe, it, expect, vi } from 'vitest';
 import { EventEmitter } from '@/events/emitter';
 

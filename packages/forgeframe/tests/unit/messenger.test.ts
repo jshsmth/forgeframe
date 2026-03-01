@@ -1,3 +1,8 @@
+/**
+ * Unit tests for `@/communication/messenger`.
+ *
+ * Covers request/response flows, timeout and teardown behavior, message filtering, and trusted-domain enforcement semantics.
+ */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Messenger } from '@/communication/messenger';
 import {

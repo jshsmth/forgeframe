@@ -1,3 +1,8 @@
+/**
+ * Unit tests for cross-window helpers in `@/window/helpers`.
+ *
+ * Covers domain matching, opener/ancestor traversal, iframe/popup detection, and defensive focus/close/frame access behavior.
+ */
 import { describe, it, expect, vi } from 'vitest';
 import {
   getDomain,

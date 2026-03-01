@@ -1,9 +1,16 @@
+/**
+ * Unit tests for React driver utilities in `@/drivers/react`.
+ *
+ * Covers component factory wiring, hook integration expectations, prop passthrough, and event-driven cleanup behavior.
+ */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createReactComponent, withReactComponent } from '@/drivers/react';
 import type { ZoidComponent, ZoidComponentInstance } from '@/types';
 import type { EventEmitter } from '@/events/emitter';
 
-// Mock React hooks and APIs
+/**
+ * Creates a lightweight React API mock with observable hook/effect behavior.
+ */
 const createMockReact = () => {
   let effectCleanup: (() => void) | undefined;
   let effectCallback: (() => void | (() => void)) | undefined;
@@ -61,7 +68,9 @@ const createMockReact = () => {
   };
 };
 
-// Mock ForgeFrame component
+/**
+ * Creates a typed ForgeFrame component mock with a reusable instance payload.
+ */
 const createMockComponent = <P extends Record<string, unknown>>(): ZoidComponent<P> & {
   mockInstance: Partial<ZoidComponentInstance<P>>;
 } => {

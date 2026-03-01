@@ -1,3 +1,8 @@
+/**
+ * Unit tests for `@/props/serialize` serialization modes.
+ *
+ * Covers BASE64/DOTIFY round-trips, malformed wrapper fallback behavior, and undefined key omission in payload serialization.
+ */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FunctionBridge } from '@/communication/bridge';
 import { PROP_SERIALIZATION } from '@/constants';
@@ -7,6 +12,9 @@ import type { Messenger } from '@/communication/messenger';
 
 type GenericHandler = (...args: unknown[]) => unknown;
 
+/**
+ * Creates a bridge paired with a messenger mock that captures registered handlers.
+ */
 function createBridgeWithMessenger() {
   const handlers = new Map<string, GenericHandler>();
   const messenger = {

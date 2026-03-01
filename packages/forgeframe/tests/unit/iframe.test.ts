@@ -1,3 +1,8 @@
+/**
+ * Unit tests for `@/render/iframe`.
+ *
+ * Covers iframe creation/destruction, visibility and sizing helpers, attribute handling, and same-origin dimension reads.
+ */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   createIframe,

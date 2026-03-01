@@ -1,6 +1,14 @@
+/**
+ * Lifecycle integration tests for `createReactComponent` in `@/drivers/react`.
+ *
+ * Covers mount/unmount flows, listener cleanup, prop synchronization guards, error propagation, and forwarded ref wiring.
+ */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createReactComponent } from '@/drivers/react';
 
+/**
+ * Builds a minimal React-like hook harness for deterministic lifecycle assertions.
+ */
 function createReactHarness() {
   const refs: Array<{ current: unknown }> = [];
   const effects: Array<() => void | (() => void)> = [];
@@ -35,6 +43,9 @@ function createReactHarness() {
   return { React, refs, effects, setState };
 }
 
+/**
+ * Creates a mock ForgeFrame component factory and instance with event emitter stubs.
+ */
 function createForgeFrameComponentMock() {
   const event = {
     once: vi.fn(),

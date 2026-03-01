@@ -1,3 +1,8 @@
+/**
+ * Unit tests for render template helpers in `@/render/templates`.
+ *
+ * Covers DOM template creation, dimension/style application, spinner style injection, and fade/swap transition helpers.
+ */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   defaultContainerTemplate,
@@ -10,7 +15,7 @@ import {
 } from '@/render/templates';
 import type { TemplateContext, Dimensions } from '@/types';
 
-describe('Template Functions', () => {
+describe('render template helpers', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     document.getElementById('forgeframe-spinner-style')?.remove();
@@ -302,7 +307,7 @@ describe('Template Functions', () => {
       expect(element.style.opacity).toBe('1');
     });
 
-    it('should set transition style', async () => {
+    it('should set an opacity transition with the provided fadeIn duration', async () => {
       const element = document.createElement('div');
 
       const fadePromise = fadeIn(element, 200);
@@ -314,7 +319,7 @@ describe('Template Functions', () => {
       await fadePromise;
     });
 
-    it('should resolve after duration', async () => {
+    it('should resolve fadeIn after the provided duration elapses', async () => {
       const element = document.createElement('div');
       let resolved = false;
 
@@ -358,7 +363,7 @@ describe('Template Functions', () => {
       await fadePromise;
     });
 
-    it('should set transition style', async () => {
+    it('should set an opacity transition with the provided fadeOut duration', async () => {
       const element = document.createElement('div');
 
       const fadePromise = fadeOut(element, 300);
@@ -370,7 +375,7 @@ describe('Template Functions', () => {
       await fadePromise;
     });
 
-    it('should resolve after duration', async () => {
+    it('should resolve fadeOut after the provided duration elapses', async () => {
       const element = document.createElement('div');
       let resolved = false;
 

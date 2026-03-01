@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/forgeframe.svg)](https://www.npmjs.com/package/forgeframe)
 [![GitHub Release](https://img.shields.io/github/v/release/jshsmth/ForgeFrame)](https://github.com/jshsmth/ForgeFrame/releases)
 
-A TypeScript-first framework for embedding cross-domain iframes and popups with seamless communication. Pass data and callbacks across domains — perfect for payment forms, auth widgets, third-party integrations, and micro-frontends. Zero dependencies, ~21KB gzipped (ESM) / ~12KB gzipped (UMD).
+A TypeScript-first framework for embedding cross-domain iframes and popups with seamless communication. Pass data and callbacks across domains for payment forms, auth widgets, third-party integrations, and micro-frontends. Zero runtime dependencies with ESM and UMD builds.
 
 ### Terminology
 
@@ -219,7 +219,6 @@ document.getElementById('login-form')!.onsubmit = async (e) => {
   await onLogin({
     id: 1,
     name: 'John Doe',
-    email: document.getElementById('email')!.value,
   });
   await close();
 };
@@ -490,16 +489,17 @@ await props.resize({ width: 500, height: 400 });
 await props.show();
 await props.hide();
 
-props.onProps((newProps) => { /* handle updates */ });
-props.onError(new Error('Something failed'));
+const { cancel } = props.onProps((newProps) => { /* handle updates */ });
+await props.onError(new Error('Something failed'));
 await props.export({ validate: () => true });
 
 props.getConsumer();
 props.getConsumerDomain();
 props.consumer.props;
-props.consumer.export(data);
+await props.consumer.export(data);
 
 const peers = await props.getPeerInstances();
+cancel();
 ```
 
 <details>
@@ -510,16 +510,18 @@ const peers = await props.getPeerInstances();
 | `email`, `onLogin` | Your custom props and callbacks |
 | `uid`, `tag` | Built-in identifiers |
 | `close()` | Close the component |
-| `focus()` | Focus (popup only) |
+| `focus()` | Request focus for iframe/popup |
 | `resize()` | Resize the component |
 | `show()`, `hide()` | Toggle visibility |
-| `onProps()` | Listen for prop updates |
+| `onProps()` | Listen for prop updates (returns `{ cancel() }`) |
 | `onError()` | Report errors to consumer |
 | `export()` | Export methods/data to consumer |
 | `getConsumer()` | Get consumer window reference |
 | `getConsumerDomain()` | Get consumer origin |
 | `consumer.props` | Access consumer's props |
+| `consumer.export()` | Send data to consumer from host context |
 | `getPeerInstances()` | Get peer component instances from the same consumer |
+| `children` | Nested component factories provided by consumer (if configured) |
 
 </details>
 
@@ -530,7 +532,7 @@ Host components can export methods/data for the consumer to use.
 > **`Host`**
 
 ```typescript
-window.hostProps.export({
+await window.hostProps.export({
   validate: () => document.getElementById('form').checkValidity(),
   getFormData: () => ({ email: document.getElementById('email').value }),
 });
@@ -804,8 +806,10 @@ ForgeFrame.getHostProps()         // Get hostProps in host context
 ForgeFrame.isStandardSchema(val)  // Check if value is a Standard Schema
 
 ForgeFrame.prop                   // Prop schema builders (also exported as `prop`)
+ForgeFrame.PROP_SERIALIZATION     // Prop serialization constants
 ForgeFrame.CONTEXT                // Context constants (IFRAME, POPUP)
 ForgeFrame.EVENT                  // Event name constants
+ForgeFrame.PopupOpenError         // Popup blocker/open failures
 ForgeFrame.VERSION                // Library version
 ```
 
@@ -815,20 +819,20 @@ ForgeFrame.VERSION                // Library version
 interface ComponentOptions<P> {
   tag: string;
   url: string | ((props: P) => string);
-  dimensions?: { width?: number | string; height?: number | string };
+  dimensions?: { width?: number | string; height?: number | string } | ((props: P) => { width?: number | string; height?: number | string });
   autoResize?: { width?: boolean; height?: boolean; element?: string };
   props?: PropsDefinition<P>;
   defaultContext?: 'iframe' | 'popup';
-  containerTemplate?: (ctx: TemplateContext) => HTMLElement;
-  prerenderTemplate?: (ctx: TemplateContext) => HTMLElement;
-  domain?: string | RegExp | Array<string | RegExp>;
-  allowedConsumerDomains?: string | RegExp | Array<string | RegExp>;
+  containerTemplate?: (ctx: TemplateContext<P>) => HTMLElement | null;
+  prerenderTemplate?: (ctx: TemplateContext<P>) => HTMLElement | null;
+  domain?: DomainMatcher;
+  allowedConsumerDomains?: DomainMatcher;
   eligible?: (opts: { props: P }) => { eligible: boolean; reason?: string };
   validate?: (opts: { props: P }) => void;
-  attributes?: IframeAttributes;
-  style?: CSSProperties;
+  attributes?: IframeAttributes | ((props: P) => IframeAttributes);
+  style?: IframeStyles | ((props: P) => IframeStyles);
   timeout?: number;
-  children?: () => Record<string, ForgeFrameComponent>;
+  children?: (opts: { props: P }) => Record<string, ForgeFrameComponent>;
 }
 ```
 
@@ -837,8 +841,8 @@ interface ComponentOptions<P> {
 ```typescript
 const instance = MyComponent(props);
 
-await instance.render(container?, context?)  // Render
-await instance.renderTo(window, container?)  // Render to another window
+await instance.render(container, context?)   // Render into a container (container is required)
+await instance.renderTo(window, container?)  // Currently delegates to render() in the current window
 await instance.close()                       // Close and destroy
 await instance.focus()                       // Focus
 await instance.resize({ width, height })     // Resize
@@ -910,16 +914,9 @@ window.hostProps!.resize;
 
 ## Browser Support
 
-ForgeFrame requires modern browser features (ES2022+).
+ForgeFrame ships ES2022 output. Use modern evergreen browsers or transpile the package for older targets in your consumer build pipeline.
 
-| Browser | Minimum Version |
-|---------|-----------------|
-| Chrome | 80+ |
-| Firefox | 75+ |
-| Safari | 14+ |
-| Edge | 80+ |
-
-**Note:** Internet Explorer is not supported. For IE support, use [Zoid](https://github.com/krakenjs/zoid).
+**Note:** Internet Explorer is not supported. If you require IE-era compatibility, use [Zoid](https://github.com/krakenjs/zoid).
 
 ---
 

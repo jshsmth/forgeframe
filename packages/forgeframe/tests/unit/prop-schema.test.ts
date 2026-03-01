@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the `prop` schema builder API.
+ *
+ * Covers Standard Schema compatibility, primitive/composite validators, schema chaining immutability, and normalizeProps integration.
+ */
 import { describe, it, expect } from 'vitest';
 import {
   prop,

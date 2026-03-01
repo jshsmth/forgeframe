@@ -1,9 +1,17 @@
+/**
+ * Lifecycle tests for `@/core/host` runtime behavior.
+ *
+ * Covers consumer control channels, props synchronization/subscriber behavior, and consumer window resolution rules.
+ */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HostComponent, clearHostInstance } from '@/core/host';
 import { CONTEXT, EVENT, MESSAGE_NAME, VERSION } from '@/constants';
 import type { WindowNamePayload } from '@/types';
 import * as helpers from '@/window/helpers';
 
+/**
+ * Builds a host window payload with default props and domain metadata.
+ */
 function createPayload(
   overrides: Partial<WindowNamePayload<Record<string, unknown>>> = {}
 ): WindowNamePayload<Record<string, unknown>> {
@@ -19,6 +27,9 @@ function createPayload(
   };
 }
 
+/**
+ * Creates a host instance while stubbing consumer window resolution behavior.
+ */
 function createHost({
   payload = createPayload(),
   deferInit = true,

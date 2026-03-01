@@ -1,3 +1,8 @@
+/**
+ * Unit tests for utility modules (`uid`, `cleanup`, and `promise`).
+ *
+ * Covers UID generation/validation, cleanup task ordering, deferred utilities, timeout/delay behavior, and try/catch helpers.
+ */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   generateUID,
