@@ -831,7 +831,6 @@ describe('Consumer branch coverage and edge paths', () => {
       consumer as unknown as {
         context: string;
         hostWindow: Window | null;
-        prerenderElement: HTMLElement | null;
       }
     ).context = CONTEXT.POPUP;
     (
@@ -841,9 +840,11 @@ describe('Consumer branch coverage and edge paths', () => {
     ).hostWindow = popupWindow;
     (
       consumer as unknown as {
-        prerenderElement: HTMLElement | null;
+        renderer: {
+          prerenderElement: HTMLElement | null;
+        };
       }
-    ).prerenderElement = prerenderElement;
+    ).renderer.prerenderElement = prerenderElement;
 
     await (
       consumer as unknown as {

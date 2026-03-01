@@ -217,18 +217,6 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
   }
 
   /** @internal */
-  private get prerenderElement(): HTMLElement | null {
-    return this.renderer ? this.renderer.prerenderElement : null;
-  }
-
-  /** @internal */
-  private set prerenderElement(value: HTMLElement | null) {
-    if (this.renderer) {
-      this.renderer.prerenderElement = value;
-    }
-  }
-
-  /** @internal */
   private get initPromise(): ReturnType<typeof createDeferred<void>> | null {
     return this.transport ? this.transport.initPromise : null;
   }
@@ -360,7 +348,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     try {
       await this.open();
       await this.waitForHost();
-      if (this.context === CONTEXT.IFRAME && this.iframe && this.prerenderElement) {
+      if (this.context === CONTEXT.IFRAME && this.iframe) {
         await this.renderer.swapPrerenderContentIfNeeded();
       }
     } catch (err) {
