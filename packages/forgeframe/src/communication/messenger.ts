@@ -37,6 +37,8 @@ export type MessageHandler<T = unknown, R = unknown> = (
 interface PendingRequest {
   deferred: Deferred<unknown>;
   timeout: ReturnType<typeof setTimeout>;
+  targetWin: Window;
+  expectedOrigin: string | '*';
 }
 
 function escapeRegExp(value: string): string {
@@ -68,6 +70,44 @@ function testPattern(pattern: RegExp, origin: string): boolean {
 interface VerifiedSource {
   uid: string;
   domain: string;
+}
+
+function isPendingResponseSourceMatch(
+  pending: PendingRequest,
+  sourceWin: Window,
+  origin: string
+): boolean {
+  if (sourceWin !== pending.targetWin) {
+    return false;
+  }
+
+  if (pending.expectedOrigin === '*') {
+    return true;
+  }
+
+  return origin === pending.expectedOrigin;
+}
+
+function normalizeTargetDomainToExpectedOrigin(
+  targetDomain: string,
+  senderDomain: string
+): string | '*' {
+  if (targetDomain === '*') {
+    return '*';
+  }
+
+  // "/" is the postMessage same-origin token.
+  if (targetDomain === '/') {
+    return senderDomain;
+  }
+
+  try {
+    return new URL(targetDomain, senderDomain).origin;
+  } catch {
+    // Preserve legacy behavior for non-URL strings; send() may still succeed/fail
+    // based on browser postMessage validation.
+    return targetDomain;
+  }
 }
 
 /**
@@ -275,6 +315,8 @@ export class Messenger {
     this.pending.set(id, {
       deferred: deferred as Deferred<unknown>,
       timeout: timeoutId,
+      targetWin,
+      expectedOrigin: normalizeTargetDomainToExpectedOrigin(targetDomain, this.domain),
     });
 
     try {
@@ -374,6 +416,10 @@ export class Messenger {
     if (message.type === MESSAGE_TYPE.RESPONSE) {
       const pending = this.pending.get(message.id);
       if (pending) {
+        if (!isPendingResponseSourceMatch(pending, sourceWin, origin)) {
+          return;
+        }
+
         this.pending.delete(message.id);
         clearTimeout(pending.timeout);
 
