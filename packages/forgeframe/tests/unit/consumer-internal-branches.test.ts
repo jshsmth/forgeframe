@@ -319,7 +319,8 @@ describe('Consumer internal branches', () => {
     expect(internalProps.derived).toBe('seed:abc');
   });
 
-  it('should provide merged props to value callbacks during updateProps', async () => {
+  it('should preserve materialized value props on unrelated updateProps patches', async () => {
+    let derivedCalls = 0;
     const consumer = createConsumer(
       {
         props: {
@@ -327,22 +328,30 @@ describe('Consumer internal branches', () => {
             schema: prop.string(),
             required: true,
           },
+          amount: {
+            schema: prop.number().optional(),
+          },
           derived: {
             schema: prop.string(),
-            value: (ctx: { props: Record<string, unknown> }) => `seed:${ctx.props.seed}`,
+            value: (ctx: { props: Record<string, unknown> }) => {
+              derivedCalls += 1;
+              return `seed:${ctx.props.seed}`;
+            },
           },
         },
       },
       { seed: 'abc' }
     );
 
-    await consumer.updateProps({ seed: 'xyz' });
+    await consumer.updateProps({ amount: 1 });
 
     const internalProps = (
       consumer as unknown as { props: Record<string, unknown> }
     ).props;
-    expect(internalProps.seed).toBe('xyz');
-    expect(internalProps.derived).toBe('seed:xyz');
+    expect(internalProps.seed).toBe('abc');
+    expect(internalProps.amount).toBe(1);
+    expect(internalProps.derived).toBe('seed:abc');
+    expect(derivedCalls).toBe(1);
   });
 
   it('should prune stale function refs after each host serialization batch', async () => {

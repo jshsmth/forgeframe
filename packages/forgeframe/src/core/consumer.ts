@@ -460,7 +460,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     nextProps: P;
   } {
     const nextInputProps = { ...this.inputProps, ...newProps };
-    const mergedProps = nextInputProps as P;
+    const mergedProps = { ...this.props, ...newProps } as P;
     const propContext = this.createPropContext(mergedProps);
     const nextProps = normalizeProps(
       mergedProps,

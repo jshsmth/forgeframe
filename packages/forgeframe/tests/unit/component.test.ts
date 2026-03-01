@@ -372,6 +372,50 @@ describe('Component Instance', () => {
     container.remove();
   });
 
+  it('should not rematerialize URL-driving value props on unrelated updateProps after render', async () => {
+    let valueCalls = 0;
+    const DynamicUrlComponent = create<{
+      amount?: number;
+      targetUrl?: string;
+    }>({
+      tag: 'dynamic-origin-stable-materialized-prop-component',
+      url: (props) => props.targetUrl ?? 'https://origin-a.example.com/widget',
+      props: {
+        amount: { schema: prop.number().optional() },
+        targetUrl: {
+          schema: prop.string().optional(),
+          value: () => {
+            valueCalls += 1;
+            return valueCalls === 1
+              ? 'https://origin-a.example.com/widget'
+              : 'https://origin-b.example.com/widget';
+          },
+        },
+      },
+    });
+
+    const instance = DynamicUrlComponent({});
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    const instanceInternal = instance as unknown as {
+      waitForHost: () => Promise<void>;
+      hostWindow: Window | null;
+    };
+    vi.spyOn(instanceInternal, 'waitForHost').mockResolvedValue(undefined);
+    await instance.render(container);
+    instanceInternal.hostWindow = null;
+
+    await expect(instance.updateProps({ amount: 1 })).resolves.toBeUndefined();
+    expect(
+      (instance as unknown as { resolveUrl: () => string }).resolveUrl()
+    ).toBe('https://origin-a.example.com/widget');
+    expect(valueCalls).toBe(1);
+
+    await instance.close();
+    container.remove();
+  });
+
   it('should build nested host refs from component metadata', () => {
     const ChildComponent = create({
       tag: 'child-component-meta',
