@@ -1,3 +1,8 @@
+/**
+ * Unit tests for `@/communication/protocol` message helpers.
+ *
+ * Covers protocol prefixing, serialization/deserialization validation, message factory helpers, and round-trip integrity.
+ */
 import { describe, it, expect } from 'vitest';
 import {
   serializeMessage,
@@ -10,7 +15,7 @@ import {
 import { MESSAGE_TYPE } from '@/constants';
 
 describe('PROTOCOL_PREFIX', () => {
-  it('should be forgeframe:', () => {
+  it('should equal the forgeframe protocol prefix literal', () => {
     expect(PROTOCOL_PREFIX).toBe('forgeframe:');
   });
 });

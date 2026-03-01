@@ -1,3 +1,8 @@
+/**
+ * Integration-style test for index auto-initialization behavior.
+ *
+ * Covers module import safety when ForgeFrame-shaped window payloads are present in top-level window contexts.
+ */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CONTEXT, VERSION } from '@/constants';
 import { buildWindowName } from '@/window/name-payload';

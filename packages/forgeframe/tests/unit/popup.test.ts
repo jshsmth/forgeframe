@@ -1,3 +1,8 @@
+/**
+ * Unit tests for `@/render/popup`.
+ *
+ * Covers popup open/focus/close/resize utilities, popup-block detection, and close watcher polling behavior.
+ */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   openPopup,
@@ -168,7 +173,7 @@ describe('closePopup', () => {
     expect(mockWin.close).not.toHaveBeenCalled();
   });
 
-  it('should not throw on error', () => {
+  it('should not throw when popup.close() throws due to access errors', () => {
     const mockWin = {
       closed: false,
       close: vi.fn().mockImplementation(() => {
@@ -203,7 +208,7 @@ describe('focusPopup', () => {
     expect(mockWin.focus).not.toHaveBeenCalled();
   });
 
-  it('should not throw on error', () => {
+  it('should not throw when popup.focus() throws due to access errors', () => {
     const mockWin = {
       closed: false,
       focus: vi.fn().mockImplementation(() => {

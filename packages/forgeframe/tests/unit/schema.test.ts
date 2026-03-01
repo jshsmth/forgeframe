@@ -1,3 +1,8 @@
+/**
+ * Unit tests for Standard Schema utilities and schema-aware props validation.
+ *
+ * Covers schema shape detection, validation success/failure formatting, async schema guardrails, and normalizeProps integration.
+ */
 import { describe, it, expect, vi } from 'vitest';
 import { validateProps } from '@/props/normalize';
 import {

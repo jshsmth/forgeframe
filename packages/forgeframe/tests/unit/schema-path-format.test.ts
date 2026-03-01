@@ -1,3 +1,8 @@
+/**
+ * Formatting tests for schema issue paths in `validateWithSchema`.
+ *
+ * Covers mixed key/index path rendering and resilience to malformed path segment payloads.
+ */
 import { describe, expect, it } from 'vitest';
 import { validateWithSchema, type StandardSchemaV1 } from '@/props/schema';
 

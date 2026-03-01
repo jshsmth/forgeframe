@@ -1,3 +1,8 @@
+/**
+ * Lifecycle-focused tests for `@/core/consumer`.
+ *
+ * Covers host handshake timing, control message handling, open/render guards, callback isolation, and updateProps validation paths.
+ */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConsumerComponent } from '@/core/consumer';
 import { clearComponents, create } from '@/core/component';
@@ -7,6 +12,9 @@ import * as popupRender from '@/render/popup';
 
 const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
 
+/**
+ * Creates a consumer instance and tracks it for deterministic lifecycle cleanup.
+ */
 function createConsumer(
   options: Record<string, unknown> = {},
   props: Record<string, unknown> = {}
@@ -23,6 +31,9 @@ function createConsumer(
   return consumer;
 }
 
+/**
+ * Reads the component's messenger handler map for direct handler invocation tests.
+ */
 function getHandlers(
   component: ConsumerComponent<Record<string, unknown>>
 ): Map<string, (data: unknown) => unknown> {

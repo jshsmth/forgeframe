@@ -1,3 +1,8 @@
+/**
+ * Unit tests for window reference registry/proxy helpers in `@/window/proxy`.
+ *
+ * Covers registry capacity behavior, reference creation/resolution, and serialization constraints across reference types.
+ */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   registerWindow,

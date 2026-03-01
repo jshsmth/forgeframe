@@ -1,3 +1,8 @@
+/**
+ * Backward compatibility tests for Standard Schema support in `@/props/schema`.
+ *
+ * Covers legacy schema shape acceptance, path segment compatibility, and optional metadata handling.
+ */
 import { describe, expect, it } from 'vitest';
 import {
   isStandardSchema,

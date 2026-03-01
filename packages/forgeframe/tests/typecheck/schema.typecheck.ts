@@ -1,3 +1,8 @@
+/**
+ * Type-level assertions for Standard Schema typings in `@/props/schema`.
+ *
+ * Covers `InferInput`/`InferOutput`, issue/path segment type contracts, success/failure result constraints, and metadata typing.
+ */
 import type {
   InferInput,
   InferOutput,

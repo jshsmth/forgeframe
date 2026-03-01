@@ -1,3 +1,8 @@
+/**
+ * Branch coverage tests for `@/core/consumer` internals.
+ *
+ * Covers domain trust variants, render helper delegation, prop update edge paths, and guarded branches around URL/origin handling.
+ */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConsumerComponent } from '@/core/consumer';
 import { CONTEXT } from '@/constants';
@@ -8,6 +13,9 @@ import * as windowProxy from '@/window/proxy';
 
 const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
 
+/**
+ * Creates a consumer instance and tracks it for teardown at the end of each test.
+ */
 function createConsumer(
   options: Record<string, unknown> = {},
   props: Record<string, unknown> = {}
@@ -33,7 +41,7 @@ afterEach(async () => {
   document.body.innerHTML = '';
 });
 
-describe('Consumer internal branches', () => {
+describe('Consumer branch coverage and edge paths', () => {
   it('should trust domain option when configured as string', () => {
     const consumer = createConsumer({
       domain: 'https://trusted.example.com',

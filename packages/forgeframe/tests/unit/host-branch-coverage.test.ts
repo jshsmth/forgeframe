@@ -1,3 +1,8 @@
+/**
+ * Branch coverage tests for `@/core/host` internals.
+ *
+ * Covers deferred init branches, hostProps fallback behavior, init failure capture, and environment guard paths.
+ */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   HostComponent,
@@ -11,6 +16,9 @@ import { buildWindowName } from '@/window/name-payload';
 import type { HostComponentRef, WindowNamePayload } from '@/types';
 import * as namePayload from '@/window/name-payload';
 
+/**
+ * Builds a host window payload with stable defaults for branch-path tests.
+ */
 function createPayload(
   overrides: Partial<WindowNamePayload<Record<string, unknown>>> = {}
 ): WindowNamePayload<Record<string, unknown>> {
@@ -26,6 +34,9 @@ function createPayload(
   };
 }
 
+/**
+ * Creates a host instance with a controllable consumer window resolver.
+ */
 function createHost({
   payload = createPayload(),
   deferInit = true,
@@ -51,7 +62,7 @@ afterEach(() => {
   delete (window as unknown as { hostProps?: unknown }).hostProps;
 });
 
-describe('Host internal branches', () => {
+describe('Host branch coverage and edge paths', () => {
   it('should flush init in constructor when deferInit is false', () => {
     const sendInitSpy = vi
       .spyOn(

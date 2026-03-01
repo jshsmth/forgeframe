@@ -1,3 +1,8 @@
+/**
+ * Contract tests for third-party Standard Schema interoperability.
+ *
+ * Covers Zod and Valibot compatibility, typed input/output behavior, and normalized issue path preservation.
+ */
 import { describe, expect, it } from 'vitest';
 import * as v from 'valibot';
 import { z } from 'zod';
@@ -10,6 +15,9 @@ import {
 
 type StandardSchemaPath = PropertyKey | StandardSchemaV1PathSegment;
 
+/**
+ * Normalizes third-party issue path segments into the Standard Schema path shape.
+ */
 function normalizeIssuePath(
   path: readonly unknown[] | undefined
 ): ReadonlyArray<StandardSchemaPath> | undefined {
@@ -49,6 +57,9 @@ function normalizeIssuePath(
   });
 }
 
+/**
+ * Wraps a Zod schema with a Standard Schema-compatible validation contract.
+ */
 function createZodStandardSchema<Output>(
   schema: z.ZodType<Output>
 ): StandardSchemaV1<unknown, Output> {
@@ -76,6 +87,9 @@ function createZodStandardSchema<Output>(
   };
 }
 
+/**
+ * Wraps a Valibot schema with a Standard Schema-compatible validation contract.
+ */
 function createValibotStandardSchema<
   TSchema extends v.BaseSchema<unknown, unknown, v.BaseIssue<unknown>>,
 >(

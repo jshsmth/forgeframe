@@ -1,3 +1,8 @@
+/**
+ * Unit tests for props normalization and host/query/body mapping utilities.
+ *
+ * Covers defaults/computed values, schema validation, host filtering rules, parameter conversion, and deep cloning behavior.
+ */
 import { describe, it, expect, vi } from 'vitest';
 import {
   normalizeProps,

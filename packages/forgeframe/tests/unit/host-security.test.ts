@@ -1,3 +1,8 @@
+/**
+ * Security-oriented tests for host initialization and deferred init behavior.
+ *
+ * Covers consumer domain allowlist enforcement, hostProps invalidation, and deferred init gating under security checks.
+ */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { initHost, clearHostInstance, HostComponent } from '@/core/host';
 import { buildWindowName } from '@/window/name-payload';

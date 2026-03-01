@@ -1,3 +1,8 @@
+/**
+ * Unit tests for `@/communication/bridge`.
+ *
+ * Covers function reference lifecycle, recursive serialization/deserialization, and bridge call routing through messenger handlers.
+ */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   FunctionBridge,
@@ -7,8 +12,11 @@ import {
 import { Messenger } from '@/communication/messenger';
 import { MESSAGE_NAME } from '@/constants';
 
-// Mock messenger
 type GenericFunction = (...args: unknown[]) => unknown;
+
+/**
+ * Creates a messenger test double with handler storage and a `CALL` trigger helper.
+ */
 const createMockMessenger = () => {
   const handlers = new Map<string, GenericFunction>();
 

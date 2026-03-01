@@ -1,3 +1,8 @@
+/**
+ * Unit tests for `@/core/component` and host context helpers.
+ *
+ * Covers component registration, instance lifecycle, dynamic option materialization, and host detection/eligibility behavior.
+ */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import {
   create,
