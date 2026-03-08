@@ -12,10 +12,10 @@ import type {
   PropsDefinition,
   PropContext,
   DomainMatcher,
-} from '../types';
-import { BUILTIN_PROP_DEFINITIONS } from './definitions';
-import { matchDomain } from '../window/helpers';
-import { isStandardSchema, validateWithSchema } from './schema';
+} from '@/types';
+import { BUILTIN_PROP_DEFINITIONS } from '@/props/definitions';
+import { matchDomain } from '@/window/helpers';
+import { isStandardSchema, validateWithSchema } from '@/props/schema';
 
 function resolvePropDefinition<P>(
   def: unknown

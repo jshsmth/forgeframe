@@ -40,7 +40,7 @@ import {
   isEmbedded,
   getHostProps,
   initHost,
-} from './core';
+} from '@/core';
 
 // Constants
 import {
@@ -48,16 +48,16 @@ import {
   CONTEXT,
   EVENT,
   VERSION,
-} from './constants';
+} from '@/constants';
 
 // Errors
-import { PopupOpenError } from './render/popup';
+import { PopupOpenError } from '@/render/popup';
 
 // Schema utilities
-import { isStandardSchema } from './props/schema';
+import { isStandardSchema } from '@/props/schema';
 
-import { prop } from './props/prop';
-import { hasBrowserWindow } from './utils/browser';
+import { prop } from '@/props/prop';
+import { hasBrowserWindow } from '@/utils/browser';
 
 // Pre-initialize host state if in a ForgeFrame window.
 // INIT is deferred until initHost() is explicitly flushed or a host component definition does so.
@@ -261,19 +261,19 @@ export {
   isEmbedded,
   getHostProps,
   initHost,
-} from './core';
+} from '@/core';
 
 export {
   PROP_SERIALIZATION,
   CONTEXT,
   EVENT,
   VERSION,
-} from './constants';
+} from '@/constants';
 
-export { PopupOpenError } from './render/popup';
+export { PopupOpenError } from '@/render/popup';
 
 // Schema utilities
-export { isStandardSchema } from './props/schema';
+export { isStandardSchema } from '@/props/schema';
 
 // Prop schema builders
 export {
@@ -290,7 +290,7 @@ export {
   AnySchema,
   type Prop,
   type InferObjectShape,
-} from './props/prop';
+} from '@/props/prop';
 
 // Type exports
 export type {
@@ -329,13 +329,13 @@ export type {
   // Event types
   EventHandler,
   EventEmitterInterface,
-} from './types';
+} from '@/types';
 
 export type {
   ContextType,
   EventType,
   SerializationType,
-} from './constants';
+} from '@/constants';
 
 // React integration exports
 export {
@@ -344,4 +344,4 @@ export {
   type ReactDriverOptions,
   type ReactComponentProps,
   type ReactComponentType,
-} from './drivers/react';
+} from '@/drivers/react';

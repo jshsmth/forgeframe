@@ -16,9 +16,9 @@ export {
   destroyAll,
   unregisterComponent,
   clearComponents,
-} from './component';
+} from '@/core/component';
 
-export { ConsumerComponent } from './consumer';
+export { ConsumerComponent } from '@/core/consumer';
 export {
   HostComponent,
   initHost,
@@ -26,4 +26,4 @@ export {
   isHost,
   isEmbedded,
   getHostProps,
-} from './host';
+} from '@/core/host';

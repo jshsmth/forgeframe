@@ -24,7 +24,7 @@ export {
   focusWindow,
   closeWindow,
   getFrames,
-} from './helpers';
+} from '@/window/helpers';
 
 export {
   buildWindowName,
@@ -34,7 +34,7 @@ export {
   createWindowPayload,
   updateWindowName,
   getInitialPayload,
-} from './name-payload';
+} from '@/window/name-payload';
 
 export {
   registerWindow,
@@ -44,4 +44,4 @@ export {
   resolveWindowRef,
   serializeWindowRef,
   clearWindowRegistry,
-} from './proxy';
+} from '@/window/proxy';

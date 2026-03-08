@@ -10,7 +10,7 @@
 export {
   BUILTIN_PROP_DEFINITIONS,
   type BuiltinProps,
-} from './definitions';
+} from '@/props/definitions';
 
 export {
   normalizeProps,
@@ -18,13 +18,13 @@ export {
   getPropsForHost,
   propsToQueryParams,
   propsToBodyParams,
-} from './normalize';
+} from '@/props/normalize';
 
 export {
   serializeProps,
   deserializeProps,
   cloneProps,
-} from './serialize';
+} from '@/props/serialize';
 
 export {
   isStandardSchema,
@@ -39,7 +39,7 @@ export {
   type StandardSchemaV1Types,
   type InferInput,
   type InferOutput,
-} from './schema';
+} from '@/props/schema';
 
 export {
   prop,
@@ -55,4 +55,4 @@ export {
   AnySchema,
   type Prop,
   type InferObjectShape,
-} from './prop';
+} from '@/props/prop';

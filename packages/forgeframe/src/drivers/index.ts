@@ -22,4 +22,4 @@ export {
   type ReactDriverOptions,
   type ReactComponentProps,
   type ReactComponentType,
-} from './react';
+} from '@/drivers/react';

@@ -32,8 +32,8 @@
  * @packageDocumentation
  */
 
-export { generateUID, generateShortUID, isValidUID } from './uid';
-export { CleanupManager } from './cleanup';
+export { generateUID, generateShortUID, isValidUID } from '@/utils/uid';
+export { CleanupManager } from '@/utils/cleanup';
 export {
   createDeferred,
   promiseTimeout,
@@ -41,5 +41,5 @@ export {
   delay,
   tryCatch,
   type Deferred,
-} from './promise';
-export { normalizeDimensionToCSS, normalizeDimensionToNumber } from './dimension';
+} from '@/utils/promise';
+export { normalizeDimensionToCSS, normalizeDimensionToNumber } from '@/utils/dimension';

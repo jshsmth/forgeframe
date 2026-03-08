@@ -1,5 +1,5 @@
-import type { Dimensions, IframeAttributes, IframeStyles } from '../types';
-import { normalizeDimensionToCSS } from '../utils/dimension';
+import type { Dimensions, IframeAttributes, IframeStyles } from '@/types';
+import { normalizeDimensionToCSS } from '@/utils/dimension';
 
 /**
  * Configuration options for creating an iframe.

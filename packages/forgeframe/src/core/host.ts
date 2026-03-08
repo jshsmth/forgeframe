@@ -20,11 +20,11 @@ import type {
   ForgeFrameComponent,
   HostComponentRef,
   DomainMatcher,
-} from '../types';
-import { MESSAGE_NAME, EVENT } from '../constants';
-import { EventEmitter } from '../events/emitter';
-import { Messenger } from '../communication/messenger';
-import { FunctionBridge } from '../communication/bridge';
+} from '@/types';
+import { MESSAGE_NAME, EVENT } from '@/constants';
+import { EventEmitter } from '@/events/emitter';
+import { Messenger } from '@/communication/messenger';
+import { FunctionBridge } from '@/communication/bridge';
 import {
   getDomain,
   getConsumer,
@@ -32,14 +32,14 @@ import {
   isIframe,
   isPopup,
   matchDomain,
-} from '../window/helpers';
+} from '@/window/helpers';
 import {
   isForgeFrameWindow,
   getInitialPayload,
-} from '../window/name-payload';
-import { deserializeProps } from '../props/serialize';
-import { isStandardSchema, validateProps } from '../props';
-import { create } from './component';
+} from '@/window/name-payload';
+import { deserializeProps } from '@/props/serialize';
+import { isStandardSchema, validateProps } from '@/props';
+import { create } from '@/core/component';
 
 const CONSUMER_WINDOW_RESOLUTION_ERROR = 'Could not resolve consumer window';
 const CONSUMER_ORIGIN_VERIFICATION_ERROR = 'Could not verify consumer origin';

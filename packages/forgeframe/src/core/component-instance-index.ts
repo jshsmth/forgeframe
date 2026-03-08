@@ -7,7 +7,7 @@
  * can be performed without scanning the full component registry.
  */
 
-import type { ForgeFrameComponentInstance } from '../types';
+import type { ForgeFrameComponentInstance } from '@/types';
 
 export type IndexedComponentInstance = ForgeFrameComponentInstance<Record<string, unknown>, unknown>;
 

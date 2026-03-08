@@ -44,7 +44,7 @@ export {
   focusIframe,
   getIframeContentDimensions,
   type IframeOptions,
-} from './iframe';
+} from '@/render/iframe';
 
 export {
   openPopup,
@@ -55,7 +55,7 @@ export {
   resizePopup,
   PopupOpenError,
   type PopupOptions,
-} from './popup';
+} from '@/render/popup';
 
 export {
   defaultContainerTemplate,
@@ -65,4 +65,4 @@ export {
   fadeIn,
   fadeOut,
   swapPrerenderContent,
-} from './templates';
+} from '@/render/templates';

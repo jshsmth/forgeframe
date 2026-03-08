@@ -7,15 +7,15 @@
  * between consumer and host windows across domain boundaries.
  */
 
-import type { PropDefinition, PropsDefinition, SerializedProps } from '../types';
-import { PROP_SERIALIZATION } from '../constants';
+import type { PropDefinition, PropsDefinition, SerializedProps } from '@/types';
+import { PROP_SERIALIZATION } from '@/constants';
 import {
   FunctionBridge,
   serializeFunctions,
   deserializeFunctions,
-} from '../communication/bridge';
-import type { Messenger } from '../communication/messenger';
-import { BUILTIN_PROP_DEFINITIONS } from './definitions';
+} from '@/communication/bridge';
+import type { Messenger } from '@/communication/messenger';
+import { BUILTIN_PROP_DEFINITIONS } from '@/props/definitions';
 
 const UNSAFE_OBJECT_KEYS = new Set(['__proto__']);
 const DOTIFY_FRAMED_PATH_PREFIX = '__forgeframe.dotify_path__:';

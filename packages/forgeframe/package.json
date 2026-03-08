@@ -19,7 +19,7 @@
   ],
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "vite build && tsc --emitDeclarationOnly",
+    "build": "vite build && tsc --emitDeclarationOnly && node ./scripts/rewrite-dist-aliases.mjs",
     "typecheck": "tsc --noEmit && npm run typecheck:tests",
     "typecheck:tests": "tsc -p tests/typecheck/tsconfig.json --noEmit",
     "test": "vitest",

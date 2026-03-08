@@ -12,8 +12,8 @@ import type {
   ContextType,
   SerializationType,
   EventType,
-} from './constants';
-import type { StandardSchemaV1, InferOutput } from './props/schema';
+} from '@/constants';
+import type { StandardSchemaV1, InferOutput } from '@/props/schema';
 
 // ============================================================================
 // Utility Types
@@ -308,7 +308,7 @@ export type SchemaPropDefinition<
 };
 
 // Re-export StandardSchemaV1 for convenience
-export type { StandardSchemaV1 } from './props/schema';
+export type { StandardSchemaV1 } from '@/props/schema';
 
 // ============================================================================
 // Template Types

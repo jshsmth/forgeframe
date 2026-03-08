@@ -1,4 +1,4 @@
-import type { EventHandler, EventEmitterInterface } from '../types';
+import type { EventHandler, EventEmitterInterface } from '@/types';
 
 /**
  * A simple typed event emitter for component lifecycle events.

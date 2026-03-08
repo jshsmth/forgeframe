@@ -29,7 +29,7 @@ import type {
   StandardSchemaV1Props,
   StandardSchemaV1Result,
   StandardSchemaV1Issue,
-} from './schema';
+} from '@/props/schema';
 
 function testRegExpStateless(pattern: RegExp, value: string): boolean {
   if (pattern.global || pattern.sticky) {

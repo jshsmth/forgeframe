@@ -1,5 +1,5 @@
-import type { WindowRef } from '../types';
-import { getConsumer, getOpener, getAncestor, isWindowClosed } from './helpers';
+import type { WindowRef } from '@/types';
+import { getConsumer, getOpener, getAncestor, isWindowClosed } from '@/window/helpers';
 
 /**
  * Maximum number of windows to keep in the registry.

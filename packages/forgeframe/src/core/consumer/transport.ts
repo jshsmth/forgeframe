@@ -7,21 +7,21 @@ import type {
   PropsDefinition,
   SerializedProps,
   SiblingInfo,
-} from '../../types';
-import { MESSAGE_NAME } from '../../constants';
-import { Messenger } from '../../communication/messenger';
-import { FunctionBridge } from '../../communication/bridge';
-import { createDeferred, promiseTimeout } from '../../utils/promise';
+} from '@/types';
+import { MESSAGE_NAME } from '@/constants';
+import { Messenger } from '@/communication/messenger';
+import { FunctionBridge } from '@/communication/bridge';
+import { createDeferred, promiseTimeout } from '@/utils/promise';
 import {
   getDomain,
   isSameDomain,
   isWindowClosed,
   matchDomain,
-} from '../../window/helpers';
-import { buildWindowName, createWindowPayload } from '../../window/name-payload';
-import { getPropsForHost, serializeProps } from '../../props';
-import type { ContextType } from '../../constants';
-import type { NormalizedOptions } from './types';
+} from '@/window/helpers';
+import { buildWindowName, createWindowPayload } from '@/window/name-payload';
+import { getPropsForHost, serializeProps } from '@/props';
+import type { ContextType } from '@/constants';
+import type { NormalizedOptions } from '@/core/consumer/types';
 
 interface PeerRequest {
   uid: string;
