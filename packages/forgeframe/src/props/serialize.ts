@@ -694,6 +694,11 @@ function cloneBrandedObjectValue<T extends object>(
 ): T {
   try {
     const clonedValue = structuredClone(value);
+    if (!hasMatchingBrand(value, clonedValue)) {
+      seen.set(value, value);
+      return value;
+    }
+
     seen.set(value, clonedValue);
     cloneOwnProperties(value, clonedValue, seen);
     return clonedValue;
@@ -706,6 +711,18 @@ function cloneBrandedObjectValue<T extends object>(
 }
 
 /**
+ * Returns true when the clone result preserves the source object's brand.
+ * @internal
+ */
+function hasMatchingBrand(source: object, clone: unknown): clone is object {
+  return (
+    typeof clone === 'object' &&
+    clone !== null &&
+    Object.prototype.toString.call(source) === Object.prototype.toString.call(clone)
+  );
+}
+
+/**
  * Clones an Error instance while preserving non-enumerable state like message.
  * @internal
  */
@@ -713,17 +730,55 @@ function cloneErrorValue(
   value: Error,
   seen: WeakMap<object, unknown>
 ): Error {
-  const clonedError = structuredClone(value);
+  let clonedError: Error;
+  try {
+    clonedError = structuredClone(value);
+  } catch {
+    clonedError = createErrorCloneTarget(value);
+  }
+
   seen.set(value, clonedError);
 
-  cloneOwnProperties(
-    value,
-    clonedError,
-    seen,
-    new Set<PropertyKey>(['name', 'message', 'cause', 'stack'])
-  );
+  cloneOwnProperties(value, clonedError, seen);
 
   return clonedError as unknown as Error;
+}
+
+/**
+ * Creates a safe Error clone target without fabricating custom subclass
+ * instances that may depend on private/internal state.
+ * @internal
+ */
+function createErrorCloneTarget(value: Error): Error {
+  if (value instanceof AggregateError) {
+    return new AggregateError([], value.message);
+  }
+
+  if (value instanceof EvalError) {
+    return new EvalError(value.message);
+  }
+
+  if (value instanceof RangeError) {
+    return new RangeError(value.message);
+  }
+
+  if (value instanceof ReferenceError) {
+    return new ReferenceError(value.message);
+  }
+
+  if (value instanceof SyntaxError) {
+    return new SyntaxError(value.message);
+  }
+
+  if (value instanceof TypeError) {
+    return new TypeError(value.message);
+  }
+
+  if (value instanceof URIError) {
+    return new URIError(value.message);
+  }
+
+  return new Error(value.message);
 }
 
 /**

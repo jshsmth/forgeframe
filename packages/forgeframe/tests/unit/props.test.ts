@@ -620,6 +620,25 @@ describe('Clone Props', () => {
     expect(cloned.headers.get('x-test')).toBe('1');
   });
 
+  it('should preserve unsupported native objects by reference when structuredClone returns the wrong brand', () => {
+    const realStructuredClone = globalThis.structuredClone;
+    const headers = new Headers([['x-test', '1']]);
+    const structuredCloneMock = vi.fn((value: unknown) =>
+      value === headers ? {} : realStructuredClone(value)
+    );
+    vi.stubGlobal('structuredClone', structuredCloneMock);
+
+    try {
+      const cloned = cloneProps({ headers });
+
+      expect(structuredCloneMock).toHaveBeenCalledWith(headers);
+      expect(cloned.headers).toBe(headers);
+      expect(cloned.headers.get('x-test')).toBe('1');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('should clone custom class instances as plain objects instead of fabricating invalid instances', () => {
     class SecretBox {
       #value: number;
@@ -691,6 +710,39 @@ describe('Clone Props', () => {
     expect(cloned.failure).toBeInstanceOf(TypeError);
     expect(cloned.failure.message).toBe('boom');
     expect(cloned.failure.code).toBe('E_FAIL');
+  });
+
+  it('should preserve nested function references inside Error causes', () => {
+    const fn = () => 'callback';
+    const original = {
+      failure: new Error('boom', {
+        cause: {
+          callback: fn,
+          meta: {
+            ready: true,
+          },
+        },
+      }),
+    };
+
+    const cloned = cloneProps(original) as {
+      failure: Error & {
+        cause: {
+          callback: () => string;
+          meta: { ready: boolean };
+        };
+      };
+    };
+
+    expect(cloned.failure).not.toBe(original.failure);
+    expect(cloned.failure).toBeInstanceOf(Error);
+    expect(cloned.failure.message).toBe('boom');
+    expect(cloned.failure.cause).not.toBe(original.failure.cause);
+    expect(cloned.failure.cause.callback).toBe(fn);
+    expect(cloned.failure.cause.meta).toEqual({ ready: true });
+    expect(cloned.failure.cause.meta).not.toBe(
+      (original.failure.cause as { meta: { ready: boolean } }).meta
+    );
   });
 
   it('should downgrade custom Error subclasses instead of fabricating invalid instances', () => {
