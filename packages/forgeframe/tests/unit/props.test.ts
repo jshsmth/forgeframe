@@ -782,6 +782,33 @@ describe('Clone Props', () => {
     expect(descriptor?.value).toBe(9);
   });
 
+  it('should ignore non-enumerable own accessors when cloning objects', () => {
+    let getterCalls = 0;
+    class SecretWithHiddenAccessor {
+      constructor() {
+        Object.defineProperty(this, 'hidden', {
+          configurable: true,
+          enumerable: false,
+          get: () => {
+            getterCalls += 1;
+            throw new Error('hidden getter should not run');
+          },
+        });
+      }
+    }
+
+    const original = {
+      secret: new SecretWithHiddenAccessor(),
+    };
+
+    const cloned = cloneProps(original) as {
+      secret: Record<string, unknown>;
+    };
+
+    expect(getterCalls).toBe(0);
+    expect(Object.prototype.hasOwnProperty.call(cloned.secret, 'hidden')).toBe(false);
+  });
+
   it('should preserve Error instances including non-enumerable message state', () => {
     const original = {
       failure: Object.assign(new TypeError('boom'), { code: 'E_FAIL' }),

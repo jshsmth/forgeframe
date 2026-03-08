@@ -859,6 +859,10 @@ function cloneOwnProperties(
       continue;
     }
 
+    if (!descriptor.enumerable) {
+      continue;
+    }
+
     const materializedValue = clonePropValue(Reflect.get(source, key), seen);
     Object.defineProperty(target, key, {
       configurable: descriptor.configurable,
