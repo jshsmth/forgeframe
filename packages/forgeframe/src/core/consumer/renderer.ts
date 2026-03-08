@@ -58,6 +58,9 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
   /** Prerender element currently displayed while host initializes. */
   public prerenderElement: HTMLElement | null = null;
 
+  /** Wrapper element created and owned by the renderer. */
+  private ownedContainer: HTMLElement | null = null;
+
   constructor(
     private options: NormalizedOptions<P>,
     private uid: string,
@@ -93,8 +96,14 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
   /**
    * Creates and displays prerender/loading content.
    */
-  async prerender(createIframeElement: (windowName: string) => HTMLIFrameElement, buildWindowName: () => string): Promise<void> {
+  async prerender(
+    createIframeElement: (windowName: string) => HTMLIFrameElement,
+    buildWindowName: () => string
+  ): Promise<void> {
     if (!this.container) return;
+
+    const mountContainer = this.container;
+    this.ownedContainer = null;
 
     const props = this.getProps();
     const prerenderTemplateFn =
@@ -120,7 +129,7 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
       dimensions,
       props,
       doc: document,
-      container: this.container,
+      container: mountContainer,
       frame: this.iframe,
       prerenderFrame: null,
       close: () => this.callbacks.close(),
@@ -137,7 +146,7 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
       dimensions,
       props,
       doc: document,
-      container: this.container,
+      container: mountContainer,
       frame: this.iframe,
       prerenderFrame: this.prerenderElement,
       close: () => this.callbacks.close(),
@@ -147,7 +156,13 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
 
     const containerEl = containerTemplateFn(templateContext);
     if (containerEl) {
-      this.container.appendChild(containerEl);
+      if (containerEl !== mountContainer) {
+        const ownsContainer = !containerEl.parentNode;
+        mountContainer.appendChild(containerEl);
+        if (ownsContainer) {
+          this.ownedContainer = containerEl;
+        }
+      }
       this.container = containerEl;
     }
 
@@ -227,11 +242,7 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
    * Swaps prerender content with the live iframe after host initialization.
    */
   async swapPrerenderContentIfNeeded(): Promise<void> {
-    if (
-      this.context === CONTEXT.IFRAME &&
-      this.iframe &&
-      this.container
-    ) {
+    if (this.context === CONTEXT.IFRAME && this.iframe && this.container) {
       await swapPrerenderContent(this.container, this.prerenderElement, this.iframe);
       this.prerenderElement = null;
     }
@@ -330,5 +341,12 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
       this.prerenderElement.remove();
       this.prerenderElement = null;
     }
+
+    if (this.ownedContainer) {
+      this.ownedContainer.remove();
+      this.ownedContainer = null;
+    }
+
+    this.container = null;
   }
 }

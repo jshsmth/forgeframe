@@ -262,6 +262,7 @@ export function createReactComponent<P extends Record<string, unknown>, X = unkn
 
         const instance = Component(componentProps as P);
         instanceRef.current = instance;
+        syncedPropsRef.current = componentProps as Partial<P>;
 
         if (onRendered) {
           instance.event.once('rendered', onRendered);
