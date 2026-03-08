@@ -486,6 +486,74 @@ describe('Clone Props', () => {
     expect(cloned.callback).toBe(fn);
   });
 
+  it('should preserve nested function references inside objects', () => {
+    const fn = () => 'nested';
+    const original = {
+      config: {
+        handler: fn,
+        state: {
+          ready: true,
+        },
+      },
+    };
+
+    const cloned = cloneProps(original);
+
+    expect(cloned).not.toBe(original);
+    expect(cloned.config).not.toBe(original.config);
+    expect(cloned.config.state).not.toBe(original.config.state);
+    expect(cloned.config.handler).toBe(fn);
+    expect(cloned.config.state).toEqual({ ready: true });
+  });
+
+  it('should preserve nested function references inside arrays', () => {
+    const fn = () => 'item';
+    const original = {
+      items: [
+        {
+          action: fn,
+          value: { count: 1 },
+        },
+      ],
+    };
+
+    const cloned = cloneProps(original);
+
+    expect(cloned.items).not.toBe(original.items);
+    expect(cloned.items[0]).not.toBe(original.items[0]);
+    expect((cloned.items[0] as { action: () => string }).action).toBe(fn);
+    expect((cloned.items[0] as { value: { count: number } }).value).not.toBe(
+      (original.items[0] as { value: { count: number } }).value
+    );
+  });
+
+  it('should preserve repeated references and cycles without throwing', () => {
+    const shared = { value: 1 };
+    const original = {
+      first: shared,
+      second: shared,
+      nested: {
+        shared,
+      },
+    } as {
+      first: { value: number; self?: unknown };
+      second: { value: number; self?: unknown };
+      nested: { shared: { value: number; self?: unknown } };
+      self?: unknown;
+    };
+    shared.self = shared;
+    original.self = original;
+
+    const cloned = cloneProps(original);
+
+    expect(cloned).not.toBe(original);
+    expect(cloned.self).toBe(cloned);
+    expect(cloned.first).toBe(cloned.second);
+    expect(cloned.first).toBe(cloned.nested.shared);
+    expect(cloned.first).not.toBe(shared);
+    expect(cloned.first.self).toBe(cloned.first);
+  });
+
   it('should handle primitives', () => {
     const original = {
       str: 'string',

@@ -109,6 +109,127 @@ describe('Props serialization behavior', () => {
     });
   });
 
+  it('should round-trip DOTIFY-serialized nested empty object branches', () => {
+    const { messenger, bridge } = createBridgeWithMessenger();
+    const definitions = {
+      config: {
+        schema: prop.object(),
+        serialization: PROP_SERIALIZATION.DOTIFY,
+      },
+    };
+
+    const serialized = serializeProps(
+      {
+        config: {
+          settings: {
+            filters: {},
+          },
+        },
+      },
+      definitions,
+      bridge
+    ) as Record<string, unknown>;
+
+    const deserialized = deserializeProps(
+      serialized,
+      definitions,
+      messenger,
+      bridge,
+      window,
+      'https://consumer.example.com'
+    ) as { config: { settings: { filters: Record<string, unknown> } } };
+
+    expect(deserialized.config).toEqual({
+      settings: {
+        filters: {},
+      },
+    });
+  });
+
+  it('should round-trip DOTIFY-serialized empty object branches with sibling values', () => {
+    const { messenger, bridge } = createBridgeWithMessenger();
+    const definitions = {
+      payload: {
+        schema: prop.object(),
+        serialization: PROP_SERIALIZATION.DOTIFY,
+      },
+    };
+
+    const serialized = serializeProps(
+      {
+        payload: {
+          metadata: {},
+          nested: {
+            empty: {},
+            flag: true,
+          },
+          version: 2,
+        },
+      },
+      definitions,
+      bridge
+    ) as Record<string, unknown>;
+
+    const deserialized = deserializeProps(
+      serialized,
+      definitions,
+      messenger,
+      bridge,
+      window,
+      'https://consumer.example.com'
+    ) as {
+      payload: {
+        metadata: Record<string, unknown>;
+        nested: { empty: Record<string, unknown>; flag: boolean };
+        version: number;
+      };
+    };
+
+    expect(deserialized.payload).toEqual({
+      metadata: {},
+      nested: {
+        empty: {},
+        flag: true,
+      },
+      version: 2,
+    });
+  });
+
+  it('should round-trip entirely empty DOTIFY object payloads', () => {
+    const { messenger, bridge } = createBridgeWithMessenger();
+    const definitions = {
+      payload: {
+        schema: prop.object(),
+        serialization: PROP_SERIALIZATION.DOTIFY,
+      },
+    };
+
+    const serialized = serializeProps(
+      {
+        payload: {},
+      },
+      definitions,
+      bridge
+    ) as Record<string, unknown>;
+    const encoded = serialized.payload as { __type__: string; __value__: string };
+
+    expect(encoded).toEqual({
+      __type__: 'dotify',
+      __value__: '__forgeframe.dotify_empty_object__',
+    });
+
+    const deserialized = deserializeProps(
+      serialized,
+      definitions,
+      messenger,
+      bridge,
+      window,
+      'https://consumer.example.com'
+    ) as { payload: Record<string, unknown> };
+
+    expect(deserialized.payload).toEqual({});
+  });
+
   it('should round-trip DOTIFY-serialized object props with dotted and reserved keys', () => {
     const { messenger, bridge } = createBridgeWithMessenger();
     const definitions = {

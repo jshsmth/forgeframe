@@ -19,6 +19,8 @@ import { BUILTIN_PROP_DEFINITIONS } from './definitions';
 
 const UNSAFE_OBJECT_KEYS = new Set(['__proto__']);
 const DOTIFY_FRAMED_PATH_PREFIX = '__forgeframe.dotify_path__:';
+const DOTIFY_EMPTY_OBJECT_PAYLOAD = '__forgeframe.dotify_empty_object__';
+const DOTIFY_EMPTY_OBJECT_MARKER_KEY = '__forgeframe.dotify_empty_object_marker__';
 
 /**
  * Returns true when a key can be safely assigned on reconstructed objects.
@@ -26,6 +28,89 @@ const DOTIFY_FRAMED_PATH_PREFIX = '__forgeframe.dotify_path__:';
  */
 function isSafeObjectKey(key: string): boolean {
   return !UNSAFE_OBJECT_KEYS.has(key);
+}
+
+/**
+ * Returns true when a value is a plain object branch suitable for DOTIFY traversal.
+ * @internal
+ */
+function isPlainObject(
+  value: unknown
+): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+/**
+ * Encodes a DOTIFY path using the framed path format.
+ * @internal
+ */
+function encodeDotNotationPath(path: string[]): string {
+  return `${DOTIFY_FRAMED_PATH_PREFIX}${encodeURIComponent(
+    JSON.stringify(path)
+  )}`;
+}
+
+/**
+ * Encodes a DOTIFY value segment.
+ * @internal
+ */
+function encodeDotNotationValue(value: unknown): string {
+  return encodeURIComponent(JSON.stringify(value));
+}
+
+/**
+ * Creates a DOTIFY key/value pair for a path.
+ * @internal
+ */
+function createDotNotationPair(path: string[], value: unknown): string {
+  return `${encodeDotNotationPath(path)}=${encodeDotNotationValue(value)}`;
+}
+
+/**
+ * Returns the internal marker used to preserve empty DOTIFY object branches.
+ * @internal
+ */
+function createDotifyEmptyObjectMarker(): Record<string, true> {
+  return {
+    [DOTIFY_EMPTY_OBJECT_MARKER_KEY]: true,
+  };
+}
+
+/**
+ * Returns true when a DOTIFY value represents an empty object branch.
+ * @internal
+ */
+function isDotifyEmptyObjectMarker(
+  value: unknown
+): value is Record<string, true> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    Object.keys(value).length === 1 &&
+    (value as Record<string, unknown>)[DOTIFY_EMPTY_OBJECT_MARKER_KEY] === true
+  );
+}
+
+/**
+ * Defines an enumerable data property without triggering prototype setters.
+ * @internal
+ */
+function defineDataProperty(
+  target: Record<string, unknown>,
+  key: string,
+  value: unknown
+): void {
+  Object.defineProperty(target, key, {
+    configurable: true,
+    enumerable: true,
+    writable: true,
+    value,
+  });
 }
 
 /**
@@ -41,19 +126,24 @@ function toDotNotation(
   obj: Record<string, unknown>,
   path: string[] = []
 ): string {
+  const entries = Object.entries(obj);
+  if (entries.length === 0 && isPlainObject(obj)) {
+    if (path.length === 0) {
+      return DOTIFY_EMPTY_OBJECT_PAYLOAD;
+    }
+
+    return createDotNotationPair(path, createDotifyEmptyObjectMarker());
+  }
+
   const parts: string[] = [];
 
-  for (const [key, value] of Object.entries(obj)) {
+  for (const [key, value] of entries) {
     const nextPath = [...path, key];
 
-    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-      parts.push(toDotNotation(value as Record<string, unknown>, nextPath));
+    if (isPlainObject(value)) {
+      parts.push(toDotNotation(value, nextPath));
     } else {
-      const encodedPath = `${DOTIFY_FRAMED_PATH_PREFIX}${encodeURIComponent(
-        JSON.stringify(nextPath)
-      )}`;
-      const encodedValue = encodeURIComponent(JSON.stringify(value));
-      parts.push(`${encodedPath}=${encodedValue}`);
+      parts.push(createDotNotationPair(nextPath, value));
     }
   }
 
@@ -72,6 +162,7 @@ function fromDotNotation(str: string): Record<string, unknown> {
   const result: Record<string, unknown> = {};
 
   if (!str) return result;
+  if (str === DOTIFY_EMPTY_OBJECT_PAYLOAD) return result;
 
   const pairs = str.split('&');
 
@@ -110,7 +201,11 @@ function fromDotNotation(str: string): Record<string, unknown> {
     }
 
     const leafKey = keys[keys.length - 1];
-    current[leafKey] = value;
+    defineDataProperty(
+      current,
+      leafKey,
+      isDotifyEmptyObjectMarker(value) ? {} : value
+    );
   }
 
   return result;
@@ -332,8 +427,8 @@ function isBase64Encoded(
  * Creates a deep clone of props.
  *
  * @remarks
- * Functions are passed by reference, objects are deep cloned using
- * structuredClone, and primitives are copied directly.
+ * Functions are preserved by reference at any depth, objects and arrays are
+ * recursively cloned, and primitives are copied directly.
  *
  * @typeParam P - The props type
  * @param props - Props to clone
@@ -345,18 +440,107 @@ export function cloneProps<P extends Record<string, unknown>>(
   props: P
 ): P {
   const result = {} as P;
+  const seen = new WeakMap<object, unknown>();
+  seen.set(props, result);
 
   for (const [key, value] of Object.entries(props)) {
     if (!isSafeObjectKey(key)) continue;
 
-    if (typeof value === 'function') {
-      (result as Record<string, unknown>)[key] = value;
-    } else if (typeof value === 'object' && value !== null) {
-      (result as Record<string, unknown>)[key] = structuredClone(value);
-    } else {
-      (result as Record<string, unknown>)[key] = value;
-    }
+    defineDataProperty(
+      result as Record<string, unknown>,
+      key,
+      clonePropValue(value, seen)
+    );
   }
 
   return result;
+}
+
+/**
+ * Recursively clones a prop value while preserving function references.
+ * @internal
+ */
+function clonePropValue(
+  value: unknown,
+  seen: WeakMap<object, unknown>
+): unknown {
+  if (typeof value === 'function' || value === null || typeof value !== 'object') {
+    return value;
+  }
+
+  const cached = seen.get(value);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  if (Array.isArray(value)) {
+    const clonedArray: unknown[] = [];
+    seen.set(value, clonedArray);
+
+    for (const item of value) {
+      clonedArray.push(clonePropValue(item, seen));
+    }
+
+    return clonedArray;
+  }
+
+  if (value instanceof Date) {
+    const clonedDate = new Date(value.getTime());
+    seen.set(value, clonedDate);
+    return clonedDate;
+  }
+
+  if (value instanceof RegExp) {
+    const clonedRegExp = new RegExp(value.source, value.flags);
+    seen.set(value, clonedRegExp);
+    return clonedRegExp;
+  }
+
+  if (value instanceof Map) {
+    const clonedMap = new Map<unknown, unknown>();
+    seen.set(value, clonedMap);
+
+    for (const [entryKey, entryValue] of value.entries()) {
+      clonedMap.set(
+        clonePropValue(entryKey, seen),
+        clonePropValue(entryValue, seen)
+      );
+    }
+
+    return clonedMap;
+  }
+
+  if (value instanceof Set) {
+    const clonedSet = new Set<unknown>();
+    seen.set(value, clonedSet);
+
+    for (const item of value.values()) {
+      clonedSet.add(clonePropValue(item, seen));
+    }
+
+    return clonedSet;
+  }
+
+  if (value instanceof ArrayBuffer) {
+    const clonedBuffer = value.slice(0);
+    seen.set(value, clonedBuffer);
+    return clonedBuffer;
+  }
+
+  if (ArrayBuffer.isView(value)) {
+    const clonedView = structuredClone(value);
+    seen.set(value, clonedView);
+    return clonedView;
+  }
+
+  const clonedObject = Object.create(
+    Object.getPrototypeOf(value)
+  ) as Record<string, unknown>;
+  seen.set(value, clonedObject);
+
+  for (const [key, nestedValue] of Object.entries(value)) {
+    defineDataProperty(clonedObject, key, clonePropValue(nestedValue, seen));
+  }
+
+  return clonedObject;
 }
