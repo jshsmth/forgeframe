@@ -13,8 +13,19 @@ import {
 } from '@/core/host';
 import { CONTEXT, EVENT, MESSAGE_NAME, VERSION } from '@/constants';
 import { buildWindowName } from '@/window/name-payload';
-import type { HostComponentRef, WindowNamePayload } from '@/types';
+import type { ConsumerExports, HostComponentRef, WindowNamePayload } from '@/types';
 import * as namePayload from '@/window/name-payload';
+
+const VALID_EXPORTS: ConsumerExports = {
+  init: MESSAGE_NAME.INIT,
+  close: MESSAGE_NAME.CLOSE,
+  resize: MESSAGE_NAME.RESIZE,
+  show: MESSAGE_NAME.SHOW,
+  hide: MESSAGE_NAME.HIDE,
+  onError: MESSAGE_NAME.ERROR,
+  updateProps: MESSAGE_NAME.PROPS,
+  export: MESSAGE_NAME.EXPORT,
+};
 
 /**
  * Builds a host window payload with stable defaults for branch-path tests.
@@ -29,7 +40,7 @@ function createPayload(
     context: CONTEXT.IFRAME,
     consumerDomain: 'https://consumer.example.com',
     props: { amount: 10 },
-    exports: {},
+    exports: VALID_EXPORTS,
     ...overrides,
   };
 }
@@ -154,7 +165,7 @@ describe('Host branch coverage and edge paths', () => {
 
     expect(sendSpy).toHaveBeenCalledWith(
       window,
-      'https://consumer.example.com',
+      window.location.origin,
       MESSAGE_NAME.INIT,
       { uid: 'host-internal-uid', tag: 'host-internal-component' }
     );
@@ -202,7 +213,7 @@ describe('Host branch coverage and edge paths', () => {
     expect(siblings).toEqual([]);
     expect(sendSpy).toHaveBeenCalledWith(
       window,
-      'https://consumer.example.com',
+      window.location.origin,
       MESSAGE_NAME.GET_SIBLINGS,
       {
         uid: 'host-internal-uid',
@@ -291,7 +302,7 @@ describe('Host branch coverage and edge paths', () => {
 
     expect(host).toBeNull();
     expect(getHost()).toBeNull();
-    expect(messageAddCount).toBeGreaterThan(0);
+    expect(messageAddCount).toBe(0);
     expect(messageRemoveCount).toBe(messageAddCount);
   });
 

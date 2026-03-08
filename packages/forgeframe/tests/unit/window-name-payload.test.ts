@@ -13,8 +13,19 @@ import {
   updateWindowName,
   getInitialPayload,
 } from '@/window/name-payload';
-import { WINDOW_NAME_PREFIX, VERSION, CONTEXT } from '@/constants';
-import type { WindowNamePayload } from '@/types';
+import { WINDOW_NAME_PREFIX, VERSION, CONTEXT, MESSAGE_NAME } from '@/constants';
+import type { ConsumerExports, WindowNamePayload } from '@/types';
+
+const VALID_EXPORTS: ConsumerExports = {
+  init: MESSAGE_NAME.INIT,
+  close: MESSAGE_NAME.CLOSE,
+  resize: MESSAGE_NAME.RESIZE,
+  show: MESSAGE_NAME.SHOW,
+  hide: MESSAGE_NAME.HIDE,
+  onError: MESSAGE_NAME.ERROR,
+  updateProps: MESSAGE_NAME.PROPS,
+  export: MESSAGE_NAME.EXPORT,
+};
 
 describe('buildWindowName', () => {
   it('should create window name with prefix', () => {
@@ -25,7 +36,7 @@ describe('buildWindowName', () => {
       context: CONTEXT.IFRAME,
       consumerDomain: 'https://consumer.com',
       props: { test: 'value' },
-      exports: {},
+      exports: VALID_EXPORTS,
     };
 
     const name = buildWindowName(payload);
@@ -41,7 +52,7 @@ describe('buildWindowName', () => {
       context: CONTEXT.IFRAME,
       consumerDomain: 'https://consumer.com',
       props: {},
-      exports: {},
+      exports: VALID_EXPORTS,
     };
 
     const name = buildWindowName(payload);
@@ -59,7 +70,7 @@ describe('buildWindowName', () => {
       context: CONTEXT.IFRAME,
       consumerDomain: 'https://consumer.com',
       props: { oversized: 'x'.repeat(70 * 1024) },
-      exports: {},
+      exports: VALID_EXPORTS,
     };
 
     expect(() => buildWindowName(payload)).toThrow(
@@ -78,7 +89,7 @@ describe('buildWindowName', () => {
       context: CONTEXT.IFRAME,
       consumerDomain: 'https://consumer.com',
       props: circular,
-      exports: {},
+      exports: VALID_EXPORTS,
     };
 
     expect(() => buildWindowName(payload)).toThrow('Failed to encode payload');
@@ -94,7 +105,7 @@ describe('parseWindowName', () => {
       context: CONTEXT.POPUP,
       consumerDomain: 'https://consumer.com',
       props: { value: 42 },
-      exports: { close: true },
+      exports: VALID_EXPORTS,
     };
 
     const name = buildWindowName(payload);
@@ -118,6 +129,60 @@ describe('parseWindowName', () => {
     expect(parseWindowName(invalidJson)).toBeNull();
   });
 
+  it('should return null for payloads with an invalid structure', () => {
+    const malformedPayload = {
+      uid: 'test-uid',
+      tag: 'test-component',
+      version: VERSION,
+      context: 'modal',
+      consumerDomain: 'https://consumer.com',
+      props: {},
+      exports: VALID_EXPORTS,
+    };
+
+    const malformedName = `${WINDOW_NAME_PREFIX}${btoa(
+      encodeURIComponent(JSON.stringify(malformedPayload))
+    )}`;
+
+    expect(parseWindowName(malformedName)).toBeNull();
+  });
+
+  it('should return null for payloads with an unsupported version', () => {
+    const malformedPayload = {
+      uid: 'test-uid',
+      tag: 'test-component',
+      version: '999.0.0',
+      context: CONTEXT.IFRAME,
+      consumerDomain: 'https://consumer.com',
+      props: {},
+      exports: VALID_EXPORTS,
+    };
+
+    const malformedName = `${WINDOW_NAME_PREFIX}${btoa(
+      encodeURIComponent(JSON.stringify(malformedPayload))
+    )}`;
+
+    expect(parseWindowName(malformedName)).toBeNull();
+  });
+
+  it('should return null for payloads with invalid exports metadata', () => {
+    const malformedPayload = {
+      uid: 'test-uid',
+      tag: 'test-component',
+      version: VERSION,
+      context: CONTEXT.IFRAME,
+      consumerDomain: 'https://consumer.com',
+      props: {},
+      exports: { close: true },
+    };
+
+    const malformedName = `${WINDOW_NAME_PREFIX}${btoa(
+      encodeURIComponent(JSON.stringify(malformedPayload))
+    )}`;
+
+    expect(parseWindowName(malformedName)).toBeNull();
+  });
+
   it('should handle unicode characters', () => {
     const payload: WindowNamePayload<{ message: string }> = {
       uid: 'test-uid',
@@ -126,7 +191,7 @@ describe('parseWindowName', () => {
       context: CONTEXT.IFRAME,
       consumerDomain: 'https://consumer.com',
       props: { message: 'Hello World!' },
-      exports: {},
+      exports: VALID_EXPORTS,
     };
 
     const name = buildWindowName(payload);
@@ -145,7 +210,7 @@ describe('isForgeFrameWindow', () => {
       context: CONTEXT.IFRAME,
       consumerDomain: 'https://consumer.com',
       props: {},
-      exports: {},
+      exports: VALID_EXPORTS,
     };
 
     const win = {
@@ -185,7 +250,7 @@ describe('isHostOfComponent', () => {
       context: CONTEXT.IFRAME,
       consumerDomain: 'https://consumer.com',
       props: {},
-      exports: {},
+      exports: VALID_EXPORTS,
     };
 
     const win = {
@@ -203,7 +268,7 @@ describe('isHostOfComponent', () => {
       context: CONTEXT.IFRAME,
       consumerDomain: 'https://consumer.com',
       props: {},
-      exports: {},
+      exports: VALID_EXPORTS,
     };
 
     const win = {
@@ -227,7 +292,7 @@ describe('createWindowPayload', () => {
       context: CONTEXT.IFRAME,
       consumerDomain: 'https://consumer.com',
       props: { data: 'value' },
-      exports: { close: true },
+      exports: VALID_EXPORTS,
     });
 
     expect(payload.version).toBe(VERSION);
@@ -236,7 +301,7 @@ describe('createWindowPayload', () => {
     expect(payload.context).toBe(CONTEXT.IFRAME);
     expect(payload.consumerDomain).toBe('https://consumer.com');
     expect(payload.props.data).toBe('value');
-    expect(payload.exports.close).toBe(true);
+    expect(payload.exports.close).toBe(MESSAGE_NAME.CLOSE);
   });
 
   it('should include children when provided', () => {
@@ -246,7 +311,7 @@ describe('createWindowPayload', () => {
       context: CONTEXT.POPUP,
       consumerDomain: 'https://consumer.com',
       props: {},
-      exports: {},
+      exports: VALID_EXPORTS,
       children: {
         child1: { tag: 'child-component', url: 'https://example.com/child' },
       },
@@ -268,7 +333,7 @@ describe('updateWindowName', () => {
       context: CONTEXT.IFRAME,
       consumerDomain: 'https://consumer.com',
       props: {},
-      exports: {},
+      exports: VALID_EXPORTS,
     };
 
     updateWindowName(win, payload);
@@ -291,7 +356,7 @@ describe('updateWindowName', () => {
       context: CONTEXT.IFRAME,
       consumerDomain: 'https://consumer.com',
       props: {},
-      exports: {},
+      exports: VALID_EXPORTS,
     };
 
     expect(() => updateWindowName(win, payload)).not.toThrow();
@@ -307,7 +372,7 @@ describe('getInitialPayload', () => {
       context: CONTEXT.IFRAME,
       consumerDomain: 'https://consumer.com',
       props: { value: 123 },
-      exports: {},
+      exports: VALID_EXPORTS,
     };
 
     const win = {

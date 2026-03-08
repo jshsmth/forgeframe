@@ -4,11 +4,21 @@
  * Covers module import safety when ForgeFrame-shaped window payloads are present in top-level window contexts.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CONTEXT, VERSION } from '@/constants';
+import { CONTEXT, MESSAGE_NAME, VERSION } from '@/constants';
 import { buildWindowName } from '@/window/name-payload';
-import type { WindowNamePayload } from '@/types';
+import type { ConsumerExports, WindowNamePayload } from '@/types';
 
 const originalWindowName = window.name;
+const VALID_EXPORTS: ConsumerExports = {
+  init: MESSAGE_NAME.INIT,
+  close: MESSAGE_NAME.CLOSE,
+  resize: MESSAGE_NAME.RESIZE,
+  show: MESSAGE_NAME.SHOW,
+  hide: MESSAGE_NAME.HIDE,
+  onError: MESSAGE_NAME.ERROR,
+  updateProps: MESSAGE_NAME.PROPS,
+  export: MESSAGE_NAME.EXPORT,
+};
 
 afterEach(async () => {
   const { clearHostInstance } = await import('@/core/host');
@@ -28,7 +38,7 @@ describe('Index auto-init', () => {
       context: CONTEXT.IFRAME,
       consumerDomain: 'https://consumer.example.com',
       props: {},
-      exports: {},
+      exports: VALID_EXPORTS,
     };
 
     window.name = buildWindowName(payload);

@@ -6,8 +6,20 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HostComponent, clearHostInstance } from '@/core/host';
 import { CONTEXT, EVENT, MESSAGE_NAME, VERSION } from '@/constants';
-import type { WindowNamePayload } from '@/types';
+import { prop } from '@/props/prop';
+import type { ConsumerExports, WindowNamePayload } from '@/types';
 import * as helpers from '@/window/helpers';
+
+const VALID_EXPORTS: ConsumerExports = {
+  init: MESSAGE_NAME.INIT,
+  close: MESSAGE_NAME.CLOSE,
+  resize: MESSAGE_NAME.RESIZE,
+  show: MESSAGE_NAME.SHOW,
+  hide: MESSAGE_NAME.HIDE,
+  onError: MESSAGE_NAME.ERROR,
+  updateProps: MESSAGE_NAME.PROPS,
+  export: MESSAGE_NAME.EXPORT,
+};
 
 /**
  * Builds a host window payload with default props and domain metadata.
@@ -22,7 +34,7 @@ function createPayload(
     context: CONTEXT.IFRAME,
     consumerDomain: 'https://consumer.example.com',
     props: { amount: 10 },
-    exports: {},
+    exports: VALID_EXPORTS,
     ...overrides,
   };
 }
@@ -214,6 +226,39 @@ describe('Host lifecycle behavior', () => {
     expect(() => propsHandler!(circular)).toThrow('Circular reference detected in serialized props');
     expect(emitSpy).toHaveBeenCalledWith(EVENT.ERROR, expect.any(Error));
     expect(consoleSpy).toHaveBeenCalledWith('Error deserializing props:', expect.any(Error));
+  });
+
+  it('should reject invalid PROPS updates before mutating hostProps', () => {
+    vi
+      .spyOn(
+        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
+        'resolveConsumerWindow'
+      )
+      .mockReturnValue(window);
+
+    const typedHost = new HostComponent(
+      createPayload({ props: { amount: 10 } }),
+      {
+        amount: { schema: prop.number() },
+      },
+      undefined,
+      true
+    );
+    const propsHandler = (
+      (typedHost as unknown as {
+        messenger: { handlers: Map<string, (data: unknown) => unknown> };
+      }).messenger.handlers
+    ).get(MESSAGE_NAME.PROPS);
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect(propsHandler).toBeDefined();
+    expect(() => propsHandler!({ amount: 'bad-update' })).toThrow(
+      'Validation failed: amount: Expected number, got string'
+    );
+    expect(typedHost.hostProps.amount).toBe(10);
+    expect(typedHost.hostProps.consumer.props).toEqual({ amount: 10 });
+    expect(consoleSpy).toHaveBeenCalledWith('Error deserializing props:', expect.any(Error));
+    typedHost.destroy();
   });
 
   it('should resolve consumer window from iframe consumer when available', () => {

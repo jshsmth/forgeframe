@@ -37,9 +37,11 @@ import {
   getInitialPayload,
 } from '../window/name-payload';
 import { deserializeProps } from '../props/serialize';
+import { validateProps } from '../props';
 import { create } from './component';
 
 const CONSUMER_WINDOW_RESOLUTION_ERROR = 'Could not resolve consumer window';
+const CONSUMER_ORIGIN_VERIFICATION_ERROR = 'Could not verify consumer origin';
 const HOST_PROPS_BUILTIN_KEYS = new Set([
   'uid',
   'tag',
@@ -99,6 +101,9 @@ export class HostComponent<P extends Record<string, unknown>> {
   private consumerDomain: string;
 
   /** @internal */
+  private consumerDomainVerified = false;
+
+  /** @internal */
   private messenger: Messenger;
 
   /** @internal */
@@ -138,21 +143,22 @@ export class HostComponent<P extends Record<string, unknown>> {
   ) {
     this.uid = payload.uid;
     this.tag = payload.tag;
-    this.consumerDomain = payload.consumerDomain;
-    this.validateConsumerDomain();
     this.event = new EventEmitter();
 
-    // Create messenger with consumer domain as trusted origin for security
-    this.messenger = new Messenger(this.uid, window, getDomain(), this.consumerDomain);
     let bridge: FunctionBridge | null = null;
+    let messenger: Messenger | null = null;
 
     try {
-      // IMPORTANT: Set up message handlers immediately after creating messenger
-      // to prevent race conditions where consumer messages arrive before handlers exist
+      this.consumerWindow = this.resolveConsumerWindow();
+      this.consumerDomain = this.resolveConsumerDomain(payload.consumerDomain);
+
+      // Create messenger with the verified consumer origin as trusted origin.
+      messenger = new Messenger(this.uid, window, getDomain(), this.consumerDomain);
+      this.messenger = messenger;
+
+      // Set up message handlers before exposing host props.
       this.setupMessageHandlers();
 
-      // Now safe to resolve consumer and build hostProps
-      this.consumerWindow = this.resolveConsumerWindow();
       bridge = new FunctionBridge(this.messenger);
       this.bridge = bridge;
       this.hostProps = this.buildHostProps(payload);
@@ -163,7 +169,7 @@ export class HostComponent<P extends Record<string, unknown>> {
       }
     } catch (error) {
       bridge?.destroy();
-      this.messenger.destroy();
+      messenger?.destroy();
       this.event.removeAllListeners();
       this.propsHandlers.clear();
       throw error;
@@ -239,10 +245,142 @@ export class HostComponent<P extends Record<string, unknown>> {
       return;
     }
 
+    if (!this.consumerDomain) {
+      throw new Error(
+        `${CONSUMER_ORIGIN_VERIFICATION_ERROR} for component "${this.tag}"`
+      );
+    }
+
     if (!matchDomain(this.allowedConsumerDomains, this.consumerDomain)) {
       throw new Error(
         `Consumer domain "${this.consumerDomain}" is not allowed for component "${this.tag}"`
       );
+    }
+  }
+
+  /**
+   * Reads a browser-verifiable consumer origin when available.
+   * @internal
+   */
+  private getVerifiedConsumerOrigin(): string | null {
+    return this.getReferrerOrigin() ?? this.getAccessibleConsumerOrigin();
+  }
+
+  /**
+   * Updates the tracked consumer origin and keeps trusted messaging origins in sync.
+   * @internal
+   */
+  private setConsumerDomain(domain: string, verified: boolean): void {
+    const previousDomain = this.consumerDomain;
+
+    this.consumerDomain = domain;
+    this.consumerDomainVerified = verified;
+
+    if (!this.messenger || !previousDomain || previousDomain === domain) {
+      return;
+    }
+
+    this.messenger.removeTrustedDomain(previousDomain);
+    this.messenger.addTrustedDomain(domain);
+  }
+
+  /**
+   * Applies host configuration that may arrive after deferred pre-initialization.
+   * @internal
+   */
+  applyHostConfiguration(
+    propDefinitions?: PropsDefinition<P>,
+    allowedConsumerDomains?: DomainMatcher
+  ): void {
+    if (allowedConsumerDomains !== undefined) {
+      this.allowedConsumerDomains = allowedConsumerDomains;
+    }
+
+    if (propDefinitions === undefined) {
+      return;
+    }
+
+    this.propDefinitions = propDefinitions;
+    validateProps(this.consumerProps, this.propDefinitions);
+    Object.assign(this.hostProps, this.consumerProps);
+    this.hostProps.consumer.props = this.consumerProps;
+  }
+
+  /**
+   * Resolves the consumer origin from browser-provided context and falls back to the
+   * claimed bootstrap origin only when no explicit allowlist is configured.
+   * @internal
+   */
+  private resolveConsumerDomain(claimedConsumerDomain: string): string {
+    const verifiedConsumerDomain = this.getVerifiedConsumerOrigin();
+
+    if (verifiedConsumerDomain) {
+      this.consumerDomainVerified = true;
+      this.consumerDomain = verifiedConsumerDomain;
+      this.validateConsumerDomain();
+      return verifiedConsumerDomain;
+    }
+
+    this.consumerDomainVerified = false;
+
+    if (this.allowedConsumerDomains) {
+      throw new Error(
+        `${CONSUMER_ORIGIN_VERIFICATION_ERROR} for component "${this.tag}"`
+      );
+    }
+
+    return claimedConsumerDomain;
+  }
+
+  /**
+   * Rechecks allowlist constraints against a browser-verified consumer origin.
+   * @internal
+   */
+  assertAllowedConsumerDomain(allowedConsumerDomains: DomainMatcher): void {
+    const verifiedConsumerDomain = this.getVerifiedConsumerOrigin();
+
+    if (verifiedConsumerDomain) {
+      this.setConsumerDomain(verifiedConsumerDomain, true);
+    }
+
+    if (!this.consumerDomainVerified) {
+      throw new Error(
+        `${CONSUMER_ORIGIN_VERIFICATION_ERROR} for component "${this.tag}"`
+      );
+    }
+
+    if (!matchDomain(allowedConsumerDomains, this.consumerDomain)) {
+      throw new Error(
+        `Consumer domain "${this.consumerDomain}" is not allowed for component "${this.tag}"`
+      );
+    }
+  }
+
+  /**
+   * Reads the consumer origin from the browser-provided referrer when available.
+   * @internal
+   */
+  private getReferrerOrigin(): string | null {
+    if (!document.referrer) {
+      return null;
+    }
+
+    try {
+      return new URL(document.referrer, window.location.href).origin;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Reads the consumer origin directly when same-origin access is available.
+   * @internal
+   */
+  private getAccessibleConsumerOrigin(): string | null {
+    try {
+      return this.consumerWindow.location.origin;
+    } catch {
+      return null;
     }
   }
 
@@ -287,6 +425,7 @@ export class HostComponent<P extends Record<string, unknown>> {
       this.consumerDomain
     );
 
+    validateProps(deserializedProps, this.propDefinitions);
     this.consumerProps = deserializedProps;
 
     return {
@@ -528,6 +667,8 @@ export class HostComponent<P extends Record<string, unknown>> {
           this.consumerDomain
         );
 
+        validateProps(newProps, this.propDefinitions);
+
         this.removeStaleHostProps(previousProps, newProps);
         this.consumerProps = newProps;
         Object.assign(this.hostProps, newProps);
@@ -622,14 +763,18 @@ export function initHost<P extends Record<string, unknown>>(
   options: { deferInit?: boolean } = {}
 ): HostComponent<P> | null {
   if (hostInstance) {
-    if (allowedConsumerDomains) {
-      const consumerDomain = hostInstance.getProps().getConsumerDomain();
-      if (!matchDomain(allowedConsumerDomains, consumerDomain)) {
-        clearHostInstance();
-        throw new Error(
-          `Consumer domain "${consumerDomain}" is not allowed for this host component`
-        );
+    try {
+      hostInstance.applyHostConfiguration(
+        propDefinitions as PropsDefinition<Record<string, unknown>> | undefined,
+        allowedConsumerDomains
+      );
+
+      if (allowedConsumerDomains) {
+        hostInstance.assertAllowedConsumerDomain(allowedConsumerDomains);
       }
+    } catch (error) {
+      clearHostInstance();
+      throw error;
     }
 
     if (!options.deferInit) {
