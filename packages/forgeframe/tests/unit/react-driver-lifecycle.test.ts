@@ -43,6 +43,17 @@ function createReactHarness() {
   return { React, refs, effects, setState };
 }
 
+function createDeferredPromise<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return { promise, resolve, reject };
+}
+
 /**
  * Creates a mock ForgeFrame component factory and instance with event emitter stubs.
  */
@@ -239,6 +250,44 @@ describe('createReactComponent lifecycle integration', () => {
     expect(second.instance.updateProps).not.toHaveBeenCalled();
 
     (secondCleanup as (() => void) | undefined)?.();
+  });
+
+  it('should ignore stale render rejections after context remounts', async () => {
+    const { React, refs, effects, setState } = createReactHarness();
+    const first = createForgeFrameComponentMock();
+    const second = createForgeFrameComponentMock();
+    const onError = vi.fn();
+    const staleRenderError = new Error('stale render failed');
+    const deferredRender = createDeferredPromise<void>();
+    first.instance.render.mockReturnValueOnce(deferredRender.promise);
+
+    const component = vi
+      .fn()
+      .mockReturnValueOnce(first.instance)
+      .mockReturnValueOnce(second.instance);
+    Object.defineProperty(component, 'name', { value: 'LifecycleComponent' });
+    const container = document.createElement('div');
+
+    const ReactComponent = createReactComponent(component as never, { React: React as never });
+
+    ReactComponent({ amount: 1, context: 'popup', onError });
+    refs[0].current = container;
+    effects[0]?.();
+    const firstCleanup = effects[1]?.();
+
+    ReactComponent({ amount: 1, context: 'iframe', onError });
+    refs[0].current = container;
+    effects[0]?.();
+    (firstCleanup as (() => void) | undefined)?.();
+    effects[1]?.();
+
+    deferredRender.reject(staleRenderError);
+    await Promise.resolve();
+
+    expect(first.instance.render).toHaveBeenCalledWith(container, 'popup');
+    expect(second.instance.render).toHaveBeenCalledWith(container, 'iframe');
+    expect(setState).not.toHaveBeenCalledWith(staleRenderError);
+    expect(onError).not.toHaveBeenCalledWith(staleRenderError);
   });
 
   it('should invoke onClose during cleanup before unsubscribing the close listener', async () => {

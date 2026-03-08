@@ -279,6 +279,10 @@ export function createReactComponent<P extends Record<string, unknown>, X = unkn
         });
 
         instance.render(container, context).catch((err: Error) => {
+          if (instanceRef.current !== instance) {
+            return;
+          }
+
           setError(err);
           onErrorRef.current?.(err);
         });
