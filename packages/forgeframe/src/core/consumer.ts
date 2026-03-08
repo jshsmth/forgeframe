@@ -29,12 +29,14 @@ import {
   validateProps,
   propsToQueryParams,
   propsToBodyParams,
+  isStandardSchema,
 } from '../props';
 import {
   getComponentInstancesByTag,
   getComponentOptions,
   getIndexedComponentInstances,
 } from './component';
+import { isSameDomain } from '../window/helpers';
 import {
   ConsumerPropsPipeline,
   type ConsumerPropsUpdateHooks,
@@ -822,6 +824,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    */
   private setupMessageHandlers(): void {
     this.transport.setupMessageHandlers({
+      onInit: () => this.syncSameDomainPropsAfterInit(),
       onClose: async () => this.close(),
       onResize: async (dimensions) => this.resize(dimensions),
       onFocus: async () => this.focus(),
@@ -835,6 +838,44 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
         this.consumerExports = data;
       },
       onGetSiblings: (request) => this.getSiblingInstances(request),
+    });
+  }
+
+  /**
+   * Synchronizes sameDomain props after the host proves its loaded origin via INIT.
+   * @internal
+   */
+  private async syncSameDomainPropsAfterInit(): Promise<void> {
+    if (!this.hostWindow || !this.transport.isHostConnected()) {
+      return;
+    }
+
+    if (!isSameDomain(this.hostWindow)) {
+      return;
+    }
+
+    if (!this.hasSameDomainPropDefinition()) {
+      return;
+    }
+
+    try {
+      await this.sendPropsUpdateToHost(this.props);
+    } catch (error) {
+      this.handleError(error as Error);
+    }
+  }
+
+  /**
+   * Returns true when any prop definition is restricted to same-origin hosts.
+   * @internal
+   */
+  private hasSameDomainPropDefinition(): boolean {
+    return Object.values(this.options.props).some((definition) => {
+      if (!definition || isStandardSchema(definition)) {
+        return false;
+      }
+
+      return definition.sameDomain === true;
     });
   }
 

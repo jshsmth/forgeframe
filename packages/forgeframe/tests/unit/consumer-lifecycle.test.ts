@@ -108,6 +108,79 @@ describe('Consumer lifecycle behavior', () => {
     await expect(waitForHost.call(consumer)).resolves.toBeUndefined();
   });
 
+  it('should send sameDomain props after INIT when the loaded host is same-origin', async () => {
+    const consumer = createConsumer(
+      {
+        url: '/widget',
+        props: {
+          secret: { schema: prop.string(), sameDomain: true },
+        },
+      },
+      { secret: 'same-origin-only' }
+    );
+    const handlers = getHandlers(consumer);
+    const initHandler = handlers.get(MESSAGE_NAME.INIT);
+
+    const internal = consumer as unknown as {
+      hostWindow: Window | null;
+      messenger: { send: (...args: unknown[]) => Promise<unknown> };
+    };
+    internal.hostWindow = {
+      closed: false,
+      postMessage: vi.fn(),
+      location: { origin: window.location.origin },
+    } as unknown as Window;
+
+    const sendSpy = vi.spyOn(internal.messenger, 'send').mockResolvedValue(undefined);
+
+    expect(initHandler).toBeDefined();
+    expect(initHandler!({})).toEqual({ success: true });
+    await Promise.resolve();
+
+    expect(sendSpy).toHaveBeenCalledWith(
+      internal.hostWindow,
+      window.location.origin,
+      MESSAGE_NAME.PROPS,
+      expect.objectContaining({ secret: 'same-origin-only' })
+    );
+  });
+
+  it('should not send sameDomain props after INIT when the loaded host is cross-origin', async () => {
+    const consumer = createConsumer(
+      {
+        props: {
+          secret: { schema: prop.string(), sameDomain: true },
+        },
+      },
+      { secret: 'cross-origin-blocked' }
+    );
+    const handlers = getHandlers(consumer);
+    const initHandler = handlers.get(MESSAGE_NAME.INIT);
+
+    const internal = consumer as unknown as {
+      hostWindow: Window | null;
+      messenger: { send: (...args: unknown[]) => Promise<unknown> };
+    };
+    internal.hostWindow = {
+      closed: false,
+      postMessage: vi.fn(),
+      location: { origin: 'https://host.example.com' },
+    } as unknown as Window;
+
+    const sendSpy = vi.spyOn(internal.messenger, 'send').mockResolvedValue(undefined);
+
+    expect(initHandler).toBeDefined();
+    expect(initHandler!({})).toEqual({ success: true });
+    await Promise.resolve();
+
+    expect(sendSpy).not.toHaveBeenCalledWith(
+      internal.hostWindow,
+      expect.anything(),
+      MESSAGE_NAME.PROPS,
+      expect.anything()
+    );
+  });
+
   it('should route host control messages to instance methods', async () => {
     const consumer = createConsumer();
     const handlers = getHandlers(consumer);

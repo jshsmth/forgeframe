@@ -91,8 +91,7 @@ describe('Props serialization behavior', () => {
     const encoded = serialized.config as { __type__: string; __value__: string };
 
     expect(encoded.__type__).toBe('dotify');
-    expect(encoded.__value__).toContain('=');
-    expect(encoded.__value__).not.toContain('user.id=');
+    expect(encoded.__value__).toContain('user.id=');
 
     const deserialized = deserializeProps(
       serialized,

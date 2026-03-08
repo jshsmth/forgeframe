@@ -172,7 +172,7 @@ describe('Host lifecycle behavior', () => {
     expect(focusSpy).toHaveBeenCalled();
   });
 
-  it('should preserve sameDomain props in same-origin bootstrap payloads', () => {
+  it('should omit sameDomain props from bootstrap payloads even for same-origin hosts', () => {
     const definitions = {
       label: { schema: prop.string() },
       secret: { schema: prop.string(), sameDomain: true },
@@ -205,31 +205,10 @@ describe('Host lifecycle behavior', () => {
 
     expect(host).not.toBeNull();
     expect(host!.hostProps.label).toBe('visible');
-    expect(host!.hostProps.secret).toBe('same-origin-only');
+    expect(host!.hostProps.secret).toBeUndefined();
   });
 
-  it('should omit sameDomain props in cross-origin bootstrap payloads', () => {
-    const definitions = {
-      label: { schema: prop.string() },
-      secret: { schema: prop.string(), sameDomain: true },
-    };
-    const consumer = createConsumer(
-      {
-        url: 'https://host.example.com/widget',
-        props: definitions,
-      },
-      {
-        label: 'visible',
-        secret: 'cross-origin-only',
-      }
-    );
-
-    window.name = (
-      consumer as unknown as {
-        buildWindowName: () => string;
-      }
-    ).buildWindowName();
-
+  it('should allow required sameDomain props to arrive after bootstrap on same-origin hosts', () => {
     vi
       .spyOn(
         HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
@@ -237,11 +216,58 @@ describe('Host lifecycle behavior', () => {
       )
       .mockReturnValue(window);
 
-    const host = initHost(definitions, undefined, { deferInit: true });
+    const host = new HostComponent(
+      createPayload({
+        consumerDomain: window.location.origin,
+        props: { label: 'visible' },
+      }),
+      {
+        label: { schema: prop.string() },
+        secret: { schema: prop.string(), sameDomain: true, required: true },
+      },
+      undefined,
+      true
+    );
+    const propsHandler = (
+      (host as unknown as { messenger: { handlers: Map<string, (data: unknown) => unknown> } })
+        .messenger.handlers
+    ).get(MESSAGE_NAME.PROPS);
 
-    expect(host).not.toBeNull();
-    expect(host!.hostProps.label).toBe('visible');
-    expect(host!.hostProps.secret).toBeUndefined();
+    expect(propsHandler).toBeDefined();
+    expect(host.hostProps.secret).toBeUndefined();
+    expect(propsHandler!({ label: 'visible', secret: 'same-origin-only' })).toEqual({
+      success: true,
+    });
+    expect(host.hostProps.secret).toBe('same-origin-only');
+  });
+
+  it('should still reject missing required sameDomain props for cross-origin hosts', () => {
+    const crossOriginConsumerWindow = {
+      postMessage: vi.fn(),
+      location: { origin: 'https://consumer.example.com' },
+    } as unknown as Window;
+
+    vi
+      .spyOn(
+        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
+        'resolveConsumerWindow'
+      )
+      .mockReturnValue(crossOriginConsumerWindow);
+
+    expect(
+      () =>
+        new HostComponent(
+          createPayload({
+            consumerDomain: 'https://consumer.example.com',
+            props: {},
+          }),
+          {
+            secret: { schema: prop.string(), sameDomain: true, required: true },
+          },
+          undefined,
+          true
+        )
+    ).toThrow('Prop "secret" is required but was not provided');
   });
 
   it('should apply PROPS updates to hostProps and notify subscribers', () => {

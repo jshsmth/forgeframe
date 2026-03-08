@@ -31,8 +31,9 @@ function isSafeObjectKey(key: string): boolean {
  * Converts a nested object to the DOTIFY wire format string.
  *
  * @remarks
- * Path segments are JSON-framed and URI-escaped so literal `.`, `&`, `=`,
- * and other reserved characters are preserved in keys.
+ * Legacy dot-delimited paths are preserved for ordinary keys. Keys that contain
+ * reserved path separators such as `.`, `&`, or `=` are JSON-framed and
+ * URI-escaped so they round-trip safely.
  *
  * @internal
  */
@@ -48,13 +49,23 @@ function toDotNotation(
     if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
       parts.push(toDotNotation(value as Record<string, unknown>, nextPath));
     } else {
-      const encodedPath = encodeURIComponent(JSON.stringify(nextPath));
+      const encodedPath = isLegacyDotNotationPathSafe(nextPath)
+        ? nextPath.join('.')
+        : encodeURIComponent(JSON.stringify(nextPath));
       const encodedValue = encodeURIComponent(JSON.stringify(value));
       parts.push(`${encodedPath}=${encodedValue}`);
     }
   }
 
   return parts.filter(Boolean).join('&');
+}
+
+/**
+ * Returns true when a path can be encoded using the legacy dot-delimited format.
+ * @internal
+ */
+function isLegacyDotNotationPathSafe(path: string[]): boolean {
+  return path.every((segment) => !/[.&=]/.test(segment));
 }
 
 /**

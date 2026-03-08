@@ -34,6 +34,7 @@ interface PeerRequest {
  * @internal
  */
 export interface ConsumerTransportHandlers<X> {
+  onInit?: () => void | Promise<void>;
   onClose: () => Promise<void>;
   onResize: (dimensions: Dimensions) => Promise<void>;
   onFocus: () => Promise<void>;
@@ -238,12 +239,11 @@ export class ConsumerTransport<
     exports: ConsumerExports;
   }): string {
     const hostDomain = options.hostDomain ?? this.getHostDomain();
-    const isBootstrapSameDomain = this.isBootstrapSameDomain(hostDomain);
     const propsForHost = getPropsForHost(
       options.props,
       options.propDefinitions,
       hostDomain,
-      isBootstrapSameDomain
+      false
     );
 
     const serializedProps = this.serializePropsForHost(
@@ -262,23 +262,6 @@ export class ConsumerTransport<
     });
 
     return buildWindowName(payload);
-  }
-
-  /**
-   * Returns true when the bootstrap target resolves to the current origin.
-   */
-  private isBootstrapSameDomain(hostDomain: string): boolean {
-    const consumerDomain = getDomain();
-    if (!consumerDomain) {
-      return false;
-    }
-
-    if (hostDomain === '/') {
-      return true;
-    }
-
-    const normalizedHostDomain = this.resolveUrlOrigin(hostDomain) ?? hostDomain;
-    return normalizedHostDomain === consumerDomain;
   }
 
   /**
@@ -318,6 +301,15 @@ export class ConsumerTransport<
       if (this.initPromise) {
         this.initPromise.resolve();
       }
+
+      if (handlers.onInit) {
+        queueMicrotask(() => {
+          void Promise.resolve(handlers.onInit?.()).catch((error) => {
+            handlers.onError(error as Error);
+          });
+        });
+      }
+
       return { success: true };
     });
 
