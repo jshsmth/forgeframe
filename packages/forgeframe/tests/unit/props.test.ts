@@ -544,6 +544,20 @@ describe('Clone Props', () => {
     expect((cloned.items as unknown as { label?: string }).label).toBe('kept');
   });
 
+  it('should preserve shared backing buffers between ArrayBuffer views', () => {
+    const buf = new ArrayBuffer(4);
+    const view = new Uint8Array(buf);
+    view[0] = 7;
+    const original = { buf, view };
+
+    const cloned = cloneProps(original);
+
+    expect(cloned.buf).not.toBe(buf);
+    expect(cloned.view).not.toBe(view);
+    expect(cloned.view.buffer).toBe(cloned.buf);
+    expect(cloned.view[0]).toBe(7);
+  });
+
   it('should preserve repeated references and cycles without throwing', () => {
     const shared = { value: 1 };
     const original = {
@@ -634,6 +648,34 @@ describe('Clone Props', () => {
     expect(Object.getPrototypeOf(cloned.secret)).toBe(Object.prototype);
     expect(cloned.secret.label).toBe('box');
     expect('getValue' in cloned.secret).toBe(false);
+  });
+
+  it('should materialize own accessors when downgrading custom class instances', () => {
+    class SecretWithAccessor {
+      #value: number;
+
+      constructor(value: number) {
+        this.#value = value;
+        Object.defineProperty(this, 'value', {
+          configurable: true,
+          enumerable: true,
+          get: () => this.#value,
+        });
+      }
+    }
+
+    const original = {
+      secret: new SecretWithAccessor(9),
+    };
+
+    const cloned = cloneProps(original) as {
+      secret: { value: number };
+    };
+    const descriptor = Object.getOwnPropertyDescriptor(cloned.secret, 'value');
+
+    expect(cloned.secret.value).toBe(9);
+    expect(descriptor?.get).toBeUndefined();
+    expect(descriptor?.value).toBe(9);
   });
 
   it('should preserve Error instances including non-enumerable message state', () => {

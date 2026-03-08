@@ -521,9 +521,7 @@ function clonePropValue(
   }
 
   if (ArrayBuffer.isView(value)) {
-    const clonedView = structuredClone(value);
-    seen.set(value, clonedView);
-    return clonedView;
+    return cloneArrayBufferViewValue(value, seen);
   }
 
   if (value instanceof URL) {
@@ -576,6 +574,47 @@ function clonePropValue(
  */
 interface BoxedPrimitiveObject {
   valueOf(): bigint | boolean | number | string | symbol;
+}
+
+/**
+ * Clones an ArrayBuffer view while preserving shared backing buffers.
+ * @internal
+ */
+function cloneArrayBufferViewValue(
+  value: ArrayBufferView,
+  seen: WeakMap<object, unknown>
+): ArrayBufferView {
+  const clonedBuffer = clonePropValue(
+    value.buffer,
+    seen
+  ) as ArrayBufferLike;
+
+  let clonedView: ArrayBufferView;
+  if (value instanceof DataView) {
+    clonedView = new DataView(
+      clonedBuffer,
+      value.byteOffset,
+      value.byteLength
+    );
+  } else {
+    const TypedArrayConstructor = value.constructor as new (
+      buffer: ArrayBufferLike,
+      byteOffset?: number,
+      length?: number
+    ) => ArrayBufferView;
+    const elementLength =
+      'length' in value ? (value as { length: number }).length : undefined;
+    clonedView = new TypedArrayConstructor(
+      clonedBuffer,
+      value.byteOffset,
+      elementLength
+    );
+  }
+
+  seen.set(value, clonedView);
+  cloneOwnProperties(value, clonedView, seen);
+
+  return clonedView;
 }
 
 /**
@@ -739,8 +778,16 @@ function cloneOwnProperties(
 
     if ('value' in descriptor) {
       descriptor.value = clonePropValue(descriptor.value, seen);
+      Object.defineProperty(target, key, descriptor);
+      continue;
     }
 
-    Object.defineProperty(target, key, descriptor);
+    const materializedValue = clonePropValue(Reflect.get(source, key), seen);
+    Object.defineProperty(target, key, {
+      configurable: descriptor.configurable,
+      enumerable: descriptor.enumerable,
+      writable: true,
+      value: materializedValue,
+    });
   }
 }
