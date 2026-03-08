@@ -1,5 +1,5 @@
 /**
- * Unit tests for render template helpers in `@/render/templates`.
+ * Unit tests for render template helpers in `#internal/render/templates`.
  *
  * Covers DOM template creation, dimension/style application, spinner style injection, and fade/swap transition helpers.
  */
@@ -12,8 +12,8 @@ import {
   fadeIn,
   fadeOut,
   swapPrerenderContent,
-} from '@/render/templates';
-import type { TemplateContext, Dimensions } from '@/types';
+} from '#internal/render/templates';
+import type { TemplateContext, Dimensions } from '#internal/types';
 
 describe('render template helpers', () => {
   beforeEach(() => {

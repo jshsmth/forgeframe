@@ -6,10 +6,10 @@
  * jsdom window.
  */
 import { JSDOM } from 'jsdom';
-import { destroyAll, clearComponents } from '@/core/component';
-import { clearHostInstance } from '@/core/host';
-import { initHost } from '@/index';
-import type { HostProps, PropsDefinition } from '@/types';
+import { destroyAll, clearComponents } from '#internal/core/component';
+import { clearHostInstance } from '#internal/core/host';
+import { initHost } from '#internal/index';
+import type { HostProps, PropsDefinition } from '#internal/types';
 
 const DEFAULT_HOST_URL = 'https://host.example.com/widget';
 const GLOBAL_BINDINGS = ['window', 'document', 'self'] as const;

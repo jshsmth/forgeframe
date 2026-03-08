@@ -5,8 +5,8 @@
  * bridge, including async results and thrown errors.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { create, prop } from '@/index';
-import type { PropsDefinition } from '@/types';
+import { create, prop } from '#internal/index';
+import type { PropsDefinition } from '#internal/types';
 import { createIframeIntegrationHarness, type IframeIntegrationHarness } from './helpers';
 
 interface CallbackPayload {

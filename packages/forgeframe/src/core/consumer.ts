@@ -17,33 +17,33 @@ import type {
   SiblingInfo,
   GetPeerInstancesOptions,
   HostComponentRef,
-} from '@/types';
-import type { ContextType } from '@/constants';
-import { CONTEXT, EVENT, MESSAGE_NAME } from '@/constants';
-import { EventEmitter } from '@/events/emitter';
-import { generateUID } from '@/utils/uid';
-import { CleanupManager } from '@/utils/cleanup';
-import { createDeferred } from '@/utils/promise';
-import { registerWindow, unregisterWindow } from '@/window/proxy';
+} from '#internal/types';
+import type { ContextType } from '#internal/constants';
+import { CONTEXT, EVENT, MESSAGE_NAME } from '#internal/constants';
+import { EventEmitter } from '#internal/events/emitter';
+import { generateUID } from '#internal/utils/uid';
+import { CleanupManager } from '#internal/utils/cleanup';
+import { createDeferred } from '#internal/utils/promise';
+import { registerWindow, unregisterWindow } from '#internal/window/proxy';
 import {
   validateProps,
   propsToQueryParams,
   propsToBodyParams,
   isStandardSchema,
-} from '@/props';
+} from '#internal/props/index';
 import {
   getComponentInstancesByTag,
   getComponentOptions,
   getIndexedComponentInstances,
-} from '@/core/component';
-import { isSameDomain } from '@/window/helpers';
+} from '#internal/core/component';
+import { isSameDomain } from '#internal/window/helpers';
 import {
   ConsumerPropsPipeline,
   type ConsumerPropsUpdateHooks,
-} from '@/core/consumer/props-pipeline';
-import { ConsumerRenderer } from '@/core/consumer/renderer';
-import { ConsumerTransport } from '@/core/consumer/transport';
-import type { NormalizedOptions } from '@/core/consumer/types';
+} from '#internal/core/consumer/props-pipeline';
+import { ConsumerRenderer } from '#internal/core/consumer/renderer';
+import { ConsumerTransport } from '#internal/core/consumer/transport';
+import type { NormalizedOptions } from '#internal/core/consumer/types';
 
 /**
  * Consumer-side component implementation.

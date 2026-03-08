@@ -1,7 +1,7 @@
-import type { ContextType } from '@/constants';
-import { CONTEXT } from '@/constants';
-import type { Dimensions, TemplateContext } from '@/types';
-import type { NormalizedOptions } from '@/core/consumer/types';
+import type { ContextType } from '#internal/constants';
+import { CONTEXT } from '#internal/constants';
+import type { Dimensions, TemplateContext } from '#internal/types';
+import type { NormalizedOptions } from '#internal/core/consumer/types';
 import {
   createIframeElement,
   destroyIframe,
@@ -9,19 +9,19 @@ import {
   hideIframe,
   resizeIframe,
   showIframe,
-} from '@/render/iframe';
+} from '#internal/render/iframe';
 import {
   closePopup,
   focusPopup,
   openPopup,
   resizePopup,
   watchPopupClose,
-} from '@/render/popup';
+} from '#internal/render/popup';
 import {
   defaultContainerTemplate,
   defaultPrerenderTemplate,
   swapPrerenderContent,
-} from '@/render/templates';
+} from '#internal/render/templates';
 
 /**
  * Parameters required to open iframe/popup host content.

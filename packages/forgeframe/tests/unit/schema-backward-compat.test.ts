@@ -1,5 +1,5 @@
 /**
- * Backward compatibility tests for Standard Schema support in `@/props/schema`.
+ * Backward compatibility tests for Standard Schema support in `#internal/props/schema`.
  *
  * Covers legacy schema shape acceptance, path segment compatibility, and optional metadata handling.
  */
@@ -8,7 +8,7 @@ import {
   isStandardSchema,
   validateWithSchema,
   type StandardSchemaV1,
-} from '@/props/schema';
+} from '#internal/props/schema';
 
 describe('Standard Schema backward compatibility', () => {
   it('should accept legacy schema objects without ~standard.types metadata', () => {

@@ -8,8 +8,8 @@
  * lifecycle callbacks.
  */
 
-import type { PropDefinition, Dimensions } from '@/types';
-import { prop } from '@/props/prop';
+import type { PropDefinition, Dimensions } from '#internal/types';
+import { prop } from '#internal/props/prop';
 
 /**
  * Built-in props that are automatically provided to all components.

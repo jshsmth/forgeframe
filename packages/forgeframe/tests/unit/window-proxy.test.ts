@@ -1,5 +1,5 @@
 /**
- * Unit tests for window reference registry/proxy helpers in `@/window/proxy`.
+ * Unit tests for window reference registry/proxy helpers in `#internal/window/proxy`.
  *
  * Covers registry capacity behavior, reference creation/resolution, and serialization constraints across reference types.
  */
@@ -12,8 +12,8 @@ import {
   resolveWindowRef,
   serializeWindowRef,
   clearWindowRegistry,
-} from '@/window/proxy';
-import type { WindowRef } from '@/types';
+} from '#internal/window/proxy';
+import type { WindowRef } from '#internal/types';
 
 describe('Window Registry', () => {
   beforeEach(() => {

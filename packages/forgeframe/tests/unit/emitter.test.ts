@@ -1,10 +1,10 @@
 /**
- * Unit tests for `@/events/emitter`.
+ * Unit tests for `#internal/events/emitter`.
  *
  * Covers listener registration/removal semantics, once handlers, error isolation, and listener count bookkeeping.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { EventEmitter } from '@/events/emitter';
+import { EventEmitter } from '#internal/events/emitter';
 
 describe('EventEmitter', () => {
   it('should emit events to subscribed handlers', () => {

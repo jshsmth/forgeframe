@@ -1,5 +1,5 @@
 /**
- * Type-level assertions for Standard Schema typings in `@/props/schema`.
+ * Type-level assertions for Standard Schema typings in `#internal/props/schema`.
  *
  * Covers `InferInput`/`InferOutput`, issue/path segment type contracts, success/failure result constraints, and metadata typing.
  */
@@ -12,7 +12,7 @@ import type {
   StandardSchemaV1PathSegment,
   StandardSchemaV1SuccessResult,
   StandardSchemaV1Types,
-} from '@/props/schema';
+} from '#internal/props/schema';
 
 type IsEqual<A, B> = (<T>() => T extends A ? 1 : 2) extends <
   T,

@@ -1,5 +1,5 @@
 /**
- * Unit tests for `@/render/popup`.
+ * Unit tests for `#internal/render/popup`.
  *
  * Covers popup open/focus/close/resize utilities, popup-block detection, and close watcher polling behavior.
  */
@@ -12,7 +12,7 @@ import {
   watchPopupClose,
   resizePopup,
   PopupOpenError,
-} from '@/render/popup';
+} from '#internal/render/popup';
 
 describe('PopupOpenError', () => {
   it('should create error with default message', () => {

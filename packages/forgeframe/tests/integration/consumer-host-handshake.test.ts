@@ -5,8 +5,8 @@
  * handshake across separate consumer and host windows.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { create, EVENT, prop } from '@/index';
-import type { HostProps, PropsDefinition } from '@/types';
+import { create, EVENT, prop } from '#internal/index';
+import type { HostProps, PropsDefinition } from '#internal/types';
 import { createIframeIntegrationHarness, type IframeIntegrationHarness } from './helpers';
 
 interface HandshakeProps {

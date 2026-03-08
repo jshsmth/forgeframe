@@ -12,8 +12,9 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': resolve(__dirname, 'src'),
+      '#internal': resolve(__dirname, 'src'),
     },
+    conditions: ['source'],
   },
   test: {
     environment: 'jsdom',

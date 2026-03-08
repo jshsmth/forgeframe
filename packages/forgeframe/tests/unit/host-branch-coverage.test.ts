@@ -1,5 +1,5 @@
 /**
- * Branch coverage tests for `@/core/host` internals.
+ * Branch coverage tests for `#internal/core/host` internals.
  *
  * Covers deferred init branches, hostProps fallback behavior, init failure capture, and environment guard paths.
  */
@@ -10,11 +10,11 @@ import {
   getHost,
   initHost,
   isEmbedded,
-} from '@/core/host';
-import { CONTEXT, EVENT, MESSAGE_NAME, VERSION } from '@/constants';
-import { buildWindowName } from '@/window/name-payload';
-import type { ConsumerExports, HostComponentRef, WindowNamePayload } from '@/types';
-import * as namePayload from '@/window/name-payload';
+} from '#internal/core/host';
+import { CONTEXT, EVENT, MESSAGE_NAME, VERSION } from '#internal/constants';
+import { buildWindowName } from '#internal/window/name-payload';
+import type { ConsumerExports, HostComponentRef, WindowNamePayload } from '#internal/types';
+import * as namePayload from '#internal/window/name-payload';
 
 const VALID_EXPORTS: ConsumerExports = {
   init: MESSAGE_NAME.INIT,

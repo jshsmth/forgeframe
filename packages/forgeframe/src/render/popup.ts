@@ -1,5 +1,5 @@
-import type { Dimensions } from '@/types';
-import { normalizeDimensionToNumber } from '@/utils/dimension';
+import type { Dimensions } from '#internal/types';
+import { normalizeDimensionToNumber } from '#internal/utils/dimension';
 
 /**
  * Configuration options for opening a popup window.

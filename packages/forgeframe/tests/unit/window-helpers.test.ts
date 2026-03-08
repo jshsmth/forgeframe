@@ -1,5 +1,5 @@
 /**
- * Unit tests for cross-window helpers in `@/window/helpers`.
+ * Unit tests for cross-window helpers in `#internal/window/helpers`.
  *
  * Covers domain matching, opener/ancestor traversal, iframe/popup detection, and defensive focus/close/frame access behavior.
  */
@@ -19,7 +19,7 @@ import {
   focusWindow,
   closeWindow,
   getFrames,
-} from '@/window/helpers';
+} from '#internal/window/helpers';
 
 describe('getDomain', () => {
   it('should return current window origin', () => {

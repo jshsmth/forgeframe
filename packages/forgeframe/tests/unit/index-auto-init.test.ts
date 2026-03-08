@@ -4,9 +4,9 @@
  * Covers module import safety when ForgeFrame-shaped window payloads are present in top-level window contexts.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CONTEXT, MESSAGE_NAME, VERSION } from '@/constants';
-import { buildWindowName } from '@/window/name-payload';
-import type { ConsumerExports, WindowNamePayload } from '@/types';
+import { CONTEXT, MESSAGE_NAME, VERSION } from '#internal/constants';
+import { buildWindowName } from '#internal/window/name-payload';
+import type { ConsumerExports, WindowNamePayload } from '#internal/types';
 
 const originalWindowName = window.name;
 const VALID_EXPORTS: ConsumerExports = {
@@ -21,7 +21,7 @@ const VALID_EXPORTS: ConsumerExports = {
 };
 
 afterEach(async () => {
-  const { clearHostInstance } = await import('@/core/host');
+  const { clearHostInstance } = await import('#internal/core/host');
   clearHostInstance();
   window.name = originalWindowName;
   delete (window as unknown as { hostProps?: unknown }).hostProps;
@@ -44,9 +44,9 @@ describe('Index auto-init', () => {
     window.name = buildWindowName(payload);
     vi.resetModules();
 
-    await expect(import('@/index')).resolves.toBeDefined();
+    await expect(import('#internal/index')).resolves.toBeDefined();
 
-    const { getHost } = await import('@/core/host');
+    const { getHost } = await import('#internal/core/host');
     expect(getHost()).toBeNull();
     expect((window as unknown as { hostProps?: unknown }).hostProps).toBeUndefined();
   });

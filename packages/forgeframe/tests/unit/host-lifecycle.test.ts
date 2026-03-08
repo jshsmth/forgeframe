@@ -1,15 +1,15 @@
 /**
- * Lifecycle tests for `@/core/host` runtime behavior.
+ * Lifecycle tests for `#internal/core/host` runtime behavior.
  *
  * Covers consumer control channels, props synchronization/subscriber behavior, and consumer window resolution rules.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ConsumerComponent } from '@/core/consumer';
-import { HostComponent, clearHostInstance, initHost } from '@/core/host';
-import { CONTEXT, EVENT, MESSAGE_NAME, VERSION } from '@/constants';
-import { prop } from '@/props/prop';
-import type { ConsumerExports, WindowNamePayload } from '@/types';
-import * as helpers from '@/window/helpers';
+import { ConsumerComponent } from '#internal/core/consumer';
+import { HostComponent, clearHostInstance, initHost } from '#internal/core/host';
+import { CONTEXT, EVENT, MESSAGE_NAME, VERSION } from '#internal/constants';
+import { prop } from '#internal/props/prop';
+import type { ConsumerExports, WindowNamePayload } from '#internal/types';
+import * as helpers from '#internal/window/helpers';
 
 const VALID_EXPORTS: ConsumerExports = {
   init: MESSAGE_NAME.INIT,

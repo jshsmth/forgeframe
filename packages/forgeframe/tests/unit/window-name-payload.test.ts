@@ -1,5 +1,5 @@
 /**
- * Unit tests for window name payload helpers in `@/window/name-payload`.
+ * Unit tests for window name payload helpers in `#internal/window/name-payload`.
  *
  * Covers payload encoding/parsing, ForgeFrame window detection, payload mutation helpers, and size/error guardrails.
  */
@@ -12,9 +12,9 @@ import {
   createWindowPayload,
   updateWindowName,
   getInitialPayload,
-} from '@/window/name-payload';
-import { WINDOW_NAME_PREFIX, VERSION, CONTEXT, MESSAGE_NAME } from '@/constants';
-import type { ConsumerExports, WindowNamePayload } from '@/types';
+} from '#internal/window/name-payload';
+import { WINDOW_NAME_PREFIX, VERSION, CONTEXT, MESSAGE_NAME } from '#internal/constants';
+import type { ConsumerExports, WindowNamePayload } from '#internal/types';
 
 const VALID_EXPORTS: ConsumerExports = {
   init: MESSAGE_NAME.INIT,

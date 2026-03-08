@@ -10,12 +10,12 @@ import {
   getPropsForHost,
   propsToQueryParams,
   propsToBodyParams,
-} from '@/props/normalize';
-import { cloneProps } from '@/props/serialize';
-import { BUILTIN_PROP_DEFINITIONS } from '@/props/definitions';
-import { prop } from '@/props/prop';
-import { isStandardSchema } from '@/props/schema';
-import type { PropsDefinition, PropContext } from '@/types';
+} from '#internal/props/normalize';
+import { cloneProps } from '#internal/props/serialize';
+import { BUILTIN_PROP_DEFINITIONS } from '#internal/props/definitions';
+import { prop } from '#internal/props/prop';
+import { isStandardSchema } from '#internal/props/schema';
+import type { PropsDefinition, PropContext } from '#internal/types';
 
 const Float16ArrayCtor = (
   globalThis as typeof globalThis & {

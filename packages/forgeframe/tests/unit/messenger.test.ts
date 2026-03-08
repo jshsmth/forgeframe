@@ -1,16 +1,16 @@
 /**
- * Unit tests for `@/communication/messenger`.
+ * Unit tests for `#internal/communication/messenger`.
  *
  * Covers request/response flows, timeout and teardown behavior, message filtering, and trusted-domain enforcement semantics.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { Messenger } from '@/communication/messenger';
+import { Messenger } from '#internal/communication/messenger';
 import {
   serializeMessage,
   createRequestMessage,
   createResponseMessage,
-} from '@/communication/protocol';
-import { MESSAGE_TYPE } from '@/constants';
+} from '#internal/communication/protocol';
+import { MESSAGE_TYPE } from '#internal/constants';
 
 describe('Messenger', () => {
   let messenger: Messenger;

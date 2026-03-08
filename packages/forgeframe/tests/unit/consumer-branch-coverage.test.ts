@@ -1,15 +1,15 @@
 /**
- * Branch coverage tests for `@/core/consumer` internals.
+ * Branch coverage tests for `#internal/core/consumer` internals.
  *
  * Covers domain trust variants, render helper delegation, prop update edge paths, and guarded branches around URL/origin handling.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ConsumerComponent } from '@/core/consumer';
-import { CONTEXT } from '@/constants';
-import { prop } from '@/props/prop';
-import * as iframeRender from '@/render/iframe';
-import * as popupRender from '@/render/popup';
-import * as windowProxy from '@/window/proxy';
+import { ConsumerComponent } from '#internal/core/consumer';
+import { CONTEXT } from '#internal/constants';
+import { prop } from '#internal/props/prop';
+import * as iframeRender from '#internal/render/iframe';
+import * as popupRender from '#internal/render/popup';
+import * as windowProxy from '#internal/window/proxy';
 
 const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
 

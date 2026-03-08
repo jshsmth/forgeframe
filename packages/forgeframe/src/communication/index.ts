@@ -8,12 +8,12 @@
  * serialization, function bridging, and request/response handling.
  */
 
-export { Messenger, type MessageHandler } from '@/communication/messenger';
+export { Messenger, type MessageHandler } from '#internal/communication/messenger';
 export {
   FunctionBridge,
   serializeFunctions,
   deserializeFunctions,
-} from '@/communication/bridge';
+} from '#internal/communication/bridge';
 export {
   PROTOCOL_PREFIX,
   serializeMessage,
@@ -21,4 +21,4 @@ export {
   createRequestMessage,
   createResponseMessage,
   createAckMessage,
-} from '@/communication/protocol';
+} from '#internal/communication/protocol';

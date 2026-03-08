@@ -1,4 +1,4 @@
-import type { DomainMatcher } from '@/types';
+import type { DomainMatcher } from '#internal/types';
 
 const wildcardPatternCache = new Map<string, RegExp>();
 const WILDCARD_CACHE_LIMIT = 200;

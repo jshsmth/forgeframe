@@ -4,11 +4,11 @@
  * Covers consumer domain allowlist enforcement, hostProps invalidation, and deferred init gating under security checks.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { initHost, clearHostInstance, HostComponent } from '@/core/host';
-import { buildWindowName } from '@/window/name-payload';
-import { CONTEXT, MESSAGE_NAME, VERSION } from '@/constants';
-import { prop } from '@/props/prop';
-import type { ConsumerExports, WindowNamePayload } from '@/types';
+import { initHost, clearHostInstance, HostComponent } from '#internal/core/host';
+import { buildWindowName } from '#internal/window/name-payload';
+import { CONTEXT, MESSAGE_NAME, VERSION } from '#internal/constants';
+import { prop } from '#internal/props/prop';
+import type { ConsumerExports, WindowNamePayload } from '#internal/types';
 
 const originalWindowName = window.name;
 const originalDocumentReferrer = document.referrer;

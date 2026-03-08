@@ -1,6 +1,6 @@
-import { normalizeProps, validateProps } from '@/props';
-import type { PropContext } from '@/types';
-import type { NormalizedOptions } from '@/core/consumer/types';
+import { normalizeProps, validateProps } from '#internal/props/index';
+import type { PropContext } from '#internal/types';
+import type { NormalizedOptions } from '#internal/core/consumer/types';
 
 /**
  * Hooks used by the props pipeline to coordinate host synchronization behavior.

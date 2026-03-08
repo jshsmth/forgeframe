@@ -7,16 +7,16 @@
  * replacing post-robot with a minimal implementation.
  */
 
-import type { Message, DomainMatcher } from '@/types';
-import { MESSAGE_TYPE } from '@/constants';
-import { generateShortUID } from '@/utils/uid';
-import { createDeferred, type Deferred } from '@/utils/promise';
+import type { Message, DomainMatcher } from '#internal/types';
+import { MESSAGE_TYPE } from '#internal/constants';
+import { generateShortUID } from '#internal/utils/uid';
+import { createDeferred, type Deferred } from '#internal/utils/promise';
 import {
   serializeMessage,
   deserializeMessage,
   createRequestMessage,
   createResponseMessage,
-} from '@/communication/protocol';
+} from '#internal/communication/protocol';
 
 /**
  * Handler function for incoming messages.

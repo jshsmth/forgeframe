@@ -11,7 +11,7 @@ import {
   validateWithSchema,
   type StandardSchemaV1,
   type StandardSchemaV1PathSegment,
-} from '@/props/schema';
+} from '#internal/props/schema';
 
 type StandardSchemaPath = PropertyKey | StandardSchemaV1PathSegment;
 

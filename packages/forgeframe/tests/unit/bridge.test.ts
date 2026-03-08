@@ -1,5 +1,5 @@
 /**
- * Unit tests for `@/communication/bridge`.
+ * Unit tests for `#internal/communication/bridge`.
  *
  * Covers function reference lifecycle, recursive serialization/deserialization, and bridge call routing through messenger handlers.
  */
@@ -8,9 +8,9 @@ import {
   FunctionBridge,
   serializeFunctions,
   deserializeFunctions,
-} from '@/communication/bridge';
-import { Messenger } from '@/communication/messenger';
-import { MESSAGE_NAME } from '@/constants';
+} from '#internal/communication/bridge';
+import { Messenger } from '#internal/communication/messenger';
+import { MESSAGE_NAME } from '#internal/constants';
 
 type GenericFunction = (...args: unknown[]) => unknown;
 

@@ -7,8 +7,8 @@
  * communication. Messages are prefixed to identify ForgeFrame traffic.
  */
 
-import type { Message } from '@/types';
-import { MESSAGE_TYPE } from '@/constants';
+import type { Message } from '#internal/types';
+import { MESSAGE_TYPE } from '#internal/constants';
 
 /**
  * Protocol prefix to identify ForgeFrame messages.

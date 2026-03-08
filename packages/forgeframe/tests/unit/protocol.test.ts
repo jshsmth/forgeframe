@@ -1,5 +1,5 @@
 /**
- * Unit tests for `@/communication/protocol` message helpers.
+ * Unit tests for `#internal/communication/protocol` message helpers.
  *
  * Covers protocol prefixing, serialization/deserialization validation, message factory helpers, and round-trip integrity.
  */
@@ -11,8 +11,8 @@ import {
   createResponseMessage,
   createAckMessage,
   PROTOCOL_PREFIX,
-} from '@/communication/protocol';
-import { MESSAGE_TYPE } from '@/constants';
+} from '#internal/communication/protocol';
+import { MESSAGE_TYPE } from '#internal/constants';
 
 describe('PROTOCOL_PREFIX', () => {
   it('should equal the forgeframe protocol prefix literal', () => {

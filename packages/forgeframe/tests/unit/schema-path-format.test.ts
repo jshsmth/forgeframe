@@ -4,7 +4,7 @@
  * Covers mixed key/index path rendering and resilience to malformed path segment payloads.
  */
 import { describe, expect, it } from 'vitest';
-import { validateWithSchema, type StandardSchemaV1 } from '@/props/schema';
+import { validateWithSchema, type StandardSchemaV1 } from '#internal/props/schema';
 
 describe('validateWithSchema path formatting', () => {
   it('should format mixed key/index path segments', () => {

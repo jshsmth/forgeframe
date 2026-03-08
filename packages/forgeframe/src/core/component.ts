@@ -13,8 +13,8 @@ import type {
   ForgeFrameComponent,
   ForgeFrameComponentInstance,
   HostProps,
-} from '@/types';
-import { ConsumerComponent } from '@/core/consumer';
+} from '#internal/types';
+import { ConsumerComponent } from '#internal/core/consumer';
 import {
   clearIndexedInstances,
   clearIndexedInstancesByTag,
@@ -23,10 +23,10 @@ import {
   indexComponentInstance,
   removeIndexedComponentInstance,
   type IndexedComponentInstance,
-} from '@/core/component-instance-index';
-import { initHost } from '@/core/host';
-import { isHostOfComponent } from '@/window/name-payload';
-import { hasBrowserWindow } from '@/utils/browser';
+} from '#internal/core/component-instance-index';
+import { initHost } from '#internal/core/host';
+import { isHostOfComponent } from '#internal/window/name-payload';
+import { hasBrowserWindow } from '#internal/utils/browser';
 
 /**
  * Global registry of all defined components.

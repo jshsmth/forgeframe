@@ -1,6 +1,6 @@
-import type { WindowNamePayload, SerializedProps, ConsumerExports, HostComponentRef } from '@/types';
-import type { ContextType } from '@/constants';
-import { CONTEXT, WINDOW_NAME_PREFIX, VERSION } from '@/constants';
+import type { WindowNamePayload, SerializedProps, ConsumerExports, HostComponentRef } from '#internal/types';
+import type { ContextType } from '#internal/constants';
+import { CONTEXT, WINDOW_NAME_PREFIX, VERSION } from '#internal/constants';
 
 const REQUIRED_CONSUMER_EXPORT_KEYS = [
   'init',

@@ -16,10 +16,10 @@ import {
   LiteralSchema,
   EnumSchema,
   AnySchema,
-} from '@/props/prop';
-import { isStandardSchema } from '@/props/schema';
-import { validateProps } from '@/props/normalize';
-import type { PropsDefinition } from '@/types';
+} from '#internal/props/prop';
+import { isStandardSchema } from '#internal/props/schema';
+import { validateProps } from '#internal/props/normalize';
+import type { PropsDefinition } from '#internal/types';
 
 // ============================================================================
 // StandardSchemaV1 Compliance Tests

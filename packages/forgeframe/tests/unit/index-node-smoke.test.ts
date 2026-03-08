@@ -5,7 +5,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 afterEach(async () => {
-  const { clearComponents } = await import('@/core/component');
+  const { clearComponents } = await import('#internal/core/component');
   clearComponents();
   vi.resetModules();
 });
@@ -14,7 +14,7 @@ describe('Index node smoke', () => {
   it('should import the public entrypoint and define components without browser globals', async () => {
     expect('window' in globalThis).toBe(false);
 
-    const { default: ForgeFrame } = await import('@/index');
+    const { default: ForgeFrame } = await import('#internal/index');
 
     const AbsoluteUrlComponent = ForgeFrame.create({
       tag: 'node-absolute-component',
@@ -32,7 +32,7 @@ describe('Index node smoke', () => {
   });
 
   it('should reject malformed string urls without browser globals', async () => {
-    const { default: ForgeFrame } = await import('@/index');
+    const { default: ForgeFrame } = await import('#internal/index');
 
     expect(() =>
       ForgeFrame.create({

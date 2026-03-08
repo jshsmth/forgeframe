@@ -15,9 +15,9 @@ export default defineConfig(({ command }) => ({
     __FORGEFRAME_VERSION__: JSON.stringify(forgeframePackageJson.version),
   },
   resolve: {
+    conditions: ['source'],
     alias: {
       forgeframe: resolve(forgeframeSrcRoot, 'index.ts'),
-      '@': forgeframeSrcRoot,
     },
   },
   server: {

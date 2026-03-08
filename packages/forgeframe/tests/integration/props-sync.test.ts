@@ -5,8 +5,8 @@
  * omitted optional keys from `window.hostProps`, and notifies subscribers once.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { create, prop } from '@/index';
-import type { PropsDefinition } from '@/types';
+import { create, prop } from '#internal/index';
+import type { PropsDefinition } from '#internal/types';
 import { createIframeIntegrationHarness, type IframeIntegrationHarness } from './helpers';
 
 interface SyncProps {

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CONTEXT } from '@/constants';
-import { ConsumerRenderer } from '@/core/consumer/renderer';
-import type { NormalizedOptions } from '@/core/consumer/types';
+import { CONTEXT } from '#internal/constants';
+import { ConsumerRenderer } from '#internal/core/consumer/renderer';
+import type { NormalizedOptions } from '#internal/core/consumer/types';
 
 function createRenderer(
   options: Partial<NormalizedOptions<Record<string, unknown>>> = {}

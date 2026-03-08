@@ -1,10 +1,10 @@
 /**
- * Lifecycle integration tests for `createReactComponent` in `@/drivers/react`.
+ * Lifecycle integration tests for `createReactComponent` in `#internal/drivers/react`.
  *
  * Covers mount/unmount flows, listener cleanup, prop synchronization guards, error propagation, and forwarded ref wiring.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createReactComponent } from '@/drivers/react';
+import { createReactComponent } from '#internal/drivers/react';
 
 /**
  * Builds a minimal React-like hook harness for deterministic lifecycle assertions.

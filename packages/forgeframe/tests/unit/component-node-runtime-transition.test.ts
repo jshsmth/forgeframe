@@ -5,9 +5,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 afterEach(() => {
-  vi.doUnmock('@/core/host');
-  vi.doUnmock('@/utils/browser');
-  vi.doUnmock('@/window/name-payload');
+  vi.doUnmock('#internal/core/host');
+  vi.doUnmock('#internal/utils/browser');
+  vi.doUnmock('#internal/window/name-payload');
   vi.resetModules();
   vi.restoreAllMocks();
 });
@@ -44,17 +44,17 @@ describe('Component host detection across runtime transitions', () => {
       };
     });
 
-    vi.doMock('@/utils/browser', () => ({
+    vi.doMock('#internal/utils/browser', () => ({
       hasBrowserWindow: () => browserAvailable,
     }));
-    vi.doMock('@/window/name-payload', () => ({
+    vi.doMock('#internal/window/name-payload', () => ({
       isHostOfComponent: (tag: string) => hostDetected && tag === 'late-host-component',
     }));
-    vi.doMock('@/core/host', () => ({
+    vi.doMock('#internal/core/host', () => ({
       initHost,
     }));
 
-    const { clearComponents, create } = await import('@/core/component');
+    const { clearComponents, create } = await import('#internal/core/component');
 
     const LateHostComponent = create({
       tag: 'late-host-component',
@@ -101,17 +101,17 @@ describe('Component host detection across runtime transitions', () => {
       hostProps: mockHostProps,
     }));
 
-    vi.doMock('@/utils/browser', () => ({
+    vi.doMock('#internal/utils/browser', () => ({
       hasBrowserWindow: () => browserAvailable,
     }));
-    vi.doMock('@/window/name-payload', () => ({
+    vi.doMock('#internal/window/name-payload', () => ({
       isHostOfComponent: (tag: string) => hostDetected && tag === 'sticky-host-component',
     }));
-    vi.doMock('@/core/host', () => ({
+    vi.doMock('#internal/core/host', () => ({
       initHost,
     }));
 
-    const { clearComponents, create } = await import('@/core/component');
+    const { clearComponents, create } = await import('#internal/core/component');
 
     const StickyHostComponent = create({
       tag: 'sticky-host-component',
@@ -159,17 +159,17 @@ describe('Component host detection across runtime transitions', () => {
       hostProps: mockHostProps,
     }));
 
-    vi.doMock('@/utils/browser', () => ({
+    vi.doMock('#internal/utils/browser', () => ({
       hasBrowserWindow: () => browserAvailable,
     }));
-    vi.doMock('@/window/name-payload', () => ({
+    vi.doMock('#internal/window/name-payload', () => ({
       isHostOfComponent: (tag: string) => hostDetected && tag === 'late-host-component',
     }));
-    vi.doMock('@/core/host', () => ({
+    vi.doMock('#internal/core/host', () => ({
       initHost,
     }));
 
-    const { clearComponents, create } = await import('@/core/component');
+    const { clearComponents, create } = await import('#internal/core/component');
 
     const LateHostComponent = create({
       tag: 'late-host-component',

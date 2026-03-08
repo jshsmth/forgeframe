@@ -2,8 +2,8 @@ import type {
   ComponentOptions,
   Dimensions,
   PropsDefinition,
-} from '@/types';
-import type { ContextType } from '@/constants';
+} from '#internal/types';
+import type { ContextType } from '#internal/constants';
 
 /**
  * Normalized and validated component options.

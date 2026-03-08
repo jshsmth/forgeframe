@@ -40,7 +40,7 @@ import {
   isEmbedded,
   getHostProps,
   initHost,
-} from '@/core';
+} from '#internal/core/index';
 
 // Constants
 import {
@@ -48,16 +48,16 @@ import {
   CONTEXT,
   EVENT,
   VERSION,
-} from '@/constants';
+} from '#internal/constants';
 
 // Errors
-import { PopupOpenError } from '@/render/popup';
+import { PopupOpenError } from '#internal/render/popup';
 
 // Schema utilities
-import { isStandardSchema } from '@/props/schema';
+import { isStandardSchema } from '#internal/props/schema';
 
-import { prop } from '@/props/prop';
-import { hasBrowserWindow } from '@/utils/browser';
+import { prop } from '#internal/props/prop';
+import { hasBrowserWindow } from '#internal/utils/browser';
 
 // Pre-initialize host state if in a ForgeFrame window.
 // INIT is deferred until initHost() is explicitly flushed or a host component definition does so.
@@ -261,19 +261,19 @@ export {
   isEmbedded,
   getHostProps,
   initHost,
-} from '@/core';
+} from '#internal/core/index';
 
 export {
   PROP_SERIALIZATION,
   CONTEXT,
   EVENT,
   VERSION,
-} from '@/constants';
+} from '#internal/constants';
 
-export { PopupOpenError } from '@/render/popup';
+export { PopupOpenError } from '#internal/render/popup';
 
 // Schema utilities
-export { isStandardSchema } from '@/props/schema';
+export { isStandardSchema } from '#internal/props/schema';
 
 // Prop schema builders
 export {
@@ -290,7 +290,7 @@ export {
   AnySchema,
   type Prop,
   type InferObjectShape,
-} from '@/props/prop';
+} from '#internal/props/prop';
 
 // Type exports
 export type {
@@ -329,13 +329,13 @@ export type {
   // Event types
   EventHandler,
   EventEmitterInterface,
-} from '@/types';
+} from '#internal/types';
 
 export type {
   ContextType,
   EventType,
   SerializationType,
-} from '@/constants';
+} from '#internal/constants';
 
 // React integration exports
 export {
@@ -344,4 +344,4 @@ export {
   type ReactDriverOptions,
   type ReactComponentProps,
   type ReactComponentType,
-} from '@/drivers/react';
+} from '#internal/drivers/react';

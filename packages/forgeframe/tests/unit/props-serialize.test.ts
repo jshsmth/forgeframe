@@ -1,15 +1,15 @@
 /**
- * Unit tests for `@/props/serialize` serialization modes.
+ * Unit tests for `#internal/props/serialize` serialization modes.
  *
  * Covers BASE64/DOTIFY round-trips, malformed wrapper fallback behavior, and undefined key omission in payload serialization.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FunctionBridge } from '@/communication/bridge';
-import { PROP_SERIALIZATION } from '@/constants';
-import { prop } from '@/props/prop';
-import { serializeProps, deserializeProps } from '@/props/serialize';
-import type { Messenger } from '@/communication/messenger';
-import type { SerializedProps } from '@/types';
+import { FunctionBridge } from '#internal/communication/bridge';
+import { PROP_SERIALIZATION } from '#internal/constants';
+import { prop } from '#internal/props/prop';
+import { serializeProps, deserializeProps } from '#internal/props/serialize';
+import type { Messenger } from '#internal/communication/messenger';
+import type { SerializedProps } from '#internal/types';
 
 type GenericHandler = (...args: unknown[]) => unknown;
 

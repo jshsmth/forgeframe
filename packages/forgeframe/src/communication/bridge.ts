@@ -7,10 +7,10 @@
  * by converting them to references that can be called via postMessage.
  */
 
-import type { FunctionRef } from '@/types';
-import { MESSAGE_NAME } from '@/constants';
-import { generateShortUID } from '@/utils/uid';
-import type { Messenger } from '@/communication/messenger';
+import type { FunctionRef } from '#internal/types';
+import { MESSAGE_NAME } from '#internal/constants';
+import { generateShortUID } from '#internal/utils/uid';
+import type { Messenger } from '#internal/communication/messenger';
 
 /**
  * Generic function type for cross-domain callable functions.

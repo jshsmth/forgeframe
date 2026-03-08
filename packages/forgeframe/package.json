@@ -11,6 +11,12 @@
       "import": "./dist/forgeframe.js"
     }
   },
+  "imports": {
+    "#internal/*": {
+      "source": "./src/*.ts",
+      "types": "./dist/*.d.ts"
+    }
+  },
   "sideEffects": false,
   "files": [
     "dist",
@@ -19,7 +25,7 @@
   ],
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "vite build && tsc --emitDeclarationOnly && node ./scripts/rewrite-dist-aliases.mjs",
+    "build": "vite build && tsc --emitDeclarationOnly",
     "typecheck": "tsc --noEmit && npm run typecheck:tests",
     "typecheck:tests": "tsc -p tests/typecheck/tsconfig.json --noEmit",
     "test": "vitest",

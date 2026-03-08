@@ -1,5 +1,5 @@
 /**
- * Unit tests for `@/render/iframe`.
+ * Unit tests for `#internal/render/iframe`.
  *
  * Covers iframe creation/destruction, visibility and sizing helpers, attribute handling, and same-origin dimension reads.
  */
@@ -13,7 +13,7 @@ import {
   hideIframe,
   focusIframe,
   getIframeContentDimensions,
-} from '@/render/iframe';
+} from '#internal/render/iframe';
 
 describe('createIframe', () => {
   let container: HTMLDivElement;

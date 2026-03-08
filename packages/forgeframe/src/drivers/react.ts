@@ -1,5 +1,5 @@
-import type { ForgeFrameComponent, ForgeFrameComponentInstance } from '@/types';
-import type { ContextType } from '@/constants';
+import type { ForgeFrameComponent, ForgeFrameComponentInstance } from '#internal/types';
+import type { ContextType } from '#internal/constants';
 
 /**
  * Minimal React-like interface for driver compatibility.

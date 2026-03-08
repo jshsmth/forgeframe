@@ -1,12 +1,12 @@
 /**
- * Unit tests for React driver utilities in `@/drivers/react`.
+ * Unit tests for React driver utilities in `#internal/drivers/react`.
  *
  * Covers component factory wiring, hook integration expectations, prop passthrough, and event-driven cleanup behavior.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createReactComponent, withReactComponent } from '@/drivers/react';
-import type { ZoidComponent, ZoidComponentInstance } from '@/types';
-import type { EventEmitter } from '@/events/emitter';
+import { createReactComponent, withReactComponent } from '#internal/drivers/react';
+import type { ZoidComponent, ZoidComponentInstance } from '#internal/types';
+import type { EventEmitter } from '#internal/events/emitter';
 
 /**
  * Creates a lightweight React API mock with observable hook/effect behavior.

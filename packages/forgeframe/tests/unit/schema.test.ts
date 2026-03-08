@@ -4,14 +4,14 @@
  * Covers schema shape detection, validation success/failure formatting, async schema guardrails, and normalizeProps integration.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { validateProps } from '@/props/normalize';
+import { validateProps } from '#internal/props/normalize';
 import {
   isStandardSchema,
   validateWithSchema,
   type StandardSchemaV1,
-} from '@/props/schema';
-import { prop } from '@/props/prop';
-import type { PropsDefinition } from '@/types';
+} from '#internal/props/schema';
+import { prop } from '#internal/props/prop';
+import type { PropsDefinition } from '#internal/types';
 
 // ============================================================================
 // Test Utilities

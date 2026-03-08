@@ -1,15 +1,15 @@
 /**
- * Lifecycle-focused tests for `@/core/consumer`.
+ * Lifecycle-focused tests for `#internal/core/consumer`.
  *
  * Covers host handshake timing, control message handling, open/render guards, callback isolation, and updateProps validation paths.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ConsumerComponent } from '@/core/consumer';
-import { clearComponents, create } from '@/core/component';
-import { CONTEXT, MESSAGE_NAME } from '@/constants';
-import { prop } from '@/props/prop';
-import * as popupRender from '@/render/popup';
-import * as templateRender from '@/render/templates';
+import { ConsumerComponent } from '#internal/core/consumer';
+import { clearComponents, create } from '#internal/core/component';
+import { CONTEXT, MESSAGE_NAME } from '#internal/constants';
+import { prop } from '#internal/props/prop';
+import * as popupRender from '#internal/render/popup';
+import * as templateRender from '#internal/render/templates';
 
 const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
 

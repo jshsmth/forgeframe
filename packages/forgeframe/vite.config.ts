@@ -32,8 +32,6 @@ export default defineConfig({
     target: 'es2022',
   },
   resolve: {
-    alias: {
-      '@': resolve(__dirname, 'src'),
-    },
+    conditions: ['source'],
   },
 });

@@ -1,5 +1,5 @@
 /**
- * Unit tests for `@/core/component` and host context helpers.
+ * Unit tests for `#internal/core/component` and host context helpers.
  *
  * Covers component registration, instance lifecycle, dynamic option materialization, and host detection/eligibility behavior.
  */
@@ -12,10 +12,10 @@ import {
   destroyByTag,
   destroyAll,
   unregisterComponent,
-} from '@/core/component';
-import { isHost, getHostProps } from '@/core/host';
-import { CONTEXT } from '@/constants';
-import { prop } from '@/props/prop';
+} from '#internal/core/component';
+import { isHost, getHostProps } from '#internal/core/host';
+import { CONTEXT } from '#internal/constants';
+import { prop } from '#internal/props/prop';
 
 describe('Component Creation', () => {
   afterEach(() => {
