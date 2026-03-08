@@ -533,14 +533,135 @@ function clonePropValue(
     return clonedView;
   }
 
-  const clonedObject = Object.create(
-    Object.getPrototypeOf(value)
-  ) as Record<string, unknown>;
-  seen.set(value, clonedObject);
-
-  for (const [key, nestedValue] of Object.entries(value)) {
-    defineDataProperty(clonedObject, key, clonePropValue(nestedValue, seen));
+  if (value instanceof URL) {
+    const clonedUrl = new URL(value.toString());
+    seen.set(value, clonedUrl);
+    cloneOwnProperties(value, clonedUrl as Record<PropertyKey, unknown>, seen);
+    return clonedUrl;
   }
 
+  if (value instanceof Error) {
+    return cloneErrorValue(value, seen);
+  }
+
+  if (isBoxedPrimitiveObject(value)) {
+    const clonedBoxed = Object(value.valueOf());
+    seen.set(value, clonedBoxed);
+    cloneOwnProperties(value, clonedBoxed as Record<PropertyKey, unknown>, seen);
+    return clonedBoxed;
+  }
+
+  if (
+    value instanceof Promise ||
+    value instanceof WeakMap ||
+    value instanceof WeakSet
+  ) {
+    return value;
+  }
+
+  const clonedObject = Object.create(
+    Object.getPrototypeOf(value)
+  ) as Record<PropertyKey, unknown>;
+  seen.set(value, clonedObject);
+  cloneOwnProperties(value, clonedObject, seen);
+
   return clonedObject;
+}
+
+/**
+ * Returns true when a value is a boxed primitive wrapper object.
+ * @internal
+ */
+function isBoxedPrimitiveObject(
+  value: object
+): value is Boolean | Number | String | BigInt | Symbol {
+  const tag = Object.prototype.toString.call(value);
+  return (
+    tag === '[object Boolean]' ||
+    tag === '[object Number]' ||
+    tag === '[object String]' ||
+    tag === '[object BigInt]' ||
+    tag === '[object Symbol]'
+  );
+}
+
+/**
+ * Clones an Error instance while preserving non-enumerable state like message.
+ * @internal
+ */
+function cloneErrorValue(
+  value: Error,
+  seen: WeakMap<object, unknown>
+): Error {
+  const clonedError = Object.create(
+    Object.getPrototypeOf(value)
+  ) as Record<PropertyKey, unknown>;
+  seen.set(value, clonedError);
+
+  Object.defineProperty(clonedError, 'name', {
+    configurable: true,
+    enumerable: false,
+    writable: true,
+    value: value.name,
+  });
+  Object.defineProperty(clonedError, 'message', {
+    configurable: true,
+    enumerable: false,
+    writable: true,
+    value: value.message,
+  });
+
+  if ('cause' in value) {
+    Object.defineProperty(clonedError, 'cause', {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: clonePropValue(
+        (value as Error & { cause?: unknown }).cause,
+        seen
+      ),
+    });
+  }
+
+  if (typeof value.stack === 'string') {
+    Object.defineProperty(clonedError, 'stack', {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: value.stack,
+    });
+  }
+
+  cloneOwnProperties(
+    value,
+    clonedError,
+    seen,
+    new Set<PropertyKey>(['name', 'message', 'cause', 'stack'])
+  );
+
+  return clonedError as Error;
+}
+
+/**
+ * Clones own property descriptors onto a target object.
+ * @internal
+ */
+function cloneOwnProperties(
+  source: object,
+  target: Record<PropertyKey, unknown>,
+  seen: WeakMap<object, unknown>,
+  excludedKeys: ReadonlySet<PropertyKey> = new Set<PropertyKey>()
+): void {
+  for (const key of Reflect.ownKeys(source)) {
+    if (excludedKeys.has(key)) continue;
+
+    const descriptor = Object.getOwnPropertyDescriptor(source, key);
+    if (!descriptor) continue;
+
+    if ('value' in descriptor) {
+      descriptor.value = clonePropValue(descriptor.value, seen);
+    }
+
+    Object.defineProperty(target, key, descriptor);
+  }
 }

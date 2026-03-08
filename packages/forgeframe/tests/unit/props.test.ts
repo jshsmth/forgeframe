@@ -554,6 +554,45 @@ describe('Clone Props', () => {
     expect(cloned.first.self).toBe(cloned.first);
   });
 
+  it('should preserve URL instances without corrupting internal state', () => {
+    const original = {
+      location: new URL('https://example.com/path?x=1'),
+    };
+
+    const cloned = cloneProps(original);
+
+    expect(cloned.location).not.toBe(original.location);
+    expect(cloned.location).toBeInstanceOf(URL);
+    expect(cloned.location.href).toBe('https://example.com/path?x=1');
+  });
+
+  it('should preserve Error instances including non-enumerable message state', () => {
+    const original = {
+      failure: Object.assign(new TypeError('boom'), { code: 'E_FAIL' }),
+    };
+
+    const cloned = cloneProps(original) as {
+      failure: TypeError & { code: string };
+    };
+
+    expect(cloned.failure).not.toBe(original.failure);
+    expect(cloned.failure).toBeInstanceOf(TypeError);
+    expect(cloned.failure.message).toBe('boom');
+    expect(cloned.failure.code).toBe('E_FAIL');
+  });
+
+  it('should preserve boxed primitive wrappers without breaking valueOf', () => {
+    const original = {
+      wrapped: new String('boxed'),
+    };
+
+    const cloned = cloneProps(original);
+
+    expect(cloned.wrapped).not.toBe(original.wrapped);
+    expect(cloned.wrapped).toBeInstanceOf(String);
+    expect(cloned.wrapped.valueOf()).toBe('boxed');
+  });
+
   it('should handle primitives', () => {
     const original = {
       str: 'string',
