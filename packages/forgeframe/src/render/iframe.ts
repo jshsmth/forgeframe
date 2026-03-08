@@ -39,6 +39,57 @@ export interface IframeOptions {
 }
 
 /**
+ * Configuration for creating an iframe element before navigation.
+ *
+ * @internal
+ */
+interface IframeElementOptions {
+  /**
+   * The name attribute for the iframe, used for targeting.
+   */
+  name: string;
+
+  /**
+   * The width and height dimensions for the iframe.
+   */
+  dimensions: Dimensions;
+
+  /**
+   * Optional additional HTML attributes to set on the iframe element.
+   */
+  attributes?: IframeAttributes;
+
+  /**
+   * Optional CSS styles to apply to the iframe element.
+   */
+  style?: IframeStyles;
+}
+
+/**
+ * Creates a configured iframe element without appending it or setting `src`.
+ *
+ * @internal
+ */
+export function createIframeElement(
+  options: IframeElementOptions
+): HTMLIFrameElement {
+  const { name, dimensions, attributes = {}, style = {} } = options;
+  const iframe = document.createElement('iframe');
+
+  iframe.name = name;
+  iframe.setAttribute('frameborder', '0');
+  iframe.setAttribute('allowtransparency', 'true');
+  iframe.setAttribute('scrolling', 'auto');
+
+  applyDimensions(iframe, dimensions);
+  applyAttributes(iframe, attributes);
+  applyStyles(iframe, style);
+  applyDefaultSandbox(iframe, attributes);
+
+  return iframe;
+}
+
+/**
  * Creates an iframe element with the specified options and appends it to a container.
  *
  * @remarks
@@ -70,37 +121,7 @@ export interface IframeOptions {
  */
 export function createIframe(options: IframeOptions): HTMLIFrameElement {
   const { url, name, container, dimensions, attributes = {}, style = {} } = options;
-
-  const iframe = document.createElement('iframe');
-
-  iframe.name = name;
-  iframe.setAttribute('frameborder', '0');
-  iframe.setAttribute('allowtransparency', 'true');
-  iframe.setAttribute('scrolling', 'auto');
-
-  applyDimensions(iframe, dimensions);
-
-  for (const [key, value] of Object.entries(attributes)) {
-    if (value === undefined) continue;
-
-    if (typeof value === 'boolean') {
-      if (value) {
-        iframe.setAttribute(key, '');
-      }
-    } else {
-      iframe.setAttribute(key, value);
-    }
-  }
-
-  applyStyles(iframe, style);
-
-  // Default sandbox if not specified (security)
-  if (!attributes.sandbox) {
-    iframe.setAttribute(
-      'sandbox',
-      'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox'
-    );
-  }
+  const iframe = createIframeElement({ name, dimensions, attributes, style });
 
   // Add to container first (some browsers need this before setting src)
   container.appendChild(iframe);
@@ -331,6 +352,46 @@ function applyStyles(
     iframe.style.setProperty(
       key.replace(/([A-Z])/g, '-$1').toLowerCase(),
       cssValue
+    );
+  }
+}
+
+/**
+ * Applies HTML attributes to an iframe element.
+ *
+ * @internal
+ */
+function applyAttributes(
+  iframe: HTMLIFrameElement,
+  attributes: IframeAttributes
+): void {
+  for (const [key, value] of Object.entries(attributes)) {
+    if (value === undefined) continue;
+
+    if (typeof value === 'boolean') {
+      if (value) {
+        iframe.setAttribute(key, '');
+      }
+      continue;
+    }
+
+    iframe.setAttribute(key, value);
+  }
+}
+
+/**
+ * Applies the default security sandbox when one was not explicitly provided.
+ *
+ * @internal
+ */
+function applyDefaultSandbox(
+  iframe: HTMLIFrameElement,
+  attributes: IframeAttributes
+): void {
+  if (!attributes.sandbox) {
+    iframe.setAttribute(
+      'sandbox',
+      'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox'
     );
   }
 }

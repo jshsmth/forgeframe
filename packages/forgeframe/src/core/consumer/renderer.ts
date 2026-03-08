@@ -3,6 +3,7 @@ import { CONTEXT } from '../../constants';
 import type { Dimensions, TemplateContext } from '../../types';
 import type { NormalizedOptions } from './types';
 import {
+  createIframeElement,
   destroyIframe,
   focusIframe,
   hideIframe,
@@ -162,7 +163,6 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
    * Creates an iframe element without setting src (for prerender phase).
    */
   createIframeElement(windowName: string): HTMLIFrameElement {
-    const iframe = document.createElement('iframe');
     const dimensions = this.resolveDimensions();
     const props = this.getProps();
     const attributes =
@@ -174,50 +174,12 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
         ? this.options.style(props)
         : this.options.style ?? {};
 
-    iframe.name = windowName;
-    iframe.setAttribute('frameborder', '0');
-    iframe.setAttribute('allowtransparency', 'true');
-    iframe.setAttribute('scrolling', 'auto');
-
-    if (dimensions.width !== undefined) {
-      iframe.style.width =
-        typeof dimensions.width === 'number'
-          ? `${dimensions.width}px`
-          : dimensions.width;
-    }
-    if (dimensions.height !== undefined) {
-      iframe.style.height =
-        typeof dimensions.height === 'number'
-          ? `${dimensions.height}px`
-          : dimensions.height;
-    }
-
-    for (const [key, value] of Object.entries(attributes)) {
-      if (value === undefined) continue;
-      if (typeof value === 'boolean') {
-        if (value) iframe.setAttribute(key, '');
-      } else {
-        iframe.setAttribute(key, value);
-      }
-    }
-
-    for (const [key, value] of Object.entries(style)) {
-      if (value === undefined) continue;
-      const cssValue = typeof value === 'number' ? `${value}px` : value;
-      iframe.style.setProperty(
-        key.replace(/([A-Z])/g, '-$1').toLowerCase(),
-        String(cssValue)
-      );
-    }
-
-    if (!attributes.sandbox) {
-      iframe.setAttribute(
-        'sandbox',
-        'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox'
-      );
-    }
-
-    return iframe;
+    return createIframeElement({
+      name: windowName,
+      dimensions,
+      attributes,
+      style,
+    });
   }
 
   /**
