@@ -527,6 +527,23 @@ describe('Clone Props', () => {
     );
   });
 
+  it('should preserve sparse array holes when cloning arrays', () => {
+    const items = new Array<unknown>(3);
+    items[2] = 1;
+    (items as unknown as { label?: string }).label = 'kept';
+    const original = { items };
+
+    const cloned = cloneProps(original);
+
+    expect(cloned.items).not.toBe(original.items);
+    expect(cloned.items.length).toBe(3);
+    expect(0 in cloned.items).toBe(false);
+    expect(1 in cloned.items).toBe(false);
+    expect(2 in cloned.items).toBe(true);
+    expect(cloned.items[2]).toBe(1);
+    expect((cloned.items as unknown as { label?: string }).label).toBe('kept');
+  });
+
   it('should preserve repeated references and cycles without throwing', () => {
     const shared = { value: 1 };
     const original = {
@@ -564,6 +581,29 @@ describe('Clone Props', () => {
     expect(cloned.location).not.toBe(original.location);
     expect(cloned.location).toBeInstanceOf(URL);
     expect(cloned.location.href).toBe('https://example.com/path?x=1');
+  });
+
+  it('should preserve URLSearchParams instances without corrupting internal state', () => {
+    const original = {
+      params: new URLSearchParams('a=1&b=2'),
+    };
+
+    const cloned = cloneProps(original);
+
+    expect(cloned.params).not.toBe(original.params);
+    expect(cloned.params).toBeInstanceOf(URLSearchParams);
+    expect(cloned.params.get('a')).toBe('1');
+    expect(cloned.params.get('b')).toBe('2');
+  });
+
+  it('should preserve unsupported native objects by reference', () => {
+    const headers = new Headers([['x-test', '1']]);
+    const original = { headers };
+
+    const cloned = cloneProps(original);
+
+    expect(cloned.headers).toBe(headers);
+    expect(cloned.headers.get('x-test')).toBe('1');
   });
 
   it('should preserve Error instances including non-enumerable message state', () => {

@@ -474,14 +474,7 @@ function clonePropValue(
   }
 
   if (Array.isArray(value)) {
-    const clonedArray: unknown[] = [];
-    seen.set(value, clonedArray);
-
-    for (const item of value) {
-      clonedArray.push(clonePropValue(item, seen));
-    }
-
-    return clonedArray;
+    return cloneArrayValue(value, seen);
   }
 
   if (value instanceof Date) {
@@ -540,6 +533,13 @@ function clonePropValue(
     return clonedUrl;
   }
 
+  if (value instanceof URLSearchParams) {
+    const clonedSearchParams = new URLSearchParams(value.toString());
+    seen.set(value, clonedSearchParams);
+    cloneOwnProperties(value, clonedSearchParams, seen);
+    return clonedSearchParams;
+  }
+
   if (value instanceof Error) {
     return cloneErrorValue(value, seen);
   }
@@ -559,6 +559,10 @@ function clonePropValue(
     return value;
   }
 
+  if (isBrandedObjectInstance(value)) {
+    return cloneBrandedObjectValue(value, seen);
+  }
+
   const clonedObject = Object.create(Object.getPrototypeOf(value)) as object;
   seen.set(value, clonedObject);
   cloneOwnProperties(value, clonedObject, seen);
@@ -567,11 +571,31 @@ function clonePropValue(
 }
 
 /**
- * Returns true when a value is a boxed primitive wrapper object.
+ * Represents a boxed primitive wrapper object.
  * @internal
  */
 interface BoxedPrimitiveObject {
   valueOf(): bigint | boolean | number | string | symbol;
+}
+
+/**
+ * Clones an array while preserving sparse holes and custom enumerable properties.
+ * @internal
+ */
+function cloneArrayValue(
+  value: unknown[],
+  seen: WeakMap<object, unknown>
+): unknown[] {
+  const clonedArray = new Array<unknown>(value.length);
+  seen.set(value, clonedArray);
+  cloneOwnProperties(
+    value,
+    clonedArray,
+    seen,
+    new Set<PropertyKey>(['length'])
+  );
+
+  return clonedArray;
 }
 
 /**
@@ -589,6 +613,38 @@ function isBoxedPrimitiveObject(
     tag === '[object BigInt]' ||
     tag === '[object Symbol]'
   );
+}
+
+/**
+ * Returns true when a value exposes a branded object tag rather than the
+ * default plain-object tag.
+ * @internal
+ */
+function isBrandedObjectInstance(value: object): boolean {
+  return Object.prototype.toString.call(value) !== '[object Object]';
+}
+
+/**
+ * Clones a branded object instance using structuredClone when possible and
+ * otherwise preserves the original reference to avoid corrupting internal-slot
+ * state.
+ * @internal
+ */
+function cloneBrandedObjectValue<T extends object>(
+  value: T,
+  seen: WeakMap<object, unknown>
+): T {
+  try {
+    const clonedValue = structuredClone(value);
+    seen.set(value, clonedValue);
+    cloneOwnProperties(value, clonedValue, seen);
+    return clonedValue;
+  } catch {
+    // Preserve unsupported branded objects by reference rather than fabricating
+    // invalid instances with missing internal slots.
+    seen.set(value, value);
+    return value;
+  }
 }
 
 /**
