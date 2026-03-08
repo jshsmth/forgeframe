@@ -300,7 +300,7 @@ describe('ReactComponentProps', () => {
     mountEffect?.();
 
     expect(mockComponent).toHaveBeenCalledWith({});
-    expect(mockComponent.mockInstance.event?.once).toHaveBeenCalledWith('rendered', onRendered);
+    expect(mockComponent.mockInstance.event?.once).toHaveBeenCalledWith('rendered', expect.any(Function));
   });
 
   it('should accept onError callback', () => {
@@ -334,7 +334,7 @@ describe('ReactComponentProps', () => {
     const mountEffect = mockReact.useEffect.mock.calls[1]?.[0] as (() => void) | undefined;
     mountEffect?.();
 
-    expect(mockComponent.mockInstance.event?.once).toHaveBeenCalledWith('close', onClose);
+    expect(mockComponent.mockInstance.event?.once).toHaveBeenCalledWith('close', expect.any(Function));
   });
 
   it('should accept context prop', () => {
@@ -452,9 +452,9 @@ describe('Lifecycle integration', () => {
       | undefined;
     const cleanup = mountEffect?.();
 
-    expect(mockComponent.mockInstance.event?.once).toHaveBeenCalledWith('rendered', onRendered);
+    expect(mockComponent.mockInstance.event?.once).toHaveBeenCalledWith('rendered', expect.any(Function));
     expect(mockComponent.mockInstance.event?.on).toHaveBeenCalledWith('error', expect.any(Function));
-    expect(mockComponent.mockInstance.event?.once).toHaveBeenCalledWith('close', onClose);
+    expect(mockComponent.mockInstance.event?.once).toHaveBeenCalledWith('close', expect.any(Function));
 
     (cleanup as (() => void) | undefined)?.();
     expect(mockComponent.mockInstance.close).toHaveBeenCalledTimes(1);

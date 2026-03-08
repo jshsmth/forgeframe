@@ -21,7 +21,10 @@ interface ReactLike {
   useEffect: (effect: () => void | (() => void), deps?: unknown[]) => void;
   useState: <T>(initial: T) => [T, (v: T) => void];
   forwardRef: <T, P>(
-    render: (props: P, ref: { current: T | null } | null) => unknown
+    render: (
+      props: P,
+      ref: ((value: T | null) => void) | { current: T | null } | null
+    ) => unknown
   ) => unknown;
 }
 
@@ -249,44 +252,55 @@ export function createReactComponent<P extends Record<string, unknown>, X = unkn
       const containerRef = useRef<HTMLDivElement>(null);
       const instanceRef = useRef<ForgeFrameComponentInstance<P, X> | null>(null);
       const syncedPropsRef = useRef<Partial<P> | null>(null);
+      const onRenderedRef = useRef<typeof onRendered>(onRendered);
       const onErrorRef = useRef<typeof onError>(onError);
+      const onCloseRef = useRef<typeof onClose>(onClose);
       const [error, setError] = useState<Error | null>(null);
 
       useEffect(() => {
+        onRenderedRef.current = onRendered;
         onErrorRef.current = onError;
-      }, [onError]);
+        onCloseRef.current = onClose;
+      }, [onRendered, onError, onClose]);
 
       useEffect(() => {
         const container = containerRef.current;
         if (!container) return;
 
+        setError(null);
+
         const instance = Component(componentProps as P);
         instanceRef.current = instance;
         syncedPropsRef.current = componentProps as Partial<P>;
 
-        if (onRendered) {
-          instance.event.once('rendered', onRendered);
-        }
-
-        if (onClose) {
-          instance.event.once('close', onClose);
-        }
-
-        instance.event.on('error', (err: Error) => {
+        const unsubscribeRendered = instance.event.once('rendered', () => {
+          onRenderedRef.current?.();
+        });
+        const unsubscribeClose = instance.event.once('close', () => {
+          onCloseRef.current?.();
+        });
+        const unsubscribeError = instance.event.on('error', (err: Error) => {
           onErrorRef.current?.(err);
         });
 
         instance.render(container, context).catch((err: Error) => {
+          if (instanceRef.current !== instance) {
+            return;
+          }
+
           setError(err);
           onErrorRef.current?.(err);
         });
 
         return () => {
           instance.close().catch(() => undefined);
+          unsubscribeRendered();
+          unsubscribeClose();
+          unsubscribeError();
           instanceRef.current = null;
           syncedPropsRef.current = null;
         };
-      }, []);
+      }, [context]);
 
       useEffect(() => {
         const instance = instanceRef.current;
@@ -301,13 +315,29 @@ export function createReactComponent<P extends Record<string, unknown>, X = unkn
 
         syncedPropsRef.current = nextProps;
         instance.updateProps(nextProps).catch((err: Error) => {
+          if (instanceRef.current !== instance) {
+            return;
+          }
+
           onErrorRef.current?.(err);
         });
       });
 
       useEffect(() => {
-        if (ref && typeof ref === 'object' && containerRef.current) {
-          ref.current = containerRef.current;
+        const container = containerRef.current;
+
+        if (typeof ref === 'function') {
+          ref(container);
+          return () => {
+            ref(null);
+          };
+        }
+
+        if (ref && typeof ref === 'object') {
+          ref.current = container;
+          return () => {
+            ref.current = null;
+          };
         }
       }, [ref]);
 
