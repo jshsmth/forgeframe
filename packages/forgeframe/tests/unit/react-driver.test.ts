@@ -164,13 +164,26 @@ describe('createReactComponent', () => {
     expect(mockReact.useRef).toHaveBeenCalledWith(null);
   });
 
-  it('should call useEffect for initialization', () => {
+  it('should mount the ForgeFrame instance into the container and cleanup on unmount', () => {
     const ReactComponent = createReactComponent(mockComponent, { React: mockReact as never });
+    const container = document.createElement('div');
 
-    ReactComponent({});
+    ReactComponent({ context: 'popup' });
+    const ref = mockReact.getRef(0);
+    if (!ref) {
+      throw new Error('Expected container ref to be initialized');
+    }
+    ref.current = container;
+    const mountEffect = mockReact.useEffect.mock.calls[1]?.[0] as
+      | (() => void | (() => void))
+      | undefined;
+    const cleanup = mountEffect?.();
 
-    // Should have useEffect calls (mount and prop sync)
-    expect(mockReact.useEffect).toHaveBeenCalled();
+    expect(mockComponent).toHaveBeenCalledWith({});
+    expect(mockComponent.mockInstance.render).toHaveBeenCalledWith(container, 'popup');
+
+    (cleanup as (() => void) | undefined)?.();
+    expect(mockComponent.mockInstance.close).toHaveBeenCalledTimes(1);
   });
 
   it('should run prop-sync effect without dependency array and guard with shallow equality', () => {
@@ -384,41 +397,31 @@ describe('Error handling', () => {
     vi.clearAllMocks();
   });
 
-  it('should render error state when error occurs', () => {
-    // Create a component that tracks useState calls
-    let setError: ((err: Error | null) => void) | undefined;
-
-    const customMockReact = {
-      ...mockReact,
-      useState: vi.fn((initial) => {
-        // Track the error setter
-        setError = vi.fn();
-        return [initial ? initial : null, setError];
-      }),
-    };
-
+  it('should forward render failures to the onError callback', async () => {
     const mockComponent = createMockComponent();
-    const ReactComponent = createReactComponent(mockComponent, { React: customMockReact as never });
+    const renderError = new Error('Test error');
+    const onError = vi.fn();
+    const container = document.createElement('div');
 
-    // First render - no error
-    ReactComponent({});
+    (
+      mockComponent.mockInstance.render as ReturnType<typeof vi.fn>
+    ).mockRejectedValueOnce(renderError);
 
-    // Simulate error being set
-    customMockReact.useState.mockReturnValueOnce([new Error('Test error'), vi.fn()]);
+    const ReactComponent = createReactComponent(mockComponent, { React: mockReact as never });
+    ReactComponent({ onError });
 
-    // Re-render with error
-    ReactComponent({});
+    const ref = mockReact.getRef(0);
+    if (!ref) {
+      throw new Error('Expected container ref to be initialized');
+    }
+    ref.current = container;
 
-    // Should render error div
-    expect(customMockReact.createElement).toHaveBeenCalledWith(
-      'div',
-      expect.objectContaining({
-        style: expect.objectContaining({
-          color: 'red',
-        }),
-      }),
-      expect.stringContaining('Error:')
-    );
+    const mountEffect = mockReact.useEffect.mock.calls[1]?.[0] as (() => void) | undefined;
+    mountEffect?.();
+    await Promise.resolve();
+
+    expect(mockComponent.mockInstance.render).toHaveBeenCalledWith(container, undefined);
+    expect(onError).toHaveBeenCalledWith(renderError);
   });
 });
 
