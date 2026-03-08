@@ -26,6 +26,7 @@ import {
 } from './component-instance-index';
 import { initHost } from './host';
 import { isHostOfComponent } from '../window/name-payload';
+import { hasBrowserWindow } from '../utils/browser';
 
 /**
  * Global registry of all defined components.
@@ -76,7 +77,10 @@ function validateComponentOptions<P>(options: ComponentOptions<P>): void {
   // Validate URL format if it's a string (can't validate function URLs at definition time)
   if (typeof options.url === 'string') {
     try {
-      new URL(options.url, window.location.origin);
+      const validationBaseUrl = hasBrowserWindow()
+        ? window.location.origin
+        : 'https://forgeframe.invalid';
+      new URL(options.url, validationBaseUrl);
     } catch {
       throw new Error(
         `Invalid component URL "${options.url}". Must be a valid absolute or relative URL.`
@@ -127,14 +131,36 @@ export function create<P extends Record<string, unknown> = Record<string, unknow
   validateComponentOptions(options);
 
   const instances: ForgeFrameComponentInstance<P, X>[] = [];
-
   let componentHostProps: HostProps<P> | undefined;
-  if (isHostOfComponent(options.tag)) {
-    const host = initHost<P>(options.props, options.allowedConsumerDomains);
-    if (host) {
-      componentHostProps = host.hostProps;
+
+  const canDetectComponentHost = (): boolean => {
+    return hasBrowserWindow() && isHostOfComponent(options.tag);
+  };
+
+  const syncHostProps = (): HostProps<P> | undefined => {
+    if (componentHostProps) {
+      return componentHostProps;
     }
-  }
+
+    if (!canDetectComponentHost()) {
+      return undefined;
+    }
+
+    const host = initHost<P>(options.props, options.allowedConsumerDomains);
+    if (!host) {
+      return undefined;
+    }
+
+    componentHostProps = host.hostProps;
+    return componentHostProps;
+  };
+
+  syncHostProps();
+
+  const detectHostState = (): boolean => {
+    syncHostProps();
+    return componentHostProps !== undefined || canDetectComponentHost();
+  };
 
   /**
    * Component factory function that creates new instances.
@@ -162,14 +188,18 @@ export function create<P extends Record<string, unknown> = Record<string, unknow
   Component.instances = instances;
 
   Component.isHost = (): boolean => {
-    return isHostOfComponent(options.tag);
+    return detectHostState();
   };
 
   Component.isEmbedded = (): boolean => {
-    return isHostOfComponent(options.tag);
+    return detectHostState();
   };
 
-  Component.hostProps = componentHostProps;
+  Object.defineProperty(Component, 'hostProps', {
+    configurable: true,
+    enumerable: true,
+    get: () => syncHostProps(),
+  });
 
   (Component as InternalForgeFrameComponent<P, X>)[INTERNAL_COMPONENT_OPTIONS] = options;
 

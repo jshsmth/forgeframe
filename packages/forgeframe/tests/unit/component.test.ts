@@ -34,6 +34,16 @@ describe('Component Creation', () => {
     expect(MyComponent.instances).toEqual([]);
   });
 
+  it('should allow relative string urls in browser environments', () => {
+    const MyComponent = create({
+      tag: 'relative-url-component',
+      url: '/component.html',
+    });
+
+    expect(MyComponent).toBeDefined();
+    expect(MyComponent.isHost()).toBe(false);
+  });
+
   it('should validate required props on render and preserve function props on valid instances', async () => {
     const MyComponent = create({
       tag: 'my-component-with-props',
