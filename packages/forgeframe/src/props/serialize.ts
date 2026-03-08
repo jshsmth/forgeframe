@@ -28,12 +28,11 @@ function isSafeObjectKey(key: string): boolean {
 }
 
 /**
- * Converts a nested object to dot notation string.
+ * Converts a nested object to the DOTIFY wire format string.
  *
- * @example
- * ```typescript
- * toDotNotation({a: {b: 1, c: 2}}) // => 'a.b=1&a.c=2'
- * ```
+ * @remarks
+ * Path segments are JSON-framed and URI-escaped so literal `.`, `&`, `=`,
+ * and other reserved characters are preserved in keys.
  *
  * @internal
  */
@@ -59,12 +58,10 @@ function toDotNotation(
 }
 
 /**
- * Converts dot notation string back to nested object.
+ * Converts a DOTIFY wire format string back to a nested object.
  *
- * @example
- * ```typescript
- * fromDotNotation('a.b=1&a.c=2') // => {a: {b: 1, c: 2}}
- * ```
+ * @remarks
+ * Supports the current JSON-framed path format and legacy dot-separated paths.
  *
  * @internal
  */
