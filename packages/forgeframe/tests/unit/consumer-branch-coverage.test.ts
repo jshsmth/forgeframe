@@ -645,7 +645,7 @@ describe('Consumer branch coverage and edge paths', () => {
     ).createIframeElement('window-name');
 
     expect(iframe.getAttribute('sandbox')).toBe(
-      'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox'
+      'allow-scripts allow-same-origin allow-forms allow-popups'
     );
   });
 
@@ -663,6 +663,22 @@ describe('Consumer branch coverage and edge paths', () => {
     ).createIframeElement('window-name');
 
     expect(iframe.getAttribute('sandbox')).toBe('allow-scripts allow-forms');
+  });
+
+  it('should preserve an explicit empty sandbox when creating iframe element', () => {
+    const consumer = createConsumer({
+      attributes: {
+        sandbox: '',
+      },
+    });
+
+    const iframe = (
+      consumer as unknown as {
+        createIframeElement: (windowName: string) => HTMLIFrameElement;
+      }
+    ).createIframeElement('window-name');
+
+    expect(iframe.getAttribute('sandbox')).toBe('');
   });
 
   it('should open popup context and register popup close watcher cleanup', async () => {

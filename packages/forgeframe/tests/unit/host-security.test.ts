@@ -39,6 +39,105 @@ afterEach(() => {
 });
 
 describe('Host security', () => {
+  it('should preserve built-in hostProps when bootstrap props reuse reserved names', () => {
+    const consumerWindow = { postMessage: vi.fn() } as unknown as Window;
+
+    vi
+      .spyOn(
+        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
+        'resolveConsumerWindow'
+      )
+      .mockReturnValue(consumerWindow);
+
+    const host = new HostComponent(
+      {
+        uid: 'host-uid-reserved-bootstrap',
+        tag: 'secure-component-reserved-bootstrap',
+        version: VERSION,
+        context: CONTEXT.IFRAME,
+        consumerDomain: 'https://trusted.example.com',
+        props: {
+          uid: 'spoofed-uid',
+          close: 'spoofed-close',
+          consumer: 'spoofed-consumer',
+          title: 'Visible title',
+        },
+        exports: VALID_EXPORTS,
+      },
+      {},
+      undefined,
+      true
+    );
+
+    expect(host.hostProps.uid).toBe('host-uid-reserved-bootstrap');
+    expect(host.hostProps.tag).toBe('secure-component-reserved-bootstrap');
+    expect(typeof host.hostProps.close).toBe('function');
+    expect(typeof host.hostProps.consumer.export).toBe('function');
+    expect(host.hostProps.title).toBe('Visible title');
+    expect(host.hostProps.consumer.props).toEqual({
+      uid: 'spoofed-uid',
+      close: 'spoofed-close',
+      consumer: 'spoofed-consumer',
+      title: 'Visible title',
+    });
+  });
+
+  it('should ignore reserved names during prop sync without deleting built-ins', () => {
+    const consumerWindow = { postMessage: vi.fn() } as unknown as Window;
+
+    vi
+      .spyOn(
+        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
+        'resolveConsumerWindow'
+      )
+      .mockReturnValue(consumerWindow);
+
+    const host = new HostComponent(
+      {
+        uid: 'host-uid-reserved-sync',
+        tag: 'secure-component-reserved-sync',
+        version: VERSION,
+        context: CONTEXT.IFRAME,
+        consumerDomain: 'https://trusted.example.com',
+        props: {
+          amount: 10,
+          close: 'initial-close',
+        },
+        exports: VALID_EXPORTS,
+      },
+      {},
+      undefined,
+      true
+    );
+
+    const propsHandler = (
+      host as unknown as {
+        messenger: { handlers: Map<string, (data: Record<string, unknown>) => unknown> };
+      }
+    ).messenger.handlers.get(MESSAGE_NAME.PROPS);
+
+    expect(propsHandler).toBeDefined();
+
+    propsHandler!({
+      uid: 'spoofed-uid',
+      close: 'spoofed-close',
+      consumer: 'spoofed-consumer',
+      status: 'updated',
+    });
+
+    expect(host.hostProps.amount).toBeUndefined();
+    expect(host.hostProps.uid).toBe('host-uid-reserved-sync');
+    expect(typeof host.hostProps.close).toBe('function');
+    expect(typeof host.hostProps.consumer.export).toBe('function');
+    expect(host.hostProps.status).toBe('updated');
+    expect(host.hostProps.consumer.props).toEqual({
+      uid: 'spoofed-uid',
+      close: 'spoofed-close',
+      consumer: 'spoofed-consumer',
+      status: 'updated',
+    });
+  });
+
   it('should reject disallowed consumer domains during host initialization', () => {
     vi
       .spyOn(

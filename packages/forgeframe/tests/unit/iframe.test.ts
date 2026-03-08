@@ -53,8 +53,9 @@ describe('createIframe', () => {
     expect(iframe.getAttribute('frameborder')).toBe('0');
     expect(iframe.getAttribute('allowtransparency')).toBe('true');
     expect(iframe.getAttribute('scrolling')).toBe('auto');
-    expect(iframe.getAttribute('sandbox')).toContain('allow-scripts');
-    expect(iframe.getAttribute('sandbox')).toContain('allow-same-origin');
+    expect(iframe.getAttribute('sandbox')).toBe(
+      'allow-scripts allow-same-origin allow-forms allow-popups'
+    );
   });
 
   it('should apply custom attributes', () => {
@@ -73,6 +74,20 @@ describe('createIframe', () => {
     expect(iframe.getAttribute('allow')).toBe('payment');
     expect(iframe.getAttribute('title')).toBe('Payment Widget');
     expect(iframe.getAttribute('sandbox')).toBe('allow-scripts allow-forms');
+  });
+
+  it('should preserve an explicit empty sandbox attribute', () => {
+    const iframe = createIframe({
+      url: 'https://example.com',
+      name: 'test-iframe',
+      container,
+      dimensions: { width: 100, height: 100 },
+      attributes: {
+        sandbox: '',
+      },
+    });
+
+    expect(iframe.getAttribute('sandbox')).toBe('');
   });
 
   it('should apply custom styles', () => {

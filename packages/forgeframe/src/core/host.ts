@@ -61,6 +61,20 @@ const HOST_PROPS_BUILTIN_KEYS = new Set([
   'children',
 ]);
 
+function filterReservedHostPropKeys<P extends Record<string, unknown>>(props: P): P {
+  const filteredProps: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(props)) {
+    if (HOST_PROPS_BUILTIN_KEYS.has(key)) {
+      continue;
+    }
+
+    filteredProps[key] = value;
+  }
+
+  return filteredProps as P;
+}
+
 /**
  * Host-side component implementation.
  *
@@ -303,7 +317,7 @@ export class HostComponent<P extends Record<string, unknown>> {
 
     this.propDefinitions = propDefinitions;
     validateProps(this.consumerProps, this.getBootstrapValidationDefinitions());
-    Object.assign(this.hostProps, this.consumerProps);
+    Object.assign(this.hostProps, filterReservedHostPropKeys(this.consumerProps));
     this.hostProps.consumer.props = this.consumerProps;
   }
 
@@ -428,9 +442,10 @@ export class HostComponent<P extends Record<string, unknown>> {
 
     validateProps(deserializedProps, this.getBootstrapValidationDefinitions());
     this.consumerProps = deserializedProps;
+    const hostConsumerProps = filterReservedHostPropKeys(deserializedProps);
 
     return {
-      ...deserializedProps,
+      ...hostConsumerProps,
       uid: this.uid,
       tag: this.tag,
       close: () => this.close(),
@@ -702,7 +717,7 @@ export class HostComponent<P extends Record<string, unknown>> {
 
         this.removeStaleHostProps(previousProps, newProps);
         this.consumerProps = newProps;
-        Object.assign(this.hostProps, newProps);
+        Object.assign(this.hostProps, filterReservedHostPropKeys(newProps));
         this.hostProps.consumer.props = this.consumerProps;
 
         for (const handler of this.propsHandlers) {
@@ -730,11 +745,11 @@ export class HostComponent<P extends Record<string, unknown>> {
    * @internal
    */
   private removeStaleHostProps(previousProps: P, nextProps: P): void {
-    for (const key of Object.keys(previousProps)) {
-      if (key in nextProps) {
-        continue;
-      }
-      if (HOST_PROPS_BUILTIN_KEYS.has(key)) {
+    const previousHostProps = filterReservedHostPropKeys(previousProps);
+    const nextHostProps = filterReservedHostPropKeys(nextProps);
+
+    for (const key of Object.keys(previousHostProps)) {
+      if (key in nextHostProps) {
         continue;
       }
       delete (this.hostProps as Record<string, unknown>)[key];

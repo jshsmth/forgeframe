@@ -101,7 +101,7 @@ export function createIframeElement(
  * as some browsers require the iframe to be in the DOM before loading content.
  *
  * If no sandbox attribute is provided, a default secure sandbox policy is applied:
- * `allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox`
+ * `allow-scripts allow-same-origin allow-forms allow-popups`
  *
  * @param options - Configuration options for the iframe
  * @returns The created HTMLIFrameElement, already appended to the container
@@ -388,12 +388,14 @@ function applyDefaultSandbox(
   iframe: HTMLIFrameElement,
   attributes: IframeAttributes
 ): void {
-  if (!attributes.sandbox) {
-    iframe.setAttribute(
-      'sandbox',
-      'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox'
-    );
+  if (attributes.sandbox !== undefined) {
+    return;
   }
+
+  iframe.setAttribute(
+    'sandbox',
+    'allow-scripts allow-same-origin allow-forms allow-popups'
+  );
 }
 
 
