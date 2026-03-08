@@ -184,6 +184,28 @@ describe('createReactComponent', () => {
     expect(propSyncDeps).toBeUndefined();
   });
 
+  it('should skip updateProps during the first prop-sync pass after mount', () => {
+    const ReactComponent = createReactComponent(mockComponent, { React: mockReact as never });
+    const container = document.createElement('div');
+
+    ReactComponent({ amount: 1 });
+    const ref = mockReact.getRef(0);
+    if (!ref) {
+      throw new Error('Expected container ref to be initialized');
+    }
+    ref.current = container;
+
+    const mountEffect = mockReact.useEffect.mock.calls[1]?.[0] as (() => void) | undefined;
+    const propSyncEffect = mockReact.useEffect.mock.calls[2]?.[0] as
+      | (() => void)
+      | undefined;
+
+    mountEffect?.();
+    propSyncEffect?.();
+
+    expect(mockComponent.mockInstance.updateProps).not.toHaveBeenCalled();
+  });
+
   it('should call useState for error state', () => {
     const ReactComponent = createReactComponent(mockComponent, { React: mockReact as never });
 

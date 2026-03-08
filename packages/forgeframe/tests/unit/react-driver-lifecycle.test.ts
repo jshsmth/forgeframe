@@ -119,7 +119,7 @@ describe('createReactComponent lifecycle integration', () => {
     expect(component).not.toHaveBeenCalled();
   });
 
-  it('should sync changed props and skip unchanged shallow-equal updates', () => {
+  it('should skip the initial prop sync and only update when props change', () => {
     const { React, refs, effects } = createReactHarness();
     const { component, instance } = createForgeFrameComponentMock();
     const onError = vi.fn();
@@ -133,15 +133,14 @@ describe('createReactComponent lifecycle integration', () => {
     effects[2]?.(); // initial prop sync
     effects[2]?.(); // same props, should no-op
 
-    expect(instance.updateProps).toHaveBeenCalledTimes(1);
-    expect(instance.updateProps).toHaveBeenCalledWith({ amount: 1 });
+    expect(instance.updateProps).not.toHaveBeenCalled();
 
     ReactComponent({ amount: 2, onError });
     effects[0]?.(); // onError ref sync
     effects[2]?.(); // changed props
 
-    expect(instance.updateProps).toHaveBeenCalledTimes(2);
-    expect(instance.updateProps).toHaveBeenLastCalledWith({ amount: 2 });
+    expect(instance.updateProps).toHaveBeenCalledTimes(1);
+    expect(instance.updateProps).toHaveBeenCalledWith({ amount: 2 });
   });
 
   it('should forward updateProps failures to onError callback', async () => {

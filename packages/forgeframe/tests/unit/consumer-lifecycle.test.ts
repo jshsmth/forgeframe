@@ -502,6 +502,23 @@ describe('Consumer lifecycle behavior', () => {
     expect(closeSpy).toHaveBeenCalledTimes(1);
   });
 
+  it('should invoke onClose before onDestroy when closing', async () => {
+    const lifecycle: string[] = [];
+    const onClose = vi.fn(() => {
+      lifecycle.push('close');
+    });
+    const onDestroy = vi.fn(() => {
+      lifecycle.push('destroy');
+    });
+    const consumer = createConsumer({}, { onClose, onDestroy });
+
+    await consumer.close();
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onDestroy).toHaveBeenCalledTimes(1);
+    expect(lifecycle).toEqual(['close', 'destroy']);
+  });
+
   it('should enforce render guards before opening', async () => {
     const container = document.createElement('div');
     document.body.appendChild(container);

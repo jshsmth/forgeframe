@@ -111,6 +111,9 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
   private destroyed = false;
 
   /** @internal */
+  private closing = false;
+
+  /** @internal */
   private get props(): P {
     return this.propsPipeline ? this.propsPipeline.props : ({} as P);
   }
@@ -397,11 +400,18 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * Emits the 'close' event before destruction. Safe to call multiple times.
    */
   async close(): Promise<void> {
-    if (this.destroyed) return;
+    if (this.destroyed || this.closing) return;
 
-    this.event.emit(EVENT.CLOSE);
+    this.closing = true;
 
-    await this.destroy();
+    try {
+      this.event.emit(EVENT.CLOSE);
+      this.callPropCallback('onClose');
+
+      await this.destroy();
+    } finally {
+      this.closing = false;
+    }
   }
 
   /**
