@@ -122,6 +122,8 @@ function toDotNotation(
   const parts: string[] = [];
 
   for (const [key, value] of entries) {
+    if (value === undefined) continue;
+
     const nextPath = [...path, key];
 
     if (isPlainObject(value)) {
@@ -161,6 +163,9 @@ function fromDotNotation(str: string): Record<string, unknown> {
     const isEmptyObjectPath = path.startsWith(DOTIFY_EMPTY_OBJECT_PATH_PREFIX);
     let value: unknown;
     if (isEmptyObjectPath) {
+      if (encodedValue !== '1') {
+        throw new Error('Invalid empty-object DOTIFY entry');
+      }
       value = {};
     } else {
       try {

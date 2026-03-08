@@ -275,6 +275,52 @@ describe('Props serialization behavior', () => {
     });
   });
 
+  it('should omit nested undefined DOTIFY values instead of deserializing them as strings', () => {
+    const { messenger, bridge } = createBridgeWithMessenger();
+    const definitions = {
+      payload: {
+        schema: prop.object(),
+        serialization: PROP_SERIALIZATION.DOTIFY,
+      },
+    };
+
+    const serialized = serializeProps(
+      {
+        payload: {
+          present: true,
+          nested: {
+            missing: undefined,
+            kept: 'value',
+          },
+        },
+      },
+      definitions,
+      bridge
+    ) as Record<string, unknown>;
+
+    const deserialized = deserializeProps(
+      serialized,
+      definitions,
+      messenger,
+      bridge,
+      window,
+      'https://consumer.example.com'
+    ) as {
+      payload: {
+        present: boolean;
+        nested: { kept: string; missing?: unknown };
+      };
+    };
+
+    expect(deserialized.payload).toEqual({
+      present: true,
+      nested: {
+        kept: 'value',
+      },
+    });
+    expect('missing' in deserialized.payload.nested).toBe(false);
+  });
+
   it('should round-trip DOTIFY-serialized object props with dotted and reserved keys', () => {
     const { messenger, bridge } = createBridgeWithMessenger();
     const definitions = {
@@ -451,6 +497,32 @@ describe('Props serialization behavior', () => {
     const malformed = {
       __type__: 'dotify',
       __value__: '__forgeframe.dotify_path__:%5B%5D=1',
+    };
+
+    const deserialized = deserializeProps(
+      { payload: malformed },
+      definitions,
+      messenger,
+      bridge,
+      window,
+      'https://consumer.example.com'
+    ) as { payload: unknown };
+
+    expect(deserialized.payload).toEqual(malformed);
+  });
+
+  it('should preserve malformed empty-object-path DOTIFY wrappers during deserialization fallback', () => {
+    const { messenger, bridge } = createBridgeWithMessenger();
+    const definitions = {
+      payload: {
+        schema: prop.object(),
+        serialization: PROP_SERIALIZATION.DOTIFY,
+      },
+    };
+    const malformed = {
+      __type__: 'dotify',
+      __value__:
+        '__forgeframe.dotify_empty_object_path__:%5B%22payload%22%2C%22empty%22%5D=false',
     };
 
     const deserialized = deserializeProps(
