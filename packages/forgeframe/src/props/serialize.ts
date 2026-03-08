@@ -536,7 +536,7 @@ function clonePropValue(
   if (value instanceof URL) {
     const clonedUrl = new URL(value.toString());
     seen.set(value, clonedUrl);
-    cloneOwnProperties(value, clonedUrl as Record<PropertyKey, unknown>, seen);
+    cloneOwnProperties(value, clonedUrl, seen);
     return clonedUrl;
   }
 
@@ -547,7 +547,7 @@ function clonePropValue(
   if (isBoxedPrimitiveObject(value)) {
     const clonedBoxed = Object(value.valueOf());
     seen.set(value, clonedBoxed);
-    cloneOwnProperties(value, clonedBoxed as Record<PropertyKey, unknown>, seen);
+    cloneOwnProperties(value, clonedBoxed, seen);
     return clonedBoxed;
   }
 
@@ -559,9 +559,7 @@ function clonePropValue(
     return value;
   }
 
-  const clonedObject = Object.create(
-    Object.getPrototypeOf(value)
-  ) as Record<PropertyKey, unknown>;
+  const clonedObject = Object.create(Object.getPrototypeOf(value)) as object;
   seen.set(value, clonedObject);
   cloneOwnProperties(value, clonedObject, seen);
 
@@ -572,9 +570,17 @@ function clonePropValue(
  * Returns true when a value is a boxed primitive wrapper object.
  * @internal
  */
+interface BoxedPrimitiveObject {
+  valueOf(): bigint | boolean | number | string | symbol;
+}
+
+/**
+ * Returns true when a value is a boxed primitive wrapper object.
+ * @internal
+ */
 function isBoxedPrimitiveObject(
   value: object
-): value is Boolean | Number | String | BigInt | Symbol {
+): value is BoxedPrimitiveObject {
   const tag = Object.prototype.toString.call(value);
   return (
     tag === '[object Boolean]' ||
@@ -593,9 +599,7 @@ function cloneErrorValue(
   value: Error,
   seen: WeakMap<object, unknown>
 ): Error {
-  const clonedError = Object.create(
-    Object.getPrototypeOf(value)
-  ) as Record<PropertyKey, unknown>;
+  const clonedError = Object.create(Object.getPrototypeOf(value)) as object;
   seen.set(value, clonedError);
 
   Object.defineProperty(clonedError, 'name', {
@@ -639,7 +643,7 @@ function cloneErrorValue(
     new Set<PropertyKey>(['name', 'message', 'cause', 'stack'])
   );
 
-  return clonedError as Error;
+  return clonedError as unknown as Error;
 }
 
 /**
@@ -648,7 +652,7 @@ function cloneErrorValue(
  */
 function cloneOwnProperties(
   source: object,
-  target: Record<PropertyKey, unknown>,
+  target: object,
   seen: WeakMap<object, unknown>,
   excludedKeys: ReadonlySet<PropertyKey> = new Set<PropertyKey>()
 ): void {
