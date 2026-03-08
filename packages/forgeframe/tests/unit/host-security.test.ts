@@ -65,7 +65,7 @@ describe('Host security', () => {
     );
   });
 
-  it('should allow wildcard consumer domains during host initialization', () => {
+  it('should allow wildcard consumer domains during host initialization and bind the verified origin', () => {
     vi
       .spyOn(
         HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
@@ -86,7 +86,12 @@ describe('Host security', () => {
     window.name = buildWindowName(payload);
     setDocumentReferrer('https://api.trusted.example.com/checkout');
 
-    expect(() => initHost({}, 'https://*.trusted.example.com', { deferInit: true })).not.toThrow();
+    const host = initHost({}, 'https://*.trusted.example.com', { deferInit: true });
+    const hostPropsDescriptor = Object.getOwnPropertyDescriptor(window, 'hostProps');
+
+    expect(host).not.toBeNull();
+    expect(host?.hostProps.getConsumerDomain()).toBe('https://api.trusted.example.com');
+    expect(hostPropsDescriptor?.get).toEqual(expect.any(Function));
   });
 
   it('should reject spoofed claimed consumer domains when the verified referrer origin is untrusted', () => {

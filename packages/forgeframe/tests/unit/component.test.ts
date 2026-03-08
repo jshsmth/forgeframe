@@ -34,7 +34,7 @@ describe('Component Creation', () => {
     expect(MyComponent.instances).toEqual([]);
   });
 
-  it('should create a component with props definition', () => {
+  it('should validate required props on render and preserve function props on valid instances', async () => {
     const MyComponent = create({
       tag: 'my-component-with-props',
       url: 'https://example.com/component',
@@ -43,8 +43,29 @@ describe('Component Creation', () => {
         onLogin: prop.function(),
       },
     });
+    const onLogin = vi.fn();
+    const invalidInstance = MyComponent({ onLogin });
+    const container = document.createElement('div');
 
-    expect(MyComponent).toBeDefined();
+    await expect(invalidInstance.render(container)).rejects.toThrow(
+      'Prop "email" is required but was not provided'
+    );
+
+    const instance = MyComponent({
+      email: 'user@example.com',
+      onLogin,
+    });
+    const internalProps = (instance as unknown as {
+      props: {
+        email: string;
+        onLogin: typeof onLogin;
+      };
+    }).props;
+
+    expect(internalProps).toMatchObject({
+      email: 'user@example.com',
+    });
+    expect(internalProps.onLogin).toBe(onLogin);
   });
 
   it('should throw error for invalid tag', () => {
@@ -133,7 +154,7 @@ describe('Component Creation', () => {
     );
   });
 
-  it('should support function url options that depend on props', () => {
+  it('should materialize function url options from the latest normalized props', async () => {
     const DynamicUrlComponent = create<{ path: string }>({
       tag: 'dynamic-url-component',
       url: (props) => `https://example.com/${props.path}`,
@@ -142,16 +163,21 @@ describe('Component Creation', () => {
       },
     });
     const instance = DynamicUrlComponent({ path: 'checkout' });
+    const internal = instance as unknown as {
+      props: { path: string };
+      resolveUrl: () => string;
+    };
 
-    expect(() =>
-      DynamicUrlComponent({ path: 'checkout' })
-    ).not.toThrow();
-    expect((instance as unknown as { resolveUrl: () => string }).resolveUrl()).toBe(
-      'https://example.com/checkout'
-    );
+    expect(internal.props.path).toBe('checkout');
+    expect(internal.resolveUrl()).toBe('https://example.com/checkout');
+
+    await instance.updateProps({ path: 'billing' });
+
+    expect(internal.props.path).toBe('billing');
+    expect(internal.resolveUrl()).toBe('https://example.com/billing');
   });
 
-  it('should support function dimensions options that depend on props', () => {
+  it('should materialize function dimensions options from the latest normalized props', async () => {
     const DynamicDimensionsComponent = create<{ height: number }>({
       tag: 'dynamic-dimensions-component',
       url: 'https://example.com',
@@ -161,16 +187,18 @@ describe('Component Creation', () => {
       dimensions: (props) => ({ width: '100%', height: props.height }),
     });
     const instance = DynamicDimensionsComponent({ height: 420 });
-    const resolvedDimensions = (
-      instance as unknown as {
-        resolveDimensions: () => { width: string; height: number };
-      }
-    ).resolveDimensions();
+    const internal = instance as unknown as {
+      props: { height: number };
+      resolveDimensions: () => { width: string; height: number };
+    };
 
-    expect(() =>
-      DynamicDimensionsComponent({ height: 420 })
-    ).not.toThrow();
-    expect(resolvedDimensions).toEqual({ width: '100%', height: 420 });
+    expect(internal.props.height).toBe(420);
+    expect(internal.resolveDimensions()).toEqual({ width: '100%', height: 420 });
+
+    await instance.updateProps({ height: 560 });
+
+    expect(internal.props.height).toBe(560);
+    expect(internal.resolveDimensions()).toEqual({ width: '100%', height: 560 });
   });
 });
 

@@ -183,21 +183,115 @@ describe('parseWindowName', () => {
     expect(parseWindowName(malformedName)).toBeNull();
   });
 
-  it('should handle unicode characters', () => {
+  it('should round-trip real non-ASCII payload values', () => {
     const payload: WindowNamePayload<{ message: string }> = {
       uid: 'test-uid',
       tag: 'test-component',
       version: VERSION,
       context: CONTEXT.IFRAME,
       consumerDomain: 'https://consumer.com',
-      props: { message: 'Hello World!' },
+      props: { message: 'Héllo 世界 👋 café' },
       exports: VALID_EXPORTS,
     };
 
     const name = buildWindowName(payload);
     const parsed = parseWindowName<{ message: string }>(name);
 
-    expect(parsed?.props.message).toBe('Hello World!');
+    expect(parsed).toEqual(payload);
+    expect(parsed?.props.message).toBe('Héllo 世界 👋 café');
+  });
+
+  it.each([
+    [
+      'empty consumer domain',
+      {
+        uid: 'test-uid',
+        tag: 'test-component',
+        version: VERSION,
+        context: CONTEXT.IFRAME,
+        consumerDomain: '',
+        props: {},
+        exports: VALID_EXPORTS,
+      },
+    ],
+    [
+      'non-object children map',
+      {
+        uid: 'test-uid',
+        tag: 'test-component',
+        version: VERSION,
+        context: CONTEXT.IFRAME,
+        consumerDomain: 'https://consumer.com',
+        props: {},
+        exports: VALID_EXPORTS,
+        children: 'invalid-children',
+      },
+    ],
+    [
+      'child with invalid default context',
+      {
+        uid: 'test-uid',
+        tag: 'test-component',
+        version: VERSION,
+        context: CONTEXT.IFRAME,
+        consumerDomain: 'https://consumer.com',
+        props: {},
+        exports: VALID_EXPORTS,
+        children: {
+          BrokenChild: {
+            tag: 'child-component',
+            url: 'https://example.com/child',
+            defaultContext: 'modal',
+          },
+        },
+      },
+    ],
+    [
+      'child with invalid dimension type',
+      {
+        uid: 'test-uid',
+        tag: 'test-component',
+        version: VERSION,
+        context: CONTEXT.IFRAME,
+        consumerDomain: 'https://consumer.com',
+        props: {},
+        exports: VALID_EXPORTS,
+        children: {
+          BrokenChild: {
+            tag: 'child-component',
+            url: 'https://example.com/child',
+            dimensions: {
+              width: true,
+            },
+          },
+        },
+      },
+    ],
+    [
+      'child with non-object props metadata',
+      {
+        uid: 'test-uid',
+        tag: 'test-component',
+        version: VERSION,
+        context: CONTEXT.IFRAME,
+        consumerDomain: 'https://consumer.com',
+        props: {},
+        exports: VALID_EXPORTS,
+        children: {
+          BrokenChild: {
+            tag: 'child-component',
+            url: 'https://example.com/child',
+            props: 'invalid-props',
+          },
+        },
+      },
+    ],
+  ])('should reject prefixed payloads with %s', (_label, malformedPayload) => {
+    const malformedName = `${WINDOW_NAME_PREFIX}${btoa(
+      encodeURIComponent(JSON.stringify(malformedPayload))
+    )}`;
+
+    expect(parseWindowName(malformedName)).toBeNull();
   });
 });
 
@@ -281,6 +375,26 @@ describe('isHostOfComponent', () => {
   it('should return false for non-ForgeFrame window', () => {
     const win = { name: 'regular-window' } as Window;
     expect(isHostOfComponent('my-component', win)).toBe(false);
+  });
+
+  it('should return false for prefixed windows with invalid payloads', () => {
+    const invalidPrefixedWindow = {
+      name: `${WINDOW_NAME_PREFIX}${btoa(
+        encodeURIComponent(
+          JSON.stringify({
+            uid: 'test-uid',
+            tag: '',
+            version: VERSION,
+            context: CONTEXT.IFRAME,
+            consumerDomain: 'https://consumer.com',
+            props: {},
+            exports: VALID_EXPORTS,
+          })
+        )
+      )}`,
+    } as Window;
+
+    expect(isHostOfComponent('my-component', invalidPrefixedWindow)).toBe(false);
   });
 });
 
