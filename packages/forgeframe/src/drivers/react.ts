@@ -21,7 +21,10 @@ interface ReactLike {
   useEffect: (effect: () => void | (() => void), deps?: unknown[]) => void;
   useState: <T>(initial: T) => [T, (v: T) => void];
   forwardRef: <T, P>(
-    render: (props: P, ref: { current: T | null } | null) => unknown
+    render: (
+      props: P,
+      ref: ((value: T | null) => void) | { current: T | null } | null
+    ) => unknown
   ) => unknown;
 }
 
@@ -264,6 +267,8 @@ export function createReactComponent<P extends Record<string, unknown>, X = unkn
         const container = containerRef.current;
         if (!container) return;
 
+        setError(null);
+
         const instance = Component(componentProps as P);
         instanceRef.current = instance;
         syncedPropsRef.current = componentProps as Partial<P>;
@@ -310,13 +315,29 @@ export function createReactComponent<P extends Record<string, unknown>, X = unkn
 
         syncedPropsRef.current = nextProps;
         instance.updateProps(nextProps).catch((err: Error) => {
+          if (instanceRef.current !== instance) {
+            return;
+          }
+
           onErrorRef.current?.(err);
         });
       });
 
       useEffect(() => {
-        if (ref && typeof ref === 'object' && containerRef.current) {
-          ref.current = containerRef.current;
+        const container = containerRef.current;
+
+        if (typeof ref === 'function') {
+          ref(container);
+          return () => {
+            ref(null);
+          };
+        }
+
+        if (ref && typeof ref === 'object') {
+          ref.current = container;
+          return () => {
+            ref.current = null;
+          };
         }
       }, [ref]);
 

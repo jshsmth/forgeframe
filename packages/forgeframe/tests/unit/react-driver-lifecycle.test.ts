@@ -290,6 +290,49 @@ describe('createReactComponent lifecycle integration', () => {
     expect(onError).not.toHaveBeenCalledWith(staleRenderError);
   });
 
+  it('should ignore stale updateProps rejections after context remounts', async () => {
+    const { React, refs, effects } = createReactHarness();
+    const first = createForgeFrameComponentMock();
+    const second = createForgeFrameComponentMock();
+    const onError = vi.fn();
+    const staleUpdateError = new Error('stale update failed');
+    const deferredUpdate = createDeferredPromise<void>();
+    first.instance.updateProps.mockReturnValueOnce(deferredUpdate.promise);
+
+    const component = vi
+      .fn()
+      .mockReturnValueOnce(first.instance)
+      .mockReturnValueOnce(second.instance);
+    Object.defineProperty(component, 'name', { value: 'LifecycleComponent' });
+    const container = document.createElement('div');
+
+    const ReactComponent = createReactComponent(component as never, { React: React as never });
+
+    ReactComponent({ amount: 1, context: 'popup', onError });
+    refs[0].current = container;
+    effects[0]?.();
+    const firstCleanup = effects[1]?.();
+    effects[2]?.();
+
+    ReactComponent({ amount: 2, context: 'popup', onError });
+    effects[0]?.();
+    effects[2]?.();
+
+    ReactComponent({ amount: 2, context: 'iframe', onError });
+    refs[0].current = container;
+    effects[0]?.();
+    (firstCleanup as (() => void) | undefined)?.();
+    effects[1]?.();
+    effects[2]?.();
+
+    deferredUpdate.reject(staleUpdateError);
+    await Promise.resolve();
+
+    expect(first.instance.updateProps).toHaveBeenCalledWith({ amount: 2 });
+    expect(second.instance.updateProps).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalledWith(staleUpdateError);
+  });
+
   it('should invoke onClose during cleanup before unsubscribing the close listener', async () => {
     const { React, refs, effects } = createReactHarness();
     const { component, unsubscribes } = createForgeFrameComponentMock();
@@ -399,6 +442,39 @@ describe('createReactComponent lifecycle integration', () => {
     expect(onError).toHaveBeenCalledWith(renderError);
   });
 
+  it('should clear prior render errors before remounting on context changes', async () => {
+    const { React, refs, effects, setState } = createReactHarness();
+    const first = createForgeFrameComponentMock();
+    const second = createForgeFrameComponentMock();
+    const renderError = new Error('render failed');
+    first.instance.render.mockRejectedValueOnce(renderError);
+    const component = vi
+      .fn()
+      .mockReturnValueOnce(first.instance)
+      .mockReturnValueOnce(second.instance);
+    Object.defineProperty(component, 'name', { value: 'LifecycleComponent' });
+    const container = document.createElement('div');
+
+    const ReactComponent = createReactComponent(component as never, { React: React as never });
+
+    ReactComponent({ amount: 1, context: 'popup' });
+    refs[0].current = container;
+    effects[0]?.();
+    const firstCleanup = effects[1]?.();
+    await Promise.resolve();
+
+    ReactComponent({ amount: 1, context: 'iframe' });
+    refs[0].current = container;
+    effects[0]?.();
+    (firstCleanup as (() => void) | undefined)?.();
+    effects[1]?.();
+
+    expect(setState).toHaveBeenNthCalledWith(1, null);
+    expect(setState).toHaveBeenNthCalledWith(2, renderError);
+    expect(setState).toHaveBeenNthCalledWith(3, null);
+    expect(second.instance.render).toHaveBeenCalledWith(container, 'iframe');
+  });
+
   it('should forward object refs to the container element', () => {
     const { React, refs, effects } = createReactHarness();
     const { component } = createForgeFrameComponentMock();
@@ -417,5 +493,29 @@ describe('createReactComponent lifecycle integration', () => {
     effects[3]?.();
 
     expect(forwardedRef.current).toBe(container);
+  });
+
+  it('should forward callback refs to the container element and clear them on cleanup', () => {
+    const { React, refs, effects } = createReactHarness();
+    const { component } = createForgeFrameComponentMock();
+    const forwardedRef = vi.fn();
+
+    const ReactComponent = createReactComponent(component as never, { React: React as never });
+    (
+      ReactComponent as unknown as (
+        props: Record<string, unknown>,
+        ref: (value: unknown) => void
+      ) => unknown
+    )({ amount: 1 }, forwardedRef);
+
+    const container = document.createElement('div');
+    refs[0].current = container;
+    const cleanup = effects[3]?.();
+
+    expect(forwardedRef).toHaveBeenCalledWith(container);
+
+    (cleanup as (() => void) | undefined)?.();
+
+    expect(forwardedRef).toHaveBeenLastCalledWith(null);
   });
 });
