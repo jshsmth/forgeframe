@@ -75,6 +75,22 @@ describe('createIframe', () => {
     expect(iframe.getAttribute('sandbox')).toBe('allow-scripts allow-forms');
   });
 
+  it('should apply custom styles', () => {
+    const iframe = createIframe({
+      url: 'https://example.com',
+      name: 'test-iframe',
+      container,
+      dimensions: { width: 100, height: 100 },
+      style: {
+        marginTop: 8,
+        borderRadius: '12px',
+      },
+    });
+
+    expect(iframe.style.getPropertyValue('margin-top')).toBe('8px');
+    expect(iframe.style.getPropertyValue('border-radius')).toBe('12px');
+  });
+
   it('should handle boolean attributes', () => {
     const iframe = createIframe({
       url: 'https://example.com',
