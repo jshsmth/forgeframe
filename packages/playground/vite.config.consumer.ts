@@ -6,6 +6,7 @@ import mkcert from 'vite-plugin-mkcert';
 const forgeframePackageJson = JSON.parse(
   readFileSync(resolve(__dirname, '../forgeframe/package.json'), 'utf8')
 ) as { version: string };
+const forgeframeSrcRoot = resolve(__dirname, '../forgeframe/src');
 
 export default defineConfig(({ command }) => ({
   plugins: command === 'serve' ? [mkcert()] : [],
@@ -15,7 +16,8 @@ export default defineConfig(({ command }) => ({
   },
   resolve: {
     alias: {
-      forgeframe: resolve(__dirname, '../forgeframe/src/index.ts'),
+      forgeframe: resolve(forgeframeSrcRoot, 'index.ts'),
+      '@': forgeframeSrcRoot,
     },
   },
   server: {
