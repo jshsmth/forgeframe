@@ -479,11 +479,22 @@ window.hostProps.onProps((newProps) => {
 });
 ```
 
+Built-in `window.hostProps` names are reserved. Consumer props with names such as
+`uid`, `tag`, `close`, `focus`, `resize`, `show`, `hide`, `onProps`, `onError`,
+`getConsumer`, `getConsumerDomain`, `export`, `consumer`, `getPeerInstances`, and
+`children` are kept in `hostProps.consumer.props`, but they do not override the
+top-level ForgeFrame methods and metadata exposed on `window.hostProps`.
+
 ---
 
 ## Host Window API (hostProps)
 
 In host windows, `window.hostProps` provides access to props and control methods.
+
+When rendering in iframe mode, ForgeFrame applies a default sandbox of
+`allow-scripts allow-same-origin allow-forms allow-popups` unless you explicitly
+set `attributes.sandbox` on the consumer component. An explicit `sandbox` value is
+used as-is.
 
 ### TypeScript Setup
 
