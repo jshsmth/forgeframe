@@ -458,7 +458,7 @@ export class HostComponent<P extends Record<string, unknown>> {
    * @internal
    */
   private getBootstrapValidationDefinitions(): PropsDefinition<P> {
-    if (this.consumerDomain !== getDomain()) {
+    if (!this.consumerDomainVerified || this.consumerDomain !== getDomain()) {
       return this.propDefinitions;
     }
 
