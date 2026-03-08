@@ -576,6 +576,20 @@ interface BoxedPrimitiveObject {
   valueOf(): bigint | boolean | number | string | symbol;
 }
 
+type ArrayBufferViewConstructor = new (
+  buffer: ArrayBufferLike,
+  byteOffset?: number,
+  length?: number
+) => ArrayBufferView;
+
+type SizedArrayBufferViewConstructor = new (length: number) => ArrayBufferView;
+
+const Float16ArrayConstructor = (
+  globalThis as typeof globalThis & {
+    Float16Array?: ArrayBufferViewConstructor & SizedArrayBufferViewConstructor;
+  }
+).Float16Array;
+
 /**
  * Clones an ArrayBuffer view while preserving shared backing buffers.
  * @internal
@@ -597,11 +611,7 @@ function cloneArrayBufferViewValue(
       value.byteLength
     );
   } else {
-    const TypedArrayConstructor = value.constructor as new (
-      buffer: ArrayBufferLike,
-      byteOffset?: number,
-      length?: number
-    ) => ArrayBufferView;
+    const TypedArrayConstructor = getArrayBufferViewConstructor(value);
     const elementLength =
       'length' in value ? (value as { length: number }).length : undefined;
     clonedView = new TypedArrayConstructor(
@@ -615,6 +625,48 @@ function cloneArrayBufferViewValue(
   cloneOwnProperties(value, clonedView, seen);
 
   return clonedView;
+}
+
+/**
+ * Returns the built-in constructor for a typed-array view.
+ *
+ * @remarks
+ * Custom typed-array subclasses are downgraded to their built-in brand so we do
+ * not depend on subclass-specific constructor signatures when rebuilding views.
+ *
+ * @internal
+ */
+function getArrayBufferViewConstructor(
+  value: ArrayBufferView
+): ArrayBufferViewConstructor {
+  switch (Object.prototype.toString.call(value)) {
+    case '[object Int8Array]':
+      return Int8Array;
+    case '[object Uint8Array]':
+      return Uint8Array;
+    case '[object Uint8ClampedArray]':
+      return Uint8ClampedArray;
+    case '[object Int16Array]':
+      return Int16Array;
+    case '[object Uint16Array]':
+      return Uint16Array;
+    case '[object Int32Array]':
+      return Int32Array;
+    case '[object Uint32Array]':
+      return Uint32Array;
+    case '[object Float16Array]':
+      return Float16ArrayConstructor ?? Uint8Array;
+    case '[object Float32Array]':
+      return Float32Array;
+    case '[object Float64Array]':
+      return Float64Array;
+    case '[object BigInt64Array]':
+      return BigInt64Array;
+    case '[object BigUint64Array]':
+      return BigUint64Array;
+    default:
+      return Uint8Array;
+  }
 }
 
 /**
@@ -700,7 +752,7 @@ function cloneBrandedObjectValue<T extends object>(
     }
 
     seen.set(value, clonedValue);
-    cloneOwnProperties(value, clonedValue, seen);
+    cloneOwnProperties(value, clonedValue, seen, undefined, true);
     return clonedValue;
   } catch {
     // Preserve unsupported branded objects by reference rather than fabricating
@@ -789,10 +841,14 @@ function cloneOwnProperties(
   source: object,
   target: object,
   seen: WeakMap<object, unknown>,
-  excludedKeys: ReadonlySet<PropertyKey> = new Set<PropertyKey>()
+  excludedKeys: ReadonlySet<PropertyKey> = new Set<PropertyKey>(),
+  skipExistingKeys = false
 ): void {
   for (const key of Reflect.ownKeys(source)) {
     if (excludedKeys.has(key)) continue;
+    if (skipExistingKeys && Object.prototype.hasOwnProperty.call(target, key)) {
+      continue;
+    }
 
     const descriptor = Object.getOwnPropertyDescriptor(source, key);
     if (!descriptor) continue;

@@ -17,6 +17,12 @@ import { prop } from '@/props/prop';
 import { isStandardSchema } from '@/props/schema';
 import type { PropsDefinition, PropContext } from '@/types';
 
+const Float16ArrayCtor = (
+  globalThis as typeof globalThis & {
+    Float16Array?: new (length: number) => ArrayBufferView;
+  }
+).Float16Array;
+
 describe('Props Normalization', () => {
   const createContext = <P extends Record<string, unknown>>(
     props: Partial<P> = {}
@@ -558,6 +564,42 @@ describe('Clone Props', () => {
     expect(cloned.view[0]).toBe(7);
   });
 
+  it('should clone typed-array subclasses as built-in views without throwing', () => {
+    class CustomUint8Array extends Uint8Array {
+      constructor(length: number, token: string) {
+        if (token !== 'ok') {
+          throw new Error('unexpected constructor call');
+        }
+        super(length);
+      }
+    }
+
+    const view = new CustomUint8Array(4, 'ok');
+    view[0] = 5;
+    const original = { view };
+
+    const cloned = cloneProps(original);
+
+    expect(cloned.view).not.toBe(view);
+    expect(cloned.view).toBeInstanceOf(Uint8Array);
+    expect(cloned.view).not.toBeInstanceOf(CustomUint8Array);
+    expect(cloned.view[0]).toBe(5);
+  });
+
+  it('should preserve Float16Array views without downgrading them to Uint8Array', () => {
+    if (!Float16ArrayCtor) return;
+
+    const view = new Float16ArrayCtor(2);
+    view[0] = 1.5;
+    const original = { view };
+
+    const cloned = cloneProps(original);
+
+    expect(cloned.view).not.toBe(view);
+    expect(cloned.view).toBeInstanceOf(Float16ArrayCtor);
+    expect(cloned.view[0]).toBe(1.5);
+  });
+
   it('should preserve repeated references and cycles without throwing', () => {
     const shared = { value: 1 };
     const original = {
@@ -634,6 +676,49 @@ describe('Clone Props', () => {
       expect(structuredCloneMock).toHaveBeenCalledWith(headers);
       expect(cloned.headers).toBe(headers);
       expect(cloned.headers.get('x-test')).toBe('1');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('should not overwrite existing branded-object internals after structuredClone succeeds', () => {
+    const realStructuredClone = globalThis.structuredClone;
+    const INTERNAL_HANDLE = Symbol('internal-handle');
+
+    class Handle {
+      read(): string {
+        return 'ok';
+      }
+    }
+
+    class FakeBlob {
+      [INTERNAL_HANDLE]: Handle;
+
+      constructor() {
+        this[INTERNAL_HANDLE] = new Handle();
+      }
+
+      get [Symbol.toStringTag](): string {
+        return 'Blob';
+      }
+
+      text(): string {
+        return this[INTERNAL_HANDLE].read();
+      }
+    }
+
+    const blob = new FakeBlob();
+    vi.stubGlobal(
+      'structuredClone',
+      vi.fn((value: unknown) => (value === blob ? new FakeBlob() : realStructuredClone(value)))
+    );
+
+    try {
+      const cloned = cloneProps({ blob }) as { blob: FakeBlob };
+
+      expect(cloned.blob).not.toBe(blob);
+      expect(Object.prototype.toString.call(cloned.blob)).toBe('[object Blob]');
+      expect(cloned.blob.text()).toBe('ok');
     } finally {
       vi.unstubAllGlobals();
     }
