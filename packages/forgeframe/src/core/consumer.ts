@@ -859,7 +859,10 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     }
 
     try {
-      await this.sendPropsUpdateToHost(this.props);
+      await this.propsPipeline.syncCurrentPropsToHost({
+        shouldSendPropsToHost: () => this.transport.isHostConnected(),
+        sendPropsUpdateToHost: (nextProps) => this.sendPropsUpdateToHost(nextProps),
+      });
     } catch (error) {
       this.handleError(error as Error);
     }

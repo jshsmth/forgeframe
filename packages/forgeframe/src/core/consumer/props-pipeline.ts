@@ -18,6 +18,15 @@ export interface ConsumerPropsUpdateHooks<P extends Record<string, unknown>> {
 }
 
 /**
+ * Hooks required to queue a host sync for the current props snapshot.
+ * @internal
+ */
+export interface ConsumerPropsSyncHooks<P extends Record<string, unknown>> {
+  shouldSendPropsToHost: () => boolean;
+  sendPropsUpdateToHost: (nextProps: P) => Promise<void>;
+}
+
+/**
  * Owns consumer prop normalization, validation, and update queueing.
  * @internal
  */
@@ -82,6 +91,21 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
         await hooks.sendPropsUpdateToHost(nextProps);
       }
       hooks.emitPropsUpdated(nextProps);
+    }, hooks.shouldSendPropsToHost);
+  }
+
+  /**
+   * Queues a host synchronization for the current props snapshot.
+   *
+   * @remarks
+   * This shares the same serialization queue as updateProps so function bridge
+   * batches cannot overlap with user-initiated prop updates.
+   */
+  syncCurrentPropsToHost(hooks: ConsumerPropsSyncHooks<P>): Promise<void> {
+    return this.queuePropsUpdate(async () => {
+      if (hooks.shouldSendPropsToHost()) {
+        await hooks.sendPropsUpdateToHost(this.props);
+      }
     }, hooks.shouldSendPropsToHost);
   }
 

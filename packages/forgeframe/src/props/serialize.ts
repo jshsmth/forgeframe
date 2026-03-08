@@ -129,7 +129,11 @@ function decodeDotNotationPath(path: string): string[] {
     path.slice(DOTIFY_FRAMED_PATH_PREFIX.length)
   );
   const parsed = JSON.parse(decodedPath);
-  if (Array.isArray(parsed) && parsed.every((segment) => typeof segment === 'string')) {
+  if (
+    Array.isArray(parsed) &&
+    parsed.length > 0 &&
+    parsed.every((segment) => typeof segment === 'string')
+  ) {
     return parsed;
   }
 

@@ -274,6 +274,31 @@ describe('Props serialization behavior', () => {
     expect(deserialized.payload).toEqual(malformed);
   });
 
+  it('should preserve empty-path DOTIFY wrappers during deserialization fallback', () => {
+    const { messenger, bridge } = createBridgeWithMessenger();
+    const definitions = {
+      payload: {
+        schema: prop.object(),
+        serialization: PROP_SERIALIZATION.DOTIFY,
+      },
+    };
+    const malformed = {
+      __type__: 'dotify',
+      __value__: '__forgeframe.dotify_path__:%5B%5D=1',
+    };
+
+    const deserialized = deserializeProps(
+      { payload: malformed },
+      definitions,
+      messenger,
+      bridge,
+      window,
+      'https://consumer.example.com'
+    ) as { payload: unknown };
+
+    expect(deserialized.payload).toEqual(malformed);
+  });
+
   it('should skip undefined keys while serializing props', () => {
     const { bridge } = createBridgeWithMessenger();
     const serialized = serializeProps(
