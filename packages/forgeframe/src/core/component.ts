@@ -131,15 +131,36 @@ export function create<P extends Record<string, unknown> = Record<string, unknow
   validateComponentOptions(options);
 
   const instances: ForgeFrameComponentInstance<P, X>[] = [];
-  const canInspectBrowserHost = hasBrowserWindow();
-
   let componentHostProps: HostProps<P> | undefined;
-  if (canInspectBrowserHost && isHostOfComponent(options.tag)) {
-    const host = initHost<P>(options.props, options.allowedConsumerDomains);
-    if (host) {
-      componentHostProps = host.hostProps;
+
+  const canDetectComponentHost = (): boolean => {
+    return hasBrowserWindow() && isHostOfComponent(options.tag);
+  };
+
+  const syncHostProps = (): HostProps<P> | undefined => {
+    if (componentHostProps) {
+      return componentHostProps;
     }
-  }
+
+    if (!canDetectComponentHost()) {
+      return undefined;
+    }
+
+    const host = initHost<P>(options.props, options.allowedConsumerDomains);
+    if (!host) {
+      return undefined;
+    }
+
+    componentHostProps = host.hostProps;
+    return componentHostProps;
+  };
+
+  syncHostProps();
+
+  const detectHostState = (): boolean => {
+    syncHostProps();
+    return componentHostProps !== undefined || canDetectComponentHost();
+  };
 
   /**
    * Component factory function that creates new instances.
@@ -167,14 +188,18 @@ export function create<P extends Record<string, unknown> = Record<string, unknow
   Component.instances = instances;
 
   Component.isHost = (): boolean => {
-    return canInspectBrowserHost ? isHostOfComponent(options.tag) : false;
+    return detectHostState();
   };
 
   Component.isEmbedded = (): boolean => {
-    return canInspectBrowserHost ? isHostOfComponent(options.tag) : false;
+    return detectHostState();
   };
 
-  Component.hostProps = componentHostProps;
+  Object.defineProperty(Component, 'hostProps', {
+    configurable: true,
+    enumerable: true,
+    get: () => syncHostProps(),
+  });
 
   (Component as InternalForgeFrameComponent<P, X>)[INTERNAL_COMPONENT_OPTIONS] = options;
 
