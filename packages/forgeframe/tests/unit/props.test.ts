@@ -693,6 +693,39 @@ describe('Clone Props', () => {
     expect(cloned.failure.code).toBe('E_FAIL');
   });
 
+  it('should downgrade custom Error subclasses instead of fabricating invalid instances', () => {
+    class SecretError extends Error {
+      #secret: number;
+
+      constructor(message: string, secret: number) {
+        super(message);
+        this.#secret = secret;
+        this.code = 'E_SECRET';
+      }
+
+      get secret(): number {
+        return this.#secret;
+      }
+
+      code: string;
+    }
+
+    const original = {
+      failure: new SecretError('boom', 42),
+    };
+
+    const cloned = cloneProps(original) as {
+      failure: Error & { code?: string; secret?: unknown };
+    };
+
+    expect(cloned.failure).not.toBe(original.failure);
+    expect(cloned.failure).toBeInstanceOf(Error);
+    expect(cloned.failure).not.toBeInstanceOf(SecretError);
+    expect(cloned.failure.message).toBe('boom');
+    expect(cloned.failure.code).toBe('E_SECRET');
+    expect(cloned.failure.secret).toBeUndefined();
+  });
+
   it('should preserve boxed primitive wrappers without breaking valueOf', () => {
     const original = {
       wrapped: new String('boxed'),

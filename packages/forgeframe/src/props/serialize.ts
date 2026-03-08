@@ -713,42 +713,8 @@ function cloneErrorValue(
   value: Error,
   seen: WeakMap<object, unknown>
 ): Error {
-  const clonedError = Object.create(Object.getPrototypeOf(value)) as object;
+  const clonedError = structuredClone(value);
   seen.set(value, clonedError);
-
-  Object.defineProperty(clonedError, 'name', {
-    configurable: true,
-    enumerable: false,
-    writable: true,
-    value: value.name,
-  });
-  Object.defineProperty(clonedError, 'message', {
-    configurable: true,
-    enumerable: false,
-    writable: true,
-    value: value.message,
-  });
-
-  if ('cause' in value) {
-    Object.defineProperty(clonedError, 'cause', {
-      configurable: true,
-      enumerable: false,
-      writable: true,
-      value: clonePropValue(
-        (value as Error & { cause?: unknown }).cause,
-        seen
-      ),
-    });
-  }
-
-  if (typeof value.stack === 'string') {
-    Object.defineProperty(clonedError, 'stack', {
-      configurable: true,
-      enumerable: false,
-      writable: true,
-      value: value.stack,
-    });
-  }
 
   cloneOwnProperties(
     value,
