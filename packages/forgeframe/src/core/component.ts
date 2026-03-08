@@ -26,6 +26,7 @@ import {
 } from './component-instance-index';
 import { initHost } from './host';
 import { isHostOfComponent } from '../window/name-payload';
+import { hasBrowserWindow } from '../utils/browser';
 
 /**
  * Global registry of all defined components.
@@ -76,7 +77,10 @@ function validateComponentOptions<P>(options: ComponentOptions<P>): void {
   // Validate URL format if it's a string (can't validate function URLs at definition time)
   if (typeof options.url === 'string') {
     try {
-      new URL(options.url, window.location.origin);
+      const validationBaseUrl = hasBrowserWindow()
+        ? window.location.origin
+        : 'https://forgeframe.invalid';
+      new URL(options.url, validationBaseUrl);
     } catch {
       throw new Error(
         `Invalid component URL "${options.url}". Must be a valid absolute or relative URL.`
@@ -127,9 +131,10 @@ export function create<P extends Record<string, unknown> = Record<string, unknow
   validateComponentOptions(options);
 
   const instances: ForgeFrameComponentInstance<P, X>[] = [];
+  const canInspectBrowserHost = hasBrowserWindow();
 
   let componentHostProps: HostProps<P> | undefined;
-  if (isHostOfComponent(options.tag)) {
+  if (canInspectBrowserHost && isHostOfComponent(options.tag)) {
     const host = initHost<P>(options.props, options.allowedConsumerDomains);
     if (host) {
       componentHostProps = host.hostProps;
@@ -162,11 +167,11 @@ export function create<P extends Record<string, unknown> = Record<string, unknow
   Component.instances = instances;
 
   Component.isHost = (): boolean => {
-    return isHostOfComponent(options.tag);
+    return canInspectBrowserHost ? isHostOfComponent(options.tag) : false;
   };
 
   Component.isEmbedded = (): boolean => {
-    return isHostOfComponent(options.tag);
+    return canInspectBrowserHost ? isHostOfComponent(options.tag) : false;
   };
 
   Component.hostProps = componentHostProps;

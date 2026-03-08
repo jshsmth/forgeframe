@@ -57,10 +57,13 @@ import { PopupOpenError } from './render/popup';
 import { isStandardSchema } from './props/schema';
 
 import { prop } from './props/prop';
+import { hasBrowserWindow } from './utils/browser';
 
 // Pre-initialize host state if in a ForgeFrame window.
 // INIT is deferred until initHost() is explicitly flushed or a host component definition does so.
-initHost(undefined, undefined, { deferInit: true });
+if (hasBrowserWindow()) {
+  initHost(undefined, undefined, { deferInit: true });
+}
 
 /**
  * Main ForgeFrame API object.
