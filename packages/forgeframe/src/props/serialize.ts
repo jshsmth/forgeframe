@@ -19,8 +19,8 @@ import { BUILTIN_PROP_DEFINITIONS } from './definitions';
 
 const UNSAFE_OBJECT_KEYS = new Set(['__proto__']);
 const DOTIFY_FRAMED_PATH_PREFIX = '__forgeframe.dotify_path__:';
+const DOTIFY_EMPTY_OBJECT_PATH_PREFIX = '__forgeframe.dotify_empty_object_path__:';
 const DOTIFY_EMPTY_OBJECT_PAYLOAD = '__forgeframe.dotify_empty_object__';
-const DOTIFY_EMPTY_OBJECT_MARKER_KEY = '__forgeframe.dotify_empty_object_marker__';
 
 /**
  * Returns true when a key can be safely assigned on reconstructed objects.
@@ -49,10 +49,11 @@ function isPlainObject(
  * Encodes a DOTIFY path using the framed path format.
  * @internal
  */
-function encodeDotNotationPath(path: string[]): string {
-  return `${DOTIFY_FRAMED_PATH_PREFIX}${encodeURIComponent(
-    JSON.stringify(path)
-  )}`;
+function encodeDotNotationPath(
+  path: string[],
+  prefix = DOTIFY_FRAMED_PATH_PREFIX
+): string {
+  return `${prefix}${encodeURIComponent(JSON.stringify(path))}`;
 }
 
 /**
@@ -72,28 +73,11 @@ function createDotNotationPair(path: string[], value: unknown): string {
 }
 
 /**
- * Returns the internal marker used to preserve empty DOTIFY object branches.
+ * Creates a DOTIFY entry representing an empty plain-object branch.
  * @internal
  */
-function createDotifyEmptyObjectMarker(): Record<string, true> {
-  return {
-    [DOTIFY_EMPTY_OBJECT_MARKER_KEY]: true,
-  };
-}
-
-/**
- * Returns true when a DOTIFY value represents an empty object branch.
- * @internal
- */
-function isDotifyEmptyObjectMarker(
-  value: unknown
-): value is Record<string, true> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    Object.keys(value).length === 1 &&
-    (value as Record<string, unknown>)[DOTIFY_EMPTY_OBJECT_MARKER_KEY] === true
-  );
+function createDotNotationEmptyObjectPair(path: string[]): string {
+  return `${encodeDotNotationPath(path, DOTIFY_EMPTY_OBJECT_PATH_PREFIX)}=1`;
 }
 
 /**
@@ -132,7 +116,7 @@ function toDotNotation(
       return DOTIFY_EMPTY_OBJECT_PAYLOAD;
     }
 
-    return createDotNotationPair(path, createDotifyEmptyObjectMarker());
+    return createDotNotationEmptyObjectPair(path);
   }
 
   const parts: string[] = [];
@@ -174,11 +158,16 @@ function fromDotNotation(str: string): Record<string, unknown> {
     const encodedValue = pair.slice(separatorIndex + 1);
     if (!path || encodedValue === undefined) continue;
 
+    const isEmptyObjectPath = path.startsWith(DOTIFY_EMPTY_OBJECT_PATH_PREFIX);
     let value: unknown;
-    try {
-      value = JSON.parse(decodeURIComponent(encodedValue));
-    } catch {
-      value = decodeURIComponent(encodedValue);
+    if (isEmptyObjectPath) {
+      value = {};
+    } else {
+      try {
+        value = JSON.parse(decodeURIComponent(encodedValue));
+      } catch {
+        value = decodeURIComponent(encodedValue);
+      }
     }
 
     const keys = decodeDotNotationPath(path);
@@ -201,11 +190,7 @@ function fromDotNotation(str: string): Record<string, unknown> {
     }
 
     const leafKey = keys[keys.length - 1];
-    defineDataProperty(
-      current,
-      leafKey,
-      isDotifyEmptyObjectMarker(value) ? {} : value
-    );
+    defineDataProperty(current, leafKey, value);
   }
 
   return result;
@@ -216,13 +201,15 @@ function fromDotNotation(str: string): Record<string, unknown> {
  * @internal
  */
 function decodeDotNotationPath(path: string): string[] {
-  if (!path.startsWith(DOTIFY_FRAMED_PATH_PREFIX)) {
+  const prefix = path.startsWith(DOTIFY_EMPTY_OBJECT_PATH_PREFIX)
+    ? DOTIFY_EMPTY_OBJECT_PATH_PREFIX
+    : DOTIFY_FRAMED_PATH_PREFIX;
+
+  if (!path.startsWith(prefix)) {
     throw new Error('Invalid DOTIFY path framing');
   }
 
-  const decodedPath = decodeURIComponent(
-    path.slice(DOTIFY_FRAMED_PATH_PREFIX.length)
-  );
+  const decodedPath = decodeURIComponent(path.slice(prefix.length));
   const parsed = JSON.parse(decodedPath);
   if (
     Array.isArray(parsed) &&

@@ -230,6 +230,51 @@ describe('Props serialization behavior', () => {
     expect(deserialized.payload).toEqual({});
   });
 
+  it('should preserve real values that serialize to the old empty-object marker shape', () => {
+    const { messenger, bridge } = createBridgeWithMessenger();
+    const definitions = {
+      payload: {
+        schema: prop.object(),
+        serialization: PROP_SERIALIZATION.DOTIFY,
+      },
+    };
+
+    class MarkerValue {
+      toJSON() {
+        return {
+          ['__forgeframe.dotify_empty_object_marker__']: true,
+        };
+      }
+    }
+
+    const serialized = serializeProps(
+      {
+        payload: {
+          weird: new MarkerValue(),
+        },
+      },
+      definitions,
+      bridge
+    ) as Record<string, unknown>;
+
+    const deserialized = deserializeProps(
+      serialized,
+      definitions,
+      messenger,
+      bridge,
+      window,
+      'https://consumer.example.com'
+    ) as {
+      payload: {
+        weird: Record<string, unknown>;
+      };
+    };
+
+    expect(deserialized.payload.weird).toEqual({
+      ['__forgeframe.dotify_empty_object_marker__']: true,
+    });
+  });
+
   it('should round-trip DOTIFY-serialized object props with dotted and reserved keys', () => {
     const { messenger, bridge } = createBridgeWithMessenger();
     const definitions = {
