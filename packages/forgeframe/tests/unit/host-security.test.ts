@@ -210,6 +210,49 @@ describe('Host security', () => {
     expect((window as unknown as { hostProps?: unknown }).hostProps).toBeUndefined();
   });
 
+  it('should not relax required sameDomain props when claimed same-origin is unverified during deferred pre-init', () => {
+    const inaccessibleConsumerWindow = {
+      postMessage: vi.fn(),
+      get location() {
+        throw new Error('Cross-origin');
+      },
+    } as unknown as Window;
+
+    vi
+      .spyOn(
+        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
+        'resolveConsumerWindow'
+      )
+      .mockReturnValue(inaccessibleConsumerWindow);
+
+    const payload: WindowNamePayload<Record<string, unknown>> = {
+      uid: 'host-uid-unverified-same-domain-required',
+      tag: 'secure-component-unverified-same-domain-required',
+      version: VERSION,
+      context: CONTEXT.IFRAME,
+      consumerDomain: window.location.origin,
+      props: {},
+      exports: VALID_EXPORTS,
+    };
+
+    window.name = buildWindowName(payload);
+    setDocumentReferrer('');
+
+    const host = initHost(undefined, undefined, { deferInit: true });
+    expect(host).not.toBeNull();
+
+    expect(() =>
+      initHost(
+        {
+          secret: { schema: prop.string(), sameDomain: true, required: true },
+        },
+        undefined,
+        { deferInit: true }
+      )
+    ).toThrow('Prop "secret" is required but was not provided');
+    expect((window as unknown as { hostProps?: unknown }).hostProps).toBeUndefined();
+  });
+
   it('should reject allowlist rechecks when the existing host never verified the consumer origin', () => {
     const inaccessibleConsumerWindow = {
       get location() {

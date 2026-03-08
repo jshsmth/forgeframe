@@ -108,6 +108,164 @@ describe('Consumer lifecycle behavior', () => {
     await expect(waitForHost.call(consumer)).resolves.toBeUndefined();
   });
 
+  it('should send sameDomain props after INIT when the loaded host is same-origin', async () => {
+    const consumer = createConsumer(
+      {
+        url: '/widget',
+        props: {
+          secret: { schema: prop.string(), sameDomain: true },
+        },
+      },
+      { secret: 'same-origin-only' }
+    );
+    const handlers = getHandlers(consumer);
+    const initHandler = handlers.get(MESSAGE_NAME.INIT);
+
+    const internal = consumer as unknown as {
+      hostWindow: Window | null;
+      messenger: { send: (...args: unknown[]) => Promise<unknown> };
+    };
+    internal.hostWindow = {
+      closed: false,
+      postMessage: vi.fn(),
+      location: { origin: window.location.origin },
+    } as unknown as Window;
+
+    const sendSpy = vi.spyOn(internal.messenger, 'send').mockResolvedValue(undefined);
+
+    expect(initHandler).toBeDefined();
+    expect(initHandler!({})).toEqual({ success: true });
+    await Promise.resolve();
+
+    expect(sendSpy).toHaveBeenCalledWith(
+      internal.hostWindow,
+      window.location.origin,
+      MESSAGE_NAME.PROPS,
+      expect.objectContaining({ secret: 'same-origin-only' })
+    );
+  });
+
+  it('should not send sameDomain props after INIT when the loaded host is cross-origin', async () => {
+    const consumer = createConsumer(
+      {
+        props: {
+          secret: { schema: prop.string(), sameDomain: true },
+        },
+      },
+      { secret: 'cross-origin-blocked' }
+    );
+    const handlers = getHandlers(consumer);
+    const initHandler = handlers.get(MESSAGE_NAME.INIT);
+
+    const internal = consumer as unknown as {
+      hostWindow: Window | null;
+      messenger: { send: (...args: unknown[]) => Promise<unknown> };
+    };
+    internal.hostWindow = {
+      closed: false,
+      postMessage: vi.fn(),
+      location: { origin: 'https://host.example.com' },
+    } as unknown as Window;
+
+    const sendSpy = vi.spyOn(internal.messenger, 'send').mockResolvedValue(undefined);
+
+    expect(initHandler).toBeDefined();
+    expect(initHandler!({})).toEqual({ success: true });
+    await Promise.resolve();
+
+    expect(sendSpy).not.toHaveBeenCalledWith(
+      internal.hostWindow,
+      expect.anything(),
+      MESSAGE_NAME.PROPS,
+      expect.anything()
+    );
+  });
+
+  it('should queue INIT sameDomain sync behind an in-flight props update to preserve function refs', async () => {
+    const onReady = vi.fn();
+    const consumer = createConsumer(
+      {
+        url: '/widget',
+        props: {
+          count: { schema: prop.number(), required: true },
+          secret: { schema: prop.string(), sameDomain: true },
+          onReady: prop.function<() => void>(),
+        },
+      },
+      {
+        count: 1,
+        secret: 'same-origin-only',
+        onReady,
+      }
+    );
+    const handlers = getHandlers(consumer);
+    const initHandler = handlers.get(MESSAGE_NAME.INIT);
+    const callHandler = handlers.get(MESSAGE_NAME.CALL);
+
+    const internal = consumer as unknown as {
+      hostWindow: Window | null;
+      messenger: { send: (...args: unknown[]) => Promise<unknown> };
+    };
+    internal.hostWindow = {
+      closed: false,
+      postMessage: vi.fn(),
+      location: { origin: window.location.origin },
+    } as unknown as Window;
+
+    let releaseFirstSend: (() => void) | null = null;
+    const firstSendInFlight = new Promise<void>((resolve) => {
+      releaseFirstSend = resolve;
+    });
+    const sentPayloads: Array<Record<string, unknown>> = [];
+    let propsSendCount = 0;
+
+    const sendSpy = vi.spyOn(internal.messenger, 'send').mockImplementation(
+      async (_target, _domain, messageName, payload) => {
+        if (messageName !== MESSAGE_NAME.PROPS) {
+          return undefined;
+        }
+
+        propsSendCount += 1;
+        sentPayloads.push(payload as Record<string, unknown>);
+
+        if (propsSendCount === 1) {
+          await firstSendInFlight;
+        }
+
+        return undefined;
+      }
+    );
+
+    expect(initHandler).toBeDefined();
+    expect(callHandler).toBeDefined();
+    expect(initHandler!({})).toEqual({ success: true });
+    await Promise.resolve();
+
+    const updatePromise = consumer.updateProps({ count: 2 });
+
+    expect(sendSpy).toHaveBeenCalledTimes(1);
+
+    releaseFirstSend?.();
+    await updatePromise;
+    await Promise.resolve();
+
+    expect(sendSpy).toHaveBeenCalledTimes(2);
+
+    const latestPayload = sentPayloads[1] as {
+      onReady: { __id__: string };
+      count: number;
+      secret: string;
+    };
+
+    expect(latestPayload.count).toBe(2);
+    expect(latestPayload.secret).toBe('same-origin-only');
+    expect(latestPayload.onReady.__id__).toEqual(expect.any(String));
+    await expect(callHandler!({ id: latestPayload.onReady.__id__, args: [] })).resolves.toBe(
+      undefined
+    );
+    expect(onReady).toHaveBeenCalledTimes(1);
+  });
+
   it('should route host control messages to instance methods', async () => {
     const consumer = createConsumer();
     const handlers = getHandlers(consumer);

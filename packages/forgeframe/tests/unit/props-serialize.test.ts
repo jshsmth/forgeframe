@@ -91,7 +91,8 @@ describe('Props serialization behavior', () => {
     const encoded = serialized.config as { __type__: string; __value__: string };
 
     expect(encoded.__type__).toBe('dotify');
-    expect(encoded.__value__).toContain('user.id=');
+    expect(encoded.__value__).toContain('__forgeframe.dotify_path__:');
+    expect(encoded.__value__).not.toContain('user.id=');
 
     const deserialized = deserializeProps(
       serialized,
@@ -106,6 +107,127 @@ describe('Props serialization behavior', () => {
       user: { id: 'u_123' },
       enabled: true,
     });
+  });
+
+  it('should round-trip DOTIFY-serialized object props with dotted and reserved keys', () => {
+    const { messenger, bridge } = createBridgeWithMessenger();
+    const definitions = {
+      config: {
+        schema: prop.object(),
+        serialization: PROP_SERIALIZATION.DOTIFY,
+      },
+    };
+
+    const serialized = serializeProps(
+      {
+        config: {
+          'user.id': {
+            'plan=tier': 'pro',
+            'feature&flag': true,
+          },
+          nested: {
+            'literal%key': 'preserved',
+          },
+        },
+      },
+      definitions,
+      bridge
+    ) as Record<string, unknown>;
+    const encoded = serialized.config as { __type__: string; __value__: string };
+
+    expect(encoded.__type__).toBe('dotify');
+    expect(encoded.__value__).toContain('__forgeframe.dotify_path__:');
+    expect(encoded.__value__).not.toContain('user.id=');
+    expect(encoded.__value__).not.toContain('feature&flag');
+
+    const deserialized = deserializeProps(
+      serialized,
+      definitions,
+      messenger,
+      bridge,
+      window,
+      'https://consumer.example.com'
+    ) as {
+      config: {
+        'user.id': {
+          'plan=tier': string;
+          'feature&flag': boolean;
+        };
+        nested: {
+          'literal%key': string;
+        };
+      };
+    };
+
+    expect(deserialized.config).toEqual({
+      'user.id': {
+        'plan=tier': 'pro',
+        'feature&flag': true,
+      },
+      nested: {
+        'literal%key': 'preserved',
+      },
+    });
+  });
+
+  it('should round-trip keys that look like JSON arrays', () => {
+    const { messenger, bridge } = createBridgeWithMessenger();
+    const definitions = {
+      payload: {
+        schema: prop.object(),
+        serialization: PROP_SERIALIZATION.DOTIFY,
+      },
+    };
+
+    const serialized = serializeProps(
+      {
+        payload: {
+          '["a"]': 'value',
+        },
+      },
+      definitions,
+      bridge
+    ) as Record<string, unknown>;
+
+    const deserialized = deserializeProps(
+      serialized,
+      definitions,
+      messenger,
+      bridge,
+      window,
+      'https://consumer.example.com'
+    ) as { payload: Record<string, unknown> };
+
+    expect(deserialized.payload).toEqual({
+      '["a"]': 'value',
+    });
+  });
+
+  it('should preserve unframed DOTIFY wrappers during deserialization fallback', () => {
+    const { messenger, bridge } = createBridgeWithMessenger();
+    const definitions = {
+      payload: {
+        schema: prop.object(),
+        serialization: PROP_SERIALIZATION.DOTIFY,
+      },
+    };
+    const legacyWrapper = {
+      __type__: 'dotify',
+      __value__: '["a"]=%22value%22',
+    };
+
+    const deserialized = deserializeProps(
+      {
+        payload: legacyWrapper,
+      },
+      definitions,
+      messenger,
+      bridge,
+      window,
+      'https://consumer.example.com'
+    ) as { payload: unknown };
+
+    expect(deserialized.payload).toEqual(legacyWrapper);
   });
 
   it('should preserve malformed BASE64 wrappers during deserialization fallback', () => {
@@ -139,6 +261,31 @@ describe('Props serialization behavior', () => {
       },
     };
     const malformed = { __type__: 'dotify', __value__: 'bad=%E0%A4%A' };
+
+    const deserialized = deserializeProps(
+      { payload: malformed },
+      definitions,
+      messenger,
+      bridge,
+      window,
+      'https://consumer.example.com'
+    ) as { payload: unknown };
+
+    expect(deserialized.payload).toEqual(malformed);
+  });
+
+  it('should preserve empty-path DOTIFY wrappers during deserialization fallback', () => {
+    const { messenger, bridge } = createBridgeWithMessenger();
+    const definitions = {
+      payload: {
+        schema: prop.object(),
+        serialization: PROP_SERIALIZATION.DOTIFY,
+      },
+    };
+    const malformed = {
+      __type__: 'dotify',
+      __value__: '__forgeframe.dotify_path__:%5B%5D=1',
+    };
 
     const deserialized = deserializeProps(
       { payload: malformed },
@@ -214,9 +361,9 @@ describe('Props serialization behavior', () => {
           payload: {
             __type__: 'dotify',
             __value__: [
-              'safe.value=1',
-              `__proto__.${prototypePollutionKey}=true`,
-              'constructor.prototype.version="v1"',
+              '__forgeframe.dotify_path__:%5B%22safe%22%2C%22value%22%5D=1',
+              `__forgeframe.dotify_path__:%5B%22__proto__%22%2C%22${prototypePollutionKey}%22%5D=true`,
+              '__forgeframe.dotify_path__:%5B%22constructor%22%2C%22prototype%22%2C%22version%22%5D=%22v1%22',
             ].join('&'),
           },
         },

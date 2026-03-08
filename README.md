@@ -397,6 +397,48 @@ const MyComponent = ForgeFrame.create({
 
 Note: ForgeFrame runs schema validation synchronously. Schemas with async `~standard.validate` are not supported.
 
+### Advanced Prop Definitions
+
+Use the object form when a prop needs transport rules in addition to validation.
+
+```typescript
+import ForgeFrame, { prop, PROP_SERIALIZATION } from 'forgeframe';
+
+const SecureWidget = ForgeFrame.create({
+  tag: 'secure-widget',
+  url: 'https://widgets.example.com/secure',
+  props: {
+    profile: {
+      schema: prop.object(),
+      serialization: PROP_SERIALIZATION.DOTIFY,
+    },
+    secret: {
+      schema: prop.string(),
+      sameDomain: true,
+    },
+    auditId: {
+      schema: prop.string(),
+      queryParam: true,
+    },
+    internalState: {
+      schema: prop.any(),
+      sendToHost: false,
+    },
+  },
+});
+```
+
+| Option | Description |
+|--------|-------------|
+| `sendToHost` | Skip sending the prop to the host when set to `false` |
+| `sameDomain` | Only deliver the prop after the loaded host is verified to be same-origin. It is not included in the initial bootstrap payload |
+| `trustedDomains` | Only send the prop to matching host domains |
+| `serialization` | Choose how object props are transferred: `JSON` (default), `BASE64`, or `DOTIFY` |
+| `queryParam` / `bodyParam` | Include the prop in the host page's initial HTTP request |
+
+- Use `sameDomain` for values that should never be exposed during cross-origin bootstrap.
+- `DOTIFY` safely preserves nested object keys that contain separators such as `.`, `&`, or `=`.
+
 ### Passing Props via URL or POST Body (Advanced)
 
 Use prop definition flags to include specific values in the host page's initial HTTP request:

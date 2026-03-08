@@ -232,7 +232,7 @@ export interface PropDefinition<T = unknown, P = Record<string, unknown>> {
 
   /** Whether to send this prop to the host window (default: true) */
   sendToHost?: boolean;
-  /** Only send if consumer and host are same domain */
+  /** Only deliver after the loaded host is verified to be same-origin */
   sameDomain?: boolean;
   /** List of trusted domains that can receive this prop */
   trustedDomains?: DomainMatcher[];

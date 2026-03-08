@@ -18,6 +18,7 @@ import type { Messenger } from '../communication/messenger';
 import { BUILTIN_PROP_DEFINITIONS } from './definitions';
 
 const UNSAFE_OBJECT_KEYS = new Set(['__proto__']);
+const DOTIFY_FRAMED_PATH_PREFIX = '__forgeframe.dotify_path__:';
 
 /**
  * Returns true when a key can be safely assigned on reconstructed objects.
@@ -28,29 +29,31 @@ function isSafeObjectKey(key: string): boolean {
 }
 
 /**
- * Converts a nested object to dot notation string.
+ * Converts a nested object to the DOTIFY wire format string.
  *
- * @example
- * ```typescript
- * toDotNotation({a: {b: 1, c: 2}}) // => 'a.b=1&a.c=2'
- * ```
+ * @remarks
+ * Every path is encoded as an explicitly-prefixed, JSON-framed array so keys
+ * round-trip safely regardless of reserved separators such as `.`, `&`, or `=`.
  *
  * @internal
  */
 function toDotNotation(
   obj: Record<string, unknown>,
-  prefix = ''
+  path: string[] = []
 ): string {
   const parts: string[] = [];
 
   for (const [key, value] of Object.entries(obj)) {
-    const fullKey = prefix ? `${prefix}.${key}` : key;
+    const nextPath = [...path, key];
 
     if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-      parts.push(toDotNotation(value as Record<string, unknown>, fullKey));
+      parts.push(toDotNotation(value as Record<string, unknown>, nextPath));
     } else {
+      const encodedPath = `${DOTIFY_FRAMED_PATH_PREFIX}${encodeURIComponent(
+        JSON.stringify(nextPath)
+      )}`;
       const encodedValue = encodeURIComponent(JSON.stringify(value));
-      parts.push(`${fullKey}=${encodedValue}`);
+      parts.push(`${encodedPath}=${encodedValue}`);
     }
   }
 
@@ -58,12 +61,10 @@ function toDotNotation(
 }
 
 /**
- * Converts dot notation string back to nested object.
+ * Converts a DOTIFY wire format string back to a nested object.
  *
- * @example
- * ```typescript
- * fromDotNotation('a.b=1&a.c=2') // => {a: {b: 1, c: 2}}
- * ```
+ * @remarks
+ * Only the current prefixed framed-path format is supported.
  *
  * @internal
  */
@@ -75,7 +76,11 @@ function fromDotNotation(str: string): Record<string, unknown> {
   const pairs = str.split('&');
 
   for (const pair of pairs) {
-    const [path, encodedValue] = pair.split('=');
+    const separatorIndex = pair.indexOf('=');
+    if (separatorIndex === -1) continue;
+
+    const path = pair.slice(0, separatorIndex);
+    const encodedValue = pair.slice(separatorIndex + 1);
     if (!path || encodedValue === undefined) continue;
 
     let value: unknown;
@@ -85,7 +90,7 @@ function fromDotNotation(str: string): Record<string, unknown> {
       value = decodeURIComponent(encodedValue);
     }
 
-    const keys = path.split('.');
+    const keys = decodeDotNotationPath(path);
     if (keys.some((key) => !isSafeObjectKey(key))) continue;
 
     let current = result;
@@ -109,6 +114,30 @@ function fromDotNotation(str: string): Record<string, unknown> {
   }
 
   return result;
+}
+
+/**
+ * Decodes a DOTIFY path using the explicit framed format.
+ * @internal
+ */
+function decodeDotNotationPath(path: string): string[] {
+  if (!path.startsWith(DOTIFY_FRAMED_PATH_PREFIX)) {
+    throw new Error('Invalid DOTIFY path framing');
+  }
+
+  const decodedPath = decodeURIComponent(
+    path.slice(DOTIFY_FRAMED_PATH_PREFIX.length)
+  );
+  const parsed = JSON.parse(decodedPath);
+  if (
+    Array.isArray(parsed) &&
+    parsed.length > 0 &&
+    parsed.every((segment) => typeof segment === 'string')
+  ) {
+    return parsed;
+  }
+
+  throw new Error('Invalid DOTIFY path framing');
 }
 
 /**

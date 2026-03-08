@@ -83,7 +83,7 @@ export const PROP_SERIALIZATION = {
   JSON: 'json',
   /** Base64 encoding for binary or large data */
   BASE64: 'base64',
-  /** Dot notation for nested objects (e.g., "a.b.c=value") */
+  /** Explicit framed-path encoding for nested objects */
   DOTIFY: 'dotify',
 } as const;
 

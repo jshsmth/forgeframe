@@ -34,6 +34,7 @@ interface PeerRequest {
  * @internal
  */
 export interface ConsumerTransportHandlers<X> {
+  onInit?: () => void | Promise<void>;
   onClose: () => Promise<void>;
   onResize: (dimensions: Dimensions) => Promise<void>;
   onFocus: () => Promise<void>;
@@ -300,6 +301,15 @@ export class ConsumerTransport<
       if (this.initPromise) {
         this.initPromise.resolve();
       }
+
+      if (handlers.onInit) {
+        queueMicrotask(() => {
+          void Promise.resolve(handlers.onInit?.()).catch((error) => {
+            handlers.onError(error as Error);
+          });
+        });
+      }
+
       return { success: true };
     });
 

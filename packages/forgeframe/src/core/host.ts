@@ -12,6 +12,7 @@ import type {
   HostProps,
   WindowNamePayload,
   Dimensions,
+  PropDefinition,
   PropsDefinition,
   SerializedProps,
   SiblingInfo,
@@ -37,7 +38,7 @@ import {
   getInitialPayload,
 } from '../window/name-payload';
 import { deserializeProps } from '../props/serialize';
-import { validateProps } from '../props';
+import { isStandardSchema, validateProps } from '../props';
 import { create } from './component';
 
 const CONSUMER_WINDOW_RESOLUTION_ERROR = 'Could not resolve consumer window';
@@ -301,7 +302,7 @@ export class HostComponent<P extends Record<string, unknown>> {
     }
 
     this.propDefinitions = propDefinitions;
-    validateProps(this.consumerProps, this.propDefinitions);
+    validateProps(this.consumerProps, this.getBootstrapValidationDefinitions());
     Object.assign(this.hostProps, this.consumerProps);
     this.hostProps.consumer.props = this.consumerProps;
   }
@@ -425,7 +426,7 @@ export class HostComponent<P extends Record<string, unknown>> {
       this.consumerDomain
     );
 
-    validateProps(deserializedProps, this.propDefinitions);
+    validateProps(deserializedProps, this.getBootstrapValidationDefinitions());
     this.consumerProps = deserializedProps;
 
     return {
@@ -449,6 +450,36 @@ export class HostComponent<P extends Record<string, unknown>> {
       getPeerInstances: (options?: GetPeerInstancesOptions) => this.getPeerInstances(options),
       children: this.buildNestedComponents(payload.children),
     };
+  }
+
+  /**
+   * Relaxes required sameDomain props during bootstrap for verified same-origin hosts.
+   * Those props are synchronized after INIT through the live messaging channel.
+   * @internal
+   */
+  private getBootstrapValidationDefinitions(): PropsDefinition<P> {
+    if (!this.consumerDomainVerified || this.consumerDomain !== getDomain()) {
+      return this.propDefinitions;
+    }
+
+    let hasDeferredSameDomainProp = false;
+    const bootstrapDefinitions = {
+      ...this.propDefinitions,
+    } as PropsDefinition<P>;
+
+    for (const [key, definition] of Object.entries(this.propDefinitions)) {
+      if (!definition || isStandardSchema(definition) || !definition.sameDomain) {
+        continue;
+      }
+
+      hasDeferredSameDomainProp = true;
+      bootstrapDefinitions[key as keyof P] = {
+        ...(definition as PropDefinition<unknown, P>),
+        required: false,
+      } as PropsDefinition<P>[keyof P];
+    }
+
+    return hasDeferredSameDomainProp ? bootstrapDefinitions : this.propDefinitions;
   }
 
   /**
