@@ -33,6 +33,12 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `window-name-payload.test.ts`: Window name payload encoding/parsing and ForgeFrame-window detection helpers.
 - `window-proxy.test.ts`: Window registry/reference creation, resolution, and serialization constraints.
 
+## Integration Tests (`packages/forgeframe/tests/integration`)
+
+- `consumer-host-handshake.test.ts`: End-to-end iframe happy path covering `create()`, `instance.render()`, `initHost()`, and the real INIT handshake.
+- `function-prop-bridge.test.ts`: Real cross-window callback bridging from host `window.hostProps` back to consumer callbacks, including async results and thrown errors.
+- `props-sync.test.ts`: Post-connect prop updates across the real messaging pipeline, including host snapshot replacement, stale key removal, and `onProps` subscriber delivery.
+
 ## Type Tests (`packages/forgeframe/tests/typecheck`)
 
 - `schema.typecheck.ts`: Compile-time assertions for Standard Schema utility and contract types.
