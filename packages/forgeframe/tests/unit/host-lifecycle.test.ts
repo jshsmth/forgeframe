@@ -4,10 +4,15 @@
  * Covers consumer control channels, props synchronization/subscriber behavior, and consumer window resolution rules.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { HostComponent, clearHostInstance } from '@/core/host';
+import { ConsumerComponent } from '@/core/consumer';
+import { HostComponent, clearHostInstance, initHost } from '@/core/host';
 import { CONTEXT, EVENT, MESSAGE_NAME, VERSION } from '@/constants';
+import { prop } from '@/props/prop';
 import type { WindowNamePayload } from '@/types';
 import * as helpers from '@/window/helpers';
+
+const originalWindowName = window.name;
+const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
 
 /**
  * Builds a host window payload with default props and domain metadata.
@@ -49,10 +54,39 @@ function createHost({
   return new HostComponent(payload, {}, undefined, deferInit);
 }
 
-afterEach(() => {
+/**
+ * Creates a consumer instance for transport bootstrap tests.
+ */
+function createConsumer(
+  {
+    url = 'https://host.example.com/widget',
+    props = {},
+  }: {
+    url?: string;
+    props?: Record<string, unknown>;
+  } = {},
+  inputProps: Record<string, unknown> = {}
+): ConsumerComponent<Record<string, unknown>> {
+  const consumer = new ConsumerComponent<Record<string, unknown>>(
+    {
+      tag: 'host-lifecycle-consumer-component',
+      url,
+      props,
+    } as never,
+    inputProps
+  );
+  createdConsumers.push(consumer);
+  return consumer;
+}
+
+afterEach(async () => {
+  for (const consumer of createdConsumers.splice(0)) {
+    await consumer.close();
+  }
   clearHostInstance();
   vi.restoreAllMocks();
   delete (window as unknown as { hostProps?: unknown }).hostProps;
+  window.name = originalWindowName;
 });
 
 describe('Host lifecycle behavior', () => {
@@ -125,6 +159,78 @@ describe('Host lifecycle behavior', () => {
       { ping: true }
     );
     expect(focusSpy).toHaveBeenCalled();
+  });
+
+  it('should preserve sameDomain props in same-origin bootstrap payloads', () => {
+    const definitions = {
+      label: { schema: prop.string() },
+      secret: { schema: prop.string(), sameDomain: true },
+    };
+    const consumer = createConsumer(
+      {
+        url: '/widget',
+        props: definitions,
+      },
+      {
+        label: 'visible',
+        secret: 'same-origin-only',
+      }
+    );
+
+    window.name = (
+      consumer as unknown as {
+        buildWindowName: () => string;
+      }
+    ).buildWindowName();
+
+    vi
+      .spyOn(
+        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
+        'resolveConsumerWindow'
+      )
+      .mockReturnValue(window);
+
+    const host = initHost(definitions, undefined, { deferInit: true });
+
+    expect(host).not.toBeNull();
+    expect(host!.hostProps.label).toBe('visible');
+    expect(host!.hostProps.secret).toBe('same-origin-only');
+  });
+
+  it('should omit sameDomain props in cross-origin bootstrap payloads', () => {
+    const definitions = {
+      label: { schema: prop.string() },
+      secret: { schema: prop.string(), sameDomain: true },
+    };
+    const consumer = createConsumer(
+      {
+        url: 'https://host.example.com/widget',
+        props: definitions,
+      },
+      {
+        label: 'visible',
+        secret: 'cross-origin-only',
+      }
+    );
+
+    window.name = (
+      consumer as unknown as {
+        buildWindowName: () => string;
+      }
+    ).buildWindowName();
+
+    vi
+      .spyOn(
+        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
+        'resolveConsumerWindow'
+      )
+      .mockReturnValue(window);
+
+    const host = initHost(definitions, undefined, { deferInit: true });
+
+    expect(host).not.toBeNull();
+    expect(host!.hostProps.label).toBe('visible');
+    expect(host!.hostProps.secret).toBeUndefined();
   });
 
   it('should apply PROPS updates to hostProps and notify subscribers', () => {

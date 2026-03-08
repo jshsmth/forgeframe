@@ -91,7 +91,8 @@ describe('Props serialization behavior', () => {
     const encoded = serialized.config as { __type__: string; __value__: string };
 
     expect(encoded.__type__).toBe('dotify');
-    expect(encoded.__value__).toContain('user.id=');
+    expect(encoded.__value__).toContain('=');
+    expect(encoded.__value__).not.toContain('user.id=');
 
     const deserialized = deserializeProps(
       serialized,
@@ -105,6 +106,66 @@ describe('Props serialization behavior', () => {
     expect(deserialized.config).toEqual({
       user: { id: 'u_123' },
       enabled: true,
+    });
+  });
+
+  it('should round-trip DOTIFY-serialized object props with dotted and reserved keys', () => {
+    const { messenger, bridge } = createBridgeWithMessenger();
+    const definitions = {
+      config: {
+        schema: prop.object(),
+        serialization: PROP_SERIALIZATION.DOTIFY,
+      },
+    };
+
+    const serialized = serializeProps(
+      {
+        config: {
+          'user.id': {
+            'plan=tier': 'pro',
+            'feature&flag': true,
+          },
+          nested: {
+            'literal%key': 'preserved',
+          },
+        },
+      },
+      definitions,
+      bridge
+    ) as Record<string, unknown>;
+    const encoded = serialized.config as { __type__: string; __value__: string };
+
+    expect(encoded.__type__).toBe('dotify');
+    expect(encoded.__value__).not.toContain('user.id=');
+    expect(encoded.__value__).not.toContain('feature&flag');
+
+    const deserialized = deserializeProps(
+      serialized,
+      definitions,
+      messenger,
+      bridge,
+      window,
+      'https://consumer.example.com'
+    ) as {
+      config: {
+        'user.id': {
+          'plan=tier': string;
+          'feature&flag': boolean;
+        };
+        nested: {
+          'literal%key': string;
+        };
+      };
+    };
+
+    expect(deserialized.config).toEqual({
+      'user.id': {
+        'plan=tier': 'pro',
+        'feature&flag': true,
+      },
+      nested: {
+        'literal%key': 'preserved',
+      },
     });
   });
 

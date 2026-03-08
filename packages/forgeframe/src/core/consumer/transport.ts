@@ -238,11 +238,12 @@ export class ConsumerTransport<
     exports: ConsumerExports;
   }): string {
     const hostDomain = options.hostDomain ?? this.getHostDomain();
+    const isBootstrapSameDomain = this.isBootstrapSameDomain(hostDomain);
     const propsForHost = getPropsForHost(
       options.props,
       options.propDefinitions,
       hostDomain,
-      false
+      isBootstrapSameDomain
     );
 
     const serializedProps = this.serializePropsForHost(
@@ -261,6 +262,23 @@ export class ConsumerTransport<
     });
 
     return buildWindowName(payload);
+  }
+
+  /**
+   * Returns true when the bootstrap target resolves to the current origin.
+   */
+  private isBootstrapSameDomain(hostDomain: string): boolean {
+    const consumerDomain = getDomain();
+    if (!consumerDomain) {
+      return false;
+    }
+
+    if (hostDomain === '/') {
+      return true;
+    }
+
+    const normalizedHostDomain = this.resolveUrlOrigin(hostDomain) ?? hostDomain;
+    return normalizedHostDomain === consumerDomain;
   }
 
   /**

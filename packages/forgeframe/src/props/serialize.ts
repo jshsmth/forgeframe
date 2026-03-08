@@ -39,18 +39,19 @@ function isSafeObjectKey(key: string): boolean {
  */
 function toDotNotation(
   obj: Record<string, unknown>,
-  prefix = ''
+  path: string[] = []
 ): string {
   const parts: string[] = [];
 
   for (const [key, value] of Object.entries(obj)) {
-    const fullKey = prefix ? `${prefix}.${key}` : key;
+    const nextPath = [...path, key];
 
     if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-      parts.push(toDotNotation(value as Record<string, unknown>, fullKey));
+      parts.push(toDotNotation(value as Record<string, unknown>, nextPath));
     } else {
+      const encodedPath = encodeURIComponent(JSON.stringify(nextPath));
       const encodedValue = encodeURIComponent(JSON.stringify(value));
-      parts.push(`${fullKey}=${encodedValue}`);
+      parts.push(`${encodedPath}=${encodedValue}`);
     }
   }
 
@@ -75,7 +76,11 @@ function fromDotNotation(str: string): Record<string, unknown> {
   const pairs = str.split('&');
 
   for (const pair of pairs) {
-    const [path, encodedValue] = pair.split('=');
+    const separatorIndex = pair.indexOf('=');
+    if (separatorIndex === -1) continue;
+
+    const path = pair.slice(0, separatorIndex);
+    const encodedValue = pair.slice(separatorIndex + 1);
     if (!path || encodedValue === undefined) continue;
 
     let value: unknown;
@@ -85,7 +90,7 @@ function fromDotNotation(str: string): Record<string, unknown> {
       value = decodeURIComponent(encodedValue);
     }
 
-    const keys = path.split('.');
+    const keys = decodeDotNotationPath(path);
     if (keys.some((key) => !isSafeObjectKey(key))) continue;
 
     let current = result;
@@ -109,6 +114,24 @@ function fromDotNotation(str: string): Record<string, unknown> {
   }
 
   return result;
+}
+
+/**
+ * Decodes a DOTIFY path, supporting both the safe framed format and legacy dot paths.
+ * @internal
+ */
+function decodeDotNotationPath(path: string): string[] {
+  try {
+    const decodedPath = decodeURIComponent(path);
+    const parsed = JSON.parse(decodedPath);
+    if (Array.isArray(parsed) && parsed.every((segment) => typeof segment === 'string')) {
+      return parsed;
+    }
+  } catch {
+    // Fall through to legacy path parsing for backwards compatibility.
+  }
+
+  return path.split('.');
 }
 
 /**
