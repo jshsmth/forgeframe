@@ -606,6 +606,36 @@ describe('Clone Props', () => {
     expect(cloned.headers.get('x-test')).toBe('1');
   });
 
+  it('should clone custom class instances as plain objects instead of fabricating invalid instances', () => {
+    class SecretBox {
+      #value: number;
+      label: string;
+
+      constructor(value: number) {
+        this.#value = value;
+        this.label = 'box';
+      }
+
+      getValue(): number {
+        return this.#value;
+      }
+    }
+
+    const original = {
+      secret: new SecretBox(7),
+    };
+
+    const cloned = cloneProps(original) as {
+      secret: { label: string; getValue?: unknown };
+    };
+
+    expect(cloned.secret).not.toBe(original.secret);
+    expect(cloned.secret).not.toBeInstanceOf(SecretBox);
+    expect(Object.getPrototypeOf(cloned.secret)).toBe(Object.prototype);
+    expect(cloned.secret.label).toBe('box');
+    expect('getValue' in cloned.secret).toBe(false);
+  });
+
   it('should preserve Error instances including non-enumerable message state', () => {
     const original = {
       failure: Object.assign(new TypeError('boom'), { code: 'E_FAIL' }),

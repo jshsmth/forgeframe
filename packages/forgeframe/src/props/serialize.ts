@@ -563,7 +563,7 @@ function clonePropValue(
     return cloneBrandedObjectValue(value, seen);
   }
 
-  const clonedObject = Object.create(Object.getPrototypeOf(value)) as object;
+  const clonedObject = createPlainObjectCloneTarget(value);
   seen.set(value, clonedObject);
   cloneOwnProperties(value, clonedObject, seen);
 
@@ -596,6 +596,25 @@ function cloneArrayValue(
   );
 
   return clonedArray;
+}
+
+/**
+ * Creates the target object for cloning non-branded object values.
+ * @internal
+ */
+function createPlainObjectCloneTarget(value: object): object {
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype === null) {
+    return Object.create(null) as object;
+  }
+
+  if (prototype === Object.prototype) {
+    return {};
+  }
+
+  // Custom class instances are cloned as plain data objects so we do not
+  // fabricate instances that are missing private/internal slots.
+  return {};
 }
 
 /**
