@@ -1,6 +1,17 @@
 import type { WindowNamePayload, SerializedProps, ConsumerExports, HostComponentRef } from '../types';
 import type { ContextType } from '../constants';
-import { WINDOW_NAME_PREFIX, VERSION } from '../constants';
+import { CONTEXT, WINDOW_NAME_PREFIX, VERSION } from '../constants';
+
+const REQUIRED_CONSUMER_EXPORT_KEYS = [
+  'init',
+  'close',
+  'resize',
+  'show',
+  'hide',
+  'onError',
+  'updateProps',
+  'export',
+] as const;
 
 /**
  * Maximum allowed size for the window.name payload in bytes.
@@ -77,6 +88,113 @@ export function parseWindowName<P>(
 
   const encoded = name.slice(WINDOW_NAME_PREFIX.length);
   return decodePayload<P>(encoded);
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isValidSerializedProps(value: unknown): value is SerializedProps {
+  return isObjectRecord(value);
+}
+
+function isValidConsumerExports(value: unknown): value is ConsumerExports {
+  return (
+    isObjectRecord(value) &&
+    REQUIRED_CONSUMER_EXPORT_KEYS.every(
+      (key) => typeof value[key] === 'string' && value[key].length > 0
+    )
+  );
+}
+
+function isValidHostComponentRef(value: unknown): value is HostComponentRef {
+  if (!isObjectRecord(value)) {
+    return false;
+  }
+
+  if (typeof value.tag !== 'string' || value.tag.length === 0) {
+    return false;
+  }
+
+  if (typeof value.url !== 'string' || value.url.length === 0) {
+    return false;
+  }
+
+  if (value.props !== undefined && !isObjectRecord(value.props)) {
+    return false;
+  }
+
+  if (value.defaultContext !== undefined && value.defaultContext !== CONTEXT.IFRAME && value.defaultContext !== CONTEXT.POPUP) {
+    return false;
+  }
+
+  if (value.dimensions !== undefined) {
+    if (!isObjectRecord(value.dimensions)) {
+      return false;
+    }
+
+    const { width, height } = value.dimensions as { width?: unknown; height?: unknown };
+    if (
+      (width !== undefined && typeof width !== 'string' && typeof width !== 'number') ||
+      (height !== undefined && typeof height !== 'string' && typeof height !== 'number')
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function isValidChildrenMap(
+  value: unknown
+): value is Record<string, HostComponentRef> {
+  if (!isObjectRecord(value)) {
+    return false;
+  }
+
+  return Object.values(value).every((child) => isValidHostComponentRef(child));
+}
+
+function isValidWindowNamePayload<P>(
+  value: unknown
+): value is WindowNamePayload<P> {
+  if (!isObjectRecord(value)) {
+    return false;
+  }
+
+  if (typeof value.uid !== 'string' || value.uid.length === 0) {
+    return false;
+  }
+
+  if (typeof value.tag !== 'string' || value.tag.length === 0) {
+    return false;
+  }
+
+  if (typeof value.version !== 'string' || value.version.length === 0) {
+    return false;
+  }
+
+  if (value.version !== VERSION) {
+    return false;
+  }
+
+  if (value.context !== CONTEXT.IFRAME && value.context !== CONTEXT.POPUP) {
+    return false;
+  }
+
+  if (typeof value.consumerDomain !== 'string' || value.consumerDomain.length === 0) {
+    return false;
+  }
+
+  if (!isValidSerializedProps(value.props) || !isValidConsumerExports(value.exports)) {
+    return false;
+  }
+
+  if (value.children !== undefined && !isValidChildrenMap(value.children)) {
+    return false;
+  }
+
+  return true;
 }
 
 /**
@@ -191,7 +309,8 @@ function encodePayload<P>(payload: WindowNamePayload<P>): string {
 function decodePayload<P>(encoded: string): WindowNamePayload<P> | null {
   try {
     const json = decodeURIComponent(atob(encoded));
-    return JSON.parse(json) as WindowNamePayload<P>;
+    const parsed = JSON.parse(json) as unknown;
+    return isValidWindowNamePayload<P>(parsed) ? parsed : null;
   } catch {
     return null;
   }
