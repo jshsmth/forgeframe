@@ -249,12 +249,16 @@ export function createReactComponent<P extends Record<string, unknown>, X = unkn
       const containerRef = useRef<HTMLDivElement>(null);
       const instanceRef = useRef<ForgeFrameComponentInstance<P, X> | null>(null);
       const syncedPropsRef = useRef<Partial<P> | null>(null);
+      const onRenderedRef = useRef<typeof onRendered>(onRendered);
       const onErrorRef = useRef<typeof onError>(onError);
+      const onCloseRef = useRef<typeof onClose>(onClose);
       const [error, setError] = useState<Error | null>(null);
 
       useEffect(() => {
+        onRenderedRef.current = onRendered;
         onErrorRef.current = onError;
-      }, [onError]);
+        onCloseRef.current = onClose;
+      }, [onRendered, onError, onClose]);
 
       useEffect(() => {
         const container = containerRef.current;
@@ -264,15 +268,13 @@ export function createReactComponent<P extends Record<string, unknown>, X = unkn
         instanceRef.current = instance;
         syncedPropsRef.current = componentProps as Partial<P>;
 
-        if (onRendered) {
-          instance.event.once('rendered', onRendered);
-        }
-
-        if (onClose) {
-          instance.event.once('close', onClose);
-        }
-
-        instance.event.on('error', (err: Error) => {
+        const unsubscribeRendered = instance.event.once('rendered', () => {
+          onRenderedRef.current?.();
+        });
+        const unsubscribeClose = instance.event.once('close', () => {
+          onCloseRef.current?.();
+        });
+        const unsubscribeError = instance.event.on('error', (err: Error) => {
           onErrorRef.current?.(err);
         });
 
@@ -283,10 +285,13 @@ export function createReactComponent<P extends Record<string, unknown>, X = unkn
 
         return () => {
           instance.close().catch(() => undefined);
+          unsubscribeRendered();
+          unsubscribeClose();
+          unsubscribeError();
           instanceRef.current = null;
           syncedPropsRef.current = null;
         };
-      }, []);
+      }, [context]);
 
       useEffect(() => {
         const instance = instanceRef.current;

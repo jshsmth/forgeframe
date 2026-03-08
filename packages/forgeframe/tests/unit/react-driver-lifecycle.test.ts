@@ -47,9 +47,44 @@ function createReactHarness() {
  * Creates a mock ForgeFrame component factory and instance with event emitter stubs.
  */
 function createForgeFrameComponentMock() {
+  const handlers: {
+    rendered?: () => void;
+    close?: () => void;
+    error?: (err: Error) => void;
+  } = {};
+  const unsubscribes = {
+    rendered: vi.fn(() => {
+      handlers.rendered = undefined;
+    }),
+    close: vi.fn(() => {
+      handlers.close = undefined;
+    }),
+    error: vi.fn(() => {
+      handlers.error = undefined;
+    }),
+  };
   const event = {
-    once: vi.fn(),
-    on: vi.fn(),
+    once: vi.fn((name: string, handler: () => void) => {
+      if (name === 'rendered') {
+        handlers.rendered = handler;
+        return unsubscribes.rendered;
+      }
+
+      if (name === 'close') {
+        handlers.close = handler;
+        return unsubscribes.close;
+      }
+
+      return vi.fn();
+    }),
+    on: vi.fn((name: string, handler: (err: Error) => void) => {
+      if (name === 'error') {
+        handlers.error = handler;
+        return unsubscribes.error;
+      }
+
+      return vi.fn();
+    }),
     off: vi.fn(),
     emit: vi.fn(),
     removeAllListeners: vi.fn(),
@@ -57,7 +92,9 @@ function createForgeFrameComponentMock() {
 
   const instance = {
     render: vi.fn().mockResolvedValue(undefined),
-    close: vi.fn().mockResolvedValue(undefined),
+    close: vi.fn().mockImplementation(async () => {
+      handlers.close?.();
+    }),
     updateProps: vi.fn().mockResolvedValue(undefined),
     event,
   };
@@ -65,7 +102,7 @@ function createForgeFrameComponentMock() {
   const component = vi.fn().mockReturnValue(instance);
   Object.defineProperty(component, 'name', { value: 'LifecycleComponent' });
 
-  return { component, instance, event };
+  return { component, instance, event, handlers, unsubscribes };
 }
 
 afterEach(() => {
@@ -75,7 +112,7 @@ afterEach(() => {
 describe('createReactComponent lifecycle integration', () => {
   it('should mount, register lifecycle listeners, and cleanup instance', async () => {
     const { React, refs, effects } = createReactHarness();
-    const { component, instance, event } = createForgeFrameComponentMock();
+    const { component, instance, event, unsubscribes } = createForgeFrameComponentMock();
     const onRendered = vi.fn();
     const onClose = vi.fn();
     const onError = vi.fn();
@@ -96,12 +133,15 @@ describe('createReactComponent lifecycle integration', () => {
     const cleanup = effects[1]?.(); // mount
 
     expect(component).toHaveBeenCalledWith({ amount: 10 });
-    expect(event.once).toHaveBeenCalledWith('rendered', onRendered);
-    expect(event.once).toHaveBeenCalledWith('close', onClose);
+    expect(event.once).toHaveBeenCalledWith('rendered', expect.any(Function));
+    expect(event.once).toHaveBeenCalledWith('close', expect.any(Function));
     expect(event.on).toHaveBeenCalledWith('error', expect.any(Function));
     expect(instance.render).toHaveBeenCalledWith(container, 'popup');
 
     (cleanup as (() => void) | undefined)?.();
+    expect(unsubscribes.rendered).toHaveBeenCalledTimes(1);
+    expect(unsubscribes.close).toHaveBeenCalledTimes(1);
+    expect(unsubscribes.error).toHaveBeenCalledTimes(1);
     expect(instance.close).toHaveBeenCalledTimes(1);
   });
 
@@ -162,6 +202,134 @@ describe('createReactComponent lifecycle integration', () => {
     await Promise.resolve();
 
     expect(onError).toHaveBeenCalledWith(updateError);
+  });
+
+  it('should remount the ForgeFrame instance when context changes', () => {
+    const { React, refs, effects } = createReactHarness();
+    const first = createForgeFrameComponentMock();
+    const second = createForgeFrameComponentMock();
+    const component = vi
+      .fn()
+      .mockReturnValueOnce(first.instance)
+      .mockReturnValueOnce(second.instance);
+    Object.defineProperty(component, 'name', { value: 'LifecycleComponent' });
+    const container = document.createElement('div');
+
+    const ReactComponent = createReactComponent(component as never, { React: React as never });
+
+    ReactComponent({ amount: 1, context: 'popup' });
+    refs[0].current = container;
+    effects[0]?.();
+    const firstCleanup = effects[1]?.();
+
+    ReactComponent({ amount: 1, context: 'iframe' });
+    refs[0].current = container;
+    effects[0]?.();
+    (firstCleanup as (() => void) | undefined)?.();
+    const secondCleanup = effects[1]?.();
+    effects[2]?.();
+
+    expect(component).toHaveBeenCalledTimes(2);
+    expect(first.instance.render).toHaveBeenCalledWith(container, 'popup');
+    expect(first.unsubscribes.rendered).toHaveBeenCalledTimes(1);
+    expect(first.unsubscribes.close).toHaveBeenCalledTimes(1);
+    expect(first.unsubscribes.error).toHaveBeenCalledTimes(1);
+    expect(first.instance.close).toHaveBeenCalledTimes(1);
+    expect(second.instance.render).toHaveBeenCalledWith(container, 'iframe');
+    expect(second.instance.updateProps).not.toHaveBeenCalled();
+
+    (secondCleanup as (() => void) | undefined)?.();
+  });
+
+  it('should invoke onClose during cleanup before unsubscribing the close listener', async () => {
+    const { React, refs, effects } = createReactHarness();
+    const { component, unsubscribes } = createForgeFrameComponentMock();
+    const onClose = vi.fn();
+
+    const ReactComponent = createReactComponent(component as never, { React: React as never });
+    ReactComponent({ amount: 1, onClose });
+    refs[0].current = document.createElement('div');
+    effects[0]?.();
+    const cleanup = effects[1]?.();
+
+    await (cleanup as (() => Promise<void> | void) | undefined)?.();
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(unsubscribes.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('should call the latest onRendered callback when props change after mount', () => {
+    const { React, refs, effects } = createReactHarness();
+    const { component, event } = createForgeFrameComponentMock();
+    const firstOnRendered = vi.fn();
+    const secondOnRendered = vi.fn();
+
+    const ReactComponent = createReactComponent(component as never, { React: React as never });
+    ReactComponent({ amount: 1, onRendered: firstOnRendered });
+    refs[0].current = document.createElement('div');
+    effects[0]?.();
+    effects[1]?.();
+
+    const renderedHandler = event.once.mock.calls.find(([name]) => name === 'rendered')?.[1] as
+      | (() => void)
+      | undefined;
+
+    ReactComponent({ amount: 1, onRendered: secondOnRendered });
+    effects[0]?.();
+
+    renderedHandler?.();
+
+    expect(firstOnRendered).not.toHaveBeenCalled();
+    expect(secondOnRendered).toHaveBeenCalledTimes(1);
+    expect(event.once).toHaveBeenCalledTimes(2);
+  });
+
+  it('should call the latest onClose callback when props change after mount', () => {
+    const { React, refs, effects } = createReactHarness();
+    const { component, event } = createForgeFrameComponentMock();
+    const firstOnClose = vi.fn();
+    const secondOnClose = vi.fn();
+
+    const ReactComponent = createReactComponent(component as never, { React: React as never });
+    ReactComponent({ amount: 1, onClose: firstOnClose });
+    refs[0].current = document.createElement('div');
+    effects[0]?.();
+    effects[1]?.();
+
+    const closeHandler = event.once.mock.calls.find(([name]) => name === 'close')?.[1] as
+      | (() => void)
+      | undefined;
+
+    ReactComponent({ amount: 1, onClose: secondOnClose });
+    effects[0]?.();
+
+    closeHandler?.();
+
+    expect(firstOnClose).not.toHaveBeenCalled();
+    expect(secondOnClose).toHaveBeenCalledTimes(1);
+    expect(event.once).toHaveBeenCalledTimes(2);
+  });
+
+  it('should update props without remounting when non-structural props change', () => {
+    const { React, refs, effects } = createReactHarness();
+    const { component, instance } = createForgeFrameComponentMock();
+
+    const ReactComponent = createReactComponent(component as never, { React: React as never });
+
+    ReactComponent({ amount: 1, context: 'popup' });
+    refs[0].current = document.createElement('div');
+    effects[0]?.();
+    effects[1]?.();
+    effects[2]?.();
+
+    ReactComponent({ amount: 2, context: 'popup' });
+    effects[0]?.();
+    effects[2]?.();
+
+    expect(component).toHaveBeenCalledTimes(1);
+    expect(instance.render).toHaveBeenCalledTimes(1);
+    expect(instance.updateProps).toHaveBeenCalledTimes(1);
+    expect(instance.updateProps).toHaveBeenCalledWith({ amount: 2 });
   });
 
   it('should set error state and invoke onError when initial render fails', async () => {
