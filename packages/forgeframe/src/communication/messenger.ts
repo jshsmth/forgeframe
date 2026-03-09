@@ -27,7 +27,7 @@ import {
  */
 export type MessageHandler<T = unknown, R = unknown> = (
   data: T,
-  source: { uid: string; domain: string }
+  source: { uid: string; domain: string; window: Window }
 ) => R | Promise<R>;
 
 /**
@@ -70,6 +70,7 @@ function testPattern(pattern: RegExp, origin: string): boolean {
 interface VerifiedSource {
   uid: string;
   domain: string;
+  window: Window;
 }
 
 function isPendingResponseSourceMatch(
@@ -264,7 +265,7 @@ export class Messenger {
     const existingUid = this.sourceUidRegistry.get(sourceObject);
 
     if (existingUid) {
-      return { uid: existingUid, domain: origin };
+      return { uid: existingUid, domain: origin, window: sourceWin };
     }
 
     const claimedUid =
@@ -273,7 +274,7 @@ export class Messenger {
         : generateShortUID();
 
     this.sourceUidRegistry.set(sourceObject, claimedUid);
-    return { uid: claimedUid, domain: origin };
+    return { uid: claimedUid, domain: origin, window: sourceWin };
   }
 
   /**

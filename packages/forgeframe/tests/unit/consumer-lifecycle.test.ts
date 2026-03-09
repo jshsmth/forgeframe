@@ -4,6 +4,11 @@
  * Covers host handshake timing, control message handling, open/render guards, callback isolation, and updateProps validation paths.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { MessageHandler } from '@/communication/messenger';
+import {
+  createRequestMessage,
+  serializeMessage,
+} from '@/communication/protocol';
 import { ConsumerComponent } from '@/core/consumer';
 import { clearComponents, create } from '@/core/component';
 import { CONTEXT, MESSAGE_NAME } from '@/constants';
@@ -12,6 +17,10 @@ import * as popupRender from '@/render/popup';
 import * as templateRender from '@/render/templates';
 
 const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
+let dispatchedMessageCount = 0;
+
+type HandlerSource = Parameters<MessageHandler>[1];
+type DirectHandler = (data: unknown, source?: HandlerSource) => unknown;
 
 /**
  * Creates a consumer instance and tracks it for deterministic lifecycle cleanup.
@@ -37,12 +46,68 @@ function createConsumer(
  */
 function getHandlers(
   component: ConsumerComponent<Record<string, unknown>>
-): Map<string, (data: unknown) => unknown> {
+): Map<string, DirectHandler> {
   return (
     component as unknown as {
-      messenger: { handlers: Map<string, (data: unknown) => unknown> };
+      messenger: { handlers: Map<string, DirectHandler> };
     }
   ).messenger.handlers;
+}
+
+function createMessageSource(windowRef: Window, domain = 'https://host.example.com'): HandlerSource {
+  return {
+    uid: 'host-source',
+    domain,
+    window: windowRef,
+  };
+}
+
+function dispatchHostMessage(
+  name: string,
+  sourceWindow: Window,
+  options?: {
+    data?: unknown;
+    origin?: string;
+    claimedUid?: string;
+  }
+): void {
+  dispatchedMessageCount += 1;
+  const origin = options?.origin ?? 'https://host.example.com';
+  const request = createRequestMessage(
+    `req-${dispatchedMessageCount}`,
+    name,
+    options?.data ?? {},
+    {
+      uid: options?.claimedUid ?? `sender-${dispatchedMessageCount}`,
+      domain: origin,
+    }
+  );
+
+  window.dispatchEvent(
+    new MessageEvent('message', {
+      data: serializeMessage(request),
+      source: sourceWindow,
+      origin,
+    })
+  );
+}
+
+async function flushMessages(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+function readResponseData(sourceWindow: Window): unknown {
+  const calls = (
+    sourceWindow as unknown as { postMessage: ReturnType<typeof vi.fn> }
+  ).postMessage.mock.calls;
+  const lastCall = calls.at(-1);
+
+  if (!lastCall) {
+    return undefined;
+  }
+
+  return JSON.parse(lastCall[0].slice('forgeframe:'.length)).data;
 }
 
 afterEach(async () => {
@@ -82,14 +147,20 @@ describe('Consumer lifecycle behavior', () => {
     const waitForHost = (
       consumer as unknown as {
         waitForHost: () => Promise<void>;
+        hostWindow: Window | null;
       }
     ).waitForHost;
+    const internal = consumer as unknown as {
+      hostWindow: Window | null;
+    };
+    const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+    internal.hostWindow = hostWindow;
 
     const waitPromise = waitForHost.call(consumer);
     const initHandler = getHandlers(consumer).get(MESSAGE_NAME.INIT);
 
     expect(initHandler).toBeDefined();
-    expect(initHandler!({})).toEqual({ success: true });
+    expect(initHandler!({}, createMessageSource(hostWindow))).toEqual({ success: true });
     await expect(waitPromise).resolves.toBeUndefined();
   });
 
@@ -99,12 +170,18 @@ describe('Consumer lifecycle behavior', () => {
     const waitForHost = (
       consumer as unknown as {
         waitForHost: () => Promise<void>;
+        hostWindow: Window | null;
       }
     ).waitForHost;
+    const internal = consumer as unknown as {
+      hostWindow: Window | null;
+    };
+    const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+    internal.hostWindow = hostWindow;
     const initHandler = getHandlers(consumer).get(MESSAGE_NAME.INIT);
 
     expect(initHandler).toBeDefined();
-    expect(initHandler!({})).toEqual({ success: true });
+    expect(initHandler!({}, createMessageSource(hostWindow))).toEqual({ success: true });
     await expect(waitForHost.call(consumer)).resolves.toBeUndefined();
   });
 
@@ -134,7 +211,9 @@ describe('Consumer lifecycle behavior', () => {
     const sendSpy = vi.spyOn(internal.messenger, 'send').mockResolvedValue(undefined);
 
     expect(initHandler).toBeDefined();
-    expect(initHandler!({})).toEqual({ success: true });
+    expect(
+      initHandler!({}, createMessageSource(internal.hostWindow!, window.location.origin))
+    ).toEqual({ success: true });
     await Promise.resolve();
 
     expect(sendSpy).toHaveBeenCalledWith(
@@ -170,7 +249,7 @@ describe('Consumer lifecycle behavior', () => {
     const sendSpy = vi.spyOn(internal.messenger, 'send').mockResolvedValue(undefined);
 
     expect(initHandler).toBeDefined();
-    expect(initHandler!({})).toEqual({ success: true });
+    expect(initHandler!({}, createMessageSource(internal.hostWindow!))).toEqual({ success: true });
     await Promise.resolve();
 
     expect(sendSpy).not.toHaveBeenCalledWith(
@@ -238,7 +317,9 @@ describe('Consumer lifecycle behavior', () => {
 
     expect(initHandler).toBeDefined();
     expect(callHandler).toBeDefined();
-    expect(initHandler!({})).toEqual({ success: true });
+    expect(
+      initHandler!({}, createMessageSource(internal.hostWindow!, window.location.origin))
+    ).toEqual({ success: true });
     await Promise.resolve();
 
     const updatePromise = consumer.updateProps({ count: 2 });
@@ -266,9 +347,75 @@ describe('Consumer lifecycle behavior', () => {
     expect(onReady).toHaveBeenCalledTimes(1);
   });
 
+  it('should ignore spoofed INIT from a different trusted window and accept the opened host window', async () => {
+    vi.useFakeTimers();
+    const consumer = createConsumer({ timeout: 50 });
+    const internal = consumer as unknown as {
+      hostWindow: Window | null;
+      hostInitialized: boolean;
+      waitForHost: () => Promise<void>;
+    };
+    const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+    const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
+    internal.hostWindow = hostWindow;
+
+    dispatchHostMessage(MESSAGE_NAME.INIT, spoofedWindow, {
+      claimedUid: 'spoofed-host',
+    });
+    await flushMessages();
+
+    expect(internal.hostInitialized).toBe(false);
+    expect(readResponseData(spoofedWindow)).toEqual({ success: false });
+
+    const waitPromise = internal.waitForHost.call(consumer);
+    dispatchHostMessage(MESSAGE_NAME.INIT, hostWindow, {
+      claimedUid: 'real-host',
+    });
+    await flushMessages();
+
+    expect(readResponseData(hostWindow)).toEqual({ success: true });
+    await expect(waitPromise).resolves.toBeUndefined();
+  });
+
+  it('should ignore spoofed CLOSE from a different trusted window and accept the opened host window', async () => {
+    const consumer = createConsumer();
+    const internal = consumer as unknown as {
+      hostWindow: Window | null;
+    };
+    const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+    const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
+    const originalClose = consumer.close.bind(consumer);
+    const closeSpy = vi.spyOn(consumer, 'close').mockResolvedValue(undefined);
+    internal.hostWindow = hostWindow;
+
+    dispatchHostMessage(MESSAGE_NAME.CLOSE, spoofedWindow, {
+      claimedUid: 'spoofed-host',
+    });
+    await flushMessages();
+
+    expect(closeSpy).not.toHaveBeenCalled();
+    expect(readResponseData(spoofedWindow)).toEqual({ success: false });
+
+    dispatchHostMessage(MESSAGE_NAME.CLOSE, hostWindow, {
+      claimedUid: 'real-host',
+    });
+    await flushMessages();
+
+    expect(closeSpy).toHaveBeenCalledTimes(1);
+    expect(readResponseData(hostWindow)).toEqual({ success: true });
+
+    closeSpy.mockRestore();
+    await originalClose();
+  });
+
   it('should route host control messages to instance methods', async () => {
     const consumer = createConsumer();
     const handlers = getHandlers(consumer);
+    const internal = consumer as unknown as {
+      hostWindow: Window | null;
+    };
+    const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+    internal.hostWindow = hostWindow;
 
     const closeSpy = vi.spyOn(consumer, 'close').mockResolvedValue(undefined);
     const resizeSpy = vi.spyOn(consumer, 'resize').mockResolvedValue(undefined);
@@ -276,13 +423,21 @@ describe('Consumer lifecycle behavior', () => {
     const showSpy = vi.spyOn(consumer, 'show').mockResolvedValue(undefined);
     const hideSpy = vi.spyOn(consumer, 'hide').mockResolvedValue(undefined);
 
-    await expect(handlers.get(MESSAGE_NAME.CLOSE)!({})).resolves.toEqual({ success: true });
     await expect(
-      handlers.get(MESSAGE_NAME.RESIZE)!({ width: 420, height: 240 })
+      handlers.get(MESSAGE_NAME.CLOSE)!({}, createMessageSource(hostWindow))
     ).resolves.toEqual({ success: true });
-    await expect(handlers.get(MESSAGE_NAME.FOCUS)!({})).resolves.toEqual({ success: true });
-    await expect(handlers.get(MESSAGE_NAME.SHOW)!({})).resolves.toEqual({ success: true });
-    await expect(handlers.get(MESSAGE_NAME.HIDE)!({})).resolves.toEqual({ success: true });
+    await expect(
+      handlers.get(MESSAGE_NAME.RESIZE)!({ width: 420, height: 240 }, createMessageSource(hostWindow))
+    ).resolves.toEqual({ success: true });
+    await expect(
+      handlers.get(MESSAGE_NAME.FOCUS)!({}, createMessageSource(hostWindow))
+    ).resolves.toEqual({ success: true });
+    await expect(
+      handlers.get(MESSAGE_NAME.SHOW)!({}, createMessageSource(hostWindow))
+    ).resolves.toEqual({ success: true });
+    await expect(
+      handlers.get(MESSAGE_NAME.HIDE)!({}, createMessageSource(hostWindow))
+    ).resolves.toEqual({ success: true });
 
     expect(closeSpy).toHaveBeenCalledTimes(1);
     expect(resizeSpy).toHaveBeenCalledWith({ width: 420, height: 240 });
