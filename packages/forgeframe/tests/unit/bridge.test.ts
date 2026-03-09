@@ -34,7 +34,14 @@ const createMockMessenger = () => {
     simulateCall: async (id: string, args: unknown[]) => {
       const handler = handlers.get(MESSAGE_NAME.CALL);
       if (handler) {
-        return handler({ id, args }, { uid: 'test', domain: 'https://test.com' });
+        return handler(
+          { id, args },
+          {
+            uid: 'test',
+            domain: 'https://test.com',
+            window: { postMessage: vi.fn() } as unknown as Window,
+          }
+        );
       }
       throw new Error('No handler registered');
     },

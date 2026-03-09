@@ -95,6 +95,8 @@ function dispatchHostMessage(
 async function flushMessages(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
 }
 
 function readResponseData(sourceWindow: Window): unknown {
