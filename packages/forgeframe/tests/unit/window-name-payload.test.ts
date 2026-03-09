@@ -3,7 +3,7 @@
  *
  * Covers payload encoding/parsing, ForgeFrame window detection, payload mutation helpers, and size/error guardrails.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   buildWindowName,
   parseWindowName,
@@ -93,6 +93,33 @@ describe('buildWindowName', () => {
     };
 
     expect(() => buildWindowName(payload)).toThrow('Failed to encode payload');
+  });
+
+  it('should not depend on Blob when measuring encoded payload size', () => {
+    vi.stubGlobal(
+      'Blob',
+      class {
+        constructor() {
+          throw new Error('Blob should not be used for payload size checks');
+        }
+      }
+    );
+
+    try {
+      const payload: WindowNamePayload<{ test: string }> = {
+        uid: 'test-uid',
+        tag: 'test-component',
+        version: VERSION,
+        context: CONTEXT.IFRAME,
+        consumerDomain: 'https://consumer.com',
+        props: { test: 'value' },
+        exports: VALID_EXPORTS,
+      };
+
+      expect(() => buildWindowName(payload)).not.toThrow();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

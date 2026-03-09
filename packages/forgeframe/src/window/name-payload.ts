@@ -275,8 +275,8 @@ function encodePayload<P>(payload: WindowNamePayload<P>): string {
     const json = JSON.stringify(payload);
     const encoded = btoa(encodeURIComponent(json));
 
-    // Validate payload size to prevent browser issues
-    const byteSize = new Blob([encoded]).size;
+    // Base64 output is ASCII-only, so code-unit length matches byte length.
+    const byteSize = encoded.length;
     if (byteSize > MAX_PAYLOAD_SIZE) {
       throw new Error(
         `Payload size (${Math.round(byteSize / 1024)}KB) exceeds maximum allowed size (${MAX_PAYLOAD_SIZE / 1024}KB). ` +
