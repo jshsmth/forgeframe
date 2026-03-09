@@ -11,7 +11,7 @@ This file defines working conventions for autonomous coding agents in this repos
 ## Project Structure
 
 - `packages/forgeframe/src`: Core library source code.
-- `packages/forgeframe/tests/unit`: Vitest unit tests for the library.
+- `packages/forgeframe/tests`: Unit, integration, and typecheck suites for the library. See `packages/forgeframe/tests/README.md` for suite-specific guidance.
 - `packages/playground`: Consumer/host demo apps used for local validation.
 - `README.md`: Public usage and API documentation.
 
@@ -38,7 +38,7 @@ This file defines working conventions for autonomous coding agents in this repos
 
 1. Identify the impacted package(s) and modules before editing.
 2. Implement changes in `packages/forgeframe/src` (or `packages/playground` for demo-only work).
-3. Add or update tests in `packages/forgeframe/tests/unit` for behavior changes.
+3. Add or update tests in the appropriate suite under `packages/forgeframe/tests` for behavior changes. See `packages/forgeframe/tests/README.md` when choosing between unit, integration, and typecheck coverage.
 4. Run relevant validation commands before finishing:
    - `npm run lint`
    - `npm run typecheck`
@@ -51,7 +51,7 @@ This file defines working conventions for autonomous coding agents in this repos
 - Keep types explicit at API boundaries.
 - Use [TSDoc](https://tsdoc.org/) conventions for TypeScript documentation comments; prefer TSDoc over JSDoc.
 - Use [Standard Schema](https://standardschema.dev/schema) for schema definitions/interoperability where schema standards are needed.
-- Reuse existing module boundaries (`core`, `communication`, `props`, `render`, `window`, `drivers`).
+- Reuse existing module boundaries under `packages/forgeframe/src`; prefer the closest existing module before creating a new one.
 - Prefer small, composable functions and avoid unnecessary dependencies.
 - Maintain origin/sandbox safety checks for any cross-window messaging changes.
 
@@ -65,5 +65,5 @@ This file defines working conventions for autonomous coding agents in this repos
 
 - Code compiles and tests pass for affected areas.
 - Lint/typecheck pass for touched code.
-- Behavior is covered by tests when feasible.
+- Behavior is covered by the appropriate automated tests when feasible.
 - Documentation is updated for user-visible changes.
