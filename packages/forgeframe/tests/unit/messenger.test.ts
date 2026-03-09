@@ -370,7 +370,7 @@ describe('Messenger', () => {
 
       messenger.on('testMessage', handler);
 
-      const targetWindow = {
+      const sourceWindow = {
         postMessage: vi.fn(),
       } as unknown as Window;
 
@@ -379,14 +379,14 @@ describe('Messenger', () => {
         domain: 'https://sender.com',
       });
 
-      dispatchMessage(serializeMessage(request), targetWindow, 'https://sender.com');
+      dispatchMessage(serializeMessage(request), sourceWindow, 'https://sender.com');
 
       // Allow async handler to complete
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(handler).toHaveBeenCalledWith(
         { input: 'data' },
-        { uid: 'sender-uid', domain: 'https://sender.com' }
+        { uid: 'sender-uid', domain: 'https://sender.com', window: sourceWindow }
       );
     });
 
@@ -563,7 +563,7 @@ describe('Messenger', () => {
 
       expect(handler).toHaveBeenCalledWith(
         { data: 'value' },
-        { uid: 'trusted-uid', domain: 'https://host.com' }
+        { uid: 'trusted-uid', domain: 'https://host.com', window: sourceWindow }
       );
     });
 
@@ -588,11 +588,36 @@ describe('Messenger', () => {
       expect(handler).toHaveBeenNthCalledWith(1, {}, {
         uid: 'original-uid',
         domain: 'https://host.com',
+        window: sourceWindow,
       });
       expect(handler).toHaveBeenNthCalledWith(2, {}, {
         uid: 'original-uid',
         domain: 'https://host.com',
+        window: sourceWindow,
       });
+    });
+
+    it('should expose the browser-verified source window to handlers', async () => {
+      const handler = vi.fn().mockReturnValue({ ok: true });
+      messenger.on('source-window', handler);
+
+      const sourceWindow = { postMessage: vi.fn() } as unknown as Window;
+      const request = createRequestMessage('req-source-window', 'source-window', {}, {
+        uid: 'source-window-uid',
+        domain: 'https://host.com',
+      });
+
+      dispatchMessage(serializeMessage(request), sourceWindow, 'https://host.com');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(handler).toHaveBeenCalledWith(
+        {},
+        expect.objectContaining({
+          uid: 'source-window-uid',
+          domain: 'https://host.com',
+          window: sourceWindow,
+        })
+      );
     });
 
     it('should allow adding trusted domains dynamically', async () => {

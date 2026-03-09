@@ -9,7 +9,7 @@ import type {
   SiblingInfo,
 } from '../../types';
 import { MESSAGE_NAME } from '../../constants';
-import { Messenger } from '../../communication/messenger';
+import { Messenger, type MessageHandler } from '../../communication/messenger';
 import { FunctionBridge } from '../../communication/bridge';
 import { createDeferred, promiseTimeout } from '../../utils/promise';
 import {
@@ -28,6 +28,8 @@ interface PeerRequest {
   tag: string;
   options?: GetPeerInstancesOptions;
 }
+
+type VerifiedMessageSource = Parameters<MessageHandler>[1];
 
 /**
  * Callbacks used by transport to map inbound host messages to component behavior.
@@ -296,7 +298,11 @@ export class ConsumerTransport<
    * Sets up host message handlers.
    */
   setupMessageHandlers(handlers: ConsumerTransportHandlers<X>): void {
-    this.messenger.on(MESSAGE_NAME.INIT, () => {
+    this.messenger.on(MESSAGE_NAME.INIT, (_data, source) => {
+      if (!this.isHostControlSource(source)) {
+        return { success: false };
+      }
+
       this.hostInitialized = true;
       if (this.initPromise) {
         this.initPromise.resolve();
@@ -313,27 +319,47 @@ export class ConsumerTransport<
       return { success: true };
     });
 
-    this.messenger.on(MESSAGE_NAME.CLOSE, async () => {
+    this.messenger.on(MESSAGE_NAME.CLOSE, async (_data, source) => {
+      if (!this.isHostControlSource(source)) {
+        return { success: false };
+      }
+
       await handlers.onClose();
       return { success: true };
     });
 
-    this.messenger.on<Dimensions>(MESSAGE_NAME.RESIZE, async (dimensions) => {
+    this.messenger.on<Dimensions>(MESSAGE_NAME.RESIZE, async (dimensions, source) => {
+      if (!this.isHostControlSource(source)) {
+        return { success: false };
+      }
+
       await handlers.onResize(dimensions);
       return { success: true };
     });
 
-    this.messenger.on(MESSAGE_NAME.FOCUS, async () => {
+    this.messenger.on(MESSAGE_NAME.FOCUS, async (_data, source) => {
+      if (!this.isHostControlSource(source)) {
+        return { success: false };
+      }
+
       await handlers.onFocus();
       return { success: true };
     });
 
-    this.messenger.on(MESSAGE_NAME.SHOW, async () => {
+    this.messenger.on(MESSAGE_NAME.SHOW, async (_data, source) => {
+      if (!this.isHostControlSource(source)) {
+        return { success: false };
+      }
+
       await handlers.onShow();
       return { success: true };
     });
 
-    this.messenger.on(MESSAGE_NAME.HIDE, async () => {
+    this.messenger.on(MESSAGE_NAME.HIDE, async (_data, source) => {
+      if (!this.isHostControlSource(source)) {
+        return { success: false };
+      }
+
       await handlers.onHide();
       return { success: true };
     });
@@ -361,6 +387,13 @@ export class ConsumerTransport<
     this.messenger.on<PeerRequest>(MESSAGE_NAME.GET_SIBLINGS, async (request) => {
       return handlers.onGetSiblings(request);
     });
+  }
+
+  /**
+   * Returns true when a lifecycle/control message came from the opened host window.
+   */
+  private isHostControlSource(source: VerifiedMessageSource): boolean {
+    return Boolean(this.hostWindow && source.window === this.hostWindow);
   }
 
   /**
