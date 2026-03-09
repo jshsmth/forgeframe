@@ -23,8 +23,9 @@ export {
 export {
   serializeProps,
   deserializeProps,
-  cloneProps,
 } from './serialize';
+
+export { cloneProps } from './clone';
 
 export {
   isStandardSchema,

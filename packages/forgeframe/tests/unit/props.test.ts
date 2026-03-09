@@ -11,7 +11,7 @@ import {
   propsToQueryParams,
   propsToBodyParams,
 } from '@/props/normalize';
-import { cloneProps } from '@/props/serialize';
+import { cloneProps } from '@/props/clone';
 import { BUILTIN_PROP_DEFINITIONS } from '@/props/definitions';
 import { prop } from '@/props/prop';
 import { isStandardSchema } from '@/props/schema';
