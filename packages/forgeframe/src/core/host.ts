@@ -23,7 +23,7 @@ import type {
 } from '../types';
 import { MESSAGE_NAME, EVENT } from '../constants';
 import { EventEmitter } from '../events/emitter';
-import { Messenger } from '../communication/messenger';
+import { Messenger, type MessageHandler } from '../communication/messenger';
 import { FunctionBridge } from '../communication/bridge';
 import {
   getDomain,
@@ -74,6 +74,8 @@ function filterReservedHostPropKeys<P extends Record<string, unknown>>(props: P)
 
   return filteredProps as P;
 }
+
+type VerifiedMessageSource = Parameters<MessageHandler>[1];
 
 /**
  * Host-side component implementation.
@@ -701,7 +703,11 @@ export class HostComponent<P extends Record<string, unknown>> {
    * @internal
    */
   private setupMessageHandlers(): void {
-    this.messenger.on<SerializedProps>(MESSAGE_NAME.PROPS, (serializedProps) => {
+    this.messenger.on<SerializedProps>(MESSAGE_NAME.PROPS, (serializedProps, source) => {
+      if (!this.isConsumerSource(source)) {
+        return { success: false };
+      }
+
       try {
         const previousProps = this.consumerProps;
         const newProps = deserializeProps(
@@ -738,6 +744,14 @@ export class HostComponent<P extends Record<string, unknown>> {
         throw error; // Propagate to consumer so it knows the update failed
       }
     });
+  }
+
+  /**
+   * Returns true when a stateful inbound message came from the resolved consumer window.
+   * @internal
+   */
+  private isConsumerSource(source: VerifiedMessageSource): boolean {
+    return source.window === this.consumerWindow;
   }
 
   /**

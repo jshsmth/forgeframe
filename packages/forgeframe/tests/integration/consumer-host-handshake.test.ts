@@ -79,6 +79,20 @@ describe('Consumer/host handshake integration', () => {
     expect(hostProps.getConsumer()).toBe(harness.consumerWindow);
     expect(hostProps.getConsumerDomain()).toBe(harness.consumerOrigin);
 
+    await expect(
+      instance.updateProps({
+        amount: 8,
+        message: 'ForgeFrame updated',
+      })
+    ).resolves.toBeUndefined();
+
+    expect(hostProps.amount).toBe(8);
+    expect(hostProps.message).toBe('ForgeFrame updated');
+    expect(hostProps.consumer.props).toEqual({
+      amount: 8,
+      message: 'ForgeFrame updated',
+    });
+
     expect(renderedSpy).toHaveBeenCalledTimes(1);
   });
 });

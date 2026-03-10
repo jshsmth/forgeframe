@@ -366,7 +366,11 @@ export class ConsumerTransport<
 
     this.messenger.on<{ message: string; stack?: string }>(
       MESSAGE_NAME.ERROR,
-      async (errorData) => {
+      async (errorData, source) => {
+        if (!this.isHostControlSource(source)) {
+          return { success: false };
+        }
+
         const error = new Error(errorData.message);
         error.stack = errorData.stack;
         handlers.onError(error);
@@ -374,12 +378,20 @@ export class ConsumerTransport<
       }
     );
 
-    this.messenger.on<X>(MESSAGE_NAME.EXPORT, async (exports) => {
+    this.messenger.on<X>(MESSAGE_NAME.EXPORT, async (exports, source) => {
+      if (!this.isHostControlSource(source)) {
+        return { success: false };
+      }
+
       handlers.onExport(exports);
       return { success: true };
     });
 
-    this.messenger.on<unknown>(MESSAGE_NAME.CONSUMER_EXPORT, async (data) => {
+    this.messenger.on<unknown>(MESSAGE_NAME.CONSUMER_EXPORT, async (data, source) => {
+      if (!this.isHostControlSource(source)) {
+        return { success: false };
+      }
+
       handlers.onConsumerExport(data);
       return { success: true };
     });
