@@ -538,7 +538,7 @@ describe('Consumer lifecycle behavior', () => {
     expect(readResponseData(hostWindow)).toEqual({ success: true });
   });
 
-  it('should return peer siblings excluding requesting instance', async () => {
+  it('should ignore spoofed GET_SIBLINGS from a different trusted window and accept the opened host window', async () => {
     const PeerComponent = create<{ amount: number }>({
       tag: 'peer-siblings-component',
       url: 'https://host.example.com/peer',
@@ -553,15 +553,34 @@ describe('Consumer lifecycle behavior', () => {
     instanceB.exports = { id: 'b' };
 
     const consumer = createConsumer();
-    const siblingsHandler = getHandlers(consumer).get(MESSAGE_NAME.GET_SIBLINGS);
+    const internal = consumer as unknown as {
+      hostWindow: Window | null;
+    };
+    const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+    const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
+    internal.hostWindow = hostWindow;
 
-    expect(siblingsHandler).toBeDefined();
-    const siblings = await siblingsHandler!({
-      uid: instanceA.uid,
-      tag: 'peer-siblings-component',
+    dispatchHostMessage(MESSAGE_NAME.GET_SIBLINGS, spoofedWindow, {
+      data: {
+        uid: instanceA.uid,
+        tag: 'peer-siblings-component',
+      },
+      claimedUid: 'spoofed-host',
     });
+    await flushMessages();
 
-    expect(siblings).toEqual([
+    expect(readResponseData(spoofedWindow)).toEqual({ success: false });
+
+    dispatchHostMessage(MESSAGE_NAME.GET_SIBLINGS, hostWindow, {
+      data: {
+        uid: instanceA.uid,
+        tag: 'peer-siblings-component',
+      },
+      claimedUid: 'real-host',
+    });
+    await flushMessages();
+
+    expect(readResponseData(hostWindow)).toEqual([
       {
         uid: instanceB.uid,
         tag: 'peer-siblings-component',
