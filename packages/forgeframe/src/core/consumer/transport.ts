@@ -396,7 +396,11 @@ export class ConsumerTransport<
       return { success: true };
     });
 
-    this.messenger.on<PeerRequest>(MESSAGE_NAME.GET_SIBLINGS, async (request) => {
+    this.messenger.on<PeerRequest>(MESSAGE_NAME.GET_SIBLINGS, async (request, source) => {
+      if (!this.isHostControlSource(source)) {
+        return { success: false };
+      }
+
       return handlers.onGetSiblings(request);
     });
   }
