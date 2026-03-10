@@ -4,6 +4,7 @@
  * Covers consumer control channels, props synchronization/subscriber behavior, and consumer window resolution rules.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { MessageHandler } from '@/communication/messenger';
 import { ConsumerComponent } from '@/core/consumer';
 import { HostComponent, clearHostInstance, initHost } from '@/core/host';
 import { CONTEXT, EVENT, MESSAGE_NAME, VERSION } from '@/constants';
@@ -24,6 +25,8 @@ const VALID_EXPORTS: ConsumerExports = {
 
 const originalWindowName = window.name;
 const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
+type HandlerSource = Parameters<MessageHandler>[1];
+type DirectHandler = (data: unknown, source: HandlerSource) => unknown;
 
 /**
  * Builds a host window payload with default props and domain metadata.
@@ -88,6 +91,17 @@ function createConsumer(
   );
   createdConsumers.push(consumer);
   return consumer;
+}
+
+function createMessageSource(
+  windowRef: Window,
+  domain = 'https://consumer.example.com'
+): HandlerSource {
+  return {
+    uid: 'consumer-source',
+    domain,
+    window: windowRef,
+  };
 }
 
 afterEach(async () => {
@@ -229,15 +243,18 @@ describe('Host lifecycle behavior', () => {
       true
     );
     const propsHandler = (
-      (host as unknown as { messenger: { handlers: Map<string, (data: unknown) => unknown> } })
+      (host as unknown as { messenger: { handlers: Map<string, DirectHandler> } })
         .messenger.handlers
     ).get(MESSAGE_NAME.PROPS);
 
     expect(propsHandler).toBeDefined();
     expect(host.hostProps.secret).toBeUndefined();
-    expect(propsHandler!({ label: 'visible', secret: 'same-origin-only' })).toEqual({
-      success: true,
-    });
+    expect(
+      propsHandler!(
+        { label: 'visible', secret: 'same-origin-only' },
+        createMessageSource(window, window.location.origin)
+      )
+    ).toEqual({ success: true });
     expect(host.hostProps.secret).toBe('same-origin-only');
   });
 
@@ -273,7 +290,7 @@ describe('Host lifecycle behavior', () => {
   it('should apply PROPS updates to hostProps and notify subscribers', () => {
     const host = createHost();
     const propsHandler = (
-      (host as unknown as { messenger: { handlers: Map<string, (data: unknown) => unknown> } })
+      (host as unknown as { messenger: { handlers: Map<string, DirectHandler> } })
         .messenger.handlers
     ).get(MESSAGE_NAME.PROPS);
     const initialConsumerProps = host.hostProps.consumer.props;
@@ -283,7 +300,7 @@ describe('Host lifecycle behavior', () => {
     const subscriber = vi.fn();
     host.hostProps.onProps(subscriber);
 
-    const result = propsHandler!({ amount: 42 });
+    const result = propsHandler!({ amount: 42 }, createMessageSource(window));
 
     expect(result).toEqual({ success: true });
     expect(host.hostProps.amount).toBe(42);
@@ -298,14 +315,14 @@ describe('Host lifecycle behavior', () => {
   it('should clear stale hostProps keys when omitted from a later PROPS payload', () => {
     const host = createHost();
     const propsHandler = (
-      (host as unknown as { messenger: { handlers: Map<string, (data: unknown) => unknown> } })
+      (host as unknown as { messenger: { handlers: Map<string, DirectHandler> } })
         .messenger.handlers
     ).get(MESSAGE_NAME.PROPS);
 
     expect(propsHandler).toBeDefined();
 
-    const first = propsHandler!({ amount: 42, currency: 'USD' });
-    const second = propsHandler!({ amount: 42 });
+    const first = propsHandler!({ amount: 42, currency: 'USD' }, createMessageSource(window));
+    const second = propsHandler!({ amount: 42 }, createMessageSource(window));
 
     expect(first).toEqual({ success: true });
     expect(second).toEqual({ success: true });
@@ -317,7 +334,7 @@ describe('Host lifecycle behavior', () => {
   it('should isolate failing props subscribers and continue notifying others', () => {
     const host = createHost();
     const propsHandler = (
-      (host as unknown as { messenger: { handlers: Map<string, (data: unknown) => unknown> } })
+      (host as unknown as { messenger: { handlers: Map<string, DirectHandler> } })
         .messenger.handlers
     ).get(MESSAGE_NAME.PROPS);
 
@@ -332,7 +349,7 @@ describe('Host lifecycle behavior', () => {
     host.hostProps.onProps(throwingSubscriber);
     host.hostProps.onProps(healthySubscriber);
 
-    const result = propsHandler!({ amount: 77 });
+    const result = propsHandler!({ amount: 77 }, createMessageSource(window));
 
     expect(result).toEqual({ success: true });
     expect(throwingSubscriber).toHaveBeenCalled();
@@ -343,7 +360,7 @@ describe('Host lifecycle behavior', () => {
   it('should emit host error and rethrow when props deserialization fails', () => {
     const host = createHost();
     const propsHandler = (
-      (host as unknown as { messenger: { handlers: Map<string, (data: unknown) => unknown> } })
+      (host as unknown as { messenger: { handlers: Map<string, DirectHandler> } })
         .messenger.handlers
     ).get(MESSAGE_NAME.PROPS);
 
@@ -354,7 +371,9 @@ describe('Host lifecycle behavior', () => {
     const circular: Record<string, unknown> = {};
     circular.self = circular;
 
-    expect(() => propsHandler!(circular)).toThrow('Circular reference detected in serialized props');
+    expect(() => propsHandler!(circular, createMessageSource(window))).toThrow(
+      'Circular reference detected in serialized props'
+    );
     expect(emitSpy).toHaveBeenCalledWith(EVENT.ERROR, expect.any(Error));
     expect(consoleSpy).toHaveBeenCalledWith('Error deserializing props:', expect.any(Error));
   });
@@ -377,13 +396,13 @@ describe('Host lifecycle behavior', () => {
     );
     const propsHandler = (
       (typedHost as unknown as {
-        messenger: { handlers: Map<string, (data: unknown) => unknown> };
+        messenger: { handlers: Map<string, DirectHandler> };
       }).messenger.handlers
     ).get(MESSAGE_NAME.PROPS);
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     expect(propsHandler).toBeDefined();
-    expect(() => propsHandler!({ amount: 'bad-update' })).toThrow(
+    expect(() => propsHandler!({ amount: 'bad-update' }, createMessageSource(window))).toThrow(
       'Validation failed: amount: Expected number, got string'
     );
     expect(typedHost.hostProps.amount).toBe(10);

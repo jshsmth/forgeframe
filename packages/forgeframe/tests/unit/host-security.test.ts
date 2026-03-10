@@ -4,14 +4,19 @@
  * Covers consumer domain allowlist enforcement, hostProps invalidation, and deferred init gating under security checks.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import { createRequestMessage, serializeMessage } from '@/communication/protocol';
+import type { MessageHandler } from '@/communication/messenger';
 import { initHost, clearHostInstance, HostComponent } from '@/core/host';
 import { buildWindowName } from '@/window/name-payload';
-import { CONTEXT, MESSAGE_NAME, VERSION } from '@/constants';
+import { CONTEXT, EVENT, MESSAGE_NAME, VERSION } from '@/constants';
 import { prop } from '@/props/prop';
 import type { ConsumerExports, WindowNamePayload } from '@/types';
 
 const originalWindowName = window.name;
 const originalDocumentReferrer = document.referrer;
+let dispatchedMessageCount = 0;
+type HandlerSource = Parameters<MessageHandler>[1];
+type DirectHandler = (data: Record<string, unknown>, source: HandlerSource) => unknown;
 const VALID_EXPORTS: ConsumerExports = {
   init: MESSAGE_NAME.INIT,
   close: MESSAGE_NAME.CLOSE,
@@ -30,10 +35,69 @@ function setDocumentReferrer(referrer: string): void {
   });
 }
 
+function dispatchConsumerMessage(
+  name: string,
+  sourceWindow: Window,
+  options?: {
+    data?: unknown;
+    origin?: string;
+    claimedUid?: string;
+  }
+): void {
+  dispatchedMessageCount += 1;
+  const origin = options?.origin ?? 'https://trusted.example.com';
+  const request = createRequestMessage(
+    `req-${dispatchedMessageCount}`,
+    name,
+    options?.data ?? {},
+    {
+      uid: options?.claimedUid ?? `sender-${dispatchedMessageCount}`,
+      domain: origin,
+    }
+  );
+
+  window.dispatchEvent(
+    new MessageEvent('message', {
+      data: serializeMessage(request),
+      source: sourceWindow,
+      origin,
+    })
+  );
+}
+
+async function flushMessages(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+function readResponseData(sourceWindow: Window): unknown {
+  const calls = (
+    sourceWindow as unknown as { postMessage: ReturnType<typeof vi.fn> }
+  ).postMessage.mock.calls;
+  const lastCall = calls.at(-1);
+
+  if (!lastCall) {
+    return undefined;
+  }
+
+  return JSON.parse(lastCall[0].slice('forgeframe:'.length)).data;
+}
+
+function createMessageSource(windowRef: Window, domain = 'https://trusted.example.com'): HandlerSource {
+  return {
+    uid: 'consumer-source',
+    domain,
+    window: windowRef,
+  };
+}
+
 afterEach(() => {
   clearHostInstance();
   window.name = originalWindowName;
   setDocumentReferrer(originalDocumentReferrer);
+  dispatchedMessageCount = 0;
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
@@ -112,18 +176,21 @@ describe('Host security', () => {
 
     const propsHandler = (
       host as unknown as {
-        messenger: { handlers: Map<string, (data: Record<string, unknown>) => unknown> };
+        messenger: { handlers: Map<string, DirectHandler> };
       }
     ).messenger.handlers.get(MESSAGE_NAME.PROPS);
 
     expect(propsHandler).toBeDefined();
 
-    propsHandler!({
-      uid: 'spoofed-uid',
-      close: 'spoofed-close',
-      consumer: 'spoofed-consumer',
-      status: 'updated',
-    });
+    propsHandler!(
+      {
+        uid: 'spoofed-uid',
+        close: 'spoofed-close',
+        consumer: 'spoofed-consumer',
+        status: 'updated',
+      },
+      createMessageSource(consumerWindow)
+    );
 
     expect(host.hostProps.amount).toBeUndefined();
     expect(host.hostProps.uid).toBe('host-uid-reserved-sync');
@@ -136,6 +203,67 @@ describe('Host security', () => {
       consumer: 'spoofed-consumer',
       status: 'updated',
     });
+  });
+
+  it('should ignore spoofed PROPS from a different trusted window and accept the resolved consumer window', async () => {
+    const consumerWindow = { postMessage: vi.fn() } as unknown as Window;
+    const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
+
+    vi
+      .spyOn(
+        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
+        'resolveConsumerWindow'
+      )
+      .mockReturnValue(consumerWindow);
+
+    const host = new HostComponent(
+      {
+        uid: 'host-uid-pinned-props',
+        tag: 'secure-component-pinned-props',
+        version: VERSION,
+        context: CONTEXT.IFRAME,
+        consumerDomain: 'https://trusted.example.com',
+        props: {
+          amount: 10,
+        },
+        exports: VALID_EXPORTS,
+      },
+      {
+        amount: { schema: prop.number() },
+      },
+      undefined,
+      true
+    );
+
+    const onProps = vi.fn();
+    const emitSpy = vi.spyOn(host.event, 'emit');
+    host.hostProps.onProps(onProps);
+
+    dispatchConsumerMessage(MESSAGE_NAME.PROPS, spoofedWindow, {
+      data: { amount: 42 },
+      claimedUid: 'spoofed-consumer',
+    });
+    await flushMessages();
+
+    expect(readResponseData(spoofedWindow)).toEqual({ success: false });
+    expect(host.hostProps.amount).toBe(10);
+    expect(host.hostProps.consumer.props).toEqual({ amount: 10 });
+    expect(onProps).not.toHaveBeenCalled();
+    expect(emitSpy).not.toHaveBeenCalled();
+
+    dispatchConsumerMessage(MESSAGE_NAME.PROPS, consumerWindow, {
+      data: { amount: 42 },
+      claimedUid: 'real-consumer',
+    });
+    await flushMessages();
+
+    expect(readResponseData(consumerWindow)).toEqual({ success: true });
+    expect(host.hostProps.amount).toBe(42);
+    expect(host.hostProps.consumer.props).toEqual({ amount: 42 });
+    expect(onProps).toHaveBeenCalledTimes(1);
+    expect(onProps).toHaveBeenCalledWith({ amount: 42 });
+    expect(emitSpy).toHaveBeenCalledTimes(1);
+    expect(emitSpy).toHaveBeenCalledWith(EVENT.PROPS, { amount: 42 });
   });
 
   it('should reject disallowed consumer domains during host initialization', () => {

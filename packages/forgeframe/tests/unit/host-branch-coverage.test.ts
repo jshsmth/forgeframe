@@ -4,6 +4,7 @@
  * Covers deferred init branches, hostProps fallback behavior, init failure capture, and environment guard paths.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { MessageHandler } from '@/communication/messenger';
 import {
   HostComponent,
   clearHostInstance,
@@ -26,6 +27,9 @@ const VALID_EXPORTS: ConsumerExports = {
   updateProps: MESSAGE_NAME.PROPS,
   export: MESSAGE_NAME.EXPORT,
 };
+
+type HandlerSource = Parameters<MessageHandler>[1];
+type DirectHandler = (data: unknown, source: HandlerSource) => unknown;
 
 /**
  * Builds a host window payload with stable defaults for branch-path tests.
@@ -65,6 +69,17 @@ function createHost({
     .mockReturnValue(consumerWindow);
 
   return new HostComponent(payload, {}, undefined, deferInit);
+}
+
+function createMessageSource(
+  windowRef: Window,
+  domain = 'https://consumer.example.com'
+): HandlerSource {
+  return {
+    uid: 'consumer-source',
+    domain,
+    window: windowRef,
+  };
 }
 
 afterEach(() => {
@@ -183,14 +198,14 @@ describe('Host branch coverage and edge paths', () => {
   it('should unsubscribe onProps handlers when cancel is called', () => {
     const host = createHost();
     const propsHandler = (
-      (host as unknown as { messenger: { handlers: Map<string, (data: unknown) => unknown> } })
+      (host as unknown as { messenger: { handlers: Map<string, DirectHandler> } })
         .messenger.handlers
     ).get(MESSAGE_NAME.PROPS);
     const onPropsSpy = vi.fn();
 
     const subscription = host.hostProps.onProps(onPropsSpy);
     subscription.cancel();
-    propsHandler!({ amount: 50 });
+    propsHandler!({ amount: 50 }, createMessageSource(window));
 
     expect(onPropsSpy).not.toHaveBeenCalled();
   });

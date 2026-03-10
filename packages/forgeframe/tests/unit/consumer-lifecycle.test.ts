@@ -448,15 +448,30 @@ describe('Consumer lifecycle behavior', () => {
     expect(hideSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('should surface host ERROR messages through consumer onError callback', async () => {
+  it('should ignore spoofed ERROR from a different trusted window and accept the opened host window', async () => {
     const onError = vi.fn();
     const consumer = createConsumer({}, { onError });
-    const errorHandler = getHandlers(consumer).get(MESSAGE_NAME.ERROR);
+    const internal = consumer as unknown as {
+      hostWindow: Window | null;
+    };
+    const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+    const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
+    internal.hostWindow = hostWindow;
 
-    expect(errorHandler).toBeDefined();
-    await expect(
-      errorHandler!({ message: 'host failed', stack: 'host-stack' })
-    ).resolves.toEqual({ success: true });
+    dispatchHostMessage(MESSAGE_NAME.ERROR, spoofedWindow, {
+      data: { message: 'spoofed host failed', stack: 'spoofed-stack' },
+      claimedUid: 'spoofed-host',
+    });
+    await flushMessages();
+
+    expect(onError).not.toHaveBeenCalled();
+    expect(readResponseData(spoofedWindow)).toEqual({ success: false });
+
+    dispatchHostMessage(MESSAGE_NAME.ERROR, hostWindow, {
+      data: { message: 'host failed', stack: 'host-stack' },
+      claimedUid: 'real-host',
+    });
+    await flushMessages();
 
     expect(onError).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -464,21 +479,63 @@ describe('Consumer lifecycle behavior', () => {
         stack: 'host-stack',
       })
     );
+    expect(readResponseData(hostWindow)).toEqual({ success: true });
   });
 
-  it('should store EXPORT and CONSUMER_EXPORT payloads', async () => {
+  it('should ignore spoofed EXPORT from a different trusted window and accept the opened host window', async () => {
     const consumer = createConsumer();
-    const handlers = getHandlers(consumer);
+    const internal = consumer as unknown as {
+      hostWindow: Window | null;
+    };
+    const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+    const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
+    internal.hostWindow = hostWindow;
 
-    await expect(
-      handlers.get(MESSAGE_NAME.EXPORT)!({ ready: true })
-    ).resolves.toEqual({ success: true });
-    await expect(
-      handlers.get(MESSAGE_NAME.CONSUMER_EXPORT)!({ token: 'abc' })
-    ).resolves.toEqual({ success: true });
+    dispatchHostMessage(MESSAGE_NAME.EXPORT, spoofedWindow, {
+      data: { ready: false },
+      claimedUid: 'spoofed-host',
+    });
+    await flushMessages();
+
+    expect(consumer.exports).toBeUndefined();
+    expect(readResponseData(spoofedWindow)).toEqual({ success: false });
+
+    dispatchHostMessage(MESSAGE_NAME.EXPORT, hostWindow, {
+      data: { ready: true },
+      claimedUid: 'real-host',
+    });
+    await flushMessages();
 
     expect(consumer.exports).toEqual({ ready: true });
+    expect(readResponseData(hostWindow)).toEqual({ success: true });
+  });
+
+  it('should ignore spoofed CONSUMER_EXPORT from a different trusted window and accept the opened host window', async () => {
+    const consumer = createConsumer();
+    const internal = consumer as unknown as {
+      hostWindow: Window | null;
+    };
+    const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+    const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
+    internal.hostWindow = hostWindow;
+
+    dispatchHostMessage(MESSAGE_NAME.CONSUMER_EXPORT, spoofedWindow, {
+      data: { token: 'spoofed' },
+      claimedUid: 'spoofed-host',
+    });
+    await flushMessages();
+
+    expect(consumer.consumerExports).toBeUndefined();
+    expect(readResponseData(spoofedWindow)).toEqual({ success: false });
+
+    dispatchHostMessage(MESSAGE_NAME.CONSUMER_EXPORT, hostWindow, {
+      data: { token: 'abc' },
+      claimedUid: 'real-host',
+    });
+    await flushMessages();
+
     expect(consumer.consumerExports).toEqual({ token: 'abc' });
+    expect(readResponseData(hostWindow)).toEqual({ success: true });
   });
 
   it('should return peer siblings excluding requesting instance', async () => {
