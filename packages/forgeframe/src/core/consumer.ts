@@ -290,11 +290,14 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * @param dimensions - New width and height for the component
    */
   async resize(dimensions: Dimensions): Promise<void> {
-    this.renderer.resize(dimensions, this.transport.hostWindow);
+    const hostWindow = this.transport ? this.transport.hostWindow : null;
+    const callbackProps = this.propsPipeline ? this.propsPipeline.props : ({} as P);
+
+    this.renderer.resize(dimensions, hostWindow);
 
     this.event.emit(EVENT.RESIZE, dimensions);
     invokePropCallback(
-      this.propsPipeline.props as Record<string, unknown>,
+      callbackProps as Record<string, unknown>,
       'onResize',
       dimensions
     );
@@ -344,7 +347,8 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
         this.assertStableRenderedOrigin(nextHostOrigin),
       isRendered: () => this.rendered,
       syncTrustedDomainForUrl: (url) => this.syncTrustedDomainForUrl(url),
-      shouldSendPropsToHost: () => this.transport.isHostConnected(),
+      shouldSendPropsToHost: () =>
+        this.transport ? this.transport.isHostConnected() : false,
       sendPropsUpdateToHost: (nextProps) => this.sendPropsUpdateToHost(nextProps),
       emitPropsUpdated: (nextProps) => {
         this.event.emit(EVENT.PROPS, nextProps);
@@ -364,14 +368,16 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * @internal
    */
   private assertStableRenderedOrigin(nextHostOrigin: string | null): void {
+    const openedHostDomain = this.transport?.openedHostDomain;
+
     if (
       this.rendered &&
-      this.transport.openedHostDomain &&
+      openedHostDomain &&
       nextHostOrigin &&
-      nextHostOrigin !== this.transport.openedHostDomain
+      nextHostOrigin !== openedHostDomain
     ) {
       throw new Error(
-        `Cannot change component URL origin after render (from "${this.transport.openedHostDomain}" to "${nextHostOrigin}")`
+        `Cannot change component URL origin after render (from "${openedHostDomain}" to "${nextHostOrigin}")`
       );
     }
   }
@@ -381,6 +387,10 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * @internal
    */
   private async sendPropsUpdateToHost(nextProps: P): Promise<void> {
+    if (!this.transport) {
+      return;
+    }
+
     await this.transport.sendPropsUpdateToHost(nextProps, this.options.props);
   }
 
@@ -459,7 +469,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * @internal
    */
   private isExplicitDomainTrust(origin: string): boolean {
-    return this.transport.isExplicitDomainTrust(origin);
+    return this.transport ? this.transport.isExplicitDomainTrust(origin) : false;
   }
 
   /**
@@ -471,6 +481,10 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     if (origin) {
       this.isExplicitDomainTrust(origin);
     }
+    if (!this.transport) {
+      return;
+    }
+
     this.transport.syncTrustedDomainForUrl(url);
   }
 

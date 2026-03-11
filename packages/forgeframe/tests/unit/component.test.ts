@@ -309,6 +309,64 @@ describe('Component Creation', () => {
 
     expect(internal.propsPipeline.props.computed).toBe('focused-during-construction');
   });
+
+  it('should tolerate construction-time PropContext.close followed by updateProps', async () => {
+    const CloseResolverComponent = create<{
+      amount?: number;
+      computed?: string;
+    }>({
+      tag: 'resolver-close-update-props-component',
+      url: 'https://example.com',
+      props: {
+        amount: { schema: prop.number().optional() },
+        computed: {
+          schema: prop.string().optional(),
+          value: (ctx) => {
+            void ctx.close();
+            return 'closed-during-construction';
+          },
+        },
+      },
+    });
+
+    const instance = CloseResolverComponent({});
+    const internal = getConsumerInternals(instance);
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await expect(instance.updateProps({ amount: 2 })).resolves.toBeUndefined();
+    expect(internal.propsPipeline.props.amount).toBe(2);
+  });
+
+  it('should tolerate construction-time PropContext.close followed by resize', async () => {
+    const onResize = vi.fn();
+    const CloseResolverComponent = create<Record<string, unknown>>({
+      tag: 'resolver-close-resize-component',
+      url: 'https://example.com',
+      props: {
+        computed: {
+          schema: prop.string(),
+          value: (ctx) => {
+            void ctx.close();
+            return 'closed-during-construction';
+          },
+        },
+      },
+    });
+
+    const instance = CloseResolverComponent({ onResize });
+    const internal = getConsumerInternals(instance);
+    const resizeSpy = vi.spyOn(internal.renderer as { resize: (...args: unknown[]) => void }, 'resize');
+    const dimensions = { width: 320, height: 200 };
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await expect(instance.resize(dimensions)).resolves.toBeUndefined();
+    expect(resizeSpy).toHaveBeenCalledWith(dimensions, null);
+    expect(onResize).toHaveBeenCalledWith(dimensions);
+  });
 });
 
 describe('Component Instance', () => {
