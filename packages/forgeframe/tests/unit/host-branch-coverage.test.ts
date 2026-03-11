@@ -4,7 +4,7 @@
  * Covers deferred init branches, hostProps fallback behavior, init failure capture, and environment guard paths.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { MessageHandler } from '@/communication/messenger';
+import { Messenger, type MessageHandler } from '@/communication/messenger';
 import {
   HostComponent,
   clearHostInstance,
@@ -12,6 +12,7 @@ import {
   initHost,
   isEmbedded,
 } from '@/core/host';
+import * as hostSecurity from '@/core/host/security';
 import { CONTEXT, EVENT, MESSAGE_NAME, VERSION } from '@/constants';
 import { buildWindowName } from '@/window/name-payload';
 import type { ConsumerExports, HostComponentRef, WindowNamePayload } from '@/types';
@@ -61,12 +62,7 @@ function createHost({
   deferInit?: boolean;
   consumerWindow?: Window;
 } = {}): HostComponent<Record<string, unknown>> {
-  vi
-    .spyOn(
-      HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
-      'resolveConsumerWindow'
-    )
-    .mockReturnValue(consumerWindow);
+  vi.spyOn(hostSecurity, 'resolveConsumerWindow').mockReturnValue(consumerWindow);
 
   return new HostComponent(payload, {}, undefined, deferInit);
 }
@@ -90,40 +86,39 @@ afterEach(() => {
 
 describe('Host branch coverage and edge paths', () => {
   it('should flush init in constructor when deferInit is false', () => {
-    const sendInitSpy = vi
-      .spyOn(
-        HostComponent.prototype as unknown as {
-          sendInit: () => Promise<void>;
-        },
-        'sendInit'
-      )
+    const sendSpy = vi
+      .spyOn(Messenger.prototype, 'send')
       .mockResolvedValue(undefined);
 
     createHost({ deferInit: false });
 
-    expect(sendInitSpy).toHaveBeenCalledTimes(1);
+    expect(sendSpy).toHaveBeenCalledTimes(1);
+    expect(sendSpy).toHaveBeenCalledWith(
+      window,
+      window.location.origin,
+      MESSAGE_NAME.INIT,
+      { uid: 'host-internal-uid', tag: 'host-internal-component' }
+    );
   });
 
-  it('should skip deferred init scheduling when already scheduled', async () => {
+  it('should only flush deferred init once when hostProps is accessed repeatedly in the same tick', async () => {
     const host = createHost();
-    const flushInitSpy = vi.spyOn(
-      host as unknown as { flushInit: () => void },
-      'flushInit'
-    );
+    const sendSpy = vi
+      .spyOn(
+        (
+          host as unknown as {
+            messenger: { send: (...args: unknown[]) => Promise<unknown> };
+          }
+        ).messenger,
+        'send'
+      )
+      .mockResolvedValue(undefined);
 
-    (
-      host as unknown as {
-        deferredInitFlushScheduled: boolean;
-      }
-    ).deferredInitFlushScheduled = true;
-    (
-      host as unknown as {
-        scheduleDeferredInitFlush: () => void;
-      }
-    ).scheduleDeferredInitFlush();
+    void (window as unknown as { hostProps?: unknown }).hostProps;
+    void (window as unknown as { hostProps?: unknown }).hostProps;
 
     await Promise.resolve();
-    expect(flushInitSpy).not.toHaveBeenCalled();
+    expect(sendSpy).toHaveBeenCalledTimes(1);
   });
 
   it('should update internal hostProps when window.hostProps is set', () => {
@@ -176,6 +171,7 @@ describe('Host branch coverage and edge paths', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     host.flushInit();
+    await Promise.resolve();
     await Promise.resolve();
 
     expect(sendSpy).toHaveBeenCalledWith(
@@ -299,10 +295,7 @@ describe('Host branch coverage and edge paths', () => {
     vi.spyOn(namePayload, 'isForgeFrameWindow').mockReturnValue(true);
     vi.spyOn(namePayload, 'getInitialPayload').mockReturnValue(payload);
     vi
-      .spyOn(
-        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
-        'resolveConsumerWindow'
-      )
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
       .mockImplementation(() => {
         throw new Error('Could not resolve consumer window');
       });
@@ -340,12 +333,7 @@ describe('Host branch coverage and edge paths', () => {
       tag: 'get-host-component',
     });
     window.name = buildWindowName(payload);
-    vi
-      .spyOn(
-        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
-        'resolveConsumerWindow'
-      )
-      .mockReturnValue(window);
+    vi.spyOn(hostSecurity, 'resolveConsumerWindow').mockReturnValue(window);
     vi.spyOn(namePayload, 'isForgeFrameWindow').mockReturnValue(true);
     vi.spyOn(namePayload, 'getInitialPayload').mockReturnValue(payload);
 

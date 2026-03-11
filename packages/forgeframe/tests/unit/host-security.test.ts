@@ -7,6 +7,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { createRequestMessage, serializeMessage } from '@/communication/protocol';
 import type { MessageHandler } from '@/communication/messenger';
 import { initHost, clearHostInstance, HostComponent } from '@/core/host';
+import * as hostSecurity from '@/core/host/security';
 import { buildWindowName } from '@/window/name-payload';
 import { CONTEXT, EVENT, MESSAGE_NAME, VERSION } from '@/constants';
 import { prop } from '@/props/prop';
@@ -107,10 +108,7 @@ describe('Host security', () => {
     const consumerWindow = { postMessage: vi.fn() } as unknown as Window;
 
     vi
-      .spyOn(
-        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
-        'resolveConsumerWindow'
-      )
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
       .mockReturnValue(consumerWindow);
 
     const host = new HostComponent(
@@ -150,10 +148,7 @@ describe('Host security', () => {
     const consumerWindow = { postMessage: vi.fn() } as unknown as Window;
 
     vi
-      .spyOn(
-        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
-        'resolveConsumerWindow'
-      )
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
       .mockReturnValue(consumerWindow);
 
     const host = new HostComponent(
@@ -210,10 +205,7 @@ describe('Host security', () => {
     const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
 
     vi
-      .spyOn(
-        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
-        'resolveConsumerWindow'
-      )
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
       .mockReturnValue(consumerWindow);
 
     const host = new HostComponent(
@@ -268,10 +260,7 @@ describe('Host security', () => {
 
   it('should reject disallowed consumer domains during host initialization', () => {
     vi
-      .spyOn(
-        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
-        'resolveConsumerWindow'
-      )
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
       .mockReturnValue(window);
 
     const payload: WindowNamePayload<Record<string, unknown>> = {
@@ -294,10 +283,7 @@ describe('Host security', () => {
 
   it('should allow wildcard consumer domains during host initialization and bind the verified origin', () => {
     vi
-      .spyOn(
-        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
-        'resolveConsumerWindow'
-      )
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
       .mockReturnValue(window);
 
     const payload: WindowNamePayload<Record<string, unknown>> = {
@@ -323,10 +309,7 @@ describe('Host security', () => {
 
   it('should reject spoofed claimed consumer domains when the verified referrer origin is untrusted', () => {
     vi
-      .spyOn(
-        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
-        'resolveConsumerWindow'
-      )
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
       .mockReturnValue(window);
 
     const payload: WindowNamePayload<Record<string, unknown>> = {
@@ -349,10 +332,7 @@ describe('Host security', () => {
 
   it('should bind host consumer domain to the verified referrer origin instead of the claimed payload origin', () => {
     vi
-      .spyOn(
-        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
-        'resolveConsumerWindow'
-      )
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
       .mockReturnValue(window);
 
     const payload: WindowNamePayload<Record<string, unknown>> = {
@@ -381,10 +361,7 @@ describe('Host security', () => {
     } as unknown as Window;
 
     vi
-      .spyOn(
-        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
-        'resolveConsumerWindow'
-      )
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
       .mockReturnValue(inaccessibleConsumerWindow);
 
     const payload: WindowNamePayload<Record<string, unknown>> = {
@@ -407,10 +384,7 @@ describe('Host security', () => {
 
   it('should validate bootstrap props when prop definitions are applied after deferred pre-init', () => {
     vi
-      .spyOn(
-        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
-        'resolveConsumerWindow'
-      )
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
       .mockReturnValue(window);
 
     const payload: WindowNamePayload<Record<string, unknown>> = {
@@ -451,10 +425,7 @@ describe('Host security', () => {
     } as unknown as Window;
 
     vi
-      .spyOn(
-        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
-        'resolveConsumerWindow'
-      )
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
       .mockReturnValue(inaccessibleConsumerWindow);
 
     const payload: WindowNamePayload<Record<string, unknown>> = {
@@ -493,10 +464,7 @@ describe('Host security', () => {
     } as unknown as Window;
 
     vi
-      .spyOn(
-        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
-        'resolveConsumerWindow'
-      )
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
       .mockReturnValue(inaccessibleConsumerWindow);
 
     const payload: WindowNamePayload<Record<string, unknown>> = {
@@ -523,10 +491,7 @@ describe('Host security', () => {
 
   it('should clear window.hostProps when existing host fails allowlist recheck', () => {
     vi
-      .spyOn(
-        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
-        'resolveConsumerWindow'
-      )
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
       .mockReturnValue(window);
 
     const payload: WindowNamePayload<Record<string, unknown>> = {
@@ -551,10 +516,7 @@ describe('Host security', () => {
 
   it('should keep deferred init unsent until explicitly flushed', () => {
     vi
-      .spyOn(
-        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
-        'resolveConsumerWindow'
-      )
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
       .mockReturnValue(window);
 
     const payload: WindowNamePayload<Record<string, unknown>> = {
@@ -573,20 +535,25 @@ describe('Host security', () => {
     const host = initHost(undefined, undefined, { deferInit: true });
     expect(host).not.toBeNull();
 
-    const hostInternal = host as unknown as { sendInit: () => Promise<void> };
-    const sendInitSpy = vi.spyOn(hostInternal, 'sendInit').mockResolvedValue(undefined);
+    const sendSpy = vi
+      .spyOn(
+        (
+          host as unknown as {
+            messenger: { send: (...args: unknown[]) => Promise<unknown> };
+          }
+        ).messenger,
+        'send'
+      )
+      .mockResolvedValue(undefined);
 
-    expect(sendInitSpy).not.toHaveBeenCalled();
+    expect(sendSpy).not.toHaveBeenCalled();
     initHost();
-    expect(sendInitSpy).toHaveBeenCalledTimes(1);
+    expect(sendSpy).toHaveBeenCalledTimes(1);
   });
 
   it('should auto-flush deferred init when window.hostProps is accessed', async () => {
     vi
-      .spyOn(
-        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
-        'resolveConsumerWindow'
-      )
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
       .mockReturnValue(window);
 
     const payload: WindowNamePayload<Record<string, unknown>> = {
@@ -605,21 +572,26 @@ describe('Host security', () => {
     const host = initHost(undefined, undefined, { deferInit: true });
     expect(host).not.toBeNull();
 
-    const hostInternal = host as unknown as { sendInit: () => Promise<void> };
-    const sendInitSpy = vi.spyOn(hostInternal, 'sendInit').mockResolvedValue(undefined);
+    const sendSpy = vi
+      .spyOn(
+        (
+          host as unknown as {
+            messenger: { send: (...args: unknown[]) => Promise<unknown> };
+          }
+        ).messenger,
+        'send'
+      )
+      .mockResolvedValue(undefined);
 
     void (window as unknown as { hostProps?: unknown }).hostProps;
     await Promise.resolve();
 
-    expect(sendInitSpy).toHaveBeenCalledTimes(1);
+    expect(sendSpy).toHaveBeenCalledTimes(1);
   });
 
   it('should not send deferred init before allowlist recheck', () => {
     vi
-      .spyOn(
-        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
-        'resolveConsumerWindow'
-      )
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
       .mockReturnValue(window);
 
     const payload: WindowNamePayload<Record<string, unknown>> = {
@@ -638,20 +610,25 @@ describe('Host security', () => {
     const host = initHost(undefined, undefined, { deferInit: true });
     expect(host).not.toBeNull();
 
-    const hostInternal = host as unknown as { sendInit: () => Promise<void> };
-    const sendInitSpy = vi.spyOn(hostInternal, 'sendInit').mockResolvedValue(undefined);
+    const sendSpy = vi
+      .spyOn(
+        (
+          host as unknown as {
+            messenger: { send: (...args: unknown[]) => Promise<unknown> };
+          }
+        ).messenger,
+        'send'
+      )
+      .mockResolvedValue(undefined);
 
     expect(() => initHost({}, 'https://trusted.example.com')).toThrow('is not allowed');
-    expect(sendInitSpy).not.toHaveBeenCalled();
+    expect(sendSpy).not.toHaveBeenCalled();
     expect((window as unknown as { hostProps?: unknown }).hostProps).toBeUndefined();
   });
 
   it('should not flush deferred init when allowlist recheck fails in the same tick', async () => {
     vi
-      .spyOn(
-        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
-        'resolveConsumerWindow'
-      )
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
       .mockReturnValue(window);
 
     const payload: WindowNamePayload<Record<string, unknown>> = {
@@ -670,24 +647,29 @@ describe('Host security', () => {
     const host = initHost(undefined, undefined, { deferInit: true });
     expect(host).not.toBeNull();
 
-    const hostInternal = host as unknown as { sendInit: () => Promise<void> };
-    const sendInitSpy = vi.spyOn(hostInternal, 'sendInit').mockResolvedValue(undefined);
+    const sendSpy = vi
+      .spyOn(
+        (
+          host as unknown as {
+            messenger: { send: (...args: unknown[]) => Promise<unknown> };
+          }
+        ).messenger,
+        'send'
+      )
+      .mockResolvedValue(undefined);
 
     void (window as unknown as { hostProps?: unknown }).hostProps;
     expect(() => initHost({}, 'https://trusted.example.com')).toThrow('is not allowed');
 
     await Promise.resolve();
 
-    expect(sendInitSpy).not.toHaveBeenCalled();
+    expect(sendSpy).not.toHaveBeenCalled();
     expect((window as unknown as { hostProps?: unknown }).hostProps).toBeUndefined();
   });
 
   it('should validate initial host props against host prop definitions', () => {
     vi
-      .spyOn(
-        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
-        'resolveConsumerWindow'
-      )
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
       .mockReturnValue(window);
 
     const payload: WindowNamePayload<Record<string, unknown>> = {
