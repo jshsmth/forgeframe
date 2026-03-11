@@ -367,6 +367,43 @@ describe('Component Creation', () => {
     expect(resizeSpy).toHaveBeenCalledWith(dimensions, null);
     expect(onResize).toHaveBeenCalledWith(dimensions);
   });
+
+  it('should not register instances destroyed during construction', async () => {
+    const CloseResolverComponent = create<Record<string, unknown>>({
+      tag: 'resolver-close-unregistered-component',
+      url: 'https://example.com',
+      props: {
+        computed: {
+          schema: prop.string(),
+          value: (ctx) => {
+            void ctx.close();
+            return 'closed-during-construction';
+          },
+        },
+      },
+    });
+    const HealthyComponent = create({
+      tag: 'resolver-close-unregistered-healthy-component',
+      url: 'https://example.com/healthy',
+    });
+
+    const leakedInstance = CloseResolverComponent({});
+    const healthyInstance = HealthyComponent({});
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(CloseResolverComponent.instances).toEqual([]);
+    expect(
+      getSiblingInstances({
+        uid: healthyInstance.uid,
+        tag: 'resolver-close-unregistered-healthy-component',
+        options: { anyConsumer: true },
+      }).some((sibling) => sibling.uid === leakedInstance.uid)
+    ).toBe(false);
+
+    await healthyInstance.close();
+  });
 });
 
 describe('Component Instance', () => {

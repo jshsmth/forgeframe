@@ -169,6 +169,13 @@ export function create<P extends Record<string, unknown> = Record<string, unknow
    */
   const Component = function (props: Partial<P> = {} as Partial<P>): ForgeFrameComponentInstance<P, X> {
     const instance = new ConsumerComponent<P, X>(options, props);
+    const internalInstance = instance as unknown as ForgeFrameComponentInstance<P, X> & {
+      destroyed?: boolean;
+    };
+
+    if (internalInstance.destroyed) {
+      return instance;
+    }
 
     instances.push(instance);
     indexComponentInstance(options.tag, instance);
