@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { MessageHandler } from '@/communication/messenger';
 import { ConsumerComponent } from '@/core/consumer';
 import { HostComponent, clearHostInstance, initHost } from '@/core/host';
+import * as hostSecurity from '@/core/host/security';
 import { CONTEXT, EVENT, MESSAGE_NAME, VERSION } from '@/constants';
 import { prop } from '@/props/prop';
 import type { ConsumerExports, WindowNamePayload } from '@/types';
@@ -59,10 +60,7 @@ function createHost({
   consumerWindow?: Window;
 } = {}): HostComponent<Record<string, unknown>> {
   vi
-    .spyOn(
-      HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
-      'resolveConsumerWindow'
-    )
+    .spyOn(hostSecurity, 'resolveConsumerWindow')
     .mockReturnValue(consumerWindow);
 
   return new HostComponent(payload, {}, undefined, deferInit);
@@ -209,10 +207,7 @@ describe('Host lifecycle behavior', () => {
     ).buildWindowName();
 
     vi
-      .spyOn(
-        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
-        'resolveConsumerWindow'
-      )
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
       .mockReturnValue(window);
 
     const host = initHost(definitions, undefined, { deferInit: true });
@@ -224,10 +219,7 @@ describe('Host lifecycle behavior', () => {
 
   it('should allow required sameDomain props to arrive after bootstrap on same-origin hosts', () => {
     vi
-      .spyOn(
-        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
-        'resolveConsumerWindow'
-      )
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
       .mockReturnValue(window);
 
     const host = new HostComponent(
@@ -265,10 +257,7 @@ describe('Host lifecycle behavior', () => {
     } as unknown as Window;
 
     vi
-      .spyOn(
-        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
-        'resolveConsumerWindow'
-      )
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
       .mockReturnValue(crossOriginConsumerWindow);
 
     expect(
@@ -380,10 +369,7 @@ describe('Host lifecycle behavior', () => {
 
   it('should reject invalid PROPS updates before mutating hostProps', () => {
     vi
-      .spyOn(
-        HostComponent.prototype as unknown as { resolveConsumerWindow: () => Window },
-        'resolveConsumerWindow'
-      )
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
       .mockReturnValue(window);
 
     const typedHost = new HostComponent(
