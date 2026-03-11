@@ -773,6 +773,33 @@ describe('Messenger', () => {
       regexMessenger.destroy();
     });
 
+    it('should handle global RegExp trusted domain patterns consistently', async () => {
+      const trustedPattern = /trusted-global\.com$/g;
+      const regexMessenger = new Messenger(
+        'regex-global-uid',
+        mockWindow,
+        'https://consumer.com',
+        trustedPattern
+      );
+
+      const handler = vi.fn().mockReturnValue({ ok: true });
+      regexMessenger.on('test', handler);
+
+      const request = createRequestMessage('req-1', 'test', {}, {
+        uid: 'global-uid',
+        domain: 'https://trusted-global.com',
+      });
+      const sourceWindow = { postMessage: vi.fn() } as unknown as Window;
+
+      dispatchMessage(serializeMessage(request), sourceWindow, 'https://trusted-global.com');
+      dispatchMessage(serializeMessage(request), sourceWindow, 'https://trusted-global.com');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(handler).toHaveBeenCalledTimes(2);
+
+      regexMessenger.destroy();
+    });
+
     it('should support wildcard string patterns for trusted domains', async () => {
       const wildcardMessenger = new Messenger('wildcard-uid', mockWindow, 'https://consumer.com', 'https://*.trusted.com');
 
