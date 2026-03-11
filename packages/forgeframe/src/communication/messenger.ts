@@ -12,6 +12,10 @@ import { MESSAGE_TYPE } from '../constants';
 import { generateShortUID } from '../utils/uid';
 import { createDeferred, type Deferred } from '../utils/promise';
 import {
+  compileWildcardDomainPattern,
+  testDomainRegExpStateless,
+} from '../utils/domain-pattern';
+import {
   serializeMessage,
   deserializeMessage,
   createRequestMessage,
@@ -39,32 +43,6 @@ interface PendingRequest {
   timeout: ReturnType<typeof setTimeout>;
   targetWin: Window;
   expectedOrigin: string | '*';
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function wildcardToRegExp(pattern: string): RegExp | null {
-  if (!pattern.includes('*')) {
-    return null;
-  }
-
-  const escaped = pattern
-    .split('*')
-    .map((segment) => escapeRegExp(segment))
-    .join('.*');
-
-  return new RegExp(`^${escaped}$`);
-}
-
-function testPattern(pattern: RegExp, origin: string): boolean {
-  if (pattern.global || pattern.sticky) {
-    const stateless = new RegExp(pattern.source, pattern.flags.replace(/[gy]/g, ''));
-    return stateless.test(origin);
-  }
-
-  return pattern.test(origin);
 }
 
 interface VerifiedSource {
@@ -195,7 +173,7 @@ export class Messenger {
     } else if (domain instanceof RegExp) {
       this.allowedOriginPatterns.push(domain);
     } else {
-      const wildcardPattern = wildcardToRegExp(domain);
+      const wildcardPattern = compileWildcardDomainPattern(domain);
       if (wildcardPattern) {
         if (!this.wildcardPatternRegistry.has(domain)) {
           this.wildcardPatternRegistry.set(domain, wildcardPattern);
@@ -244,7 +222,7 @@ export class Messenger {
     }
 
     for (const pattern of this.allowedOriginPatterns) {
-      if (testPattern(pattern, origin)) {
+      if (testDomainRegExpStateless(pattern, origin)) {
         return true;
       }
     }

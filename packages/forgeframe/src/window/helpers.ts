@@ -1,46 +1,8 @@
 import type { DomainMatcher } from '../types';
-
-const wildcardPatternCache = new Map<string, RegExp>();
-const WILDCARD_CACHE_LIMIT = 200;
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function wildcardToRegExp(pattern: string): RegExp | null {
-  if (!pattern.includes('*')) {
-    return null;
-  }
-
-  const cachedPattern = wildcardPatternCache.get(pattern);
-  if (cachedPattern) {
-    return cachedPattern;
-  }
-
-  const escaped = pattern
-    .split('*')
-    .map((segment) => escapeRegExp(segment))
-    .join('.*');
-
-  const compiledPattern = new RegExp(`^${escaped}$`);
-  if (wildcardPatternCache.size >= WILDCARD_CACHE_LIMIT) {
-    const oldestKey = wildcardPatternCache.keys().next().value;
-    if (oldestKey) {
-      wildcardPatternCache.delete(oldestKey);
-    }
-  }
-  wildcardPatternCache.set(pattern, compiledPattern);
-  return compiledPattern;
-}
-
-function testRegExpStateless(pattern: RegExp, value: string): boolean {
-  if (pattern.global || pattern.sticky) {
-    const stateless = new RegExp(pattern.source, pattern.flags.replace(/[gy]/g, ''));
-    return stateless.test(value);
-  }
-
-  return pattern.test(value);
-}
+import {
+  compileWildcardDomainPattern,
+  testDomainRegExpStateless,
+} from '../utils/domain-pattern';
 
 /**
  * Gets the domain (origin) of the specified window.
@@ -113,7 +75,7 @@ export function isSameDomain(win: Window, reference: Window = window): boolean {
  * - `"*"` matches any domain
  * - String patterns without wildcards require exact match
  * - String patterns with `*` use wildcard matching (for example, `'https://*.example.com'`)
- * - RegExp patterns use `.test()` method
+ * - RegExp patterns are evaluated statelessly so global/sticky flags do not leak `lastIndex` across calls
  * - Array patterns return `true` if any element matches (OR logic)
  *
  * @example
@@ -142,15 +104,15 @@ export function matchDomain(
 ): boolean {
   if (typeof pattern === 'string') {
     if (pattern === '*') return true;
-    const wildcardPattern = wildcardToRegExp(pattern);
+    const wildcardPattern = compileWildcardDomainPattern(pattern);
     if (wildcardPattern) {
-      return wildcardPattern.test(domain);
+      return testDomainRegExpStateless(wildcardPattern, domain);
     }
     return pattern === domain;
   }
 
   if (pattern instanceof RegExp) {
-    return testRegExpStateless(pattern, domain);
+    return testDomainRegExpStateless(pattern, domain);
   }
 
   if (Array.isArray(pattern)) {
