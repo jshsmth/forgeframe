@@ -140,6 +140,10 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
       (nextProps) => this.createPropContext(nextProps)
     );
 
+    if (this.destroyed) {
+      return;
+    }
+
     this.transport = new ConsumerTransport(
       this.uid,
       this.options,
@@ -254,8 +258,9 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     this.closing = true;
 
     try {
+      const callbackProps = this.propsPipeline ? this.propsPipeline.props : ({} as P);
       this.event.emit(EVENT.CLOSE);
-      invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onClose');
+      invokePropCallback(callbackProps as Record<string, unknown>, 'onClose');
 
       await this.destroy();
     } finally {
@@ -270,10 +275,13 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * For iframes, focuses the iframe element. For popups, brings the window to front.
    */
   async focus(): Promise<void> {
-    this.renderer.focus(this.transport.hostWindow);
+    const hostWindow = this.transport ? this.transport.hostWindow : null;
+    const callbackProps = this.propsPipeline ? this.propsPipeline.props : ({} as P);
+
+    this.renderer.focus(hostWindow);
 
     this.event.emit(EVENT.FOCUS);
-    invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onFocus');
+    invokePropCallback(callbackProps as Record<string, unknown>, 'onFocus');
   }
 
   /**
@@ -744,7 +752,10 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     if (this.destroyed) return;
     this.destroyed = true;
 
-    if (this.transport.initPromise) {
+    const callbackProps = this.propsPipeline ? this.propsPipeline.props : ({} as P);
+    const hostWindow = this.transport ? this.transport.hostWindow : null;
+
+    if (this.transport && this.transport.initPromise) {
       this.transport.initPromise.reject(
         new Error(
           `Component "${this.options.tag}" was destroyed before initialization completed`
@@ -752,19 +763,25 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
       );
       this.transport.initPromise = null;
     }
-    this.transport.hostInitialized = false;
+    if (this.transport) {
+      this.transport.hostInitialized = false;
+    }
 
-    this.renderer.destroy(this.transport.hostWindow);
+    this.renderer.destroy(hostWindow);
 
-    this.transport.hostWindow = null;
-    this.transport.openedHostDomain = null;
-    this.transport.dynamicUrlTrustedOrigin = null;
-    this.propsPipeline.pendingPropsUpdate = null;
+    if (this.transport) {
+      this.transport.hostWindow = null;
+      this.transport.openedHostDomain = null;
+      this.transport.dynamicUrlTrustedOrigin = null;
+    }
+    if (this.propsPipeline) {
+      this.propsPipeline.pendingPropsUpdate = null;
+    }
 
     await this.cleanup.cleanup();
 
     this.event.emit(EVENT.DESTROY);
-    invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onDestroy');
+    invokePropCallback(callbackProps as Record<string, unknown>, 'onDestroy');
     this.event.removeAllListeners();
   }
 }

@@ -261,6 +261,54 @@ describe('Component Creation', () => {
     expect(internal.propsPipeline.props.computed).toBe('computed-value');
     expect(internal.propsPipeline.props.fallback).toBe('default-value');
   });
+
+  it('should tolerate construction-time PropContext.close from value resolvers', async () => {
+    const CloseResolverComponent = create<Record<string, unknown>>({
+      tag: 'resolver-close-component',
+      url: 'https://example.com',
+      props: {
+        computed: {
+          schema: prop.string(),
+          value: (ctx) => {
+            void ctx.close();
+            return 'closed-during-construction';
+          },
+        },
+      },
+    });
+
+    const instance = CloseResolverComponent({});
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await expect(instance.render(document.createElement('div'))).rejects.toThrow(
+      'Component has been destroyed'
+    );
+  });
+
+  it('should tolerate construction-time PropContext.focus from default resolvers', async () => {
+    const FocusResolverComponent = create<Record<string, unknown>>({
+      tag: 'resolver-focus-component',
+      url: 'https://example.com',
+      props: {
+        computed: {
+          schema: prop.string(),
+          default: (ctx) => {
+            void ctx.focus();
+            return 'focused-during-construction';
+          },
+        },
+      },
+    });
+
+    const instance = FocusResolverComponent({});
+    const internal = getConsumerInternals(instance);
+
+    await Promise.resolve();
+
+    expect(internal.propsPipeline.props.computed).toBe('focused-during-construction');
+  });
 });
 
 describe('Component Instance', () => {
