@@ -1,11 +1,12 @@
 /**
  * @packageDocumentation
- * Cross-domain communication module for ForgeFrame.
+ * Internal source barrel for ForgeFrame communication primitives.
  *
  * @remarks
- * This module provides the postMessage-based communication layer for
- * cross-domain consumer-host component interaction. It includes message
- * serialization, function bridging, and request/response handling.
+ * This file groups the postMessage protocol, function bridge, and messenger
+ * internals for source organization. The published package does not expose a
+ * `forgeframe/communication` subpath, so consumers should treat this barrel as
+ * internal implementation structure.
  */
 
 export { Messenger, type MessageHandler } from './messenger';

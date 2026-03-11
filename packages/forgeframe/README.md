@@ -1,6 +1,9 @@
 # ForgeFrame
 
-A TypeScript-first framework for embedding cross-domain iframes and popups with seamless communication. Pass data and callbacks across domains — perfect for payment forms, auth widgets, third-party integrations, and micro-frontends. Zero dependencies, ~21KB gzipped (ESM) / ~12KB gzipped (UMD).
+[![npm version](https://img.shields.io/npm/v/forgeframe.svg)](https://www.npmjs.com/package/forgeframe)
+[![GitHub Release](https://img.shields.io/github/v/release/jshsmth/ForgeFrame)](https://github.com/jshsmth/ForgeFrame/releases)
+
+A TypeScript-first framework for embedding cross-domain iframes and popups with seamless communication. Pass data and callbacks across domains for payment forms, auth widgets, third-party integrations, and micro-frontends. Zero runtime dependencies with ESM and UMD builds.
 
 ### Terminology
 
@@ -133,10 +136,8 @@ declare global {
   }
 }
 
-// Required when the host page doesn't use ForgeFrame.create().
-// If your host defines a component via create(), init is handled automatically.
-ForgeFrame.initHost();
-
+// Importing the runtime registers deferred host initialization for window.hostProps.
+// Call ForgeFrame.initHost() only if you need init before the first read below.
 const { amount, onSuccess, close } = window.hostProps;
 
 document.getElementById('total')!.textContent = `$${amount}`;
@@ -147,6 +148,7 @@ document.getElementById('pay-btn')!.onclick = async () => {
 ```
 
 That's it! ForgeFrame handles all the cross-domain communication automatically.
+If you need to force host initialization before first `window.hostProps` access, see [Manual Host Init with initHost](#manual-host-init-with-inithost).
 
 ---
 
@@ -210,10 +212,8 @@ declare global {
   }
 }
 
-// Required when the host page doesn't use ForgeFrame.create().
-// If your host defines a component via create(), init is handled automatically.
-ForgeFrame.initHost();
-
+// Importing the runtime registers deferred host initialization for window.hostProps.
+// Call ForgeFrame.initHost() only if you need init before the first read below.
 const { email, onLogin, onCancel, close } = window.hostProps;
 
 if (email) document.getElementById('email')!.value = email;
@@ -223,7 +223,6 @@ document.getElementById('login-form')!.onsubmit = async (e) => {
   await onLogin({
     id: 1,
     name: 'John Doe',
-    email: document.getElementById('email')!.value,
   });
   await close();
 };
@@ -238,7 +237,7 @@ document.getElementById('cancel')!.onclick = async () => {
 <summary>Explanation</summary>
 
 - **`HostProps<LoginProps>`**: Combines your props with built-in methods (`close`, `resize`, etc.)
-- **`ForgeFrame.initHost()`**: Flushes host initialization so the consumer can complete render. Only required when the host page doesn't use `ForgeFrame.create()` — if your host defines a component via `create()`, init is handled automatically.
+- **Host init**: Importing `forgeframe` in the host bundle registers deferred host initialization. Accessing `window.hostProps` then flushes it automatically; use `ForgeFrame.initHost()` only when you need to force init before first `hostProps` access.
 - **`window.hostProps`**: Contains all props passed from the consumer plus built-in methods
 - **`close()`**: Built-in method to close the iframe/popup
 
@@ -400,6 +399,50 @@ const MyComponent = ForgeFrame.create({
 });
 ```
 
+Note: ForgeFrame runs schema validation synchronously. Schemas with async `~standard.validate` are not supported.
+
+### Advanced Prop Definitions
+
+Use the object form when a prop needs transport rules in addition to validation.
+
+```typescript
+import ForgeFrame, { prop, PROP_SERIALIZATION } from 'forgeframe';
+
+const SecureWidget = ForgeFrame.create({
+  tag: 'secure-widget',
+  url: 'https://widgets.example.com/secure',
+  props: {
+    profile: {
+      schema: prop.object(),
+      serialization: PROP_SERIALIZATION.DOTIFY,
+    },
+    secret: {
+      schema: prop.string(),
+      sameDomain: true,
+    },
+    auditId: {
+      schema: prop.string(),
+      queryParam: true,
+    },
+    internalState: {
+      schema: prop.any(),
+      sendToHost: false,
+    },
+  },
+});
+```
+
+| Option | Description |
+|--------|-------------|
+| `sendToHost` | Skip sending the prop to the host when set to `false` |
+| `sameDomain` | Only deliver the prop after the loaded host is verified to be same-origin. It is not included in the initial bootstrap payload |
+| `trustedDomains` | Only send the prop to matching host domains |
+| `serialization` | Choose how object props are transferred: `JSON` (default), `BASE64`, or `DOTIFY` |
+| `queryParam` / `bodyParam` | Include the prop in the host page's initial HTTP request |
+
+- Use `sameDomain` for values that should never be exposed during cross-origin bootstrap.
+- `DOTIFY` safely preserves nested object keys that contain separators such as `.`, `&`, or `=`.
+
 ### Passing Props via URL or POST Body (Advanced)
 
 Use prop definition flags to include specific values in the host page's initial HTTP request:
@@ -440,11 +483,22 @@ window.hostProps.onProps((newProps) => {
 });
 ```
 
+Built-in `window.hostProps` names are reserved. Consumer props with names such as
+`uid`, `tag`, `close`, `focus`, `resize`, `show`, `hide`, `onProps`, `onError`,
+`getConsumer`, `getConsumerDomain`, `export`, `consumer`, `getPeerInstances`, and
+`children` are kept in `hostProps.consumer.props`, but they do not override the
+top-level ForgeFrame methods and metadata exposed on `window.hostProps`.
+
 ---
 
 ## Host Window API (hostProps)
 
 In host windows, `window.hostProps` provides access to props and control methods.
+
+When rendering in iframe mode, ForgeFrame applies a default sandbox of
+`allow-scripts allow-same-origin allow-forms allow-popups` unless you explicitly
+set `attributes.sandbox` on the consumer component. An explicit `sandbox` value is
+used as-is.
 
 ### TypeScript Setup
 
@@ -462,12 +516,20 @@ declare global {
   }
 }
 
-// Required when the host page doesn't use ForgeFrame.create().
-// If your host defines a component via create(), init is handled automatically.
-ForgeFrame.initHost();
-
+// Import the runtime in your host bundle so ForgeFrame can expose window.hostProps.
 const { email, onLogin, close, resize } = window.hostProps!;
 ```
+
+### Manual Host Init with initHost
+
+`ForgeFrame.initHost()` is optional and only needed to force the host handshake early.
+
+Use it when:
+- You need initialization to complete before the first read of `window.hostProps`.
+- Your host boot flow delays that first `window.hostProps` access (for example: lazy-loaded modules, async startup, or gated initialization).
+- You want deterministic init timing in tests or instrumentation.
+
+You can skip it when the host bundle imports `forgeframe` at runtime and normal startup reads `window.hostProps` directly, since that first access flushes host initialization automatically.
 
 ### Available Methods
 
@@ -485,16 +547,17 @@ await props.resize({ width: 500, height: 400 });
 await props.show();
 await props.hide();
 
-props.onProps((newProps) => { /* handle updates */ });
-props.onError(new Error('Something failed'));
+const { cancel } = props.onProps((newProps) => { /* handle updates */ });
+await props.onError(new Error('Something failed'));
 await props.export({ validate: () => true });
 
 props.getConsumer();
 props.getConsumerDomain();
 props.consumer.props;
-props.consumer.export(data);
+await props.consumer.export(data);
 
 const peers = await props.getPeerInstances();
+cancel();
 ```
 
 <details>
@@ -505,16 +568,18 @@ const peers = await props.getPeerInstances();
 | `email`, `onLogin` | Your custom props and callbacks |
 | `uid`, `tag` | Built-in identifiers |
 | `close()` | Close the component |
-| `focus()` | Focus (popup only) |
+| `focus()` | Request focus for iframe/popup |
 | `resize()` | Resize the component |
 | `show()`, `hide()` | Toggle visibility |
-| `onProps()` | Listen for prop updates |
+| `onProps()` | Listen for prop updates (returns `{ cancel() }`) |
 | `onError()` | Report errors to consumer |
 | `export()` | Export methods/data to consumer |
 | `getConsumer()` | Get consumer window reference |
 | `getConsumerDomain()` | Get consumer origin |
 | `consumer.props` | Access consumer's props |
+| `consumer.export()` | Send data to consumer from host context |
 | `getPeerInstances()` | Get peer component instances from the same consumer |
+| `children` | Nested component factories provided by consumer (if configured) |
 
 </details>
 
@@ -525,7 +590,7 @@ Host components can export methods/data for the consumer to use.
 > **`Host`**
 
 ```typescript
-window.hostProps.export({
+await window.hostProps.export({
   validate: () => document.getElementById('form').checkValidity(),
   getFormData: () => ({ email: document.getElementById('email').value }),
 });
@@ -624,7 +689,7 @@ const MyComponent = ForgeFrame.create({
 ### Basic Usage
 
 ```tsx
-import React from 'react';
+import React, { useState } from 'react';
 import ForgeFrame, { prop, createReactComponent } from 'forgeframe';
 
 const LoginComponent = ForgeFrame.create({
@@ -721,6 +786,7 @@ const AutoResizeComponent = ForgeFrame.create({
 ### Domain Security
 
 Restrict which domains can embed or communicate.
+String domain patterns support `*` wildcards (for example, `'https://*.myapp.com'`), and arrays can mix strings and `RegExp`.
 
 ```typescript
 const SecureComponent = ForgeFrame.create({
@@ -793,13 +859,15 @@ ForgeFrame.destroyByTag(tag)      // Destroy all instances of a tag
 ForgeFrame.destroyAll()           // Destroy all instances
 ForgeFrame.isHost()               // Check if in host context
 ForgeFrame.isEmbedded()           // Alias for isHost() - more intuitive naming
-ForgeFrame.initHost()             // Flush host handshake (only needed when create() is not used on the host)
+ForgeFrame.initHost()             // Optional: flush host handshake before first hostProps access
 ForgeFrame.getHostProps()         // Get hostProps in host context
 ForgeFrame.isStandardSchema(val)  // Check if value is a Standard Schema
 
 ForgeFrame.prop                   // Prop schema builders (also exported as `prop`)
+ForgeFrame.PROP_SERIALIZATION     // Prop serialization constants
 ForgeFrame.CONTEXT                // Context constants (IFRAME, POPUP)
 ForgeFrame.EVENT                  // Event name constants
+ForgeFrame.PopupOpenError         // Popup blocker/open failures
 ForgeFrame.VERSION                // Library version
 ```
 
@@ -809,20 +877,20 @@ ForgeFrame.VERSION                // Library version
 interface ComponentOptions<P> {
   tag: string;
   url: string | ((props: P) => string);
-  dimensions?: { width?: number | string; height?: number | string };
+  dimensions?: { width?: number | string; height?: number | string } | ((props: P) => { width?: number | string; height?: number | string });
   autoResize?: { width?: boolean; height?: boolean; element?: string };
   props?: PropsDefinition<P>;
   defaultContext?: 'iframe' | 'popup';
-  containerTemplate?: (ctx: TemplateContext) => HTMLElement;
-  prerenderTemplate?: (ctx: TemplateContext) => HTMLElement;
-  domain?: string;
-  allowedConsumerDomains?: Array<string | RegExp>;
+  containerTemplate?: (ctx: TemplateContext<P>) => HTMLElement | null;
+  prerenderTemplate?: (ctx: TemplateContext<P>) => HTMLElement | null;
+  domain?: DomainMatcher;
+  allowedConsumerDomains?: DomainMatcher;
   eligible?: (opts: { props: P }) => { eligible: boolean; reason?: string };
   validate?: (opts: { props: P }) => void;
-  attributes?: IframeAttributes;
-  style?: CSSProperties;
+  attributes?: IframeAttributes | ((props: P) => IframeAttributes);
+  style?: IframeStyles | ((props: P) => IframeStyles);
   timeout?: number;
-  children?: () => Record<string, ForgeFrameComponent>;
+  children?: (opts: { props: P }) => Record<string, ForgeFrameComponent>;
 }
 ```
 
@@ -831,14 +899,14 @@ interface ComponentOptions<P> {
 ```typescript
 const instance = MyComponent(props);
 
-await instance.render(container?, context?)  // Render
+await instance.render(container, context?)   // Render into a container (container is required)
 await instance.renderTo(window, container?)  // Supports only current window; throws for other windows
 await instance.close()                       // Close and destroy
 await instance.focus()                       // Focus
 await instance.resize({ width, height })     // Resize
 await instance.show()                        // Show
 await instance.hide()                        // Hide
-await instance.updateProps(newProps)         // Update props
+await instance.updateProps(newProps)         // Update props (normalized + validated)
 instance.clone()                             // Clone with same props
 instance.isEligible()                        // Check eligibility
 
@@ -881,7 +949,7 @@ import ForgeFrame, {
 ### Typing Host hostProps
 
 ```typescript
-import { type HostProps } from 'forgeframe';
+import ForgeFrame, { type HostProps } from 'forgeframe';
 
 interface MyProps {
   name: string;
@@ -894,6 +962,7 @@ declare global {
   }
 }
 
+// Import the runtime in your host bundle so ForgeFrame can expose window.hostProps.
 window.hostProps!.name;
 window.hostProps!.onSubmit;
 window.hostProps!.close;
@@ -904,16 +973,9 @@ window.hostProps!.resize;
 
 ## Browser Support
 
-ForgeFrame requires modern browser features (ES2022+).
+ForgeFrame ships ES2022 output. Use modern evergreen browsers or transpile the package for older targets in your consumer build pipeline.
 
-| Browser | Minimum Version |
-|---------|-----------------|
-| Chrome | 80+ |
-| Firefox | 75+ |
-| Safari | 14+ |
-| Edge | 80+ |
-
-**Note:** Internet Explorer is not supported. For IE support, use [Zoid](https://github.com/krakenjs/zoid).
+**Note:** Internet Explorer is not supported. If you require IE-era compatibility, use [Zoid](https://github.com/krakenjs/zoid).
 
 ---
 

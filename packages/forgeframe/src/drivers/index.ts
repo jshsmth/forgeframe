@@ -1,19 +1,17 @@
 /**
- * ForgeFrame Framework Integration Module
+ * @packageDocumentation
+ * Internal source barrel for framework integrations.
  *
  * @remarks
- * This module provides framework-specific integrations for ForgeFrame
- * components with popular UI frameworks like React. These handle the lifecycle
- * management, prop synchronization, and rendering of cross-domain components
- * within the target framework's component model.
+ * This file keeps the driver modules organized inside the source tree.
+ * The published package does not expose a `forgeframe/drivers` subpath;
+ * consumers should import the public React driver APIs from `forgeframe`.
  *
  * @example
  * ```typescript
- * import { createReactComponent, withReactComponent } from 'forgeframe/drivers';
- * import type { ReactDriverOptions, ReactComponentProps } from 'forgeframe/drivers';
+ * import { createReactComponent, withReactComponent } from 'forgeframe';
+ * import type { ReactDriverOptions, ReactComponentProps } from 'forgeframe';
  * ```
- *
- * @packageDocumentation
  */
 
 export {

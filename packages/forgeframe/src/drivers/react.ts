@@ -387,8 +387,7 @@ export function createReactComponent<P extends Record<string, unknown>, X = unkn
  * @example
  * ```tsx
  * import React from 'react';
- * import ForgeFrame from 'forgeframe';
- * import { withReactComponent } from 'forgeframe/drivers/react';
+ * import ForgeFrame, { withReactComponent } from 'forgeframe';
  *
  * // Create a reusable component factory
  * const createComponent = withReactComponent(React);
