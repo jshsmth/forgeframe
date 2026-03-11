@@ -11,11 +11,38 @@ import {
   destroy,
   destroyByTag,
   destroyAll,
+  getComponentOptions,
   unregisterComponent,
 } from '@/core/component';
+import { buildNestedHostRefs } from '@/core/consumer/child-refs';
+import { getSiblingInstances } from '@/core/consumer/siblings';
 import { isHost, getHostProps } from '@/core/host';
 import { CONTEXT } from '@/constants';
 import { prop } from '@/props/prop';
+
+type ConsumerInternals = {
+  renderer: {
+    context: string;
+  };
+  transport: {
+    hostWindow: Window | null;
+    messenger: {
+      allowedOrigins: Set<string>;
+    };
+  };
+  propsPipeline: {
+    props: Record<string, unknown>;
+  };
+  waitForHost: () => Promise<void>;
+  prerender: () => Promise<void>;
+  open: () => Promise<void>;
+  resolveUrl: () => string;
+  resolveDimensions: () => { width: number | string; height: number | string };
+};
+
+function getConsumerInternals(instance: unknown): ConsumerInternals {
+  return instance as ConsumerInternals;
+}
 
 describe('Component Creation', () => {
   afterEach(() => {
@@ -65,12 +92,10 @@ describe('Component Creation', () => {
       email: 'user@example.com',
       onLogin,
     });
-    const internalProps = (instance as unknown as {
-      props: {
-        email: string;
-        onLogin: typeof onLogin;
-      };
-    }).props;
+    const internalProps = getConsumerInternals(instance).propsPipeline.props as {
+      email: string;
+      onLogin: typeof onLogin;
+    };
 
     expect(internalProps).toMatchObject({
       email: 'user@example.com',
@@ -159,9 +184,7 @@ describe('Component Creation', () => {
     const instance = PopupComponent({});
 
     expect(PopupComponent).toBeDefined();
-    expect((instance as unknown as { context: string }).context).toBe(
-      CONTEXT.POPUP
-    );
+    expect(getConsumerInternals(instance).renderer.context).toBe(CONTEXT.POPUP);
   });
 
   it('should materialize function url options from the latest normalized props', async () => {
@@ -173,17 +196,14 @@ describe('Component Creation', () => {
       },
     });
     const instance = DynamicUrlComponent({ path: 'checkout' });
-    const internal = instance as unknown as {
-      props: { path: string };
-      resolveUrl: () => string;
-    };
+    const internal = getConsumerInternals(instance);
 
-    expect(internal.props.path).toBe('checkout');
+    expect(internal.propsPipeline.props.path).toBe('checkout');
     expect(internal.resolveUrl()).toBe('https://example.com/checkout');
 
     await instance.updateProps({ path: 'billing' });
 
-    expect(internal.props.path).toBe('billing');
+    expect(internal.propsPipeline.props.path).toBe('billing');
     expect(internal.resolveUrl()).toBe('https://example.com/billing');
   });
 
@@ -197,18 +217,192 @@ describe('Component Creation', () => {
       dimensions: (props) => ({ width: '100%', height: props.height }),
     });
     const instance = DynamicDimensionsComponent({ height: 420 });
-    const internal = instance as unknown as {
-      props: { height: number };
-      resolveDimensions: () => { width: string; height: number };
-    };
+    const internal = getConsumerInternals(instance);
 
-    expect(internal.props.height).toBe(420);
+    expect(internal.propsPipeline.props.height).toBe(420);
     expect(internal.resolveDimensions()).toEqual({ width: '100%', height: 420 });
 
     await instance.updateProps({ height: 560 });
 
-    expect(internal.props.height).toBe(560);
+    expect(internal.propsPipeline.props.height).toBe(560);
     expect(internal.resolveDimensions()).toEqual({ width: '100%', height: 560 });
+  });
+
+  it('should allow construction-time PropContext.onError from value and default resolvers', () => {
+    const onError = vi.fn();
+    const valueResolverError = new Error('value resolver error');
+    const defaultResolverError = new Error('default resolver error');
+    const ResolverComponent = create<Record<string, unknown>>({
+      tag: 'resolver-on-error-component',
+      url: 'https://example.com',
+      props: {
+        computed: {
+          schema: prop.string(),
+          value: (ctx) => {
+            ctx.onError(valueResolverError);
+            return 'computed-value';
+          },
+        },
+        fallback: {
+          schema: prop.string(),
+          default: (ctx) => {
+            ctx.onError(defaultResolverError);
+            return 'default-value';
+          },
+        },
+      },
+    });
+
+    const instance = ResolverComponent({ onError });
+    const internal = getConsumerInternals(instance);
+
+    expect(onError).toHaveBeenNthCalledWith(1, valueResolverError);
+    expect(onError).toHaveBeenNthCalledWith(2, defaultResolverError);
+    expect(internal.propsPipeline.props.computed).toBe('computed-value');
+    expect(internal.propsPipeline.props.fallback).toBe('default-value');
+  });
+
+  it('should tolerate construction-time PropContext.close from value resolvers', async () => {
+    const CloseResolverComponent = create<Record<string, unknown>>({
+      tag: 'resolver-close-component',
+      url: 'https://example.com',
+      props: {
+        computed: {
+          schema: prop.string(),
+          value: (ctx) => {
+            void ctx.close();
+            return 'closed-during-construction';
+          },
+        },
+      },
+    });
+
+    const instance = CloseResolverComponent({});
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await expect(instance.render(document.createElement('div'))).rejects.toThrow(
+      'Component has been destroyed'
+    );
+  });
+
+  it('should tolerate construction-time PropContext.focus from default resolvers', async () => {
+    const FocusResolverComponent = create<Record<string, unknown>>({
+      tag: 'resolver-focus-component',
+      url: 'https://example.com',
+      props: {
+        computed: {
+          schema: prop.string(),
+          default: (ctx) => {
+            void ctx.focus();
+            return 'focused-during-construction';
+          },
+        },
+      },
+    });
+
+    const instance = FocusResolverComponent({});
+    const internal = getConsumerInternals(instance);
+
+    await Promise.resolve();
+
+    expect(internal.propsPipeline.props.computed).toBe('focused-during-construction');
+  });
+
+  it('should tolerate construction-time PropContext.close followed by updateProps', async () => {
+    const CloseResolverComponent = create<{
+      amount?: number;
+      computed?: string;
+    }>({
+      tag: 'resolver-close-update-props-component',
+      url: 'https://example.com',
+      props: {
+        amount: { schema: prop.number().optional() },
+        computed: {
+          schema: prop.string().optional(),
+          value: (ctx) => {
+            void ctx.close();
+            return 'closed-during-construction';
+          },
+        },
+      },
+    });
+
+    const instance = CloseResolverComponent({});
+    const internal = getConsumerInternals(instance);
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await expect(instance.updateProps({ amount: 2 })).resolves.toBeUndefined();
+    expect(internal.propsPipeline.props.amount).toBe(2);
+  });
+
+  it('should tolerate construction-time PropContext.close followed by resize', async () => {
+    const onResize = vi.fn();
+    const CloseResolverComponent = create<Record<string, unknown>>({
+      tag: 'resolver-close-resize-component',
+      url: 'https://example.com',
+      props: {
+        computed: {
+          schema: prop.string(),
+          value: (ctx) => {
+            void ctx.close();
+            return 'closed-during-construction';
+          },
+        },
+      },
+    });
+
+    const instance = CloseResolverComponent({ onResize });
+    const internal = getConsumerInternals(instance);
+    const resizeSpy = vi.spyOn(internal.renderer as { resize: (...args: unknown[]) => void }, 'resize');
+    const dimensions = { width: 320, height: 200 };
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await expect(instance.resize(dimensions)).resolves.toBeUndefined();
+    expect(resizeSpy).toHaveBeenCalledWith(dimensions, null);
+    expect(onResize).toHaveBeenCalledWith(dimensions);
+  });
+
+  it('should not register instances destroyed during construction', async () => {
+    const CloseResolverComponent = create<Record<string, unknown>>({
+      tag: 'resolver-close-unregistered-component',
+      url: 'https://example.com',
+      props: {
+        computed: {
+          schema: prop.string(),
+          value: (ctx) => {
+            void ctx.close();
+            return 'closed-during-construction';
+          },
+        },
+      },
+    });
+    const HealthyComponent = create({
+      tag: 'resolver-close-unregistered-healthy-component',
+      url: 'https://example.com/healthy',
+    });
+
+    const leakedInstance = CloseResolverComponent({});
+    const healthyInstance = HealthyComponent({});
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(CloseResolverComponent.instances).toEqual([]);
+    expect(
+      getSiblingInstances({
+        uid: healthyInstance.uid,
+        tag: 'resolver-close-unregistered-healthy-component',
+        options: { anyConsumer: true },
+      }).some((sibling) => sibling.uid === leakedInstance.uid)
+    ).toBe(false);
+
+    await healthyInstance.close();
   });
 });
 
@@ -253,18 +447,14 @@ describe('Component Instance', () => {
     const instance = MyComponent({});
     const cloned = instance.clone();
 
-    const originalInternal = instance as unknown as {
-      props: { token?: string };
-      resolveUrl: () => string;
-    };
-    const clonedInternal = cloned as unknown as {
-      props: { token?: string };
-      resolveUrl: () => string;
-    };
+    const originalInternal = getConsumerInternals(instance);
+    const clonedInternal = getConsumerInternals(cloned);
 
     expect(cloned).toBeDefined();
     expect(cloned).not.toBe(instance);
-    expect(clonedInternal.props.token).toBe(originalInternal.props.token);
+    expect(clonedInternal.propsPipeline.props.token).toBe(
+      originalInternal.propsPipeline.props.token
+    );
     expect(clonedInternal.resolveUrl()).toBe(originalInternal.resolveUrl());
     expect(tokenCounter).toBe(1);
   });
@@ -284,11 +474,7 @@ describe('Component Instance', () => {
     const container = document.createElement('div');
     document.body.appendChild(container);
 
-    const instanceInternal = instance as unknown as {
-      prerender: () => Promise<void>;
-      open: () => Promise<void>;
-      waitForHost: () => Promise<void>;
-    };
+    const instanceInternal = getConsumerInternals(instance);
 
     vi.spyOn(instanceInternal, 'prerender').mockResolvedValue(undefined);
     vi.spyOn(instanceInternal, 'open').mockResolvedValue(undefined);
@@ -328,15 +514,12 @@ describe('Component Instance', () => {
     const container = document.createElement('div');
     document.body.appendChild(container);
 
-    const instanceInternal = instance as unknown as {
-      waitForHost: () => Promise<void>;
-      messenger: { allowedOrigins: Set<string> };
-    };
+    const instanceInternal = getConsumerInternals(instance);
 
     vi.spyOn(instanceInternal, 'waitForHost').mockResolvedValue(undefined);
     await instance.render(container);
 
-    const allowedOrigins = Array.from(instanceInternal.messenger.allowedOrigins);
+    const allowedOrigins = Array.from(instanceInternal.transport.messenger.allowedOrigins);
     expect(allowedOrigins).toContain('https://origin-b.example.com');
     expect(allowedOrigins).not.toContain('https://origin-a.example.com');
 
@@ -387,10 +570,7 @@ describe('Component Instance', () => {
     const container = document.createElement('div');
     document.body.appendChild(container);
 
-    const instanceInternal = instance as unknown as {
-      waitForHost: () => Promise<void>;
-      hostWindow: Window | null;
-    };
+    const instanceInternal = getConsumerInternals(instance);
 
     vi.spyOn(instanceInternal, 'waitForHost').mockResolvedValue(undefined);
     await instance.render(container);
@@ -401,7 +581,7 @@ describe('Component Instance', () => {
       })
     ).rejects.toThrow('Cannot change component URL origin after render');
 
-    instanceInternal.hostWindow = null;
+    instanceInternal.transport.hostWindow = null;
     await expect(instance.updateProps({})).resolves.toBeUndefined();
 
     const resolvedUrlAfterFailedUpdate = (
@@ -441,13 +621,10 @@ describe('Component Instance', () => {
     const container = document.createElement('div');
     document.body.appendChild(container);
 
-    const instanceInternal = instance as unknown as {
-      waitForHost: () => Promise<void>;
-      hostWindow: Window | null;
-    };
+    const instanceInternal = getConsumerInternals(instance);
     vi.spyOn(instanceInternal, 'waitForHost').mockResolvedValue(undefined);
     await instance.render(container);
-    instanceInternal.hostWindow = null;
+    instanceInternal.transport.hostWindow = null;
 
     await expect(instance.updateProps({ amount: 1 })).resolves.toBeUndefined();
     expect(
@@ -478,12 +655,7 @@ describe('Component Instance', () => {
       }),
     });
 
-    const instance = ParentComponent({});
-    const refs = (
-      instance as unknown as {
-        buildNestedHostRefs: () => Record<string, unknown> | undefined;
-      }
-    ).buildNestedHostRefs();
+    const refs = buildNestedHostRefs(getComponentOptions(ParentComponent)!, {});
 
     expect(refs?.ChildComponent).toEqual({
       tag: 'child-component-meta',
@@ -511,14 +683,8 @@ describe('Component Instance', () => {
       }),
     });
 
-    const instance = ParentComponent({});
-
     expect(() =>
-      (
-        instance as unknown as {
-          buildNestedHostRefs: () => Record<string, unknown> | undefined;
-        }
-      ).buildNestedHostRefs()
+      buildNestedHostRefs(getComponentOptions(ParentComponent)!, {})
     ).toThrow('must use a static string URL');
   });
 });
@@ -871,16 +1037,6 @@ describe('Host Context Detection', () => {
       const alphaSibling = AlphaComponent({});
       const betaSibling = BetaComponent({});
 
-      const getSiblingInstances = (
-        alphaPrimary as unknown as {
-          getSiblingInstances: (request: {
-            uid: string;
-            tag: string;
-            options?: { anyConsumer?: boolean };
-          }) => Array<{ uid: string; tag: string }>;
-        }
-      ).getSiblingInstances.bind(alphaPrimary);
-
       const sameTagSiblings = getSiblingInstances({
         uid: alphaPrimary.uid,
         tag: 'peer-alpha',
@@ -927,16 +1083,6 @@ describe('Host Context Detection', () => {
       const primary = IndexedComponent({});
       const sibling = IndexedComponent({});
 
-      const getSiblingInstances = (
-        primary as unknown as {
-          getSiblingInstances: (request: {
-            uid: string;
-            tag: string;
-            options?: { anyConsumer?: boolean };
-          }) => Array<{ uid: string; tag: string }>;
-        }
-      ).getSiblingInstances.bind(primary);
-
       expect(
         getSiblingInstances({
           uid: primary.uid,
@@ -973,16 +1119,6 @@ describe('Host Context Detection', () => {
 
       const alphaPrimary = AlphaComponent({});
       const betaSibling = BetaComponent({});
-
-      const getSiblingInstances = (
-        alphaPrimary as unknown as {
-          getSiblingInstances: (request: {
-            uid: string;
-            tag: string;
-            options?: { anyConsumer?: boolean };
-          }) => Array<{ uid: string; tag: string }>;
-        }
-      ).getSiblingInstances.bind(alphaPrimary);
 
       const siblingsBeforeUnregister = getSiblingInstances({
         uid: alphaPrimary.uid,

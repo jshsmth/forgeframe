@@ -5,13 +5,69 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConsumerComponent } from '@/core/consumer';
-import { CONTEXT } from '@/constants';
+import { CONTEXT, EVENT } from '@/constants';
+import { emitConsumerError } from '@/core/consumer/callbacks';
+import { buildNestedHostRefs } from '@/core/consumer/child-refs';
+import { EventEmitter } from '@/events/emitter';
 import { prop } from '@/props/prop';
 import * as iframeRender from '@/render/iframe';
 import * as popupRender from '@/render/popup';
 import * as windowProxy from '@/window/proxy';
 
 const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
+
+type ConsumerInternals = {
+  transport: {
+    hostWindow: Window | null;
+    openedHostDomain: string | null;
+    messenger: {
+      allowedOrigins: Set<string>;
+      allowedOriginPatterns: RegExp[];
+      addTrustedDomain: (domain: string) => void;
+      send: (...args: unknown[]) => Promise<unknown>;
+    };
+    bridge: {
+      localFunctionCount: number;
+      localFunctions: Map<string, unknown>;
+    };
+  };
+  renderer: {
+    context: string;
+    iframe: HTMLIFrameElement | null;
+    container: HTMLElement | null;
+    prerenderElement: HTMLElement | null;
+  };
+  propsPipeline: {
+    props: Record<string, unknown>;
+  };
+  cleanup: {
+    register: (cleanupFn: () => void) => void;
+  };
+  options: Record<string, unknown>;
+  resolveUrlOrigin: (url: string) => string | null;
+  isExplicitDomainTrust: (origin: string) => boolean;
+  syncTrustedDomainForUrl: (url: string) => void;
+  createPropContext: () => {
+    close: () => Promise<void>;
+    focus: () => Promise<void>;
+    onError: (err: Error) => void;
+  };
+  resolveContainer: (container?: string | HTMLElement) => HTMLElement;
+  checkEligibility: () => void;
+  prerender: () => Promise<void>;
+  createIframeElement: (windowName: string) => HTMLIFrameElement;
+  open: () => Promise<void>;
+  submitBodyForm: (target: string, actionUrl: string, params: URLSearchParams) => void;
+  buildUrl: (baseUrl?: string) => string;
+  getHostDomain: () => string;
+  destroy: () => Promise<void>;
+};
+
+function getInternals(
+  component: ConsumerComponent<Record<string, unknown>>
+): ConsumerInternals {
+  return component as unknown as ConsumerInternals;
+}
 
 /**
  * Creates a consumer instance and tracks it for teardown at the end of each test.
@@ -46,13 +102,7 @@ describe('Consumer branch coverage and edge paths', () => {
     const consumer = createConsumer({
       domain: 'https://trusted.example.com',
     });
-    const allowedOrigins = Array.from(
-      (
-        consumer as unknown as {
-          messenger: { allowedOrigins: Set<string> };
-        }
-      ).messenger.allowedOrigins
-    );
+    const allowedOrigins = Array.from(getInternals(consumer).transport.messenger.allowedOrigins);
 
     expect(allowedOrigins).toContain('https://trusted.example.com');
   });
@@ -61,13 +111,7 @@ describe('Consumer branch coverage and edge paths', () => {
     const consumer = createConsumer({
       domain: ['https://trusted-a.example.com', 'https://trusted-b.example.com'],
     });
-    const allowedOrigins = Array.from(
-      (
-        consumer as unknown as {
-          messenger: { allowedOrigins: Set<string> };
-        }
-      ).messenger.allowedOrigins
-    );
+    const allowedOrigins = Array.from(getInternals(consumer).transport.messenger.allowedOrigins);
 
     expect(allowedOrigins).toContain('https://trusted-a.example.com');
     expect(allowedOrigins).toContain('https://trusted-b.example.com');
@@ -77,11 +121,7 @@ describe('Consumer branch coverage and edge paths', () => {
     const consumer = createConsumer({
       domain: ['https://trusted-a.example.com', /^https:\/\/.*\.trusted\.example\.com$/],
     });
-    const internalMessenger = (
-      consumer as unknown as {
-        messenger: { allowedOrigins: Set<string>; allowedOriginPatterns: RegExp[] };
-      }
-    ).messenger;
+    const internalMessenger = getInternals(consumer).transport.messenger;
 
     expect(Array.from(internalMessenger.allowedOrigins)).toContain('https://trusted-a.example.com');
     expect(internalMessenger.allowedOriginPatterns).toHaveLength(1);
@@ -92,11 +132,7 @@ describe('Consumer branch coverage and edge paths', () => {
     const consumer = createConsumer({
       domain: /^https:\/\/.*\.trusted\.example\.com$/,
     });
-    const patterns = (
-      consumer as unknown as {
-        messenger: { allowedOriginPatterns: RegExp[] };
-      }
-    ).messenger.allowedOriginPatterns;
+    const patterns = getInternals(consumer).transport.messenger.allowedOriginPatterns;
 
     expect(patterns).toHaveLength(1);
     expect(patterns[0].test('https://api.trusted.example.com')).toBe(true);
@@ -142,38 +178,20 @@ describe('Consumer branch coverage and edge paths', () => {
 
   it('should focus iframe and popup contexts through dedicated render helpers', async () => {
     const consumer = createConsumer();
+    const internal = getInternals(consumer);
     const iframe = document.createElement('iframe');
     const popup = { closed: false, focus: vi.fn() } as unknown as Window;
     const focusIframeSpy = vi.spyOn(iframeRender, 'focusIframe').mockImplementation(() => {});
     const focusPopupSpy = vi.spyOn(popupRender, 'focusPopup').mockImplementation(() => {});
 
-    (
-      consumer as unknown as {
-        context: string;
-        iframe: HTMLIFrameElement | null;
-        hostWindow: Window | null;
-      }
-    ).context = CONTEXT.IFRAME;
-    (
-      consumer as unknown as {
-        iframe: HTMLIFrameElement | null;
-      }
-    ).iframe = iframe;
+    internal.renderer.context = CONTEXT.IFRAME;
+    internal.renderer.iframe = iframe;
 
     await consumer.focus();
     expect(focusIframeSpy).toHaveBeenCalledWith(iframe);
 
-    (
-      consumer as unknown as {
-        context: string;
-        hostWindow: Window | null;
-      }
-    ).context = CONTEXT.POPUP;
-    (
-      consumer as unknown as {
-        hostWindow: Window | null;
-      }
-    ).hostWindow = popup;
+    internal.renderer.context = CONTEXT.POPUP;
+    internal.transport.hostWindow = popup;
 
     await consumer.focus();
     expect(focusPopupSpy).toHaveBeenCalledWith(popup);
@@ -181,6 +199,7 @@ describe('Consumer branch coverage and edge paths', () => {
 
   it('should resize/show/hide through iframe and popup render helpers', async () => {
     const consumer = createConsumer();
+    const internal = getInternals(consumer);
     const iframe = document.createElement('iframe');
     const popup = { closed: false } as unknown as Window;
 
@@ -189,17 +208,8 @@ describe('Consumer branch coverage and edge paths', () => {
     const hideIframeSpy = vi.spyOn(iframeRender, 'hideIframe').mockImplementation(() => {});
     const resizePopupSpy = vi.spyOn(popupRender, 'resizePopup').mockImplementation(() => {});
 
-    (
-      consumer as unknown as {
-        context: string;
-        iframe: HTMLIFrameElement | null;
-      }
-    ).context = CONTEXT.IFRAME;
-    (
-      consumer as unknown as {
-        iframe: HTMLIFrameElement | null;
-      }
-    ).iframe = iframe;
+    internal.renderer.context = CONTEXT.IFRAME;
+    internal.renderer.iframe = iframe;
 
     await consumer.resize({ width: 400, height: 220 });
     await consumer.show();
@@ -209,17 +219,8 @@ describe('Consumer branch coverage and edge paths', () => {
     expect(showIframeSpy).toHaveBeenCalledWith(iframe);
     expect(hideIframeSpy).toHaveBeenCalledWith(iframe);
 
-    (
-      consumer as unknown as {
-        context: string;
-        hostWindow: Window | null;
-      }
-    ).context = CONTEXT.POPUP;
-    (
-      consumer as unknown as {
-        hostWindow: Window | null;
-      }
-    ).hostWindow = popup;
+    internal.renderer.context = CONTEXT.POPUP;
+    internal.transport.hostWindow = popup;
 
     await consumer.resize({ width: 480, height: 300 });
     expect(resizePopupSpy).toHaveBeenCalledWith(popup, { width: 480, height: 300 });
@@ -284,11 +285,7 @@ describe('Consumer branch coverage and edge paths', () => {
 
   it('should skip trusted-domain sync when URL origin is invalid', () => {
     const consumer = createConsumer();
-    const internalMessenger = (
-      consumer as unknown as {
-        messenger: { addTrustedDomain: (domain: string) => void };
-      }
-    ).messenger;
+    const internalMessenger = getInternals(consumer).transport.messenger;
     const addTrustedSpy = vi.spyOn(internalMessenger, 'addTrustedDomain');
 
     (
@@ -304,20 +301,10 @@ describe('Consumer branch coverage and edge paths', () => {
     const consumer = createConsumer();
     const closeSpy = vi.spyOn(consumer, 'close').mockResolvedValue(undefined);
     const focusSpy = vi.spyOn(consumer, 'focus').mockResolvedValue(undefined);
-    const handleErrorSpy = vi.spyOn(
-      consumer as unknown as { handleError: (error: Error) => void },
-      'handleError'
-    );
+    const onError = vi.fn();
+    consumer.event.on(EVENT.ERROR, onError);
 
-    const ctx = (
-      consumer as unknown as {
-        createPropContext: () => {
-          close: () => Promise<void>;
-          focus: () => Promise<void>;
-          onError: (err: Error) => void;
-        };
-      }
-    ).createPropContext();
+    const ctx = getInternals(consumer).createPropContext();
 
     void ctx.close();
     void ctx.focus();
@@ -325,7 +312,7 @@ describe('Consumer branch coverage and edge paths', () => {
 
     expect(closeSpy).toHaveBeenCalledTimes(1);
     expect(focusSpy).toHaveBeenCalledTimes(1);
-    expect(handleErrorSpy).toHaveBeenCalledWith(expect.any(Error));
+    expect(onError).toHaveBeenCalledWith(expect.any(Error));
   });
 
   it('should provide initial user props to value callbacks during construction', () => {
@@ -341,9 +328,7 @@ describe('Consumer branch coverage and edge paths', () => {
       { seed: 'abc' }
     );
 
-    const internalProps = (
-      consumer as unknown as { props: Record<string, unknown> }
-    ).props;
+    const internalProps = getInternals(consumer).propsPipeline.props;
     expect(internalProps.derived).toBe('seed:abc');
   });
 
@@ -373,9 +358,7 @@ describe('Consumer branch coverage and edge paths', () => {
 
     await consumer.updateProps({ amount: 1 });
 
-    const internalProps = (
-      consumer as unknown as { props: Record<string, unknown> }
-    ).props;
+    const internalProps = getInternals(consumer).propsPipeline.props;
     expect(internalProps.seed).toBe('abc');
     expect(internalProps.amount).toBe(1);
     expect(internalProps.derived).toBe('seed:abc');
@@ -394,28 +377,18 @@ describe('Consumer branch coverage and edge paths', () => {
       }
     );
 
-    (
-      consumer as unknown as { hostWindow: Window | null }
-    ).hostWindow = window;
+    getInternals(consumer).transport.hostWindow = window;
 
     vi.spyOn(
-      (
-        consumer as unknown as {
-          messenger: { send: (...args: unknown[]) => Promise<unknown> };
-        }
-      ).messenger,
+      getInternals(consumer).transport.messenger,
       'send'
     ).mockResolvedValue(undefined);
 
     await consumer.updateProps({ onSubmit: vi.fn() });
-    const firstBatchCount = (
-      consumer as unknown as { bridge: { localFunctionCount: number } }
-    ).bridge.localFunctionCount;
+    const firstBatchCount = getInternals(consumer).transport.bridge.localFunctionCount;
 
     await consumer.updateProps({ onSubmit: vi.fn() });
-    const secondBatchCount = (
-      consumer as unknown as { bridge: { localFunctionCount: number } }
-    ).bridge.localFunctionCount;
+    const secondBatchCount = getInternals(consumer).transport.bridge.localFunctionCount;
 
     expect(firstBatchCount).toBe(1);
     expect(secondBatchCount).toBe(1);
@@ -433,25 +406,12 @@ describe('Consumer branch coverage and edge paths', () => {
       }
     );
 
-    (
-      consumer as unknown as { hostWindow: Window | null }
-    ).hostWindow = window;
+    getInternals(consumer).transport.hostWindow = window;
 
-    const bridge = (
-      consumer as unknown as {
-        bridge: {
-          localFunctionCount: number;
-          localFunctions: Map<string, unknown>;
-        };
-      }
-    ).bridge;
+    const bridge = getInternals(consumer).transport.bridge;
 
     const sendSpy = vi.spyOn(
-      (
-        consumer as unknown as {
-          messenger: { send: (...args: unknown[]) => Promise<unknown> };
-        }
-      ).messenger,
+      getInternals(consumer).transport.messenger,
       'send'
     ).mockResolvedValue(undefined);
 
@@ -488,17 +448,9 @@ describe('Consumer branch coverage and edge paths', () => {
       }
     );
 
-    (
-      consumer as unknown as { hostWindow: Window | null }
-    ).hostWindow = window;
+    getInternals(consumer).transport.hostWindow = window;
 
-    const bridge = (
-      consumer as unknown as {
-        bridge: {
-          localFunctionCount: number;
-        };
-      }
-    ).bridge;
+    const bridge = getInternals(consumer).transport.bridge;
 
     let resolveFirstSend: (() => void) | null = null;
     let resolveSecondSend: (() => void) | null = null;
@@ -510,11 +462,7 @@ describe('Consumer branch coverage and edge paths', () => {
     });
 
     const sendSpy = vi.spyOn(
-      (
-        consumer as unknown as {
-          messenger: { send: (...args: unknown[]) => Promise<unknown> };
-        }
-      ).messenger,
+      getInternals(consumer).transport.messenger,
       'send'
     ).mockImplementation(async () => {
       return sendSpy.mock.calls.length === 1 ? firstSend : secondSend;
@@ -592,11 +540,7 @@ describe('Consumer branch coverage and edge paths', () => {
     vi.spyOn(consumer, 'close').mockImplementation(closeSpy);
     vi.spyOn(consumer, 'focus').mockImplementation(focusSpy);
 
-    (
-      consumer as unknown as {
-        container: HTMLElement | null;
-      }
-    ).container = document.createElement('div');
+    getInternals(consumer).renderer.container = document.createElement('div');
 
     await (
       consumer as unknown as {
@@ -685,25 +629,15 @@ describe('Consumer branch coverage and edge paths', () => {
     const consumer = createConsumer({
       dimensions: { width: 460, height: 320 },
     });
+    const internal = getInternals(consumer);
     const popupWindow = { closed: false } as unknown as Window;
     const stopWatching = vi.fn();
     const openPopupSpy = vi.spyOn(popupRender, 'openPopup').mockReturnValue(popupWindow);
     const watchSpy = vi.spyOn(popupRender, 'watchPopupClose').mockReturnValue(stopWatching);
     const registerWindowSpy = vi.spyOn(windowProxy, 'registerWindow').mockImplementation(() => {});
-    const cleanupRegisterSpy = vi.spyOn(
-      (
-        consumer as unknown as {
-          cleanup: { register: (cleanupFn: () => void) => void };
-        }
-      ).cleanup,
-      'register'
-    );
+    const cleanupRegisterSpy = vi.spyOn(internal.cleanup, 'register');
 
-    (
-      consumer as unknown as {
-        context: string;
-      }
-    ).context = CONTEXT.POPUP;
+    internal.renderer.context = CONTEXT.POPUP;
 
     await (
       consumer as unknown as {
@@ -728,19 +662,11 @@ describe('Consumer branch coverage and edge paths', () => {
       { token: 'abc123', mode: 'embedded' }
     );
 
+    const internal = getInternals(consumer);
     const iframe = document.createElement('iframe');
     iframe.name = 'target-iframe';
-    (
-      consumer as unknown as {
-        context: string;
-        iframe: HTMLIFrameElement | null;
-      }
-    ).context = CONTEXT.IFRAME;
-    (
-      consumer as unknown as {
-        iframe: HTMLIFrameElement | null;
-      }
-    ).iframe = iframe;
+    internal.renderer.context = CONTEXT.IFRAME;
+    internal.renderer.iframe = iframe;
 
     const submitBodyFormSpy = vi.spyOn(
       consumer as unknown as {
@@ -761,7 +687,7 @@ describe('Consumer branch coverage and edge paths', () => {
       'https://host.example.com/widget?mode=embedded',
       expect.any(URLSearchParams)
     );
-    expect((consumer as unknown as { hostWindow: Window | null }).hostWindow).toBe(iframe.contentWindow);
+    expect(internal.transport.hostWindow).toBe(iframe.contentWindow);
   });
 
   it('should open popup on about:blank and submit body params when bodyParam props exist', async () => {
@@ -780,12 +706,7 @@ describe('Consumer branch coverage and edge paths', () => {
     const openPopupSpy = vi.spyOn(popupRender, 'openPopup').mockReturnValue(popupWindow);
     vi.spyOn(popupRender, 'watchPopupClose').mockReturnValue(stopWatching);
     vi.spyOn(windowProxy, 'registerWindow').mockImplementation(() => {});
-
-    (
-      consumer as unknown as {
-        context: string;
-      }
-    ).context = CONTEXT.POPUP;
+    getInternals(consumer).renderer.context = CONTEXT.POPUP;
 
     const submitBodyFormSpy = vi.spyOn(
       consumer as unknown as {
@@ -841,21 +762,18 @@ describe('Consumer branch coverage and edge paths', () => {
     });
 
     expect(() =>
-      (
-        consumer as unknown as {
-          buildNestedHostRefs: () => Record<string, unknown> | undefined;
-        }
-      ).buildNestedHostRefs()
+      buildNestedHostRefs(
+        getInternals(consumer).options as {
+          children?: (args: { props: Record<string, unknown> }) => Record<string, unknown>;
+        },
+        getInternals(consumer).propsPipeline.props
+      )
     ).toThrow('Nested component "InvalidChild" is missing component metadata');
   });
 
   it('should prefer openedHostDomain when computing host domain', () => {
     const consumer = createConsumer();
-    (
-      consumer as unknown as {
-        openedHostDomain: string | null;
-      }
-    ).openedHostDomain = 'https://opened.example.com';
+    getInternals(consumer).transport.openedHostDomain = 'https://opened.example.com';
 
     const domain = (
       consumer as unknown as {
@@ -868,29 +786,15 @@ describe('Consumer branch coverage and edge paths', () => {
 
   it('should close popup windows and remove prerender elements during destroy', async () => {
     const consumer = createConsumer();
+    const internal = getInternals(consumer);
     const popupWindow = { closed: false, close: vi.fn() } as unknown as Window;
     const prerenderElement = document.createElement('div');
     const removeSpy = vi.spyOn(prerenderElement, 'remove');
     const closePopupSpy = vi.spyOn(popupRender, 'closePopup').mockImplementation(() => {});
 
-    (
-      consumer as unknown as {
-        context: string;
-        hostWindow: Window | null;
-      }
-    ).context = CONTEXT.POPUP;
-    (
-      consumer as unknown as {
-        hostWindow: Window | null;
-      }
-    ).hostWindow = popupWindow;
-    (
-      consumer as unknown as {
-        renderer: {
-          prerenderElement: HTMLElement | null;
-        };
-      }
-    ).renderer.prerenderElement = prerenderElement;
+    internal.renderer.context = CONTEXT.POPUP;
+    internal.transport.hostWindow = popupWindow;
+    internal.renderer.prerenderElement = prerenderElement;
 
     await (
       consumer as unknown as {
@@ -900,5 +804,28 @@ describe('Consumer branch coverage and edge paths', () => {
 
     expect(closePopupSpy).toHaveBeenCalledWith(popupWindow);
     expect(removeSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('should emit error events before invoking the onError prop callback helper', () => {
+    const order: string[] = [];
+    const event = new EventEmitter();
+    const error = new Error('helper-error');
+
+    event.on(EVENT.ERROR, () => {
+      order.push('event');
+    });
+
+    emitConsumerError(
+      event,
+      {
+        onError: (received: Error) => {
+          order.push('callback');
+          expect(received).toBe(error);
+        },
+      },
+      error
+    );
+
+    expect(order).toEqual(['event', 'callback']);
   });
 });
