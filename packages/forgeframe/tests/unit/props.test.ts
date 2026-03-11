@@ -483,6 +483,23 @@ describe('Clone Props', () => {
     expect(cloned.data).not.toBe(original.data);
   });
 
+  it('should skip unsafe top-level __proto__ keys when cloning', () => {
+    const original = Object.create(null) as Record<string, unknown>;
+    Object.defineProperty(original, '__proto__', {
+      configurable: true,
+      enumerable: true,
+      writable: true,
+      value: { polluted: true },
+    });
+    original.safe = 'value';
+
+    const cloned = cloneProps(original);
+
+    expect(cloned.safe).toBe('value');
+    expect(Object.prototype.hasOwnProperty.call(cloned, '__proto__')).toBe(false);
+    expect((cloned as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
   it('should preserve function references', () => {
     const fn = () => 'hello';
     const original = { callback: fn };
@@ -564,6 +581,25 @@ describe('Clone Props', () => {
     expect(cloned.view[0]).toBe(7);
   });
 
+  it('should clone DataView instances while preserving offsets and custom props', () => {
+    const buf = new ArrayBuffer(8);
+    const view = new DataView(buf, 2, 4) as DataView & { meta?: { ready: boolean } };
+    view.setUint16(0, 0x1234);
+    view.meta = { ready: true };
+    const original = { view };
+
+    const cloned = cloneProps(original);
+
+    expect(cloned.view).not.toBe(view);
+    expect(cloned.view).toBeInstanceOf(DataView);
+    expect(cloned.view.buffer).not.toBe(buf);
+    expect(cloned.view.byteOffset).toBe(2);
+    expect(cloned.view.byteLength).toBe(4);
+    expect(cloned.view.getUint16(0)).toBe(0x1234);
+    expect(cloned.view.meta).toEqual({ ready: true });
+    expect(cloned.view.meta).not.toBe(view.meta);
+  });
+
   it('should clone typed-array subclasses as built-in views without throwing', () => {
     class CustomUint8Array extends Uint8Array {
       constructor(length: number, token: string) {
@@ -600,6 +636,32 @@ describe('Clone Props', () => {
     expect(cloned.view[0]).toBe(1.5);
   });
 
+  it('should fall back to Uint8Array when Float16Array is unavailable at module load', async () => {
+    if (!Float16ArrayCtor) return;
+
+    class Float16TaggedView extends Uint8Array {
+      get [Symbol.toStringTag](): string {
+        return 'Float16Array';
+      }
+    }
+
+    vi.resetModules();
+    vi.stubGlobal('Float16Array', undefined as unknown as typeof Float16Array);
+
+    try {
+      const { cloneProps: reloadCloneProps } = await import('@/props/clone');
+      const view = new Float16TaggedView([10, 20, 30, 40]);
+      const cloned = reloadCloneProps({ view });
+
+      expect(cloned.view).toBeInstanceOf(Uint8Array);
+      expect(cloned.view).not.toBeInstanceOf(Float16TaggedView);
+      expect(Array.from(cloned.view)).toEqual([10, 20, 30, 40]);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.resetModules();
+    }
+  });
+
   it('should preserve repeated references and cycles without throwing', () => {
     const shared = { value: 1 };
     const original = {
@@ -627,6 +689,59 @@ describe('Clone Props', () => {
     expect(cloned.first.self).toBe(cloned.first);
   });
 
+  it('should clone Date and RegExp instances', () => {
+    const original = {
+      createdAt: new Date('2024-01-02T03:04:05.000Z'),
+      matcher: /forgeframe/gi,
+    };
+
+    const cloned = cloneProps(original);
+
+    expect(cloned.createdAt).not.toBe(original.createdAt);
+    expect(cloned.createdAt).toBeInstanceOf(Date);
+    expect(cloned.createdAt.getTime()).toBe(original.createdAt.getTime());
+
+    expect(cloned.matcher).not.toBe(original.matcher);
+    expect(cloned.matcher).toBeInstanceOf(RegExp);
+    expect(cloned.matcher.source).toBe('forgeframe');
+    expect(cloned.matcher.flags).toBe('gi');
+  });
+
+  it('should clone Map and Set instances deeply', () => {
+    const shared = { id: 1 };
+    const mapKey = { role: 'admin' };
+    const original = {
+      map: new Map<unknown, unknown>([
+        [mapKey, { shared }],
+      ]),
+      set: new Set<unknown>([shared, { enabled: true }]),
+    };
+
+    const cloned = cloneProps(original);
+
+    expect(cloned.map).not.toBe(original.map);
+    expect(cloned.map).toBeInstanceOf(Map);
+    expect(cloned.map.size).toBe(1);
+
+    const [[clonedMapKey, clonedMapValue]] = Array.from(cloned.map.entries()) as [[
+      { role: string },
+      { shared: { id: number } }
+    ]];
+    expect(clonedMapKey).not.toBe(mapKey);
+    expect(clonedMapKey).toEqual({ role: 'admin' });
+    expect(clonedMapValue).toEqual({ shared: { id: 1 } });
+    expect(clonedMapValue.shared).not.toBe(shared);
+
+    expect(cloned.set).not.toBe(original.set);
+    expect(cloned.set).toBeInstanceOf(Set);
+    const clonedSetValues = Array.from(cloned.set.values()) as Array<
+      { id: number } | { enabled: boolean }
+    >;
+    expect(clonedSetValues).toContainEqual({ id: 1 });
+    expect(clonedSetValues).toContainEqual({ enabled: true });
+    expect(clonedSetValues.find((value) => 'id' in value)).not.toBe(shared);
+  });
+
   it('should preserve URL instances without corrupting internal state', () => {
     const original = {
       location: new URL('https://example.com/path?x=1'),
@@ -637,6 +752,35 @@ describe('Clone Props', () => {
     expect(cloned.location).not.toBe(original.location);
     expect(cloned.location).toBeInstanceOf(URL);
     expect(cloned.location.href).toBe('https://example.com/path?x=1');
+  });
+
+  it('should clone enumerable own props attached to URL instances', () => {
+    const location = new URL('https://example.com/path?x=1') as URL & {
+      state?: { ready: boolean };
+    };
+    location.state = { ready: true };
+    const original = { location };
+
+    const cloned = cloneProps(original);
+
+    expect(cloned.location).not.toBe(location);
+    expect(cloned.location.state).toEqual({ ready: true });
+    expect(cloned.location.state).not.toBe(location.state);
+  });
+
+  it('should preserve null-prototype objects when cloning plain data objects', () => {
+    const settings = Object.create(null) as Record<string, unknown>;
+    settings.mode = 'embedded';
+    settings.flags = { secure: true };
+    const original = { settings };
+
+    const cloned = cloneProps(original);
+
+    expect(cloned.settings).not.toBe(settings);
+    expect(Object.getPrototypeOf(cloned.settings)).toBeNull();
+    expect(cloned.settings.mode).toBe('embedded');
+    expect(cloned.settings.flags).toEqual({ secure: true });
+    expect(cloned.settings.flags).not.toBe(settings.flags);
   });
 
   it('should preserve URLSearchParams instances without corrupting internal state', () => {
@@ -652,6 +796,20 @@ describe('Clone Props', () => {
     expect(cloned.params.get('b')).toBe('2');
   });
 
+  it('should clone enumerable own props attached to URLSearchParams instances', () => {
+    const params = new URLSearchParams('a=1&b=2') as URLSearchParams & {
+      state?: { ready: boolean };
+    };
+    params.state = { ready: true };
+    const original = { params };
+
+    const cloned = cloneProps(original);
+
+    expect(cloned.params).not.toBe(params);
+    expect(cloned.params.state).toEqual({ ready: true });
+    expect(cloned.params.state).not.toBe(params.state);
+  });
+
   it('should preserve unsupported native objects by reference', () => {
     const headers = new Headers([['x-test', '1']]);
     const original = { headers };
@@ -660,6 +818,78 @@ describe('Clone Props', () => {
 
     expect(cloned.headers).toBe(headers);
     expect(cloned.headers.get('x-test')).toBe('1');
+  });
+
+  it('should preserve Promise, WeakMap, and WeakSet instances by reference', () => {
+    const key = {};
+    const promise = Promise.resolve('ok');
+    const weakMap = new WeakMap<object, string>([[key, 'value']]);
+    const weakSet = new WeakSet<object>([key]);
+    const original = { promise, weakMap, weakSet };
+
+    const cloned = cloneProps(original);
+
+    expect(cloned.promise).toBe(promise);
+    expect(cloned.weakMap).toBe(weakMap);
+    expect(cloned.weakSet).toBe(weakSet);
+    expect(cloned.weakMap.get(key)).toBe('value');
+    expect(cloned.weakSet.has(key)).toBe(true);
+  });
+
+  it('should clone typed-array variants using their built-in constructors', () => {
+    const original = {
+      int8: Int8Array.from([-1, 2]),
+      clamped: Uint8ClampedArray.from([0, 255]),
+      int16: Int16Array.from([1, 2]),
+      uint16: Uint16Array.from([3, 4]),
+      int32: Int32Array.from([5, 6]),
+      uint32: Uint32Array.from([7, 8]),
+      float32: Float32Array.from([1.25, 2.5]),
+      float64: Float64Array.from([3.75, 4.5]),
+      bigInt64: BigInt64Array.from([1n, 2n]),
+      bigUint64: BigUint64Array.from([3n, 4n]),
+    };
+
+    const cloned = cloneProps(original);
+
+    expect(cloned.int8).toBeInstanceOf(Int8Array);
+    expect(Array.from(cloned.int8)).toEqual([-1, 2]);
+    expect(cloned.clamped).toBeInstanceOf(Uint8ClampedArray);
+    expect(Array.from(cloned.clamped)).toEqual([0, 255]);
+    expect(cloned.int16).toBeInstanceOf(Int16Array);
+    expect(Array.from(cloned.int16)).toEqual([1, 2]);
+    expect(cloned.uint16).toBeInstanceOf(Uint16Array);
+    expect(Array.from(cloned.uint16)).toEqual([3, 4]);
+    expect(cloned.int32).toBeInstanceOf(Int32Array);
+    expect(Array.from(cloned.int32)).toEqual([5, 6]);
+    expect(cloned.uint32).toBeInstanceOf(Uint32Array);
+    expect(Array.from(cloned.uint32)).toEqual([7, 8]);
+    expect(cloned.float32).toBeInstanceOf(Float32Array);
+    expect(Array.from(cloned.float32)).toEqual([1.25, 2.5]);
+    expect(cloned.float64).toBeInstanceOf(Float64Array);
+    expect(Array.from(cloned.float64)).toEqual([3.75, 4.5]);
+    expect(cloned.bigInt64).toBeInstanceOf(BigInt64Array);
+    expect(Array.from(cloned.bigInt64)).toEqual([1n, 2n]);
+    expect(cloned.bigUint64).toBeInstanceOf(BigUint64Array);
+    expect(Array.from(cloned.bigUint64)).toEqual([3n, 4n]);
+  });
+
+  it('should fall back to Uint8Array for unknown ArrayBuffer view brands', () => {
+    class UnknownView extends Uint8Array {
+      get [Symbol.toStringTag](): string {
+        return 'UnknownView';
+      }
+    }
+
+    const view = new UnknownView([9, 8, 7]);
+    const original = { view };
+
+    const cloned = cloneProps(original);
+
+    expect(cloned.view).not.toBe(view);
+    expect(cloned.view).toBeInstanceOf(Uint8Array);
+    expect(cloned.view).not.toBeInstanceOf(UnknownView);
+    expect(Array.from(cloned.view)).toEqual([9, 8, 7]);
   });
 
   it('should preserve unsupported native objects by reference when structuredClone returns the wrong brand', () => {
@@ -857,6 +1087,109 @@ describe('Clone Props', () => {
     );
   });
 
+  it('should ignore keys whose descriptors disappear during cloning', () => {
+    const ghost = new Proxy(
+      {},
+      {
+        ownKeys: () => ['ghost'],
+        getOwnPropertyDescriptor: () => undefined,
+      }
+    ) as Record<string, unknown>;
+    const original = { ghost };
+
+    const cloned = cloneProps(original);
+
+    expect(cloned.ghost).toEqual({});
+    expect(Object.keys(cloned.ghost)).toEqual([]);
+  });
+
+  it.each([
+    {
+      label: 'AggregateError',
+      create: () => Object.assign(new AggregateError([], 'boom'), { code: 'E_AGG' }),
+      assert: (error: Error & { code?: string }) => {
+        expect(error).toBeInstanceOf(AggregateError);
+        expect(error.code).toBe('E_AGG');
+      },
+    },
+    {
+      label: 'EvalError',
+      create: () => Object.assign(new EvalError('boom'), { code: 'E_EVAL' }),
+      assert: (error: Error & { code?: string }) => {
+        expect(error).toBeInstanceOf(EvalError);
+        expect(error.code).toBe('E_EVAL');
+      },
+    },
+    {
+      label: 'RangeError',
+      create: () => Object.assign(new RangeError('boom'), { code: 'E_RANGE' }),
+      assert: (error: Error & { code?: string }) => {
+        expect(error).toBeInstanceOf(RangeError);
+        expect(error.code).toBe('E_RANGE');
+      },
+    },
+    {
+      label: 'ReferenceError',
+      create: () => Object.assign(new ReferenceError('boom'), { code: 'E_REF' }),
+      assert: (error: Error & { code?: string }) => {
+        expect(error).toBeInstanceOf(ReferenceError);
+        expect(error.code).toBe('E_REF');
+      },
+    },
+    {
+      label: 'SyntaxError',
+      create: () => Object.assign(new SyntaxError('boom'), { code: 'E_SYNTAX' }),
+      assert: (error: Error & { code?: string }) => {
+        expect(error).toBeInstanceOf(SyntaxError);
+        expect(error.code).toBe('E_SYNTAX');
+      },
+    },
+    {
+      label: 'TypeError fallback',
+      create: () => Object.assign(new TypeError('boom'), { code: 'E_TYPE' }),
+      assert: (error: Error & { code?: string }) => {
+        expect(error).toBeInstanceOf(TypeError);
+        expect(error.code).toBe('E_TYPE');
+      },
+    },
+    {
+      label: 'URIError',
+      create: () => Object.assign(new URIError('boom'), { code: 'E_URI' }),
+      assert: (error: Error & { code?: string }) => {
+        expect(error).toBeInstanceOf(URIError);
+        expect(error.code).toBe('E_URI');
+      },
+    },
+  ])(
+    'should preserve %s instances when structuredClone falls back to error constructors',
+    ({ create, assert }) => {
+      const realStructuredClone = globalThis.structuredClone;
+      const failure = create();
+      vi.stubGlobal(
+        'structuredClone',
+        vi.fn((value: unknown) => {
+          if (value === failure) {
+            throw new Error('force error clone fallback');
+          }
+
+          return realStructuredClone(value);
+        })
+      );
+
+      try {
+        const cloned = cloneProps({ failure }) as {
+          failure: Error & { code?: string };
+        };
+
+        expect(cloned.failure).not.toBe(failure);
+        expect(cloned.failure.message).toBe('boom');
+        assert(cloned.failure);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    }
+  );
+
   it('should downgrade custom Error subclasses instead of fabricating invalid instances', () => {
     class SecretError extends Error {
       #secret: number;
@@ -900,6 +1233,33 @@ describe('Clone Props', () => {
     expect(cloned.wrapped).not.toBe(original.wrapped);
     expect(cloned.wrapped).toBeInstanceOf(String);
     expect(cloned.wrapped.valueOf()).toBe('boxed');
+  });
+
+  it('should preserve boxed number, boolean, bigint, and symbol wrappers', () => {
+    const original = {
+      boxedNumber: new Number(7),
+      boxedBoolean: new Boolean(true),
+      boxedBigInt: Object(12n),
+      boxedSymbol: Object(Symbol('boxed')),
+    };
+
+    const cloned = cloneProps(original);
+
+    expect(cloned.boxedNumber).not.toBe(original.boxedNumber);
+    expect(cloned.boxedNumber).toBeInstanceOf(Number);
+    expect(cloned.boxedNumber.valueOf()).toBe(7);
+
+    expect(cloned.boxedBoolean).not.toBe(original.boxedBoolean);
+    expect(cloned.boxedBoolean).toBeInstanceOf(Boolean);
+    expect(cloned.boxedBoolean.valueOf()).toBe(true);
+
+    expect(cloned.boxedBigInt).not.toBe(original.boxedBigInt);
+    expect(Object.prototype.toString.call(cloned.boxedBigInt)).toBe('[object BigInt]');
+    expect(cloned.boxedBigInt.valueOf()).toBe(12n);
+
+    expect(cloned.boxedSymbol).not.toBe(original.boxedSymbol);
+    expect(Object.prototype.toString.call(cloned.boxedSymbol)).toBe('[object Symbol]');
+    expect(cloned.boxedSymbol.valueOf()).toBe(original.boxedSymbol.valueOf());
   });
 
   it('should handle primitives', () => {

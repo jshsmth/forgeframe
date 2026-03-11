@@ -696,3 +696,59 @@ describe('Host security', () => {
     ).toThrow('Validation failed: amount: Expected number, got string');
   });
 });
+
+describe('Host security helpers', () => {
+  it('should return null when referrer origin parsing fails', () => {
+    const fakeDocument = {
+      referrer: 'http://[invalid-referrer',
+    } as Document;
+    const fakeWindow = {
+      location: {
+        href: 'https://host.example.com/page',
+      },
+    } as Window;
+
+    expect(hostSecurity.getReferrerOrigin(fakeDocument, fakeWindow)).toBeNull();
+  });
+
+  it('should reject reassertion when the resolved consumer domain is empty under an allowlist', () => {
+    const consumerWindow = {} as Window;
+
+    expect(() =>
+      hostSecurity.reassertAllowedConsumerDomain({
+        consumerWindow,
+        consumerDomain: '',
+        consumerDomainVerified: true,
+        allowedConsumerDomains: 'https://trusted.example.com',
+        tag: 'secure-component-helper',
+      })
+    ).toThrow('Could not verify consumer origin for component "secure-component-helper"');
+  });
+
+  it('should notify when the verified consumer domain changes during reassertion', () => {
+    const onConsumerDomainChange = vi.fn();
+    const consumerWindow = {
+      location: {
+        origin: 'https://verified.example.com',
+      },
+    } as unknown as Window;
+
+    const context = hostSecurity.reassertAllowedConsumerDomain({
+      consumerWindow,
+      consumerDomain: 'https://claimed.example.com',
+      consumerDomainVerified: true,
+      allowedConsumerDomains: 'https://verified.example.com',
+      tag: 'secure-component-helper',
+      onConsumerDomainChange,
+    });
+
+    expect(onConsumerDomainChange).toHaveBeenCalledWith(
+      'https://claimed.example.com',
+      'https://verified.example.com'
+    );
+    expect(context).toEqual({
+      consumerDomain: 'https://verified.example.com',
+      consumerDomainVerified: true,
+    });
+  });
+});

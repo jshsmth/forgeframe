@@ -99,6 +99,19 @@ describe('FunctionBridge', () => {
 
       expect(ref1.__id__).not.toBe(ref2.__id__);
     });
+
+    it('should evict the oldest local function reference when capacity is exceeded', async () => {
+      const firstRef = bridge.serialize(() => 'first');
+
+      for (let index = 0; index < 500; index += 1) {
+        bridge.serialize(() => index);
+      }
+
+      expect(bridge.localFunctionCount).toBe(500);
+      await expect(messenger.simulateCall(firstRef.__id__, [])).rejects.toThrow(
+        `Function with id "${firstRef.__id__}" not found`
+      );
+    });
   });
 
   describe('deserialize', () => {
@@ -144,6 +157,40 @@ describe('FunctionBridge', () => {
       const wrapper = bridge.deserialize(ref, targetWin, 'https://target.com');
 
       expect(wrapper.name).toBe('myFunction');
+    });
+
+    it('should evict the oldest cached remote wrapper when capacity is exceeded', () => {
+      const targetWin = {} as Window;
+      const firstRef = {
+        __type__: 'function' as const,
+        __id__: 'fn-first',
+        __name__: 'first',
+      };
+      const firstWrapper = bridge.deserialize(firstRef, targetWin, 'https://target.com');
+
+      for (let index = 0; index < 500; index += 1) {
+        bridge.deserialize(
+          {
+            __type__: 'function' as const,
+            __id__: `fn-${index}`,
+            __name__: `wrapped-${index}`,
+          },
+          targetWin,
+          'https://target.com'
+        );
+      }
+
+      expect(bridge.remoteFunctionCount).toBe(500);
+
+      const recreatedWrapper = bridge.deserialize(
+        firstRef,
+        targetWin,
+        'https://target.com'
+      );
+
+      expect(bridge.remoteFunctionCount).toBe(500);
+      expect(recreatedWrapper).not.toBe(firstWrapper);
+      expect(recreatedWrapper.name).toBe('first');
     });
   });
 
@@ -212,6 +259,34 @@ describe('FunctionBridge', () => {
       bridge.destroy();
 
       await expect(messenger.simulateCall(ref.__id__, [])).rejects.toThrow();
+    });
+  });
+
+  describe('batch lifecycle', () => {
+    it('should keep previous function references when finishBatch(true) is used', async () => {
+      const firstRef = bridge.serialize(() => 'first');
+
+      bridge.startBatch();
+      const secondRef = bridge.serialize(() => 'second');
+      bridge.finishBatch(true);
+
+      expect(bridge.localFunctionCount).toBe(2);
+      await expect(messenger.simulateCall(firstRef.__id__, [])).resolves.toBe('first');
+      await expect(messenger.simulateCall(secondRef.__id__, [])).resolves.toBe('second');
+    });
+
+    it('should remove stale local references when finishing a new batch', async () => {
+      const firstRef = bridge.serialize(() => 'first');
+      bridge.startBatch();
+      const secondRef = bridge.serialize(() => 'second');
+
+      bridge.finishBatch();
+
+      expect(bridge.localFunctionCount).toBe(1);
+      await expect(messenger.simulateCall(firstRef.__id__, [])).rejects.toThrow(
+        `Function with id "${firstRef.__id__}" not found`
+      );
+      await expect(messenger.simulateCall(secondRef.__id__, [])).resolves.toBe('second');
     });
   });
 });
@@ -297,6 +372,15 @@ describe('serializeFunctions', () => {
     value.self = value;
 
     expect(() => serializeFunctions(value, bridge)).toThrow('Circular reference detected');
+  });
+
+  it('should throw on circular array references', () => {
+    const value: unknown[] = [];
+    value.push(value);
+
+    expect(() => serializeFunctions(value, bridge)).toThrow(
+      'Circular reference detected in props - arrays cannot contain circular references'
+    );
   });
 
   it('should block __proto__ while preserving constructor/prototype keys when serializing objects', () => {
@@ -412,6 +496,15 @@ describe('deserializeFunctions', () => {
     expect(() =>
       deserializeFunctions(value, bridge, targetWin, targetDomain)
     ).toThrow('Circular reference detected');
+  });
+
+  it('should throw on circular serialized arrays', () => {
+    const value: unknown[] = [];
+    value.push(value);
+
+    expect(() =>
+      deserializeFunctions(value, bridge, targetWin, targetDomain)
+    ).toThrow('Circular reference detected in serialized props');
   });
 
   it('should block __proto__ while preserving constructor/prototype keys when deserializing objects', () => {

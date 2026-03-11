@@ -141,6 +141,62 @@ describe('parseWindowName', () => {
     expect(parsed).toEqual(payload);
   });
 
+  it('should parse valid payloads with child host references', () => {
+    const payload: WindowNamePayload<Record<string, never>> = {
+      uid: 'test-uid',
+      tag: 'my-component',
+      version: VERSION,
+      context: CONTEXT.IFRAME,
+      consumerDomain: 'https://consumer.com',
+      props: {},
+      exports: VALID_EXPORTS,
+      children: {
+        Child: {
+          tag: 'child-component',
+          url: 'https://example.com/child',
+          props: {
+            amount: { __type__: 'prop' },
+          } as Record<string, unknown>,
+          defaultContext: CONTEXT.POPUP,
+          dimensions: {
+            width: 320,
+            height: '240px',
+          },
+        },
+      },
+    };
+
+    const parsed = parseWindowName<Record<string, never>>(buildWindowName(payload));
+
+    expect(parsed).toEqual(payload);
+  });
+
+  it('should parse valid child host references without dimensions metadata', () => {
+    const payload: WindowNamePayload<Record<string, never>> = {
+      uid: 'test-uid',
+      tag: 'my-component',
+      version: VERSION,
+      context: CONTEXT.IFRAME,
+      consumerDomain: 'https://consumer.com',
+      props: {},
+      exports: VALID_EXPORTS,
+      children: {
+        Child: {
+          tag: 'child-component',
+          url: 'https://example.com/child',
+          props: {
+            amount: { __type__: 'prop' },
+          } as Record<string, unknown>,
+          defaultContext: CONTEXT.IFRAME,
+        },
+      },
+    };
+
+    const parsed = parseWindowName<Record<string, never>>(buildWindowName(payload));
+
+    expect(parsed).toEqual(payload);
+  });
+
   it('should return null for non-ForgeFrame name', () => {
     expect(parseWindowName('some-other-name')).toBeNull();
     expect(parseWindowName('')).toBeNull();
@@ -230,6 +286,34 @@ describe('parseWindowName', () => {
 
   it.each([
     [
+      'non-object payload root',
+      'invalid-root',
+    ],
+    [
+      'empty uid',
+      {
+        uid: '',
+        tag: 'test-component',
+        version: VERSION,
+        context: CONTEXT.IFRAME,
+        consumerDomain: 'https://consumer.com',
+        props: {},
+        exports: VALID_EXPORTS,
+      },
+    ],
+    [
+      'empty version',
+      {
+        uid: 'test-uid',
+        tag: 'test-component',
+        version: '',
+        context: CONTEXT.IFRAME,
+        consumerDomain: 'https://consumer.com',
+        props: {},
+        exports: VALID_EXPORTS,
+      },
+    ],
+    [
       'empty consumer domain',
       {
         uid: 'test-uid',
@@ -255,6 +339,21 @@ describe('parseWindowName', () => {
       },
     ],
     [
+      'child entry that is not an object',
+      {
+        uid: 'test-uid',
+        tag: 'test-component',
+        version: VERSION,
+        context: CONTEXT.IFRAME,
+        consumerDomain: 'https://consumer.com',
+        props: {},
+        exports: VALID_EXPORTS,
+        children: {
+          BrokenChild: 'invalid-child',
+        },
+      },
+    ],
+    [
       'child with invalid default context',
       {
         uid: 'test-uid',
@@ -269,6 +368,61 @@ describe('parseWindowName', () => {
             tag: 'child-component',
             url: 'https://example.com/child',
             defaultContext: 'modal',
+          },
+        },
+      },
+    ],
+    [
+      'child with empty tag',
+      {
+        uid: 'test-uid',
+        tag: 'test-component',
+        version: VERSION,
+        context: CONTEXT.IFRAME,
+        consumerDomain: 'https://consumer.com',
+        props: {},
+        exports: VALID_EXPORTS,
+        children: {
+          BrokenChild: {
+            tag: '',
+            url: 'https://example.com/child',
+          },
+        },
+      },
+    ],
+    [
+      'child with empty url',
+      {
+        uid: 'test-uid',
+        tag: 'test-component',
+        version: VERSION,
+        context: CONTEXT.IFRAME,
+        consumerDomain: 'https://consumer.com',
+        props: {},
+        exports: VALID_EXPORTS,
+        children: {
+          BrokenChild: {
+            tag: 'child-component',
+            url: '',
+          },
+        },
+      },
+    ],
+    [
+      'child with non-object dimensions metadata',
+      {
+        uid: 'test-uid',
+        tag: 'test-component',
+        version: VERSION,
+        context: CONTEXT.IFRAME,
+        consumerDomain: 'https://consumer.com',
+        props: {},
+        exports: VALID_EXPORTS,
+        children: {
+          BrokenChild: {
+            tag: 'child-component',
+            url: 'https://example.com/child',
+            dimensions: 'wide',
           },
         },
       },
@@ -289,6 +443,28 @@ describe('parseWindowName', () => {
             url: 'https://example.com/child',
             dimensions: {
               width: true,
+            },
+          },
+        },
+      },
+    ],
+    [
+      'child with invalid height dimension type',
+      {
+        uid: 'test-uid',
+        tag: 'test-component',
+        version: VERSION,
+        context: CONTEXT.IFRAME,
+        consumerDomain: 'https://consumer.com',
+        props: {},
+        exports: VALID_EXPORTS,
+        children: {
+          BrokenChild: {
+            tag: 'child-component',
+            url: 'https://example.com/child',
+            dimensions: {
+              width: '320px',
+              height: false,
             },
           },
         },
