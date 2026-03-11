@@ -5,12 +5,16 @@ This index documents what each ForgeFrame test file validates and the naming con
 ## Unit Tests (`packages/forgeframe/tests/unit`)
 
 - `bridge.test.ts`: Function bridge serialization/deserialization and remote call dispatch behavior.
+- `component-instance-index.test.ts`: Internal active-instance indexing, reindexing, tag clearing, and peer lookup snapshot behavior.
 - `component.test.ts`: Component creation, registration, instance lifecycle, and host-context detection.
 - `consumer-branch-coverage.test.ts`: Consumer branch/edge-path coverage for domain trust, rendering, and prop-sync internals.
+- `domain-pattern.test.ts`: Wildcard domain compilation cache behavior and stateless `RegExp` trust checks.
 - `consumer-lifecycle.test.ts`: Consumer handshake, lifecycle messaging, open/close guards, and update validation.
+- `consumer-transport.test.ts`: Direct consumer transport behavior for trust rotation, failed prop sync cleanup, handshake waiting, and async init error forwarding.
 - `emitter.test.ts`: Event emitter subscription semantics, once/off behavior, and async error isolation.
 - `host-branch-coverage.test.ts`: Host branch/edge-path coverage for deferred init, failure capture, and guard paths.
 - `host-lifecycle.test.ts`: Host lifecycle message handling, hostProps synchronization, and consumer window resolution.
+- `host-transport.test.ts`: Direct host transport behavior for deferred init scheduling, trust updates, props routing, and teardown.
 - `host-security.test.ts`: Host allowlist enforcement and deferred-init security gating.
 - `iframe.test.ts`: Iframe creation, visibility/sizing helpers, and content-dimension access behavior.
 - `index-auto-init.test.ts`: Auto-initialization safety when importing in top-level windows with ForgeFrame-shaped names.
@@ -35,8 +39,11 @@ This index documents what each ForgeFrame test file validates and the naming con
 
 ## Integration Tests (`packages/forgeframe/tests/integration`)
 
+- `body-param-bootstrap.test.ts`: End-to-end iframe and popup `bodyParam` POST bootstrap coverage, including hidden-form submission and host initialization.
 - `consumer-host-handshake.test.ts`: End-to-end iframe happy path covering `create()`, `instance.render()`, `initHost()`, and the real INIT handshake.
 - `function-prop-bridge.test.ts`: Real cross-window callback bridging from host `window.hostProps` back to consumer callbacks, including async results and thrown errors.
+- `host-controls-routing.test.ts`: Real host-builtins coverage for close/focus/resize/show/hide/error/export/peer lookup, plus spoofed-source rejection on consumer and host runtimes.
+- `popup-host-handshake.test.ts`: End-to-end popup happy path and popup-blocked failure coverage through `render(..., 'popup')` and `initHost()`.
 - `props-sync.test.ts`: Post-connect prop updates across the real messaging pipeline, including host snapshot replacement, stale key removal, and `onProps` subscriber delivery.
 
 ## Type Tests (`packages/forgeframe/tests/typecheck`)

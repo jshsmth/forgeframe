@@ -20,5 +20,13 @@ export default defineConfig({
     include: ['tests/**/*.test.ts'],
     restoreMocks: true,
     clearMocks: true,
+    coverage: {
+      thresholds: {
+        statements: 90,
+        branches: 85,
+        functions: 95,
+        lines: 90,
+      },
+    },
   },
 });

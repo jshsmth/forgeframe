@@ -84,3 +84,72 @@ describe('ConsumerRenderer teardown', () => {
     expect(mountContainer.childElementCount).toBe(0);
   });
 });
+
+describe('ConsumerRenderer submitBodyForm', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    document.body.innerHTML = '';
+  });
+
+  it('should create a hidden POST form, submit it, and remove it afterwards', () => {
+    const mountContainer = document.createElement('div');
+    document.body.appendChild(mountContainer);
+
+    const renderer = createRenderer();
+    renderer.container = mountContainer;
+
+    const submitSpy = vi
+      .spyOn(HTMLFormElement.prototype, 'submit')
+      .mockImplementation(() => undefined);
+
+    const params = new URLSearchParams({
+      token: 'abc123',
+      mode: 'popup',
+    });
+
+    renderer.submitBodyForm(
+      'forgeframe-target',
+      'https://host.example.com/widget?mode=popup',
+      params
+    );
+
+    expect(submitSpy).toHaveBeenCalledTimes(1);
+
+    const submittedForm = submitSpy.mock.instances[0] as HTMLFormElement;
+    expect(submittedForm.method).toBe('post');
+    expect(submittedForm.action).toBe('https://host.example.com/widget?mode=popup');
+    expect(submittedForm.target).toBe('forgeframe-target');
+    expect(submittedForm.style.display).toBe('none');
+    expect(
+      Array.from(submittedForm.querySelectorAll('input')).map((input) => ({
+        name: input.name,
+        value: input.value,
+      }))
+    ).toEqual([
+      { name: 'token', value: 'abc123' },
+      { name: 'mode', value: 'popup' },
+    ]);
+    expect(document.body.querySelector('form')).toBeNull();
+  });
+
+  it('should throw when no document root is available for form submission', () => {
+    const renderer = createRenderer();
+    const fakeDocument = {
+      body: null,
+      documentElement: null,
+      createElement: document.createElement.bind(document),
+    } as unknown as Document;
+
+    renderer.container = {
+      ownerDocument: fakeDocument,
+    } as HTMLElement;
+
+    expect(() =>
+      renderer.submitBodyForm(
+        'forgeframe-target',
+        'https://host.example.com/widget',
+        new URLSearchParams({ token: 'abc123' })
+      )
+    ).toThrow('Document root is unavailable for bodyParam form submission');
+  });
+});
