@@ -11,10 +11,32 @@ afterEach(async () => {
 });
 
 describe('Index node smoke', () => {
-  it('should import the public entrypoint and define components without browser globals', async () => {
+  it('should import the public entrypoint and expose the stable root API without browser globals', async () => {
     expect('window' in globalThis).toBe(false);
 
-    const { default: ForgeFrame } = await import('@/index');
+    const publicEntrypoint = await import('@/index');
+    const {
+      default: ForgeFrame,
+      ForgeFrame: NamedForgeFrame,
+      CONTEXT,
+      PopupOpenError,
+      VERSION,
+      create,
+      createReactComponent,
+      initHost,
+      prop,
+      withReactComponent,
+    } = publicEntrypoint;
+
+    expect(ForgeFrame).toBe(NamedForgeFrame);
+    expect(ForgeFrame.create).toBe(create);
+    expect(ForgeFrame.initHost).toBe(initHost);
+    expect(ForgeFrame.prop).toBe(prop);
+    expect(ForgeFrame.CONTEXT).toBe(CONTEXT);
+    expect(ForgeFrame.PopupOpenError).toBe(PopupOpenError);
+    expect(ForgeFrame.VERSION).toBe(VERSION);
+    expect(typeof createReactComponent).toBe('function');
+    expect(typeof withReactComponent).toBe('function');
 
     const AbsoluteUrlComponent = ForgeFrame.create({
       tag: 'node-absolute-component',

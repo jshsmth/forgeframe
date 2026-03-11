@@ -1,12 +1,12 @@
 /**
- * Window utilities for ForgeFrame cross-window communication.
+ * @packageDocumentation
+ * Internal source barrel for ForgeFrame window utilities.
  *
  * @remarks
- * This module provides utilities for working with browser windows in cross-origin
- * contexts. It includes helpers for domain matching, window hierarchy navigation,
- * window name payload encoding/decoding, and window reference management.
- *
- * @packageDocumentation
+ * This file groups cross-window helpers, payload parsing, and window reference
+ * helpers for internal source organization. The published package does not
+ * expose a `forgeframe/window` subpath, so consumers should treat this barrel
+ * as internal implementation structure.
  */
 
 export {

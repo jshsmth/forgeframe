@@ -123,7 +123,7 @@ await payment.render('#payment-container');
 > **`Host`**
 
 ```typescript
-import { type HostProps } from 'forgeframe';
+import ForgeFrame, { type HostProps } from 'forgeframe';
 
 interface PaymentProps {
   amount: number;
@@ -136,6 +136,8 @@ declare global {
   }
 }
 
+// Importing the runtime registers deferred host initialization for window.hostProps.
+// Call ForgeFrame.initHost() only if you need init before the first read below.
 const { amount, onSuccess, close } = window.hostProps;
 
 document.getElementById('total')!.textContent = `$${amount}`;
@@ -196,7 +198,7 @@ const LoginForm = ForgeFrame.create<LoginProps>({
 The host page runs inside the iframe at the URL you specified. It receives props via `window.hostProps`.
 
 ```typescript
-import { type HostProps } from 'forgeframe';
+import ForgeFrame, { type HostProps } from 'forgeframe';
 
 interface LoginProps {
   email?: string;
@@ -210,6 +212,8 @@ declare global {
   }
 }
 
+// Importing the runtime registers deferred host initialization for window.hostProps.
+// Call ForgeFrame.initHost() only if you need init before the first read below.
 const { email, onLogin, onCancel, close } = window.hostProps;
 
 if (email) document.getElementById('email')!.value = email;
@@ -233,7 +237,7 @@ document.getElementById('cancel')!.onclick = async () => {
 <summary>Explanation</summary>
 
 - **`HostProps<LoginProps>`**: Combines your props with built-in methods (`close`, `resize`, etc.)
-- **Host init**: Accessing `window.hostProps` flushes host initialization automatically. Use `ForgeFrame.initHost()` only when you need to force init before first `hostProps` access.
+- **Host init**: Importing `forgeframe` in the host bundle registers deferred host initialization. Accessing `window.hostProps` then flushes it automatically; use `ForgeFrame.initHost()` only when you need to force init before first `hostProps` access.
 - **`window.hostProps`**: Contains all props passed from the consumer plus built-in methods
 - **`close()`**: Built-in method to close the iframe/popup
 
@@ -499,7 +503,7 @@ used as-is.
 ### TypeScript Setup
 
 ```typescript
-import { type HostProps } from 'forgeframe';
+import ForgeFrame, { type HostProps } from 'forgeframe';
 
 interface MyProps {
   email: string;
@@ -512,6 +516,7 @@ declare global {
   }
 }
 
+// Import the runtime in your host bundle so ForgeFrame can expose window.hostProps.
 const { email, onLogin, close, resize } = window.hostProps!;
 ```
 
@@ -524,7 +529,7 @@ Use it when:
 - Your host boot flow delays that first `window.hostProps` access (for example: lazy-loaded modules, async startup, or gated initialization).
 - You want deterministic init timing in tests or instrumentation.
 
-You can skip it when normal startup reads `window.hostProps` directly, since that first access flushes host initialization automatically.
+You can skip it when the host bundle imports `forgeframe` at runtime and normal startup reads `window.hostProps` directly, since that first access flushes host initialization automatically.
 
 ### Available Methods
 
@@ -684,7 +689,7 @@ const MyComponent = ForgeFrame.create({
 ### Basic Usage
 
 ```tsx
-import React from 'react';
+import React, { useState } from 'react';
 import ForgeFrame, { prop, createReactComponent } from 'forgeframe';
 
 const LoginComponent = ForgeFrame.create({
@@ -944,7 +949,7 @@ import ForgeFrame, {
 ### Typing Host hostProps
 
 ```typescript
-import { type HostProps } from 'forgeframe';
+import ForgeFrame, { type HostProps } from 'forgeframe';
 
 interface MyProps {
   name: string;
@@ -957,6 +962,7 @@ declare global {
   }
 }
 
+// Import the runtime in your host bundle so ForgeFrame can expose window.hostProps.
 window.hostProps!.name;
 window.hostProps!.onSubmit;
 window.hostProps!.close;
