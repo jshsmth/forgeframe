@@ -1,8 +1,16 @@
+/**
+ * @packageDocumentation
+ * Consumer transport subsystem module.
+ *
+ * @remarks
+ * Owns consumer-side messaging, function bridging, trust management, and host
+ * handshake concerns for embedded iframe and popup instances.
+ */
+
 import type {
   ConsumerExports,
   Dimensions,
   DomainMatcher,
-  GetPeerInstancesOptions,
   HostComponentRef,
   PropsDefinition,
   SerializedProps,
@@ -21,13 +29,8 @@ import {
 import { buildWindowName, createWindowPayload } from '../../window/name-payload';
 import { getPropsForHost, serializeProps } from '../../props';
 import type { ContextType } from '../../constants';
+import type { ConsumerSiblingRequest } from './siblings';
 import type { NormalizedOptions } from './types';
-
-interface PeerRequest {
-  uid: string;
-  tag: string;
-  options?: GetPeerInstancesOptions;
-}
 
 type VerifiedMessageSource = Parameters<MessageHandler>[1];
 
@@ -45,7 +48,9 @@ export interface ConsumerTransportHandlers<X> {
   onError: (error: Error) => void;
   onExport: (exports: X) => void;
   onConsumerExport: (data: unknown) => void;
-  onGetSiblings: (request: PeerRequest) => SiblingInfo[] | Promise<SiblingInfo[]>;
+  onGetSiblings: (
+    request: ConsumerSiblingRequest
+  ) => SiblingInfo[] | Promise<SiblingInfo[]>;
 }
 
 /**
@@ -396,13 +401,16 @@ export class ConsumerTransport<
       return { success: true };
     });
 
-    this.messenger.on<PeerRequest>(MESSAGE_NAME.GET_SIBLINGS, async (request, source) => {
-      if (!this.isHostControlSource(source)) {
-        return { success: false };
-      }
+    this.messenger.on<ConsumerSiblingRequest>(
+      MESSAGE_NAME.GET_SIBLINGS,
+      async (request, source) => {
+        if (!this.isHostControlSource(source)) {
+          return { success: false };
+        }
 
-      return handlers.onGetSiblings(request);
-    });
+        return handlers.onGetSiblings(request);
+      }
+    );
   }
 
   /**

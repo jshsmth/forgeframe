@@ -14,16 +14,12 @@ import type {
   Dimensions,
   PropsDefinition,
   ConsumerExports,
-  SiblingInfo,
-  GetPeerInstancesOptions,
-  HostComponentRef,
 } from '../types';
 import type { ContextType } from '../constants';
 import { CONTEXT, EVENT, MESSAGE_NAME } from '../constants';
 import { EventEmitter } from '../events/emitter';
 import { generateUID } from '../utils/uid';
 import { CleanupManager } from '../utils/cleanup';
-import { createDeferred } from '../utils/promise';
 import { registerWindow, unregisterWindow } from '../window/proxy';
 import {
   validateProps,
@@ -31,17 +27,18 @@ import {
   propsToBodyParams,
   isStandardSchema,
 } from '../props';
-import {
-  getComponentInstancesByTag,
-  getComponentOptions,
-  getIndexedComponentInstances,
-} from './component';
 import { isSameDomain } from '../window/helpers';
+import {
+  emitConsumerError,
+  invokePropCallback,
+} from './consumer/callbacks';
+import { buildNestedHostRefs } from './consumer/child-refs';
 import {
   ConsumerPropsPipeline,
   type ConsumerPropsUpdateHooks,
 } from './consumer/props-pipeline';
 import { ConsumerRenderer } from './consumer/renderer';
+import { getSiblingInstances } from './consumer/siblings';
 import { ConsumerTransport } from './consumer/transport';
 import type { NormalizedOptions } from './consumer/types';
 
@@ -113,154 +110,6 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
   /** @internal */
   private closing = false;
 
-  /** @internal */
-  private get props(): P {
-    return this.propsPipeline ? this.propsPipeline.props : ({} as P);
-  }
-
-  /** @internal */
-  private set props(value: P) {
-    if (this.propsPipeline) {
-      this.propsPipeline.props = value;
-    }
-  }
-
-  /** @internal */
-  private get inputProps(): Partial<P> {
-    return this.propsPipeline ? this.propsPipeline.inputProps : {};
-  }
-
-  /** @internal */
-  private set inputProps(value: Partial<P>) {
-    if (this.propsPipeline) {
-      this.propsPipeline.inputProps = value;
-    }
-  }
-
-  /** @internal */
-  private get pendingPropsUpdate(): Promise<void> | null {
-    return this.propsPipeline ? this.propsPipeline.pendingPropsUpdate : null;
-  }
-
-  /** @internal */
-  private set pendingPropsUpdate(value: Promise<void> | null) {
-    if (this.propsPipeline) {
-      this.propsPipeline.pendingPropsUpdate = value;
-    }
-  }
-
-  /** @internal */
-  private get context(): ContextType {
-    return this.renderer ? this.renderer.context : this.options.defaultContext;
-  }
-
-  /** @internal */
-  private set context(value: ContextType) {
-    if (this.renderer) {
-      this.renderer.context = value;
-    }
-  }
-
-  /** @internal */
-  private get hostWindow(): Window | null {
-    return this.transport ? this.transport.hostWindow : null;
-  }
-
-  /** @internal */
-  private set hostWindow(value: Window | null) {
-    if (this.transport) {
-      this.transport.hostWindow = value;
-    }
-  }
-
-  /** @internal */
-  private get openedHostDomain(): string | null {
-    return this.transport ? this.transport.openedHostDomain : null;
-  }
-
-  /** @internal */
-  private set openedHostDomain(value: string | null) {
-    if (this.transport) {
-      this.transport.openedHostDomain = value;
-    }
-  }
-
-  /** @internal */
-  private get dynamicUrlTrustedOrigin(): string | null {
-    return this.transport ? this.transport.dynamicUrlTrustedOrigin : null;
-  }
-
-  /** @internal */
-  private set dynamicUrlTrustedOrigin(value: string | null) {
-    if (this.transport) {
-      this.transport.dynamicUrlTrustedOrigin = value;
-    }
-  }
-
-  /** @internal */
-  private get iframe(): HTMLIFrameElement | null {
-    return this.renderer ? this.renderer.iframe : null;
-  }
-
-  /** @internal */
-  private set iframe(value: HTMLIFrameElement | null) {
-    if (this.renderer) {
-      this.renderer.iframe = value;
-    }
-  }
-
-  /** @internal */
-  private get container(): HTMLElement | null {
-    return this.renderer ? this.renderer.container : null;
-  }
-
-  /** @internal */
-  private set container(value: HTMLElement | null) {
-    if (this.renderer) {
-      this.renderer.container = value;
-    }
-  }
-
-  /** @internal */
-  private get initPromise(): ReturnType<typeof createDeferred<void>> | null {
-    return this.transport ? this.transport.initPromise : null;
-  }
-
-  /** @internal */
-  private set initPromise(value: ReturnType<typeof createDeferred<void>> | null) {
-    if (this.transport) {
-      this.transport.initPromise = value;
-    }
-  }
-
-  /** @internal */
-  private get hostInitialized(): boolean {
-    return this.transport ? this.transport.hostInitialized : false;
-  }
-
-  /** @internal */
-  private set hostInitialized(value: boolean) {
-    if (this.transport) {
-      this.transport.hostInitialized = value;
-    }
-  }
-
-  /** @internal */
-  private get messenger() {
-    if (!this.transport) {
-      throw new Error('Consumer transport is not initialized');
-    }
-    return this.transport.messenger;
-  }
-
-  /** @internal */
-  private get bridge() {
-    if (!this.transport) {
-      throw new Error('Consumer transport is not initialized');
-    }
-    return this.transport.bridge;
-  }
-
   /**
    * Creates a new ConsumerComponent instance.
    *
@@ -277,7 +126,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     this.renderer = new ConsumerRenderer(
       this.options,
       this.uid,
-      () => this.props,
+      () => this.propsPipeline.props,
       () => this.resolveDimensions(),
       {
         close: () => this.close(),
@@ -332,28 +181,28 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
       throw new Error('Component has already been rendered');
     }
 
-    this.context = context ?? this.options.defaultContext;
+    this.renderer.context = context ?? this.options.defaultContext;
 
     this.checkEligibility();
-    validateProps(this.props, this.options.props);
-    this.options.validate?.({ props: this.props });
-    this.container = this.resolveContainer(container);
+    validateProps(this.propsPipeline.props, this.options.props);
+    this.options.validate?.({ props: this.propsPipeline.props });
+    this.renderer.container = this.resolveContainer(container);
 
     this.event.emit(EVENT.PRERENDER);
-    this.callPropCallback('onPrerender');
+    invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onPrerender');
 
     await this.prerender();
 
     this.event.emit(EVENT.PRERENDERED);
-    this.callPropCallback('onPrerendered');
+    invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onPrerendered');
 
     this.event.emit(EVENT.RENDER);
-    this.callPropCallback('onRender');
+    invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onRender');
 
     try {
       await this.open();
       await this.waitForHost();
-      if (this.context === CONTEXT.IFRAME && this.iframe) {
+      if (this.renderer.context === CONTEXT.IFRAME && this.renderer.iframe) {
         await this.renderer.swapPrerenderContentIfNeeded();
       }
     } catch (err) {
@@ -364,10 +213,10 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     this.rendered = true;
 
     this.event.emit(EVENT.RENDERED);
-    this.callPropCallback('onRendered');
+    invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onRendered');
 
     this.event.emit(EVENT.DISPLAY);
-    this.callPropCallback('onDisplay');
+    invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onDisplay');
   }
 
   /**
@@ -406,7 +255,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
 
     try {
       this.event.emit(EVENT.CLOSE);
-      this.callPropCallback('onClose');
+      invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onClose');
 
       await this.destroy();
     } finally {
@@ -421,10 +270,10 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * For iframes, focuses the iframe element. For popups, brings the window to front.
    */
   async focus(): Promise<void> {
-    this.renderer.focus(this.hostWindow);
+    this.renderer.focus(this.transport.hostWindow);
 
     this.event.emit(EVENT.FOCUS);
-    this.callPropCallback('onFocus');
+    invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onFocus');
   }
 
   /**
@@ -433,10 +282,14 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * @param dimensions - New width and height for the component
    */
   async resize(dimensions: Dimensions): Promise<void> {
-    this.renderer.resize(dimensions, this.hostWindow);
+    this.renderer.resize(dimensions, this.transport.hostWindow);
 
     this.event.emit(EVENT.RESIZE, dimensions);
-    this.callPropCallback('onResize', dimensions);
+    invokePropCallback(
+      this.propsPipeline.props as Record<string, unknown>,
+      'onResize',
+      dimensions
+    );
   }
 
   /**
@@ -485,7 +338,14 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
       syncTrustedDomainForUrl: (url) => this.syncTrustedDomainForUrl(url),
       shouldSendPropsToHost: () => this.transport.isHostConnected(),
       sendPropsUpdateToHost: (nextProps) => this.sendPropsUpdateToHost(nextProps),
-      emitPropsUpdated: () => this.emitPropsUpdated(),
+      emitPropsUpdated: (nextProps) => {
+        this.event.emit(EVENT.PROPS, nextProps);
+        invokePropCallback(
+          nextProps as Record<string, unknown>,
+          'onProps',
+          nextProps
+        );
+      },
     };
 
     await this.propsPipeline.updateProps(newProps, hooks);
@@ -498,12 +358,12 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
   private assertStableRenderedOrigin(nextHostOrigin: string | null): void {
     if (
       this.rendered &&
-      this.openedHostDomain &&
+      this.transport.openedHostDomain &&
       nextHostOrigin &&
-      nextHostOrigin !== this.openedHostDomain
+      nextHostOrigin !== this.transport.openedHostDomain
     ) {
       throw new Error(
-        `Cannot change component URL origin after render (from "${this.openedHostDomain}" to "${nextHostOrigin}")`
+        `Cannot change component URL origin after render (from "${this.transport.openedHostDomain}" to "${nextHostOrigin}")`
       );
     }
   }
@@ -517,22 +377,13 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
   }
 
   /**
-   * Emits prop update lifecycle hooks.
-   * @internal
-   */
-  private emitPropsUpdated(): void {
-    this.event.emit(EVENT.PROPS, this.props);
-    this.callPropCallback('onProps', this.props);
-  }
-
-  /**
    * Creates a clone of this instance with the same props.
    *
    * @returns A new unrendered component instance with identical configuration
    */
   clone(): ForgeFrameComponentInstance<P, X> {
-    const cloned = new ConsumerComponent<P, X>(this.options, this.props);
-    cloned.inputProps = { ...this.inputProps };
+    const cloned = new ConsumerComponent<P, X>(this.options, this.propsPipeline.props);
+    cloned.propsPipeline.inputProps = { ...this.propsPipeline.inputProps };
     return cloned;
   }
 
@@ -544,7 +395,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
   isEligible(): boolean {
     if (!this.options.eligible) return true;
 
-    const result = this.options.eligible({ props: this.props });
+    const result = this.options.eligible({ props: this.propsPipeline.props });
     return result.eligible;
   }
 
@@ -567,7 +418,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * Resolves the host URL from static or function options.
    * @internal
    */
-  private resolveUrl(props: P = this.props): string {
+  private resolveUrl(props: P = this.propsPipeline.props): string {
     return typeof this.options.url === 'function'
       ? this.options.url(props)
       : this.options.url;
@@ -579,7 +430,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    */
   private resolveDimensions(): Dimensions {
     return typeof this.options.dimensions === 'function'
-      ? this.options.dimensions(this.props)
+      ? this.options.dimensions(this.propsPipeline.props)
       : this.options.dimensions;
   }
 
@@ -619,14 +470,21 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * Creates the prop context passed to prop callbacks and validators.
    * @internal
    */
-  private createPropContext(props: P = this.props) {
+  private createPropContext(props?: P) {
+    const contextProps = (props ?? this.propsPipeline?.props ?? ({} as P)) as P;
+
     return {
-      props,
+      props: contextProps,
       state: this.state,
       close: () => this.close(),
       focus: () => this.focus(),
-      onError: (err: Error) => this.handleError(err),
-      container: this.container,
+      onError: (err: Error) =>
+        emitConsumerError(
+          this.event,
+          (this.propsPipeline?.props ?? contextProps) as Record<string, unknown>,
+          err
+        ),
+      container: this.renderer.container,
       uid: this.uid,
       tag: this.options.tag,
     };
@@ -647,7 +505,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
   private checkEligibility(): void {
     if (!this.options.eligible) return;
 
-    const result = this.options.eligible({ props: this.props });
+    const result = this.options.eligible({ props: this.propsPipeline.props });
     if (!result.eligible) {
       throw new Error(`Component not eligible: ${result.reason ?? 'Unknown reason'}`);
     }
@@ -680,9 +538,9 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
   private async open(): Promise<void> {
     const baseUrl = this.resolveUrl();
     this.syncTrustedDomainForUrl(baseUrl);
-    this.openedHostDomain = this.resolveUrlOrigin(baseUrl);
+    this.transport.openedHostDomain = this.resolveUrlOrigin(baseUrl);
 
-    this.hostWindow = this.renderer.open({
+    this.transport.hostWindow = this.renderer.open({
       baseUrl,
       buildUrl: (resolvedBaseUrl) => this.buildUrl(resolvedBaseUrl),
       buildBodyParams: () => this.buildBodyParams(),
@@ -697,8 +555,8 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
       },
     });
 
-    if (this.hostWindow) {
-      registerWindow(this.uid, this.hostWindow);
+    if (this.transport.hostWindow) {
+      registerWindow(this.uid, this.transport.hostWindow);
     }
   }
 
@@ -707,7 +565,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * @internal
    */
   private buildUrl(baseUrl: string = this.resolveUrl()): string {
-    const queryParams = propsToQueryParams(this.props, this.options.props);
+    const queryParams = propsToQueryParams(this.propsPipeline.props, this.options.props);
     const queryString = queryParams.toString();
 
     if (!queryString) return baseUrl;
@@ -721,7 +579,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * @internal
    */
   private buildBodyParams(): URLSearchParams {
-    return propsToBodyParams(this.props, this.options.props);
+    return propsToBodyParams(this.propsPipeline.props, this.options.props);
   }
 
   /**
@@ -743,52 +601,13 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
   private buildWindowName(): string {
     return this.transport.buildWindowName({
       tag: this.options.tag,
-      context: this.context,
-      props: this.props,
+      context: this.renderer.context,
+      props: this.propsPipeline.props,
       propDefinitions: this.options.props,
       hostDomain: this.getHostDomain(),
-      children: this.buildNestedHostRefs(),
+      children: buildNestedHostRefs(this.options, this.propsPipeline.props),
       exports: this.createConsumerExports(),
     });
-  }
-
-  /**
-   * Builds component references for nested host components.
-   * @internal
-   */
-  private buildNestedHostRefs(): Record<string, HostComponentRef> | undefined {
-    if (!this.options.children) return undefined;
-
-    const nestedComponents = this.options.children({ props: this.props });
-    const refs: Record<string, HostComponentRef> = {};
-
-    for (const [name, component] of Object.entries(nestedComponents)) {
-      const nestedOptions = getComponentOptions(component);
-      if (!nestedOptions) {
-        throw new Error(`Nested component "${name}" is missing component metadata`);
-      }
-
-      if (typeof nestedOptions.url !== 'string') {
-        throw new Error(
-          `Nested component "${name}" must use a static string URL. Function URLs are not supported in children.`
-        );
-      }
-
-      refs[name] = {
-        tag: nestedOptions.tag,
-        url: nestedOptions.url,
-        props: nestedOptions.props as
-          | PropsDefinition<Record<string, unknown>>
-          | undefined,
-        dimensions:
-          typeof nestedOptions.dimensions === 'function'
-            ? undefined
-            : nestedOptions.dimensions,
-        defaultContext: nestedOptions.defaultContext,
-      };
-    }
-
-    return Object.keys(refs).length > 0 ? refs : undefined;
   }
 
   /**
@@ -824,7 +643,12 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     await this.transport.waitForHost(
       this.options.timeout,
       this.options.tag,
-      (error) => this.handleError(error)
+      (error) =>
+        emitConsumerError(
+          this.event,
+          this.propsPipeline.props as Record<string, unknown>,
+          error
+        )
     );
   }
 
@@ -840,14 +664,19 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
       onFocus: async () => this.focus(),
       onShow: async () => this.show(),
       onHide: async () => this.hide(),
-      onError: (error) => this.handleError(error),
+      onError: (error) =>
+        emitConsumerError(
+          this.event,
+          this.propsPipeline.props as Record<string, unknown>,
+          error
+        ),
       onExport: (exports) => {
         this.exports = exports;
       },
       onConsumerExport: (data) => {
         this.consumerExports = data;
       },
-      onGetSiblings: (request) => this.getSiblingInstances(request),
+      onGetSiblings: (request) => getSiblingInstances(request),
     });
   }
 
@@ -856,11 +685,11 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * @internal
    */
   private async syncSameDomainPropsAfterInit(): Promise<void> {
-    if (!this.hostWindow || !this.transport.isHostConnected()) {
+    if (!this.transport.hostWindow || !this.transport.isHostConnected()) {
       return;
     }
 
-    if (!isSameDomain(this.hostWindow)) {
+    if (!isSameDomain(this.transport.hostWindow)) {
       return;
     }
 
@@ -874,7 +703,11 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
         sendPropsUpdateToHost: (nextProps) => this.sendPropsUpdateToHost(nextProps),
       });
     } catch (error) {
-      this.handleError(error as Error);
+      emitConsumerError(
+        this.event,
+        this.propsPipeline.props as Record<string, unknown>,
+        error as Error
+      );
     }
   }
 
@@ -893,85 +726,14 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
   }
 
   /**
-   * Gets sibling component instances for a request.
-   * @internal
-   */
-  private getSiblingInstances(request: {
-    uid: string;
-    tag: string;
-    options?: GetPeerInstancesOptions;
-  }): SiblingInfo[] {
-    const siblings: SiblingInfo[] = [];
-
-    if (request.options?.anyConsumer) {
-      for (const indexed of getIndexedComponentInstances()) {
-        if (indexed.instance.uid === request.uid) continue;
-        siblings.push({
-          uid: indexed.instance.uid,
-          tag: indexed.tag,
-          exports: indexed.instance.exports,
-        });
-      }
-      return siblings;
-    }
-
-    for (const instance of getComponentInstancesByTag(request.tag)) {
-      if (instance.uid === request.uid) continue;
-
-      siblings.push({
-        uid: instance.uid,
-        tag: request.tag,
-        exports: instance.exports,
-      });
-    }
-
-    return siblings;
-  }
-
-  /**
    * Registers cleanup handlers for the instance.
    * @internal
    */
   private setupCleanup(): void {
     this.cleanup.register(() => {
-      this.messenger.destroy();
-      this.bridge.destroy();
+      this.transport.destroy();
       unregisterWindow(this.uid);
     });
-  }
-
-  /**
-   * Handles errors by emitting events and calling callbacks.
-   * @internal
-   */
-  private handleError(error: Error): void {
-    this.event.emit(EVENT.ERROR, error);
-    this.callPropCallback('onError', error);
-  }
-
-  /**
-   * Calls a prop callback if it exists.
-   * @internal
-   */
-  private callPropCallback(name: string, ...args: unknown[]): void {
-    const callback = (this.props as Record<string, unknown>)[name];
-    if (typeof callback === 'function') {
-      try {
-        const result = callback(...args);
-        if (
-          result &&
-          typeof result === 'object' &&
-          'catch' in result &&
-          typeof result.catch === 'function'
-        ) {
-          (result as Promise<unknown>).catch((err: unknown) => {
-            console.error(`Error in async ${name} callback:`, err);
-          });
-        }
-      } catch (err) {
-        console.error(`Error in ${name} callback:`, err);
-      }
-    }
   }
 
   /**
@@ -982,27 +744,27 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     if (this.destroyed) return;
     this.destroyed = true;
 
-    if (this.initPromise) {
-      this.initPromise.reject(
+    if (this.transport.initPromise) {
+      this.transport.initPromise.reject(
         new Error(
           `Component "${this.options.tag}" was destroyed before initialization completed`
         )
       );
-      this.initPromise = null;
+      this.transport.initPromise = null;
     }
-    this.hostInitialized = false;
+    this.transport.hostInitialized = false;
 
-    this.renderer.destroy(this.hostWindow);
+    this.renderer.destroy(this.transport.hostWindow);
 
-    this.hostWindow = null;
-    this.openedHostDomain = null;
-    this.dynamicUrlTrustedOrigin = null;
-    this.pendingPropsUpdate = null;
+    this.transport.hostWindow = null;
+    this.transport.openedHostDomain = null;
+    this.transport.dynamicUrlTrustedOrigin = null;
+    this.propsPipeline.pendingPropsUpdate = null;
 
     await this.cleanup.cleanup();
 
     this.event.emit(EVENT.DESTROY);
-    this.callPropCallback('onDestroy');
+    invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onDestroy');
     this.event.removeAllListeners();
   }
 }
