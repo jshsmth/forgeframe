@@ -148,7 +148,7 @@ export class HostComponent<P extends Record<string, unknown>> {
     return this.propsRuntime.hostProps;
   }
 
-  private set hostProps(value: HostProps<P>) {
+  public set hostProps(value: HostProps<P>) {
     this.propsRuntime.hostProps = value;
   }
 
