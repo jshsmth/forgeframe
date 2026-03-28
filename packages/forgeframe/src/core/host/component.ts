@@ -15,6 +15,7 @@ import type {
   PropsDefinition,
   WindowNamePayload,
 } from '../../types';
+import { EMPTY_PROP_DEFINITIONS } from '../../props/definitions';
 import { HostPropsRuntime } from './props-runtime';
 import {
   reassertAllowedConsumerDomain,
@@ -46,7 +47,7 @@ export class HostComponent<P extends Record<string, unknown>> {
 
   constructor(
     payload: WindowNamePayload<P>,
-    propDefinitions: PropsDefinition<P> = {},
+    propDefinitions: PropsDefinition<P> = EMPTY_PROP_DEFINITIONS as PropsDefinition<P>,
     allowedConsumerDomains?: DomainMatcher,
     deferInit = false
   ) {

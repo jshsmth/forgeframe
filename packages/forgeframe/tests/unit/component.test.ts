@@ -71,6 +71,32 @@ describe('Component Creation', () => {
     expect(MyComponent.isHost()).toBe(false);
   });
 
+  it('should render and update components without custom props definitions', async () => {
+    const MyComponent = create({
+      tag: 'no-custom-props-component',
+      url: 'https://example.com/component',
+    });
+    const instance = MyComponent({});
+    const internal = getConsumerInternals(instance);
+    const container = document.createElement('div');
+
+    document.body.appendChild(container);
+
+    vi.spyOn(internal, 'waitForHost').mockResolvedValue(undefined);
+
+    await expect(instance.render(container)).resolves.toBeUndefined();
+    internal.transport.hostWindow = null;
+    await expect(instance.updateProps({})).resolves.toBeUndefined();
+
+    expect(internal.propsPipeline.props).toMatchObject({
+      dimensions: { width: '100%', height: '100%' },
+      timeout: 10000,
+    });
+
+    await instance.close();
+    container.remove();
+  });
+
   it('should validate required props on render and preserve function props on valid instances', async () => {
     const MyComponent = create({
       tag: 'my-component-with-props',

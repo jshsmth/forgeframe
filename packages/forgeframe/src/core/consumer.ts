@@ -27,6 +27,7 @@ import {
   propsToBodyParams,
   isStandardSchema,
 } from '../props';
+import { EMPTY_PROP_DEFINITIONS } from '../props/definitions';
 import { isSameDomain } from '../window/helpers';
 import {
   emitConsumerError,
@@ -424,7 +425,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
   private normalizeOptions(options: ComponentOptions<P>): NormalizedOptions<P> {
     return {
       ...options,
-      props: options.props ?? ({} as PropsDefinition<P>),
+      props: options.props ?? (EMPTY_PROP_DEFINITIONS as PropsDefinition<P>),
       defaultContext: options.defaultContext ?? CONTEXT.IFRAME,
       dimensions: options.dimensions ?? { width: '100%', height: '100%' },
       timeout: options.timeout ?? 10000,
