@@ -8,7 +8,7 @@
  * lifecycle callbacks.
  */
 
-import type { PropDefinition, Dimensions } from '../types';
+import type { PropDefinition, PropsDefinition, Dimensions } from '../types';
 import { prop } from './prop';
 
 /**
@@ -69,6 +69,13 @@ export interface BuiltinProps {
   /** Called when props are updated. */
   onProps?: (props: Record<string, unknown>) => void;
 }
+
+/**
+ * Shared empty prop-definition map for components without custom props.
+ * @internal
+ */
+export const EMPTY_PROP_DEFINITIONS =
+  Object.freeze({}) as PropsDefinition<Record<string, unknown>>;
 
 /**
  * Default prop definitions for all built-in props.
@@ -161,4 +168,3 @@ export const BUILTIN_PROP_DEFINITIONS: Record<string, PropDefinition> = {
     sendToHost: false,
   },
 };
-

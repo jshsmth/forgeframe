@@ -11,6 +11,7 @@
 import { EVENT } from '../../constants';
 import { deserializeProps } from '../../props/serialize';
 import { isStandardSchema, validateProps } from '../../props';
+import { EMPTY_PROP_DEFINITIONS } from '../../props/definitions';
 import { getDomain } from '../../window/helpers';
 import { create } from '../component';
 import type {
@@ -67,7 +68,7 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
   public propsHandlers: Set<(props: P) => void> = new Set();
 
   constructor(
-    private propDefinitions: PropsDefinition<P> = {},
+    private propDefinitions: PropsDefinition<P> = EMPTY_PROP_DEFINITIONS as PropsDefinition<P>,
     private options: HostPropsRuntimeOptions
   ) {}
 
@@ -139,10 +140,11 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
       const nextProps = this.deserialize(serializedProps);
 
       validateProps(nextProps, this.propDefinitions);
+      const nextHostProps = filterReservedHostPropKeys(nextProps);
 
-      this.removeStaleHostProps(previousProps, nextProps);
+      this.removeStaleHostProps(previousProps, nextHostProps);
       this.consumerProps = nextProps;
-      Object.assign(this.hostProps, filterReservedHostPropKeys(nextProps));
+      Object.assign(this.hostProps, nextHostProps);
       this.hostProps.consumer.props = this.consumerProps;
 
       for (const handler of this.propsHandlers) {
@@ -241,12 +243,12 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
     return Object.keys(components).length > 0 ? components : undefined;
   }
 
-  private removeStaleHostProps(previousProps: P, nextProps: P): void {
-    const previousHostProps = filterReservedHostPropKeys(previousProps);
-    const nextHostProps = filterReservedHostPropKeys(nextProps);
-
-    for (const key of Object.keys(previousHostProps)) {
-      if (key in nextHostProps) {
+  private removeStaleHostProps(
+    previousProps: P,
+    nextHostProps: Record<string, unknown>
+  ): void {
+    for (const key of Object.keys(previousProps)) {
+      if (HOST_PROPS_BUILTIN_KEYS.has(key) || key in nextHostProps) {
         continue;
       }
 

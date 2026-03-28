@@ -28,6 +28,48 @@ function resolvePropDefinition<P>(
   return { isDirectSchema, definition };
 }
 
+interface CompiledPropDefinition<P extends Record<string, unknown>> {
+  key: string;
+  isDirectSchema: boolean;
+  definition: PropDefinition<unknown, P>;
+}
+
+const compiledPropDefinitionsCache = new WeakMap<
+  object,
+  readonly CompiledPropDefinition<Record<string, unknown>>[]
+>();
+
+function getCompiledPropDefinitions<P extends Record<string, unknown>>(
+  definitions: PropsDefinition<P>
+): readonly CompiledPropDefinition<P>[] {
+  const cacheKey = definitions as object;
+  const cached = compiledPropDefinitionsCache.get(cacheKey) as
+    | readonly CompiledPropDefinition<P>[]
+    | undefined;
+  if (cached) {
+    return cached;
+  }
+
+  const compiledDefinitions = Object.entries({
+    ...BUILTIN_PROP_DEFINITIONS,
+    ...definitions,
+  }).map(([key, def]) => {
+    const { isDirectSchema, definition } = resolvePropDefinition<P>(def);
+    return {
+      key,
+      isDirectSchema,
+      definition,
+    };
+  });
+
+  compiledPropDefinitionsCache.set(
+    cacheKey,
+    compiledDefinitions as readonly CompiledPropDefinition<Record<string, unknown>>[]
+  );
+
+  return compiledDefinitions;
+}
+
 /**
  * Merges user props with defaults and computes derived values.
  *
@@ -44,15 +86,10 @@ export function normalizeProps<P extends Record<string, unknown>>(
   definitions: PropsDefinition<P>,
   context: PropContext<P>
 ): P {
-  const allDefs = {
-    ...BUILTIN_PROP_DEFINITIONS,
-    ...definitions,
-  } as PropsDefinition<P>;
-
   const result = {} as P;
 
-  for (const [key, def] of Object.entries(allDefs)) {
-    const { definition } = resolvePropDefinition<P>(def);
+  for (const { key, definition } of getCompiledPropDefinitions(definitions)) {
+    const propKey = key as keyof P;
     let value: unknown;
 
     const aliasKey = definition.alias;
@@ -60,7 +97,7 @@ export function normalizeProps<P extends Record<string, unknown>>(
     const hasAliasValue = aliasKey && aliasKey in userProps;
 
     if (hasValue) {
-      value = userProps[key as keyof P];
+      value = userProps[propKey];
     } else if (hasAliasValue) {
       value = userProps[aliasKey as keyof P];
     } else if (definition.value) {
@@ -103,14 +140,9 @@ export function validateProps<P extends Record<string, unknown>>(
   props: P,
   definitions: PropsDefinition<P>
 ): void {
-  const allDefs = {
-    ...BUILTIN_PROP_DEFINITIONS,
-    ...definitions,
-  } as PropsDefinition<P>;
-
-  for (const [key, def] of Object.entries(allDefs)) {
-    const { isDirectSchema, definition } = resolvePropDefinition<P>(def);
-    let value: unknown = props[key as keyof P];
+  for (const { key, isDirectSchema, definition } of getCompiledPropDefinitions(definitions)) {
+    const propKey = key as keyof P;
+    let value: unknown = props[propKey];
 
     if (definition.required && value === undefined) {
       throw new Error(`Prop "${key}" is required but was not provided`);
@@ -154,16 +186,11 @@ export function getPropsForHost<P extends Record<string, unknown>>(
   hostDomain: string,
   isSameDomain: boolean
 ): Partial<P> {
-  const allDefs = {
-    ...BUILTIN_PROP_DEFINITIONS,
-    ...definitions,
-  } as PropsDefinition<P>;
-
   const result: Partial<P> = {};
 
-  for (const [key, def] of Object.entries(allDefs)) {
-    const { definition } = resolvePropDefinition<P>(def);
-    const value = props[key as keyof P];
+  for (const { key, definition } of getCompiledPropDefinitions(definitions)) {
+    const propKey = key as keyof P;
+    const value = props[propKey];
 
     if (definition.sendToHost === false) continue;
     if (definition.sameDomain && !isSameDomain) continue;
@@ -199,14 +226,10 @@ export function propsToQueryParams<P extends Record<string, unknown>>(
   definitions: PropsDefinition<P>
 ): URLSearchParams {
   const params = new URLSearchParams();
-  const allDefs = {
-    ...BUILTIN_PROP_DEFINITIONS,
-    ...definitions,
-  } as PropsDefinition<P>;
 
-  for (const [key, def] of Object.entries(allDefs)) {
-    const { definition } = resolvePropDefinition<P>(def);
-    const value = props[key as keyof P];
+  for (const { key, definition } of getCompiledPropDefinitions(definitions)) {
+    const propKey = key as keyof P;
+    const value = props[propKey];
 
     if (value === undefined) continue;
     if (typeof value === 'function') continue;
@@ -245,14 +268,10 @@ export function propsToBodyParams<P extends Record<string, unknown>>(
   definitions: PropsDefinition<P>
 ): URLSearchParams {
   const params = new URLSearchParams();
-  const allDefs = {
-    ...BUILTIN_PROP_DEFINITIONS,
-    ...definitions,
-  } as PropsDefinition<P>;
 
-  for (const [key, def] of Object.entries(allDefs)) {
-    const { definition } = resolvePropDefinition<P>(def);
-    const value = props[key as keyof P];
+  for (const { key, definition } of getCompiledPropDefinitions(definitions)) {
+    const propKey = key as keyof P;
+    const value = props[propKey];
 
     if (value === undefined) continue;
     if (typeof value === 'function') continue;
