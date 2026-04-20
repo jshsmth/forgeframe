@@ -1,7 +1,8 @@
 /**
- * Integration-style test for index auto-initialization behavior.
+ * Integration-style test for public entrypoint side effects.
  *
- * Covers module import safety when ForgeFrame-shaped window payloads are present in top-level window contexts.
+ * Covers module import safety and explicit host initialization when
+ * ForgeFrame-shaped window payloads are present in host-like window contexts.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CONTEXT, MESSAGE_NAME, VERSION } from '@/constants';
@@ -29,11 +30,11 @@ afterEach(async () => {
   vi.resetModules();
 });
 
-describe('Index auto-init', () => {
-  it('should not throw when window.name is ForgeFrame-shaped on a top-level window', async () => {
+describe('Index side effects', () => {
+  it('should not initialize host state until initHost() is called explicitly', async () => {
     const payload: WindowNamePayload<Record<string, unknown>> = {
-      uid: 'index-auto-init-uid',
-      tag: 'index-auto-init-component',
+      uid: 'index-side-effect-free-uid',
+      tag: 'index-side-effect-free-component',
       version: VERSION,
       context: CONTEXT.IFRAME,
       consumerDomain: 'https://consumer.example.com',
@@ -43,11 +44,30 @@ describe('Index auto-init', () => {
 
     window.name = buildWindowName(payload);
     vi.resetModules();
+    const hostSecurity = await import('@/core/host/security');
+    const { Messenger } = await import('@/communication/messenger');
+    const resolveConsumerWindowSpy = vi
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
+      .mockReturnValue(window);
+    const sendSpy = vi
+      .spyOn(Messenger.prototype, 'send')
+      .mockResolvedValue(undefined);
 
-    await expect(import('@/index')).resolves.toBeDefined();
+    const publicEntrypoint = await import('@/index');
 
     const { getHost } = await import('@/core/host');
+
+    expect(resolveConsumerWindowSpy).not.toHaveBeenCalled();
+    expect(sendSpy).not.toHaveBeenCalled();
     expect(getHost()).toBeNull();
+    expect(publicEntrypoint.getHostProps()).toBeUndefined();
     expect((window as unknown as { hostProps?: unknown }).hostProps).toBeUndefined();
+
+    const host = publicEntrypoint.initHost();
+
+    expect(host).not.toBeNull();
+    expect(getHost()).toBe(host);
+    expect(publicEntrypoint.getHostProps()).toBe(host?.hostProps);
+    expect((window as unknown as { hostProps?: unknown }).hostProps).toBe(host?.hostProps);
   });
 });

@@ -4,7 +4,7 @@
  * This demonstrates how to use ForgeFrame from the host (embedded) side.
  * The host receives props from the consumer via window.hostProps.
  */
-import ForgeFrame, { type HostProps } from "forgeframe";
+import { initHost, isHost, type HostProps } from "forgeframe";
 
 /**
  * Define your custom props interface.
@@ -267,11 +267,11 @@ function renderStandalone() {
   `;
 }
 
-// Explicitly flush host initialization in embedded contexts.
-ForgeFrame.initHost();
+// Explicitly initialize the host runtime before reading window.hostProps.
+initHost();
 
 // Check if running as ForgeFrame host
-if (ForgeFrame.isHost()) {
+if (isHost()) {
   renderEmbedded();
 } else {
   renderStandalone();

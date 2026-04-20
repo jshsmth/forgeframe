@@ -1017,11 +1017,14 @@ export interface HostPropsBuiltins<P = Record<string, unknown>> {
  * @example
  * ```typescript
  * // In host window with typed props
+ * import { initHost, type HostProps } from 'forgeframe';
+ *
  * interface MyProps {
  *   name: string;
  *   onSubmit: (data: { success: boolean }) => void;
  * }
  *
+ * initHost();
  * const props = window.hostProps as HostProps<MyProps>;
  *
  * // User props are properly typed

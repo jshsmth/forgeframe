@@ -30,10 +30,6 @@
  * ```
  */
 
-import { preinitHostOnImport } from './core/host/auto-init';
-
-preinitHostOnImport();
-
 export { ForgeFrame } from './forgeframe';
 export { default } from './forgeframe';
 
