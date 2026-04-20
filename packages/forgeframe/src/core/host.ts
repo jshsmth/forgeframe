@@ -52,6 +52,7 @@ export function isHost(): boolean {
  * @example
  * ```typescript
  * if (isEmbedded()) {
+ *   initHost();
  *   const { amount, onSuccess } = window.hostProps;
  *   // Handle embedded context...
  * }

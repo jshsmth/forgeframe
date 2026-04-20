@@ -123,7 +123,7 @@ await payment.render('#payment-container');
 > **`Host`**
 
 ```typescript
-import ForgeFrame, { type HostProps } from 'forgeframe';
+import { initHost, type HostProps } from 'forgeframe';
 
 interface PaymentProps {
   amount: number;
@@ -136,8 +136,7 @@ declare global {
   }
 }
 
-// Importing the runtime registers deferred host initialization for window.hostProps.
-// Call ForgeFrame.initHost() only if you need init before the first read below.
+initHost();
 const { amount, onSuccess, close } = window.hostProps;
 
 document.getElementById('total')!.textContent = `$${amount}`;
@@ -148,7 +147,7 @@ document.getElementById('pay-btn')!.onclick = async () => {
 ```
 
 That's it! ForgeFrame handles all the cross-domain communication automatically.
-If you need to force host initialization before first `window.hostProps` access, see [Manual Host Init with initHost](#manual-host-init-with-inithost).
+Before reading `window.hostProps` directly, call `initHost()` as shown in [Host Init with initHost](#host-init-with-inithost).
 
 ---
 
@@ -198,7 +197,7 @@ const LoginForm = ForgeFrame.create<LoginProps>({
 The host page runs inside the iframe at the URL you specified. It receives props via `window.hostProps`.
 
 ```typescript
-import ForgeFrame, { type HostProps } from 'forgeframe';
+import { initHost, type HostProps } from 'forgeframe';
 
 interface LoginProps {
   email?: string;
@@ -212,8 +211,7 @@ declare global {
   }
 }
 
-// Importing the runtime registers deferred host initialization for window.hostProps.
-// Call ForgeFrame.initHost() only if you need init before the first read below.
+initHost();
 const { email, onLogin, onCancel, close } = window.hostProps;
 
 if (email) document.getElementById('email')!.value = email;
@@ -237,7 +235,7 @@ document.getElementById('cancel')!.onclick = async () => {
 <summary>Explanation</summary>
 
 - **`HostProps<LoginProps>`**: Combines your props with built-in methods (`close`, `resize`, etc.)
-- **Host init**: Importing `forgeframe` in the host bundle registers deferred host initialization. Accessing `window.hostProps` then flushes it automatically; use `ForgeFrame.initHost()` only when you need to force init before first `hostProps` access.
+- **Host init**: Call `initHost()` before the first direct `window.hostProps` read. If your host defines a component with `ForgeFrame.create(...)`, that component path still initializes the host runtime automatically.
 - **`window.hostProps`**: Contains all props passed from the consumer plus built-in methods
 - **`close()`**: Built-in method to close the iframe/popup
 
@@ -503,7 +501,7 @@ used as-is.
 ### TypeScript Setup
 
 ```typescript
-import ForgeFrame, { type HostProps } from 'forgeframe';
+import { initHost, type HostProps } from 'forgeframe';
 
 interface MyProps {
   email: string;
@@ -516,20 +514,22 @@ declare global {
   }
 }
 
-// Import the runtime in your host bundle so ForgeFrame can expose window.hostProps.
+initHost();
 const { email, onLogin, close, resize } = window.hostProps!;
 ```
 
-### Manual Host Init with initHost
+### Host Init with initHost
 
-`ForgeFrame.initHost()` is optional and only needed to force the host handshake early.
+`initHost()` is required when your host bundle reads `window.hostProps` directly.
 
-Use it when:
-- You need initialization to complete before the first read of `window.hostProps`.
-- Your host boot flow delays that first `window.hostProps` access (for example: lazy-loaded modules, async startup, or gated initialization).
+Supported host boot patterns:
+- Call `initHost()` during host startup, then read `window.hostProps`.
+- Define the host with `ForgeFrame.create(...)` and let component creation initialize the host runtime.
+
+Use `initHost()` when:
+- You read `window.hostProps` directly.
+- Your host boot flow delays the first `window.hostProps` access (for example: lazy-loaded modules, async startup, or gated initialization).
 - You want deterministic init timing in tests or instrumentation.
-
-You can skip it when the host bundle imports `forgeframe` at runtime and normal startup reads `window.hostProps` directly, since that first access flushes host initialization automatically.
 
 ### Available Methods
 
@@ -859,7 +859,7 @@ ForgeFrame.destroyByTag(tag)      // Destroy all instances of a tag
 ForgeFrame.destroyAll()           // Destroy all instances
 ForgeFrame.isHost()               // Check if in host context
 ForgeFrame.isEmbedded()           // Alias for isHost() - more intuitive naming
-ForgeFrame.initHost()             // Optional: flush host handshake before first hostProps access
+ForgeFrame.initHost()             // Required before direct window.hostProps access
 ForgeFrame.getHostProps()         // Get hostProps in host context
 ForgeFrame.isStandardSchema(val)  // Check if value is a Standard Schema
 
@@ -949,7 +949,7 @@ import ForgeFrame, {
 ### Typing Host hostProps
 
 ```typescript
-import ForgeFrame, { type HostProps } from 'forgeframe';
+import { initHost, type HostProps } from 'forgeframe';
 
 interface MyProps {
   name: string;
@@ -962,7 +962,7 @@ declare global {
   }
 }
 
-// Import the runtime in your host bundle so ForgeFrame can expose window.hostProps.
+initHost();
 window.hostProps!.name;
 window.hostProps!.onSubmit;
 window.hostProps!.close;

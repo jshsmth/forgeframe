@@ -17,7 +17,7 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `host-transport.test.ts`: Direct host transport behavior for deferred init scheduling, trust updates, props routing, and teardown.
 - `host-security.test.ts`: Host allowlist enforcement and deferred-init security gating.
 - `iframe.test.ts`: Iframe creation, visibility/sizing helpers, and content-dimension access behavior.
-- `index-auto-init.test.ts`: Auto-initialization safety when importing in top-level windows with ForgeFrame-shaped names.
+- `index-side-effect-free.test.ts`: Public entrypoint import stays side-effect-free until `initHost()` is called explicitly in ForgeFrame-shaped host windows.
 - `messenger.test.ts`: Cross-window messenger request/response flow, filtering, trust checks, and teardown behavior.
 - `popup.test.ts`: Popup open/close/focus/resize helpers and close/popup-block detection.
 - `prop-schema.test.ts`: `prop` schema builder behavior and Standard Schema compliance checks.

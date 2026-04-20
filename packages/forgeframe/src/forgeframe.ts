@@ -127,7 +127,7 @@ export const ForgeFrame = {
    * Flush host initialization in embedded contexts.
    *
    * @remarks
-   * Only required in host pages that access `window.hostProps` directly
+   * Required in host pages that access `window.hostProps` directly
    * without defining a component via `ForgeFrame.create(...)`.
    * When `create()` is used on the host side, init is flushed automatically.
    *
