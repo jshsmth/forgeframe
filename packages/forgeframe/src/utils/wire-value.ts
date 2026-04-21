@@ -3,12 +3,16 @@
  */
 
 interface DateWireValue {
-  __type__: 'date';
-  __value__: string | null;
+  __forgeframe_wire_type__: 'date';
+  __forgeframe_wire_value__: string | null;
 }
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function hasOwnKey(value: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
 }
 
 /**
@@ -17,8 +21,8 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
  */
 export function encodeDateWireValue(value: Date): DateWireValue {
   return {
-    __type__: 'date',
-    __value__: value.toJSON(),
+    __forgeframe_wire_type__: 'date',
+    __forgeframe_wire_value__: value.toJSON(),
   };
 }
 
@@ -27,11 +31,21 @@ export function encodeDateWireValue(value: Date): DateWireValue {
  * @internal
  */
 export function isDateWireValue(value: unknown): value is DateWireValue {
+  if (!isObjectRecord(value) || Object.getPrototypeOf(value) !== Object.prototype) {
+    return false;
+  }
+
+  const ownKeys = Reflect.ownKeys(value);
+  if (ownKeys.length !== 2) {
+    return false;
+  }
+
   return (
-    isObjectRecord(value) &&
-    value.__type__ === 'date' &&
-    ('__value__' in value) &&
-    (typeof value.__value__ === 'string' || value.__value__ === null)
+    hasOwnKey(value, '__forgeframe_wire_type__') &&
+    hasOwnKey(value, '__forgeframe_wire_value__') &&
+    value.__forgeframe_wire_type__ === 'date' &&
+    (typeof value.__forgeframe_wire_value__ === 'string' ||
+      value.__forgeframe_wire_value__ === null)
   );
 }
 
@@ -40,7 +54,9 @@ export function isDateWireValue(value: unknown): value is DateWireValue {
  * @internal
  */
 export function decodeDateWireValue(value: DateWireValue): Date {
-  return value.__value__ === null ? new Date(Number.NaN) : new Date(value.__value__);
+  return value.__forgeframe_wire_value__ === null
+    ? new Date(Number.NaN)
+    : new Date(value.__forgeframe_wire_value__);
 }
 
 /**

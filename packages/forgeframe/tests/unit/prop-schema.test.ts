@@ -594,6 +594,26 @@ describe('prop.record()', () => {
     const schema = prop.record(prop.number()).default({});
     expect(schema['~standard'].validate(undefined)).toEqual({ value: {} });
   });
+
+  it('should preserve hostile keys as safe own properties', () => {
+    const schema = prop.record(prop.string());
+    const input = Object.create(null) as Record<string, unknown>;
+    input.__proto__ = 'proto-value';
+    input.constructor = 'ctor-value';
+    input.prototype = 'prototype-value';
+
+    const result = schema['~standard'].validate(input);
+    expect(result).toHaveProperty('value');
+
+    const validated = (result as { value: Record<string, unknown> }).value;
+    expect(Object.getPrototypeOf(validated)).toBe(Object.prototype);
+    expect(Object.prototype.hasOwnProperty.call(validated, '__proto__')).toBe(true);
+    expect(Object.prototype.hasOwnProperty.call(validated, 'constructor')).toBe(true);
+    expect(Object.prototype.hasOwnProperty.call(validated, 'prototype')).toBe(true);
+    expect(validated.__proto__).toBe('proto-value');
+    expect(validated.constructor).toBe('ctor-value');
+    expect(validated.prototype).toBe('prototype-value');
+  });
 });
 
 // ============================================================================
@@ -699,6 +719,38 @@ describe('prop.union()', () => {
   it('should support default', () => {
     const schema = prop.union(prop.string(), prop.number()).default('fallback');
     expect(schema['~standard'].validate(undefined)).toEqual({ value: 'fallback' });
+  });
+
+  it('should allow branch-level optional schemas to match undefined', () => {
+    const schema = prop.union(prop.string(), prop.number().optional());
+    expect(schema['~standard'].validate(undefined)).toEqual({ value: undefined });
+  });
+
+  it('should allow branch-level nullable schemas to match null', () => {
+    const schema = prop.union(prop.string(), prop.number().nullable());
+    expect(schema['~standard'].validate(null)).toEqual({ value: null });
+  });
+
+  it('should allow branch-level defaults to resolve undefined', () => {
+    const schema = prop.union(prop.string(), prop.number().default(7));
+    expect(schema['~standard'].validate(undefined)).toEqual({ value: 7 });
+  });
+
+  it('should apply outer union modifiers before branch-level nullish behavior', () => {
+    const defaultSchema = prop
+      .union(prop.string(), prop.number().default(7))
+      .default('outer');
+    expect(defaultSchema['~standard'].validate(undefined)).toEqual({ value: 'outer' });
+
+    const optionalSchema = prop
+      .union(prop.string(), prop.number().default(7))
+      .optional();
+    expect(optionalSchema['~standard'].validate(undefined)).toEqual({ value: undefined });
+
+    const nullableSchema = prop
+      .union(prop.string(), prop.number())
+      .nullable();
+    expect(nullableSchema['~standard'].validate(null)).toEqual({ value: null });
   });
 });
 

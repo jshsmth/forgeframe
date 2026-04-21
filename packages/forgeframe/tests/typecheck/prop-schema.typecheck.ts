@@ -17,6 +17,14 @@ type Assert<T extends true> = T;
 
 const _unionSchema = prop.union(prop.string(), prop.number());
 const _optionalUnionSchema = _unionSchema.optional();
+const _branchOptionalUnionSchema = prop.union(
+  prop.string(),
+  prop.number().optional()
+);
+const _branchNullableUnionSchema = prop.union(
+  prop.string(),
+  prop.number().nullable()
+);
 const _recordSchema = prop.record(prop.number());
 const _defaultedRecordSchema = _recordSchema.default({});
 const _dateSchema = prop.date();
@@ -29,6 +37,14 @@ export const assertUnionOutput: Assert<
 
 export const assertOptionalUnionOutput: Assert<
   IsEqual<InferOutput<typeof _optionalUnionSchema>, string | number | undefined>
+> = true;
+
+export const assertBranchOptionalUnionOutput: Assert<
+  IsEqual<InferOutput<typeof _branchOptionalUnionSchema>, string | number | undefined>
+> = true;
+
+export const assertBranchNullableUnionOutput: Assert<
+  IsEqual<InferOutput<typeof _branchNullableUnionSchema>, string | number | null>
 > = true;
 
 export const assertRecordOutput: Assert<

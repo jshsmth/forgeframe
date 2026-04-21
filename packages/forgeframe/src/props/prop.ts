@@ -94,6 +94,19 @@ function formatDateForMessage(date: Date): string {
   return Number.isNaN(date.getTime()) ? 'Invalid Date' : date.toISOString();
 }
 
+function defineDataProperty(
+  target: Record<string, unknown>,
+  key: string,
+  value: unknown
+): void {
+  Object.defineProperty(target, key, {
+    configurable: true,
+    enumerable: true,
+    writable: true,
+    value,
+  });
+}
+
 function validateDateBound(date: Date, method: 'min' | 'max'): number {
   const time = date.getTime();
 
@@ -145,30 +158,8 @@ export abstract class PropSchema<T> implements StandardSchemaV1<unknown, T> {
   readonly '~standard': StandardSchemaV1Props<unknown, T> = {
     version: 1,
     vendor: 'forgeframe',
-    validate: (value: unknown): StandardSchemaV1Result<T> => {
-      if (value === null) {
-        if (this._nullable) {
-          return { value: null as T };
-        }
-        return { issues: [{ message: 'Expected a value, got null' }] };
-      }
-
-      if (value === undefined) {
-        if (this._default !== undefined) {
-          const defaultVal =
-            typeof this._default === 'function'
-              ? (this._default as () => T)()
-              : this._default;
-          return { value: defaultVal };
-        }
-        if (this._optional) {
-          return { value: undefined as T };
-        }
-        return { issues: [{ message: 'Required' }] };
-      }
-
-      return this._validate(value);
-    },
+    validate: (value: unknown): StandardSchemaV1Result<T> =>
+      this._validateInput(value),
   };
 
   /**
@@ -176,6 +167,35 @@ export abstract class PropSchema<T> implements StandardSchemaV1<unknown, T> {
    * @internal
    */
   protected abstract _validate(value: unknown): StandardSchemaV1Result<T>;
+
+  /** @internal */
+  protected _getDefaultValue(): T {
+    return typeof this._default === 'function'
+      ? (this._default as () => T)()
+      : (this._default as T);
+  }
+
+  /** @internal */
+  protected _validateInput(value: unknown): StandardSchemaV1Result<T> {
+    if (value === null) {
+      if (this._nullable) {
+        return { value: null as T };
+      }
+      return { issues: [{ message: 'Expected a value, got null' }] };
+    }
+
+    if (value === undefined) {
+      if (this._default !== undefined) {
+        return { value: this._getDefaultValue() };
+      }
+      if (this._optional) {
+        return { value: undefined as T };
+      }
+      return { issues: [{ message: 'Required' }] };
+    }
+
+    return this._validate(value);
+  }
 
   /**
    * Marks this prop as optional.
@@ -1119,7 +1139,7 @@ export class RecordSchema<T = unknown> extends PropSchema<Record<string, T>> {
         };
       }
 
-      validated[key] = result.value;
+      defineDataProperty(validated as Record<string, unknown>, key, result.value);
     }
 
     return { value: validated };
@@ -1250,6 +1270,33 @@ export class UnionSchema<
     }
 
     this._schemas = schemas;
+  }
+
+  /** @internal */
+  protected _validateInput(
+    value: unknown
+  ): StandardSchemaV1Result<InferUnionSchemaOutput<S>> {
+    if (value === null) {
+      if (this._nullable) {
+        return { value: null as InferUnionSchemaOutput<S> };
+      }
+
+      return this._validate(value);
+    }
+
+    if (value === undefined) {
+      if (this._default !== undefined) {
+        return { value: this._getDefaultValue() as InferUnionSchemaOutput<S> };
+      }
+
+      if (this._optional) {
+        return { value: undefined as InferUnionSchemaOutput<S> };
+      }
+
+      return this._validate(value);
+    }
+
+    return this._validate(value);
   }
 
   /** @internal */
