@@ -9,12 +9,16 @@ import {
   PropSchema,
   StringSchema,
   NumberSchema,
+  DateSchema,
   BooleanSchema,
   FunctionSchema,
   ArraySchema,
+  TupleSchema,
   ObjectSchema,
+  RecordSchema,
   LiteralSchema,
   EnumSchema,
+  UnionSchema,
   AnySchema,
 } from '@/props/prop';
 import { isStandardSchema } from '@/props/schema';
@@ -38,6 +42,10 @@ describe('StandardSchemaV1 compliance', () => {
     expect(isStandardSchema(prop.boolean())).toBe(true);
   });
 
+  it('prop.date() should be a valid StandardSchemaV1', () => {
+    expect(isStandardSchema(prop.date())).toBe(true);
+  });
+
   it('prop.function() should be a valid StandardSchemaV1', () => {
     expect(isStandardSchema(prop.function())).toBe(true);
   });
@@ -46,8 +54,16 @@ describe('StandardSchemaV1 compliance', () => {
     expect(isStandardSchema(prop.array())).toBe(true);
   });
 
+  it('prop.tuple() should be a valid StandardSchemaV1', () => {
+    expect(isStandardSchema(prop.tuple(prop.string()))).toBe(true);
+  });
+
   it('prop.object() should be a valid StandardSchemaV1', () => {
     expect(isStandardSchema(prop.object())).toBe(true);
+  });
+
+  it('prop.record() should be a valid StandardSchemaV1', () => {
+    expect(isStandardSchema(prop.record(prop.string()))).toBe(true);
   });
 
   it('prop.literal() should be a valid StandardSchemaV1', () => {
@@ -56,6 +72,10 @@ describe('StandardSchemaV1 compliance', () => {
 
   it('prop.enum() should be a valid StandardSchemaV1', () => {
     expect(isStandardSchema(prop.enum(['a', 'b']))).toBe(true);
+  });
+
+  it('prop.union() should be a valid StandardSchemaV1', () => {
+    expect(isStandardSchema(prop.union(prop.string(), prop.number()))).toBe(true);
   });
 
   it('prop.any() should be a valid StandardSchemaV1', () => {
@@ -263,6 +283,71 @@ describe('prop.number()', () => {
 });
 
 // ============================================================================
+// Date Schema Tests
+// ============================================================================
+
+describe('prop.date()', () => {
+  it('should validate Date instances', () => {
+    const schema = prop.date();
+    const date = new Date('2026-01-01T00:00:00.000Z');
+    expect(schema['~standard'].validate(date)).toEqual({ value: date });
+  });
+
+  it('should reject non-Date values', () => {
+    const schema = prop.date();
+    expect(schema['~standard'].validate('2026-01-01')).toHaveProperty('issues');
+    expect(schema['~standard'].validate(1711929600000)).toHaveProperty('issues');
+  });
+
+  it('should reject invalid Date instances', () => {
+    const schema = prop.date();
+    expect(schema['~standard'].validate(new Date('invalid'))).toHaveProperty('issues');
+  });
+
+  it('should validate inclusive min and max bounds', () => {
+    const min = new Date('2026-01-01T00:00:00.000Z');
+    const max = new Date('2026-12-31T23:59:59.999Z');
+    const schema = prop.date().min(min).max(max);
+
+    expect(schema['~standard'].validate(min)).toEqual({ value: min });
+    expect(schema['~standard'].validate(max)).toEqual({ value: max });
+    expect(schema['~standard'].validate(new Date('2025-12-31T23:59:59.999Z'))).toHaveProperty(
+      'issues'
+    );
+    expect(schema['~standard'].validate(new Date('2027-01-01T00:00:00.000Z'))).toHaveProperty(
+      'issues'
+    );
+  });
+
+  it('should reject invalid min and max bounds when configuring the schema', () => {
+    expect(() => prop.date().min(new Date('invalid'))).toThrow(
+      'prop.date().min() requires a valid Date'
+    );
+    expect(() => prop.date().max(new Date('invalid'))).toThrow(
+      'prop.date().max() requires a valid Date'
+    );
+  });
+
+  it('should snapshot min and max bounds at configuration time', () => {
+    const min = new Date('2026-01-01T00:00:00.000Z');
+    const max = new Date('2026-12-31T23:59:59.999Z');
+    const schema = prop.date().min(min).max(max);
+
+    min.setUTCFullYear(2030);
+    max.setUTCFullYear(2025);
+
+    const inRange = new Date('2026-06-01T12:00:00.000Z');
+    expect(schema['~standard'].validate(inRange)).toEqual({ value: inRange });
+  });
+
+  it('should support default', () => {
+    const fallback = new Date('2026-06-01T12:00:00.000Z');
+    const schema = prop.date().default(fallback);
+    expect(schema['~standard'].validate(undefined)).toEqual({ value: fallback });
+  });
+});
+
+// ============================================================================
 // Boolean Schema Tests
 // ============================================================================
 
@@ -363,6 +448,41 @@ describe('prop.array()', () => {
 });
 
 // ============================================================================
+// Tuple Schema Tests
+// ============================================================================
+
+describe('prop.tuple()', () => {
+  it('should validate fixed-length tuples', () => {
+    const schema = prop.tuple(prop.string(), prop.number());
+    expect(schema['~standard'].validate(['x', 1])).toEqual({ value: ['x', 1] });
+  });
+
+  it('should reject tuples with incorrect length', () => {
+    const schema = prop.tuple(prop.string(), prop.number());
+    expect(schema['~standard'].validate(['x'])).toHaveProperty('issues');
+    expect(schema['~standard'].validate(['x', 1, true])).toHaveProperty('issues');
+  });
+
+  it('should include path in item validation errors', () => {
+    const schema = prop.tuple(prop.string(), prop.number().int());
+    const result = schema['~standard'].validate(['x', 1.5]);
+    expect((result as { issues: Array<{ path?: unknown[] }> }).issues[0].path).toEqual([1]);
+  });
+
+  it('should support empty tuples', () => {
+    const schema = prop.tuple();
+    expect(schema['~standard'].validate([])).toEqual({ value: [] });
+    expect(schema['~standard'].validate(['x'])).toHaveProperty('issues');
+  });
+
+  it('should support default', () => {
+    const fallback: [string, number] = ['ready', 1];
+    const schema = prop.tuple(prop.string(), prop.number()).default(fallback);
+    expect(schema['~standard'].validate(undefined)).toEqual({ value: fallback });
+  });
+});
+
+// ============================================================================
 // Object Schema Tests
 // ============================================================================
 
@@ -443,6 +563,60 @@ describe('prop.object()', () => {
 });
 
 // ============================================================================
+// Record Schema Tests
+// ============================================================================
+
+describe('prop.record()', () => {
+  it('should validate record values', () => {
+    const schema = prop.record(prop.number());
+    expect(schema['~standard'].validate({ a: 1, b: 2 })).toEqual({
+      value: { a: 1, b: 2 },
+    });
+  });
+
+  it('should reject non-plain objects', () => {
+    const schema = prop.record(prop.number());
+    expect(schema['~standard'].validate([1, 2])).toHaveProperty('issues');
+    expect(schema['~standard'].validate(new Date('2026-01-01T00:00:00.000Z'))).toHaveProperty(
+      'issues'
+    );
+  });
+
+  it('should include path in value validation errors', () => {
+    const schema = prop.record(prop.number().int());
+    const result = schema['~standard'].validate({ count: 1.5 });
+    expect((result as { issues: Array<{ path?: unknown[] }> }).issues[0].path).toEqual([
+      'count',
+    ]);
+  });
+
+  it('should support default', () => {
+    const schema = prop.record(prop.number()).default({});
+    expect(schema['~standard'].validate(undefined)).toEqual({ value: {} });
+  });
+
+  it('should preserve hostile keys as safe own properties', () => {
+    const schema = prop.record(prop.string());
+    const input = Object.create(null) as Record<string, unknown>;
+    input.__proto__ = 'proto-value';
+    input.constructor = 'ctor-value';
+    input.prototype = 'prototype-value';
+
+    const result = schema['~standard'].validate(input);
+    expect(result).toHaveProperty('value');
+
+    const validated = (result as { value: Record<string, unknown> }).value;
+    expect(Object.getPrototypeOf(validated)).toBe(Object.prototype);
+    expect(Object.prototype.hasOwnProperty.call(validated, '__proto__')).toBe(true);
+    expect(Object.prototype.hasOwnProperty.call(validated, 'constructor')).toBe(true);
+    expect(Object.prototype.hasOwnProperty.call(validated, 'prototype')).toBe(true);
+    expect(validated.__proto__).toBe('proto-value');
+    expect(validated.constructor).toBe('ctor-value');
+    expect(validated.prototype).toBe('prototype-value');
+  });
+});
+
+// ============================================================================
 // Literal Schema Tests
 // ============================================================================
 
@@ -500,6 +674,83 @@ describe('prop.enum()', () => {
   it('should support default', () => {
     const schema = prop.enum(['a', 'b'] as const).default('a');
     expect(schema['~standard'].validate(undefined)).toEqual({ value: 'a' });
+  });
+});
+
+// ============================================================================
+// Union Schema Tests
+// ============================================================================
+
+describe('prop.union()', () => {
+  it('should validate any matching branch', () => {
+    const schema = prop.union(prop.string(), prop.number());
+    expect(schema['~standard'].validate('hello')).toEqual({ value: 'hello' });
+    expect(schema['~standard'].validate(42)).toEqual({ value: 42 });
+  });
+
+  it('should aggregate issues when all branches fail', () => {
+    const schema = prop.union(prop.string().min(3), prop.number().int());
+    const result = schema['~standard'].validate(1.5);
+
+    expect(result).toHaveProperty('issues');
+    expect((result as { issues: Array<{ message: string }> }).issues).toHaveLength(2);
+    expect((result as { issues: Array<{ message: string }> }).issues[0].message).toContain(
+      'Expected string'
+    );
+    expect((result as { issues: Array<{ message: string }> }).issues[1].message).toContain(
+      'Expected integer'
+    );
+  });
+
+  it('should preserve nested issue paths from each branch', () => {
+    const schema = prop.union(
+      prop.object().shape({ age: prop.number() }),
+      prop.object().shape({ name: prop.string() })
+    );
+    const result = schema['~standard'].validate({ age: 'old' });
+    const paths = (result as { issues: Array<{ path?: unknown[] }> }).issues.map(
+      (issue) => issue.path
+    );
+
+    expect(paths).toContainEqual(['age']);
+    expect(paths).toContainEqual(['name']);
+  });
+
+  it('should support default', () => {
+    const schema = prop.union(prop.string(), prop.number()).default('fallback');
+    expect(schema['~standard'].validate(undefined)).toEqual({ value: 'fallback' });
+  });
+
+  it('should allow branch-level optional schemas to match undefined', () => {
+    const schema = prop.union(prop.string(), prop.number().optional());
+    expect(schema['~standard'].validate(undefined)).toEqual({ value: undefined });
+  });
+
+  it('should allow branch-level nullable schemas to match null', () => {
+    const schema = prop.union(prop.string(), prop.number().nullable());
+    expect(schema['~standard'].validate(null)).toEqual({ value: null });
+  });
+
+  it('should allow branch-level defaults to resolve undefined', () => {
+    const schema = prop.union(prop.string(), prop.number().default(7));
+    expect(schema['~standard'].validate(undefined)).toEqual({ value: 7 });
+  });
+
+  it('should apply outer union modifiers before branch-level nullish behavior', () => {
+    const defaultSchema = prop
+      .union(prop.string(), prop.number().default(7))
+      .default('outer');
+    expect(defaultSchema['~standard'].validate(undefined)).toEqual({ value: 'outer' });
+
+    const optionalSchema = prop
+      .union(prop.string(), prop.number().default(7))
+      .optional();
+    expect(optionalSchema['~standard'].validate(undefined)).toEqual({ value: undefined });
+
+    const nullableSchema = prop
+      .union(prop.string(), prop.number())
+      .nullable();
+    expect(nullableSchema['~standard'].validate(null)).toEqual({ value: null });
   });
 });
 
@@ -602,6 +853,18 @@ describe('integration with validateProps', () => {
     ).toThrow();
   });
 
+  it('should work with prop.union() in component props', () => {
+    const definitions: PropsDefinition<{ value: string | number }> = {
+      value: prop.union(prop.string(), prop.number()),
+    };
+
+    expect(() => validateProps({ value: 'hello' }, definitions)).not.toThrow();
+    expect(() => validateProps({ value: 42 }, definitions)).not.toThrow();
+    expect(() =>
+      validateProps({ value: true } as unknown as { value: string | number }, definitions)
+    ).toThrow();
+  });
+
   it('should work with nested prop.object().shape()', () => {
     type UserConfig = {
       config: {
@@ -630,6 +893,44 @@ describe('integration with validateProps', () => {
     expect(() => validateProps({ tags: ['a', 'b', 'c'] }, definitions)).not.toThrow();
     expect(() =>
       validateProps({ tags: ['a', 1, 'c'] } as unknown as { tags: string[] }, definitions)
+    ).toThrow();
+  });
+
+  it('should work with prop.record()', () => {
+    const definitions: PropsDefinition<{ headers: Record<string, string> }> = {
+      headers: prop.record(prop.string()),
+    };
+
+    expect(() => validateProps({ headers: { authorization: 'token' } }, definitions)).not.toThrow();
+    expect(() =>
+      validateProps(
+        { headers: { authorization: 123 } } as unknown as { headers: Record<string, string> },
+        definitions
+      )
+    ).toThrow();
+  });
+
+  it('should work with prop.date()', () => {
+    const definitions: PropsDefinition<{ publishedAt: Date }> = {
+      publishedAt: prop.date().min(new Date('2026-01-01T00:00:00.000Z')),
+    };
+
+    expect(() =>
+      validateProps({ publishedAt: new Date('2026-01-02T00:00:00.000Z') }, definitions)
+    ).not.toThrow();
+    expect(() =>
+      validateProps({ publishedAt: '2026-01-02' } as unknown as { publishedAt: Date }, definitions)
+    ).toThrow();
+  });
+
+  it('should work with prop.tuple()', () => {
+    const definitions: PropsDefinition<{ point: [number, number] }> = {
+      point: prop.tuple(prop.number(), prop.number()),
+    };
+
+    expect(() => validateProps({ point: [10, 20] }, definitions)).not.toThrow();
+    expect(() =>
+      validateProps({ point: [10, '20'] } as unknown as { point: [number, number] }, definitions)
     ).toThrow();
   });
 
@@ -676,6 +977,10 @@ describe('exported schema classes', () => {
     expect(new NumberSchema()).toBeInstanceOf(PropSchema);
   });
 
+  it('should export DateSchema class', () => {
+    expect(new DateSchema()).toBeInstanceOf(PropSchema);
+  });
+
   it('should export BooleanSchema class', () => {
     expect(new BooleanSchema()).toBeInstanceOf(PropSchema);
   });
@@ -688,8 +993,16 @@ describe('exported schema classes', () => {
     expect(new ArraySchema()).toBeInstanceOf(PropSchema);
   });
 
+  it('should export TupleSchema class', () => {
+    expect(new TupleSchema([prop.string(), prop.number()])).toBeInstanceOf(PropSchema);
+  });
+
   it('should export ObjectSchema class', () => {
     expect(new ObjectSchema()).toBeInstanceOf(PropSchema);
+  });
+
+  it('should export RecordSchema class', () => {
+    expect(new RecordSchema(prop.string())).toBeInstanceOf(PropSchema);
   });
 
   it('should export LiteralSchema class', () => {
@@ -698,6 +1011,10 @@ describe('exported schema classes', () => {
 
   it('should export EnumSchema class', () => {
     expect(new EnumSchema(['a', 'b'])).toBeInstanceOf(PropSchema);
+  });
+
+  it('should export UnionSchema class', () => {
+    expect(new UnionSchema([prop.string(), prop.number()])).toBeInstanceOf(PropSchema);
   });
 
   it('should export AnySchema class', () => {

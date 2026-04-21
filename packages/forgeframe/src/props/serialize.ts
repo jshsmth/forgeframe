@@ -16,6 +16,13 @@ import {
 } from '../communication/bridge';
 import type { Messenger } from '../communication/messenger';
 import { BUILTIN_PROP_DEFINITIONS } from './definitions';
+import {
+  decodeDateWireValue,
+  encodeDateWireValue,
+  isDateWireValue,
+  parseWireValue,
+  stringifyWireValue,
+} from '../utils/wire-value';
 
 const UNSAFE_OBJECT_KEYS = new Set(['__proto__']);
 const DOTIFY_FRAMED_PATH_PREFIX = '__forgeframe.dotify_path__:';
@@ -61,7 +68,7 @@ function encodeDotNotationPath(
  * @internal
  */
 function encodeDotNotationValue(value: unknown): string {
-  return encodeURIComponent(JSON.stringify(value));
+  return encodeURIComponent(stringifyWireValue(value));
 }
 
 /**
@@ -169,7 +176,7 @@ function fromDotNotation(str: string): Record<string, unknown> {
       value = {};
     } else {
       try {
-        value = JSON.parse(decodeURIComponent(encodedValue));
+        value = parseWireValue(decodeURIComponent(encodedValue));
       } catch {
         value = decodeURIComponent(encodedValue);
       }
@@ -293,11 +300,15 @@ function serializeValue(
     return bridge.serialize(value as (...args: unknown[]) => unknown);
   }
 
+  if (value instanceof Date) {
+    return encodeDateWireValue(value);
+  }
+
   const serialization = definition?.serialization ?? PROP_SERIALIZATION.JSON;
 
   if (serialization === PROP_SERIALIZATION.BASE64) {
     if (typeof value === 'object') {
-      const json = JSON.stringify(value);
+      const json = stringifyWireValue(value);
       return {
         __type__: 'base64',
         __value__: btoa(encodeURIComponent(json)),
@@ -380,10 +391,14 @@ function deserializeValue(
   consumerWin: Window,
   consumerDomain: string
 ): unknown {
+  if (isDateWireValue(value)) {
+    return decodeDateWireValue(value);
+  }
+
   if (isBase64Encoded(value)) {
     try {
       const json = decodeURIComponent(atob(value.__value__));
-      return JSON.parse(json);
+      return parseWireValue(json);
     } catch {
       return value;
     }

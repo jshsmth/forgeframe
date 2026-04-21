@@ -40,6 +40,94 @@ function testRegExpStateless(pattern: RegExp, value: string): boolean {
   return pattern.test(value);
 }
 
+function validateSchemaSync<T>(
+  schema: StandardSchemaV1<unknown, T>,
+  value: unknown
+): StandardSchemaV1Result<T> {
+  const result = schema['~standard'].validate(value);
+
+  if (result instanceof Promise) {
+    throw new Error(
+      'Async schema validation is not supported. Use synchronous schemas.'
+    );
+  }
+
+  return result;
+}
+
+function prependIssuePath(
+  issues: ReadonlyArray<StandardSchemaV1Issue>,
+  segment: PropertyKey
+): StandardSchemaV1Issue[] {
+  return issues.map((issue: StandardSchemaV1Issue) => ({
+    ...issue,
+    path: [segment, ...(issue.path || [])],
+  }));
+}
+
+function getValueKind(value: unknown): string {
+  if (Array.isArray(value)) {
+    return 'array';
+  }
+
+  if (value === null) {
+    return 'null';
+  }
+
+  if (value instanceof Date) {
+    return 'Date';
+  }
+
+  return typeof value;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function formatDateForMessage(date: Date): string {
+  return Number.isNaN(date.getTime()) ? 'Invalid Date' : date.toISOString();
+}
+
+function defineDataProperty(
+  target: Record<string, unknown>,
+  key: string,
+  value: unknown
+): void {
+  Object.defineProperty(target, key, {
+    configurable: true,
+    enumerable: true,
+    writable: true,
+    value,
+  });
+}
+
+function validateDateBound(date: Date, method: 'min' | 'max'): number {
+  const time = date.getTime();
+
+  if (Number.isNaN(time)) {
+    throw new Error(`prop.date().${method}() requires a valid Date`);
+  }
+
+  return time;
+}
+
+type InferSchemaValue<S extends PropSchema<unknown>> =
+  S extends PropSchema<infer U> ? U : never;
+
+type InferUnionSchemaOutput<
+  S extends readonly [PropSchema<unknown>, ...PropSchema<unknown>[]],
+> = InferSchemaValue<S[number]>;
+
+type InferTupleShape<S extends readonly PropSchema<unknown>[]> = {
+  -readonly [K in keyof S]: InferSchemaValue<S[K]>;
+};
+
 // ============================================================================
 // Base Schema Class
 // ============================================================================
@@ -70,30 +158,8 @@ export abstract class PropSchema<T> implements StandardSchemaV1<unknown, T> {
   readonly '~standard': StandardSchemaV1Props<unknown, T> = {
     version: 1,
     vendor: 'forgeframe',
-    validate: (value: unknown): StandardSchemaV1Result<T> => {
-      if (value === null) {
-        if (this._nullable) {
-          return { value: null as T };
-        }
-        return { issues: [{ message: 'Expected a value, got null' }] };
-      }
-
-      if (value === undefined) {
-        if (this._default !== undefined) {
-          const defaultVal =
-            typeof this._default === 'function'
-              ? (this._default as () => T)()
-              : this._default;
-          return { value: defaultVal };
-        }
-        if (this._optional) {
-          return { value: undefined as T };
-        }
-        return { issues: [{ message: 'Required' }] };
-      }
-
-      return this._validate(value);
-    },
+    validate: (value: unknown): StandardSchemaV1Result<T> =>
+      this._validateInput(value),
   };
 
   /**
@@ -101,6 +167,35 @@ export abstract class PropSchema<T> implements StandardSchemaV1<unknown, T> {
    * @internal
    */
   protected abstract _validate(value: unknown): StandardSchemaV1Result<T>;
+
+  /** @internal */
+  protected _getDefaultValue(): T {
+    return typeof this._default === 'function'
+      ? (this._default as () => T)()
+      : (this._default as T);
+  }
+
+  /** @internal */
+  protected _validateInput(value: unknown): StandardSchemaV1Result<T> {
+    if (value === null) {
+      if (this._nullable) {
+        return { value: null as T };
+      }
+      return { issues: [{ message: 'Expected a value, got null' }] };
+    }
+
+    if (value === undefined) {
+      if (this._default !== undefined) {
+        return { value: this._getDefaultValue() };
+      }
+      if (this._optional) {
+        return { value: undefined as T };
+      }
+      return { issues: [{ message: 'Required' }] };
+    }
+
+    return this._validate(value);
+  }
 
   /**
    * Marks this prop as optional.
@@ -515,6 +610,101 @@ export class NumberSchema extends PropSchema<number> {
 }
 
 // ============================================================================
+// Date Schema
+// ============================================================================
+
+/**
+ * Schema for `Date` props with optional range constraints.
+ *
+ * @public
+ */
+export class DateSchema extends PropSchema<Date> {
+  /** @internal */
+  private _minTime?: number;
+  /** @internal */
+  private _maxTime?: number;
+
+  /** @internal */
+  protected _validate(value: unknown): StandardSchemaV1Result<Date> {
+    if (!(value instanceof Date)) {
+      return {
+        issues: [{ message: `Expected Date, got ${getValueKind(value)}` }],
+      };
+    }
+
+    const time = value.getTime();
+    if (Number.isNaN(time)) {
+      return { issues: [{ message: 'Expected valid Date' }] };
+    }
+
+    if (this._minTime !== undefined && time < this._minTime) {
+      return {
+        issues: [
+          {
+            message: `Date must be on or after ${formatDateForMessage(new Date(this._minTime))}`,
+          },
+        ],
+      };
+    }
+
+    if (this._maxTime !== undefined && time > this._maxTime) {
+      return {
+        issues: [
+          {
+            message: `Date must be on or before ${formatDateForMessage(new Date(this._maxTime))}`,
+          },
+        ],
+      };
+    }
+
+    return { value };
+  }
+
+  /** @internal */
+  protected _clone(): DateSchema {
+    const clone = new DateSchema();
+    clone._optional = this._optional;
+    clone._nullable = this._nullable;
+    clone._default = this._default;
+    clone._minTime = this._minTime;
+    clone._maxTime = this._maxTime;
+    return clone;
+  }
+
+  /**
+   * Requires the date to be on or after the provided value.
+   *
+   * @param date - Minimum date (inclusive)
+   *
+   * @example
+   * ```typescript
+   * startsAt: prop.date().min(new Date('2026-01-01T00:00:00.000Z'))
+   * ```
+   */
+  min(date: Date): DateSchema {
+    const clone = this._clone();
+    clone._minTime = validateDateBound(date, 'min');
+    return clone;
+  }
+
+  /**
+   * Requires the date to be on or before the provided value.
+   *
+   * @param date - Maximum date (inclusive)
+   *
+   * @example
+   * ```typescript
+   * endsAt: prop.date().max(new Date('2026-12-31T23:59:59.999Z'))
+   * ```
+   */
+  max(date: Date): DateSchema {
+    const clone = this._clone();
+    clone._maxTime = validateDateBound(date, 'max');
+    return clone;
+  }
+}
+
+// ============================================================================
 // Boolean Schema
 // ============================================================================
 
@@ -623,18 +813,10 @@ export class ArraySchema<T = unknown> extends PropSchema<T[]> {
     if (this._itemSchema) {
       const validated: T[] = [];
       for (let i = 0; i < value.length; i++) {
-        const result = this._itemSchema['~standard'].validate(value[i]);
-        if (result instanceof Promise) {
-          throw new Error(
-            'Async schema validation is not supported. Use synchronous schemas.'
-          );
-        }
+        const result = validateSchemaSync(this._itemSchema, value[i]);
         if (result.issues) {
           return {
-            issues: result.issues.map((issue: StandardSchemaV1Issue) => ({
-              ...issue,
-              path: [i, ...(issue.path || [])],
-            })),
+            issues: prependIssuePath(result.issues, i),
           };
         }
         validated.push(result.value);
@@ -725,6 +907,72 @@ export class ArraySchema<T = unknown> extends PropSchema<T[]> {
 }
 
 // ============================================================================
+// Tuple Schema
+// ============================================================================
+
+/**
+ * Schema for tuple props with fixed-length positional validation.
+ *
+ * @typeParam S - Tuple of item schema definitions
+ *
+ * @public
+ */
+export class TupleSchema<
+  S extends readonly PropSchema<unknown>[] = [],
+> extends PropSchema<InferTupleShape<S>> {
+  /** @internal */
+  private _itemSchemas: S;
+
+  constructor(schemas: S) {
+    super();
+    this._itemSchemas = schemas;
+  }
+
+  /** @internal */
+  protected _validate(value: unknown): StandardSchemaV1Result<InferTupleShape<S>> {
+    if (!Array.isArray(value)) {
+      return {
+        issues: [{ message: `Expected tuple, got ${getValueKind(value)}` }],
+      };
+    }
+
+    if (value.length !== this._itemSchemas.length) {
+      return {
+        issues: [
+          {
+            message: `Expected tuple of length ${this._itemSchemas.length}, got ${value.length}`,
+          },
+        ],
+      };
+    }
+
+    const validated = [] as unknown as InferTupleShape<S>;
+
+    for (let i = 0; i < this._itemSchemas.length; i++) {
+      const result = validateSchemaSync(this._itemSchemas[i], value[i]);
+      if (result.issues) {
+        return {
+          issues: prependIssuePath(result.issues, i),
+        };
+      }
+
+      validated[i] = result.value as InferTupleShape<S>[number];
+    }
+
+    return { value: validated };
+  }
+
+  /** @internal */
+  protected _clone(): TupleSchema<S> {
+    const clone = new TupleSchema(this._itemSchemas);
+    clone._optional = this._optional;
+    clone._nullable = this._nullable;
+    clone._default = this._default;
+    return clone;
+  }
+}
+
+// ============================================================================
 // Object Schema
 // ============================================================================
 
@@ -777,18 +1025,10 @@ export class ObjectSchema<T extends object = Record<string, unknown>> extends Pr
       }
 
       for (const [key, schema] of Object.entries(this._shape)) {
-        const fieldResult = schema['~standard'].validate(obj[key]);
-        if (fieldResult instanceof Promise) {
-          throw new Error(
-            'Async schema validation is not supported. Use synchronous schemas.'
-          );
-        }
+        const fieldResult = validateSchemaSync(schema, obj[key]);
         if (fieldResult.issues) {
           return {
-            issues: fieldResult.issues.map((issue: StandardSchemaV1Issue) => ({
-              ...issue,
-              path: [key, ...(issue.path || [])],
-            })),
+            issues: prependIssuePath(fieldResult.issues, key),
           };
         }
         result[key] = fieldResult.value;
@@ -855,6 +1095,65 @@ export class ObjectSchema<T extends object = Record<string, unknown>> extends Pr
   strict(): ObjectSchema<T> {
     const clone = this._clone();
     clone._strict = true;
+    return clone;
+  }
+}
+
+// ============================================================================
+// Record Schema
+// ============================================================================
+
+/**
+ * Schema for string-keyed record objects with value validation.
+ *
+ * @typeParam T - Record value type
+ *
+ * @public
+ */
+export class RecordSchema<T = unknown> extends PropSchema<Record<string, T>> {
+  /** @internal */
+  private _valueSchema: PropSchema<T>;
+
+  constructor(schema: PropSchema<T>) {
+    super();
+    this._valueSchema = schema;
+  }
+
+  /** @internal */
+  protected _validate(value: unknown): StandardSchemaV1Result<Record<string, T>> {
+    if (!isPlainObject(value)) {
+      return {
+        issues: [
+          { message: `Expected record object, got ${getValueKind(value)}` },
+        ],
+      };
+    }
+
+    const validated: Record<string, T> = {};
+
+    for (const [key, entry] of Object.entries(value)) {
+      const result = validateSchemaSync(this._valueSchema, entry);
+      if (result.issues) {
+        return {
+          issues: prependIssuePath(result.issues, key),
+        };
+      }
+
+      defineDataProperty(validated as Record<string, unknown>, key, result.value);
+    }
+
+    return { value: validated };
+  }
+
+  /** @internal */
+  protected _clone(): RecordSchema<T> {
+    const clone = new RecordSchema(this._valueSchema);
+    clone._optional = this._optional;
+    clone._nullable = this._nullable;
+    clone._default = this._default as
+      | Record<string, T>
+      | (() => Record<string, T>)
+      | undefined;
     return clone;
   }
 }
@@ -939,6 +1238,86 @@ export class EnumSchema<T extends string | number> extends PropSchema<T> {
   /** @internal */
   protected _clone(): EnumSchema<T> {
     const clone = new EnumSchema(this._values);
+    clone._optional = this._optional;
+    clone._nullable = this._nullable;
+    clone._default = this._default;
+    return clone;
+  }
+}
+
+// ============================================================================
+// Union Schema
+// ============================================================================
+
+/**
+ * Schema that accepts values matching any one of several sub-schemas.
+ *
+ * @typeParam S - Tuple of union branch schemas
+ *
+ * @public
+ */
+export class UnionSchema<
+  S extends readonly [PropSchema<unknown>, ...PropSchema<unknown>[]],
+> extends PropSchema<InferUnionSchemaOutput<S>> {
+  /** @internal */
+  private _schemas: S;
+
+  constructor(schemas: S) {
+    super();
+
+    if (schemas.length === 0) {
+      throw new Error('prop.union() requires at least one schema');
+    }
+
+    this._schemas = schemas;
+  }
+
+  /** @internal */
+  protected _validateInput(
+    value: unknown
+  ): StandardSchemaV1Result<InferUnionSchemaOutput<S>> {
+    if (value === null) {
+      if (this._nullable) {
+        return { value: null as InferUnionSchemaOutput<S> };
+      }
+
+      return this._validate(value);
+    }
+
+    if (value === undefined) {
+      if (this._default !== undefined) {
+        return { value: this._getDefaultValue() as InferUnionSchemaOutput<S> };
+      }
+
+      if (this._optional) {
+        return { value: undefined as InferUnionSchemaOutput<S> };
+      }
+
+      return this._validate(value);
+    }
+
+    return this._validate(value);
+  }
+
+  /** @internal */
+  protected _validate(value: unknown): StandardSchemaV1Result<InferUnionSchemaOutput<S>> {
+    const issues: StandardSchemaV1Issue[] = [];
+
+    for (const schema of this._schemas) {
+      const result = validateSchemaSync(schema, value);
+      if (!result.issues) {
+        return { value: result.value as InferUnionSchemaOutput<S> };
+      }
+
+      issues.push(...result.issues);
+    }
+
+    return { issues };
+  }
+
+  /** @internal */
+  protected _clone(): UnionSchema<S> {
+    const clone = new UnionSchema(this._schemas);
     clone._optional = this._optional;
     clone._nullable = this._nullable;
     clone._default = this._default;
@@ -1054,6 +1433,18 @@ export const prop = {
   number: (): NumberSchema => new NumberSchema(),
 
   /**
+   * Creates a date schema.
+   *
+   * @example
+   * ```typescript
+   * prop.date()
+   * prop.date().min(new Date('2026-01-01T00:00:00.000Z'))
+   * prop.date().max(new Date('2026-12-31T23:59:59.999Z'))
+   * ```
+   */
+  date: (): DateSchema => new DateSchema(),
+
+  /**
    * Creates a boolean schema.
    *
    * @example
@@ -1096,6 +1487,22 @@ export const prop = {
   array: <T = unknown>(): ArraySchema<T> => new ArraySchema<T>(),
 
   /**
+   * Creates a tuple schema with fixed positional item types.
+   *
+   * @typeParam S - Tuple of item schemas
+   *
+   * @example
+   * ```typescript
+   * prop.tuple()
+   * prop.tuple(prop.string(), prop.number())
+   * prop.tuple(prop.number(), prop.number(), prop.number(), prop.number())
+   * ```
+   */
+  tuple: <S extends readonly PropSchema<unknown>[]>(
+    ...schemas: S
+  ): TupleSchema<S> => new TupleSchema(schemas),
+
+  /**
    * Creates an object schema.
    *
    * @typeParam T - Object type
@@ -1112,6 +1519,20 @@ export const prop = {
    */
   object: <T extends object = Record<string, unknown>>(): ObjectSchema<T> =>
     new ObjectSchema<T>(),
+
+  /**
+   * Creates a record schema for validating string-keyed objects.
+   *
+   * @typeParam T - Record value type
+   * @param schema - Schema used to validate each record value
+   *
+   * @example
+   * ```typescript
+   * prop.record(prop.string())
+   * prop.record(prop.number().nonnegative())
+   * ```
+   */
+  record: <T>(schema: PropSchema<T>): RecordSchema<T> => new RecordSchema(schema),
 
   /**
    * Creates a literal schema for exact value matching.
@@ -1141,6 +1562,25 @@ export const prop = {
    */
   enum: <T extends string | number>(values: readonly T[]): EnumSchema<T> =>
     new EnumSchema(values),
+
+  /**
+   * Creates a union schema that accepts any matching branch.
+   *
+   * @typeParam S - Tuple of branch schemas
+   * @param schemas - One or more schemas to try in order
+   *
+   * @example
+   * ```typescript
+   * prop.union(prop.string(), prop.number())
+   * prop.union(
+   *   prop.literal('auto'),
+   *   prop.object().shape({ mode: prop.string() })
+   * )
+   * ```
+   */
+  union: <S extends readonly [PropSchema<unknown>, ...PropSchema<unknown>[]]>(
+    ...schemas: S
+  ): UnionSchema<S> => new UnionSchema(schemas),
 
   /**
    * Creates a schema that accepts any value.
