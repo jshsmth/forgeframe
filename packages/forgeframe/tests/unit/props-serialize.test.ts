@@ -38,6 +38,37 @@ afterEach(() => {
 });
 
 describe('Props serialization behavior', () => {
+  it('should round-trip Date props through the default serializer', () => {
+    const { messenger, bridge } = createBridgeWithMessenger();
+    const publishedAt = new Date('2026-01-02T03:04:05.678Z');
+    const definitions = {
+      publishedAt: prop.date(),
+    };
+
+    const serialized = serializeProps(
+      { publishedAt },
+      definitions,
+      bridge
+    ) as Record<string, unknown>;
+
+    expect(serialized.publishedAt).toEqual({
+      __type__: 'date',
+      __value__: publishedAt.toJSON(),
+    });
+
+    const deserialized = deserializeProps(
+      serialized,
+      definitions,
+      messenger,
+      bridge,
+      window,
+      'https://consumer.example.com'
+    ) as { publishedAt: Date };
+
+    expect(deserialized.publishedAt).toBeInstanceOf(Date);
+    expect(deserialized.publishedAt.toISOString()).toBe(publishedAt.toISOString());
+  });
+
   it('should round-trip BASE64-serialized object props', () => {
     const { messenger, bridge } = createBridgeWithMessenger();
     const definitions = {
@@ -74,6 +105,44 @@ describe('Props serialization behavior', () => {
     });
   });
 
+  it('should round-trip BASE64-serialized Date values nested in objects', () => {
+    const { messenger, bridge } = createBridgeWithMessenger();
+    const publishedAt = new Date('2026-01-02T03:04:05.678Z');
+    const definitions = {
+      metadata: {
+        schema: prop.object(),
+        serialization: PROP_SERIALIZATION.BASE64,
+      },
+    };
+
+    const serialized = serializeProps(
+      {
+        metadata: {
+          publishedAt,
+          nested: {
+            updatedAt: publishedAt,
+          },
+        },
+      },
+      definitions,
+      bridge
+    ) as Record<string, unknown>;
+
+    const deserialized = deserializeProps(
+      serialized,
+      definitions,
+      messenger,
+      bridge,
+      window,
+      'https://consumer.example.com'
+    ) as { metadata: { publishedAt: Date; nested: { updatedAt: Date } } };
+
+    expect(deserialized.metadata.publishedAt).toBeInstanceOf(Date);
+    expect(deserialized.metadata.publishedAt.toISOString()).toBe(publishedAt.toISOString());
+    expect(deserialized.metadata.nested.updatedAt).toBeInstanceOf(Date);
+    expect(deserialized.metadata.nested.updatedAt.toISOString()).toBe(publishedAt.toISOString());
+  });
+
   it('should round-trip DOTIFY-serialized nested object props', () => {
     const { messenger, bridge } = createBridgeWithMessenger();
     const definitions = {
@@ -107,6 +176,44 @@ describe('Props serialization behavior', () => {
       user: { id: 'u_123' },
       enabled: true,
     });
+  });
+
+  it('should round-trip DOTIFY-serialized Date values nested in objects', () => {
+    const { messenger, bridge } = createBridgeWithMessenger();
+    const publishedAt = new Date('2026-01-02T03:04:05.678Z');
+    const definitions = {
+      config: {
+        schema: prop.object(),
+        serialization: PROP_SERIALIZATION.DOTIFY,
+      },
+    };
+
+    const serialized = serializeProps(
+      {
+        config: {
+          publishedAt,
+          nested: {
+            updatedAt: publishedAt,
+          },
+        },
+      },
+      definitions,
+      bridge
+    ) as Record<string, unknown>;
+
+    const deserialized = deserializeProps(
+      serialized,
+      definitions,
+      messenger,
+      bridge,
+      window,
+      'https://consumer.example.com'
+    ) as { config: { publishedAt: Date; nested: { updatedAt: Date } } };
+
+    expect(deserialized.config.publishedAt).toBeInstanceOf(Date);
+    expect(deserialized.config.publishedAt.toISOString()).toBe(publishedAt.toISOString());
+    expect(deserialized.config.nested.updatedAt).toBeInstanceOf(Date);
+    expect(deserialized.config.nested.updatedAt.toISOString()).toBe(publishedAt.toISOString());
   });
 
   it('should round-trip DOTIFY-serialized nested empty object branches', () => {

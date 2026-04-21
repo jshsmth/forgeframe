@@ -10,6 +10,11 @@
 import type { FunctionRef } from '../types';
 import { MESSAGE_NAME } from '../constants';
 import { generateShortUID } from '../utils/uid';
+import {
+  decodeDateWireValue,
+  encodeDateWireValue,
+  isDateWireValue,
+} from '../utils/wire-value';
 import type { Messenger } from './messenger';
 
 /**
@@ -289,6 +294,10 @@ export function serializeFunctions(
     return bridge.serialize(obj as CallableFunction);
   }
 
+  if (obj instanceof Date) {
+    return encodeDateWireValue(obj);
+  }
+
   if (Array.isArray(obj)) {
     if (stack.has(obj)) {
       throw new Error('Circular reference detected in props - arrays cannot contain circular references');
@@ -342,6 +351,10 @@ export function deserializeFunctions(
 ): unknown {
   if (FunctionBridge.isFunctionRef(obj)) {
     return bridge.deserialize(obj, targetWin, targetDomain);
+  }
+
+  if (isDateWireValue(obj)) {
+    return decodeDateWireValue(obj);
   }
 
   if (Array.isArray(obj)) {

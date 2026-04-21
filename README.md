@@ -311,9 +311,11 @@ const MyComponent = ForgeFrame.create({
   props: {
     name: prop.string(),
     count: prop.number(),
+    createdAt: prop.date(),
     enabled: prop.boolean(),
     config: prop.object(),
     items: prop.array(),
+    position: prop.tuple(prop.number(), prop.number()),
     onSubmit: prop.function<(data: FormData) => void>(),
     nickname: prop.string().optional(),
     theme: prop.string().default('light'),
@@ -324,6 +326,8 @@ const MyComponent = ForgeFrame.create({
     status: prop.enum(['pending', 'active', 'completed']),
     tags: prop.array().of(prop.string()),
     scores: prop.array().of(prop.number().min(0).max(100)),
+    metadata: prop.record(prop.string()),
+    themeId: prop.union(prop.string(), prop.number()),
     user: prop.object().shape({
       name: prop.string(),
       email: prop.string().email(),
@@ -339,6 +343,8 @@ const MyComponent = ForgeFrame.create({
 | Prop | Description |
 |------|-------------|
 | `name`, `count`, `enabled`, `config`, `items` | Basic types: string, number, boolean, object, array |
+| `createdAt` | `prop.date()` validates real `Date` instances |
+| `position` | `prop.tuple(...)` validates fixed positional arrays |
 | `onSubmit` | Functions are automatically serialized for cross-domain calls |
 | `nickname` | `.optional()` makes the prop accept `undefined` |
 | `theme` | `.default('light')` provides a fallback value |
@@ -349,6 +355,8 @@ const MyComponent = ForgeFrame.create({
 | `status` | `prop.enum([...])` restricts to specific values |
 | `tags` | `.of(prop.string())` validates each array item |
 | `scores` | Array items can have their own validation chain |
+| `metadata` | `prop.record(...)` validates dictionary values by key |
+| `themeId` | `prop.union(...)` preserves type-safe multi-type props |
 | `user` | `.shape({...})` defines nested object structure |
 
 </details>
@@ -369,12 +377,16 @@ All schemas support these base methods:
 |------|---------|---------|
 | String | `prop.string()` | `.min()`, `.max()`, `.length()`, `.email()`, `.url()`, `.uuid()`, `.pattern()`, `.trim()`, `.nonempty()` |
 | Number | `prop.number()` | `.min()`, `.max()`, `.int()`, `.positive()`, `.negative()`, `.nonnegative()` |
+| Date | `prop.date()` | `.min()`, `.max()` |
 | Boolean | `prop.boolean()` | - |
 | Function | `prop.function<T>()` | - |
 | Array | `prop.array()` | `.of(schema)`, `.min()`, `.max()`, `.nonempty()` |
+| Tuple | `prop.tuple(...schemas)` | - |
 | Object | `prop.object()` | `.shape({...})`, `.strict()` |
+| Record | `prop.record(schema)` | - |
 | Enum | `prop.enum([...])` | - |
 | Literal | `prop.literal(value)` | - |
+| Union | `prop.union(...schemas)` | - |
 | Any | `prop.any()` | - |
 
 ### Using Standard Schema Libraries
