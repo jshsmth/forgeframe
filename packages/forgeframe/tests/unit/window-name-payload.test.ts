@@ -12,8 +12,15 @@ import {
   createWindowPayload,
   updateWindowName,
   getInitialPayload,
+  consumeInitialPayload,
 } from '@/window/name-payload';
-import { WINDOW_NAME_PREFIX, VERSION, CONTEXT, MESSAGE_NAME } from '@/constants';
+import {
+  WINDOW_NAME_PREFIX,
+  VERSION,
+  PROTOCOL_VERSION,
+  CONTEXT,
+  MESSAGE_NAME,
+} from '@/constants';
 import type { ConsumerExports, WindowNamePayload } from '@/types';
 
 const VALID_EXPORTS: ConsumerExports = {
@@ -230,11 +237,31 @@ describe('parseWindowName', () => {
     expect(parseWindowName(malformedName)).toBeNull();
   });
 
-  it('should return null for payloads with an unsupported version', () => {
-    const malformedPayload = {
+  it('should parse payloads from a different package version when the protocol is supported', () => {
+    const compatiblePayload = {
       uid: 'test-uid',
       tag: 'test-component',
       version: '999.0.0',
+      protocolVersion: PROTOCOL_VERSION,
+      context: CONTEXT.IFRAME,
+      consumerDomain: 'https://consumer.com',
+      props: {},
+      exports: VALID_EXPORTS,
+    };
+
+    const compatibleName = `${WINDOW_NAME_PREFIX}${btoa(
+      encodeURIComponent(JSON.stringify(compatiblePayload))
+    )}`;
+
+    expect(parseWindowName(compatibleName)).toEqual(compatiblePayload);
+  });
+
+  it('should return null for payloads with an unsupported protocol version', () => {
+    const malformedPayload = {
+      uid: 'test-uid',
+      tag: 'test-component',
+      version: VERSION,
+      protocolVersion: PROTOCOL_VERSION + 1,
       context: CONTEXT.IFRAME,
       consumerDomain: 'https://consumer.com',
       props: {},
@@ -246,6 +273,24 @@ describe('parseWindowName', () => {
     )}`;
 
     expect(parseWindowName(malformedName)).toBeNull();
+  });
+
+  it('should parse legacy payloads without an explicit protocol version', () => {
+    const legacyPayload = {
+      uid: 'test-uid',
+      tag: 'test-component',
+      version: VERSION,
+      context: CONTEXT.IFRAME,
+      consumerDomain: 'https://consumer.com',
+      props: {},
+      exports: VALID_EXPORTS,
+    };
+
+    const legacyName = `${WINDOW_NAME_PREFIX}${btoa(
+      encodeURIComponent(JSON.stringify(legacyPayload))
+    )}`;
+
+    expect(parseWindowName(legacyName)).toEqual(legacyPayload);
   });
 
   it('should return null for payloads with invalid exports metadata', () => {
@@ -602,7 +647,7 @@ describe('isHostOfComponent', () => {
 });
 
 describe('createWindowPayload', () => {
-  it('should create payload with version', () => {
+  it('should create payload with package and protocol versions', () => {
     const payload = createWindowPayload<{ data: string }>({
       uid: 'test-uid',
       tag: 'test-tag',
@@ -613,6 +658,7 @@ describe('createWindowPayload', () => {
     });
 
     expect(payload.version).toBe(VERSION);
+    expect(payload.protocolVersion).toBe(PROTOCOL_VERSION);
     expect(payload.uid).toBe('test-uid');
     expect(payload.tag).toBe('test-tag');
     expect(payload.context).toBe(CONTEXT.IFRAME);
@@ -704,5 +750,60 @@ describe('getInitialPayload', () => {
   it('should return null for non-ForgeFrame window', () => {
     const win = { name: 'not-forgeframe' } as Window;
     expect(getInitialPayload(win)).toBeNull();
+  });
+});
+
+describe('consumeInitialPayload', () => {
+  it('should return payload and clear a valid ForgeFrame window name', () => {
+    const originalPayload: WindowNamePayload<{ value: number }> = {
+      uid: 'test-uid',
+      tag: 'test-tag',
+      version: VERSION,
+      protocolVersion: PROTOCOL_VERSION,
+      context: CONTEXT.IFRAME,
+      consumerDomain: 'https://consumer.com',
+      props: { value: 123 },
+      exports: VALID_EXPORTS,
+    };
+
+    const win = {
+      name: buildWindowName(originalPayload),
+    } as Window;
+
+    const payload = consumeInitialPayload<{ value: number }>(win);
+
+    expect(payload).toEqual(originalPayload);
+    expect(win.name).toBe('');
+  });
+
+  it('should leave invalid window names untouched', () => {
+    const win = { name: 'not-forgeframe' } as Window;
+
+    expect(consumeInitialPayload(win)).toBeNull();
+    expect(win.name).toBe('not-forgeframe');
+  });
+
+  it('should return payload even when clearing the window name throws', () => {
+    const originalPayload: WindowNamePayload<Record<string, never>> = {
+      uid: 'test-uid',
+      tag: 'test-tag',
+      version: VERSION,
+      protocolVersion: PROTOCOL_VERSION,
+      context: CONTEXT.IFRAME,
+      consumerDomain: 'https://consumer.com',
+      props: {},
+      exports: VALID_EXPORTS,
+    };
+    const encodedName = buildWindowName(originalPayload);
+    const win = {
+      get name() {
+        return encodedName;
+      },
+      set name(_: string) {
+        throw new Error('Cross-origin');
+      },
+    } as unknown as Window;
+
+    expect(consumeInitialPayload(win)).toEqual(originalPayload);
   });
 });

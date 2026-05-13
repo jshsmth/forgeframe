@@ -14,6 +14,7 @@ import { isStandardSchema, validateProps } from '../../props';
 import { EMPTY_PROP_DEFINITIONS } from '../../props/definitions';
 import { getDomain } from '../../window/helpers';
 import { create } from '../component';
+import { HOST_PROPS_BUILTIN_KEYS } from './builtin-keys';
 import type {
   ForgeFrameComponent,
   HostComponentRef,
@@ -27,24 +28,6 @@ import type {
   HostPropsRuntimeOptions,
   WindowWithHostProps,
 } from './types';
-
-const HOST_PROPS_BUILTIN_KEYS = new Set([
-  'uid',
-  'tag',
-  'close',
-  'focus',
-  'resize',
-  'show',
-  'hide',
-  'onProps',
-  'onError',
-  'getConsumer',
-  'getConsumerDomain',
-  'export',
-  'consumer',
-  'getPeerInstances',
-  'children',
-]);
 
 function filterReservedHostPropKeys<P extends Record<string, unknown>>(props: P): P {
   const filteredProps: Record<string, unknown> = {};

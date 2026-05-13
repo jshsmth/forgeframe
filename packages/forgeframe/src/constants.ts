@@ -156,6 +156,13 @@ export const MESSAGE_NAME = {
 export type MessageName = (typeof MESSAGE_NAME)[keyof typeof MESSAGE_NAME];
 
 /**
+ * Stable wire protocol version for consumer-host bootstrap payloads.
+ *
+ * @internal
+ */
+export const PROTOCOL_VERSION = 1;
+
+/**
  * Window name prefix for identifying ForgeFrame host windows.
  *
  * @remarks

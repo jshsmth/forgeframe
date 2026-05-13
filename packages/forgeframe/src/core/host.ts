@@ -10,6 +10,7 @@
 
 import type { HostProps } from '../types';
 import { isForgeFrameWindow } from '../window/name-payload';
+import { getHost as getActiveHost } from './host/bootstrap';
 export { HostComponent } from './host/component';
 export {
   clearHostInstance,
@@ -36,7 +37,7 @@ export {
  * @public
  */
 export function isHost(): boolean {
-  return isForgeFrameWindow();
+  return getActiveHost() !== null || isForgeFrameWindow();
 }
 
 /**
@@ -61,7 +62,7 @@ export function isHost(): boolean {
  * @public
  */
 export function isEmbedded(): boolean {
-  return isForgeFrameWindow();
+  return getActiveHost() !== null || isForgeFrameWindow();
 }
 
 /**

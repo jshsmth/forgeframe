@@ -67,6 +67,9 @@ describe('Index side effects', () => {
 
     expect(host).not.toBeNull();
     expect(getHost()).toBe(host);
+    expect(window.name).toBe('');
+    expect(publicEntrypoint.isHost()).toBe(true);
+    expect(publicEntrypoint.isEmbedded()).toBe(true);
     expect(publicEntrypoint.getHostProps()).toBe(host?.hostProps);
     expect((window as unknown as { hostProps?: unknown }).hostProps).toBe(host?.hostProps);
   });

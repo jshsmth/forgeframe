@@ -18,7 +18,9 @@
     "test": "npm run test -w forgeframe",
     "test:run": "npm run test:run -w forgeframe",
     "test:coverage": "npm run test:coverage -w forgeframe",
-    "release": "npm run build -w forgeframe && npm publish -w forgeframe",
+    "release:check": "npm run lint && npm run typecheck && npm run test:run && npm run test:coverage && npm run build && npm run build:playground && npm audit --omit=dev && npm pack --dry-run -w forgeframe",
+    "prepublishOnly": "npm run release:check",
+    "release": "npm run release:check && npm publish -w forgeframe",
     "release:patch": "npm version patch -w forgeframe && npm run release && git push && git push --tags",
     "release:minor": "npm version minor -w forgeframe && npm run release && git push && git push --tags",
     "release:major": "npm version major -w forgeframe && npm run release && git push && git push --tags"

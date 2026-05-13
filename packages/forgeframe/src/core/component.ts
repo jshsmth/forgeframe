@@ -24,7 +24,8 @@ import {
   removeIndexedComponentInstance,
   type IndexedComponentInstance,
 } from './component-instance-index';
-import { initHost } from './host';
+import { getHost, initHost } from './host';
+import { HOST_PROPS_BUILTIN_KEYS } from './host/builtin-keys';
 import { isHostOfComponent } from '../window/name-payload';
 import { hasBrowserWindow } from '../utils/browser';
 
@@ -72,6 +73,16 @@ function validateComponentOptions<P>(options: ComponentOptions<P>): void {
 
   if (!options.url) {
     throw new Error('Component url is required');
+  }
+
+  if (options.props) {
+    for (const key of Object.keys(options.props)) {
+      if (HOST_PROPS_BUILTIN_KEYS.has(key)) {
+        throw new Error(
+          `Prop "${key}" is reserved by hostProps built-ins and cannot be defined as a custom prop`
+        );
+      }
+    }
   }
 
   // Validate URL format if it's a string (can't validate function URLs at definition time)
@@ -139,6 +150,13 @@ export function create<P extends Record<string, unknown> = Record<string, unknow
 
   const syncHostProps = (): HostProps<P> | undefined => {
     if (componentHostProps) {
+      return componentHostProps;
+    }
+
+    const activeHost = getHost<P>();
+    if (activeHost?.hostProps.tag === options.tag) {
+      const configuredHost = initHost<P>(options.props, options.allowedConsumerDomains);
+      componentHostProps = configuredHost?.hostProps;
       return componentHostProps;
     }
 

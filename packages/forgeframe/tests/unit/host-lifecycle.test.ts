@@ -6,12 +6,20 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { MessageHandler } from '@/communication/messenger';
 import { ConsumerComponent } from '@/core/consumer';
-import { HostComponent, clearHostInstance, initHost } from '@/core/host';
+import {
+  HostComponent,
+  clearHostInstance,
+  getHostProps,
+  initHost,
+  isEmbedded,
+  isHost,
+} from '@/core/host';
 import * as hostSecurity from '@/core/host/security';
 import { CONTEXT, EVENT, MESSAGE_NAME, VERSION } from '@/constants';
 import { prop } from '@/props/prop';
 import type { ConsumerExports, WindowNamePayload } from '@/types';
 import * as helpers from '@/window/helpers';
+import { buildWindowName } from '@/window/name-payload';
 
 const VALID_EXPORTS: ConsumerExports = {
   init: MESSAGE_NAME.INIT,
@@ -215,6 +223,49 @@ describe('Host lifecycle behavior', () => {
     expect(host).not.toBeNull();
     expect(host!.hostProps.label).toBe('visible');
     expect(host!.hostProps.secret).toBeUndefined();
+  });
+
+  it('should clear the bootstrap window name after host initialization', async () => {
+    const payload = createPayload({
+      props: { amount: 42 },
+    });
+    window.name = buildWindowName(payload);
+
+    vi
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
+      .mockReturnValue(window);
+
+    const host = initHost(undefined, undefined, { deferInit: true });
+    const sendSpy = vi
+      .spyOn(
+        (host as unknown as { messenger: { send: (...args: unknown[]) => Promise<unknown> } }).messenger,
+        'send'
+      )
+      .mockResolvedValue(undefined);
+
+    expect(host).not.toBeNull();
+    expect(window.name).toBe('');
+    expect(isHost()).toBe(true);
+    expect(isEmbedded()).toBe(true);
+    expect(getHostProps()).toBe(host?.hostProps);
+    expect(host?.hostProps.amount).toBe(42);
+
+    await Promise.resolve();
+    expect(sendSpy).toHaveBeenCalled();
+  });
+
+  it('should not create a host instance for invalid bootstrap payloads', () => {
+    const invalidName = '__forgeframe__not-valid-base64';
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    window.name = invalidName;
+
+    expect(initHost(undefined, undefined, { deferInit: true })).toBeNull();
+    expect(isHost()).toBe(true);
+    expect(getHostProps()).toBeUndefined();
+    expect(window.name).toBe(invalidName);
+    expect(errorSpy).toHaveBeenCalledWith(
+      'Failed to parse ForgeFrame payload from window.name'
+    );
   });
 
   it('should allow required sameDomain props to arrive after bootstrap on same-origin hosts', () => {

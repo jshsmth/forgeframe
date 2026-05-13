@@ -7,22 +7,26 @@ const forgeframePackageJson = JSON.parse(
   readFileSync(resolve(__dirname, '../forgeframe/package.json'), 'utf8')
 ) as { version: string };
 
-export default defineConfig(({ command }) => ({
-  plugins: command === 'serve' ? [mkcert()] : [],
-  root: resolve(__dirname, 'host'),
-  define: {
-    __FORGEFRAME_VERSION__: JSON.stringify(forgeframePackageJson.version),
-  },
-  resolve: {
-    alias: {
-      forgeframe: resolve(__dirname, '../forgeframe/src/index.ts'),
+export default defineConfig(({ command }) => {
+  const shouldUseMkcert = command === 'serve' && process.env.FORGEFRAME_SKIP_MKCERT !== '1';
+
+  return {
+    plugins: shouldUseMkcert ? [mkcert()] : [],
+    root: resolve(__dirname, 'host'),
+    define: {
+      __FORGEFRAME_VERSION__: JSON.stringify(forgeframePackageJson.version),
     },
-  },
-  server: {
-    port: 5174,
-  },
-  build: {
-    outDir: resolve(__dirname, 'dist/host'),
-    emptyOutDir: true,
-  },
-}));
+    resolve: {
+      alias: {
+        forgeframe: resolve(__dirname, '../forgeframe/src/index.ts'),
+      },
+    },
+    server: {
+      port: 5174,
+    },
+    build: {
+      outDir: resolve(__dirname, 'dist/host'),
+      emptyOutDir: true,
+    },
+  };
+});

@@ -78,7 +78,6 @@ export function buildPropsSchema(config: PlaygroundConfig) {
   // Always add callback props (optional functions)
   schema.onGreet = prop.function().optional();
   schema.onClose = prop.function().optional();
-  schema.onError = prop.function().optional();
 
   return schema;
 }
