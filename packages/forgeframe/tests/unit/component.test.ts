@@ -16,9 +16,30 @@ import {
 } from '@/core/component';
 import { buildNestedHostRefs } from '@/core/consumer/child-refs';
 import { getSiblingInstances } from '@/core/consumer/siblings';
-import { isHost, getHostProps } from '@/core/host';
-import { CONTEXT } from '@/constants';
+import {
+  clearHostInstance,
+  getHostProps,
+  initHost,
+  isHost,
+} from '@/core/host';
+import * as hostSecurity from '@/core/host/security';
+import { CONTEXT, MESSAGE_NAME, VERSION } from '@/constants';
 import { prop } from '@/props/prop';
+import type { ConsumerExports } from '@/types';
+import { buildWindowName } from '@/window/name-payload';
+
+const VALID_EXPORTS: ConsumerExports = {
+  init: MESSAGE_NAME.INIT,
+  close: MESSAGE_NAME.CLOSE,
+  resize: MESSAGE_NAME.RESIZE,
+  show: MESSAGE_NAME.SHOW,
+  hide: MESSAGE_NAME.HIDE,
+  onError: MESSAGE_NAME.ERROR,
+  updateProps: MESSAGE_NAME.PROPS,
+  export: MESSAGE_NAME.EXPORT,
+};
+
+const originalWindowName = window.name;
 
 type ConsumerInternals = {
   renderer: {
@@ -154,6 +175,44 @@ describe('Component Creation', () => {
         url: '',
       })
     ).toThrow('Component url is required');
+  });
+
+  it('should reject custom props that collide with hostProps built-ins', () => {
+    expect(() =>
+      create({
+        tag: 'reserved-close-prop',
+        url: 'https://example.com',
+        props: {
+          close: prop.function(),
+        },
+      })
+    ).toThrow(
+      'Prop "close" is reserved by hostProps built-ins and cannot be defined as a custom prop'
+    );
+
+    expect(() =>
+      create({
+        tag: 'reserved-children-prop',
+        url: 'https://example.com',
+        props: {
+          children: prop.object(),
+        },
+      })
+    ).toThrow(
+      'Prop "children" is reserved by hostProps built-ins and cannot be defined as a custom prop'
+    );
+  });
+
+  it('should still allow built-in lifecycle callback values without custom definitions', () => {
+    const onClose = vi.fn();
+    const MyComponent = create({
+      tag: 'lifecycle-callback-values',
+      url: 'https://example.com/component',
+    });
+
+    const instance = MyComponent({ onClose });
+
+    expect(getConsumerInternals(instance).propsPipeline.props.onClose).toBe(onClose);
   });
 
   it('should throw error for duplicate tag', () => {
@@ -952,7 +1011,11 @@ describe('Component Destruction', () => {
 
 describe('Host Context Detection', () => {
   afterEach(() => {
+    clearHostInstance();
     clearComponents();
+    vi.restoreAllMocks();
+    delete (window as unknown as { hostProps?: unknown }).hostProps;
+    window.name = originalWindowName;
   });
 
   describe('isHost', () => {
@@ -1006,6 +1069,45 @@ describe('Host Context Detection', () => {
       });
 
       expect(MyComponent.isHost()).toBe(false);
+    });
+
+    it('should resolve host state after explicit initHost consumes window name', () => {
+      const props = {
+        label: prop.string(),
+      };
+      window.name = buildWindowName({
+        uid: 'post-init-component-uid',
+        tag: 'post-init-component',
+        version: VERSION,
+        context: CONTEXT.IFRAME,
+        consumerDomain: 'https://consumer.example.com',
+        props: { label: 'ready' },
+        exports: VALID_EXPORTS,
+      });
+
+      vi
+        .spyOn(hostSecurity, 'resolveConsumerWindow')
+        .mockReturnValue(window);
+
+      const host = initHost<{ label: string }>(props, undefined, { deferInit: true });
+      expect(window.name).toBe('');
+
+      vi
+        .spyOn(
+          (host as unknown as { messenger: { send: (...args: unknown[]) => Promise<unknown> } }).messenger,
+          'send'
+        )
+        .mockResolvedValue(undefined);
+
+      const MyComponent = create<{ label: string }>({
+        tag: 'post-init-component',
+        url: 'https://example.com',
+        props,
+      });
+
+      expect(MyComponent.isHost()).toBe(true);
+      expect(MyComponent.hostProps).toBe(host?.hostProps);
+      expect(MyComponent.hostProps?.label).toBe('ready');
     });
   });
 

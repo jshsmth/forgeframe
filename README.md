@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/forgeframe.svg)](https://www.npmjs.com/package/forgeframe)
 [![GitHub Release](https://img.shields.io/github/v/release/jshsmth/ForgeFrame)](https://github.com/jshsmth/ForgeFrame/releases)
 
-A TypeScript-first framework for embedding cross-domain iframes and popups with seamless communication. Pass data and callbacks across domains for payment forms, auth widgets, third-party integrations, and micro-frontends. Zero runtime dependencies with ESM and UMD builds.
+A TypeScript-first framework for embedding cross-domain iframes and popups with seamless communication. Pass data and callbacks across domains for payment forms, auth widgets, third-party integrations, and micro-frontends. Zero runtime dependencies with an ESM build.
 
 ### Terminology
 
@@ -123,12 +123,19 @@ await payment.render('#payment-container');
 > **`Host`**
 
 ```typescript
-import { initHost, type HostProps } from 'forgeframe';
+import { initHost, prop, type HostProps } from 'forgeframe';
 
 interface PaymentProps {
   amount: number;
   onSuccess: (txn: { transactionId: string }) => void;
 }
+
+const paymentProps = {
+  amount: prop.number(),
+  onSuccess: prop.function<(txn: { transactionId: string }) => void>(),
+};
+
+const allowedConsumerDomains = ['https://shop.example.com'];
 
 declare global {
   interface Window {
@@ -136,7 +143,7 @@ declare global {
   }
 }
 
-initHost();
+initHost(paymentProps, allowedConsumerDomains);
 const { amount, onSuccess, close } = window.hostProps;
 
 document.getElementById('total')!.textContent = `$${amount}`;
@@ -147,7 +154,8 @@ document.getElementById('pay-btn')!.onclick = async () => {
 ```
 
 That's it! ForgeFrame handles all the cross-domain communication automatically.
-Before reading `window.hostProps` directly, call `initHost()` as shown in [Host Init with initHost](#host-init-with-inithost).
+Before reading `window.hostProps` directly, call `initHost(propDefinitions, allowedConsumerDomains)` as shown in [Host Init with initHost](#host-init-with-inithost).
+For intentionally open widgets, omit `allowedConsumerDomains`; for payment, auth, or account flows, use an allowlist.
 
 ---
 
@@ -197,7 +205,7 @@ const LoginForm = ForgeFrame.create<LoginProps>({
 The host page runs inside the iframe at the URL you specified. It receives props via `window.hostProps`.
 
 ```typescript
-import { initHost, type HostProps } from 'forgeframe';
+import { initHost, prop, type HostProps } from 'forgeframe';
 
 interface LoginProps {
   email?: string;
@@ -205,13 +213,21 @@ interface LoginProps {
   onCancel?: () => void;
 }
 
+const loginProps = {
+  email: prop.string().optional(),
+  onLogin: prop.function<(user: { id: number; name: string }) => void>(),
+  onCancel: prop.function().optional(),
+};
+
+const allowedConsumerDomains = ['https://app.example.com'];
+
 declare global {
   interface Window {
     hostProps: HostProps<LoginProps>;
   }
 }
 
-initHost();
+initHost(loginProps, allowedConsumerDomains);
 const { email, onLogin, onCancel, close } = window.hostProps;
 
 if (email) document.getElementById('email')!.value = email;
@@ -235,7 +251,7 @@ document.getElementById('cancel')!.onclick = async () => {
 <summary>Explanation</summary>
 
 - **`HostProps<LoginProps>`**: Combines your props with built-in methods (`close`, `resize`, etc.)
-- **Host init**: Call `initHost()` before the first direct `window.hostProps` read. If your host defines a component with `ForgeFrame.create(...)`, that component path still initializes the host runtime automatically.
+- **Host init**: Call `initHost(propDefinitions, allowedConsumerDomains)` before the first direct `window.hostProps` read. Use `allowedConsumerDomains` for security-sensitive embeds; omit it only for intentionally open widgets. If your host defines a component with `ForgeFrame.create(...)`, that component path still initializes the host runtime automatically.
 - **`window.hostProps`**: Contains all props passed from the consumer plus built-in methods
 - **`close()`**: Built-in method to close the iframe/popup
 
@@ -532,16 +548,19 @@ const { email, onLogin, close, resize } = window.hostProps!;
 
 ### Host Init with initHost
 
-`initHost()` is required when your host bundle reads `window.hostProps` directly.
+`initHost(propDefinitions?, allowedConsumerDomains?)` is required when your host bundle reads `window.hostProps` directly.
+It consumes the initial ForgeFrame `window.name` payload, clears that payload after a successful parse, validates props when definitions are provided, and attaches `window.hostProps`.
 
 Supported host boot patterns:
-- Call `initHost()` during host startup, then read `window.hostProps`.
+- Call `initHost(propDefinitions, allowedConsumerDomains)` during host startup, then read `window.hostProps`.
+- Call `initHost(propDefinitions)` or `initHost()` only for hosts that are intentionally embeddable by any consumer origin.
 - Define the host with `ForgeFrame.create(...)` and let component creation initialize the host runtime.
 
 Use `initHost()` when:
 - You read `window.hostProps` directly.
 - Your host boot flow delays the first `window.hostProps` access (for example: lazy-loaded modules, async startup, or gated initialization).
 - You want deterministic init timing in tests or instrumentation.
+- You need the host side to enforce which consumer domains may embed or message it.
 
 ### Available Methods
 
@@ -800,10 +819,20 @@ const AutoResizeComponent = ForgeFrame.create({
 Restrict which domains can embed or communicate.
 String domain patterns support `*` wildcards (for example, `'https://*.myapp.com'`), and arrays can mix strings and `RegExp`.
 
+- `domain` is consumer-side trust: it restricts which host origins the consumer will message.
+- `allowedConsumerDomains` is host-side trust: it restricts which consumer origins may embed and initialize the host.
+- Use both for payment, auth, account, or other sensitive workflows.
+
 ```typescript
+const secureProps = {
+  accountId: prop.string(),
+  onComplete: prop.function<(result: { ok: true }) => void>(),
+};
+
 const SecureComponent = ForgeFrame.create({
   tag: 'secure',
   url: 'https://secure.stripe.com/widget',
+  props: secureProps,
   domain: 'https://secure.stripe.com',
   allowedConsumerDomains: [
     'https://myapp.com',
@@ -811,6 +840,16 @@ const SecureComponent = ForgeFrame.create({
     /^https:\/\/.*\.trusted\.com$/,
   ],
 });
+```
+
+On the host page, pass the same host prop definitions and the consumer allowlist into `initHost`:
+
+```typescript
+initHost(secureProps, [
+  'https://myapp.com',
+  'https://*.myapp.com',
+  /^https:\/\/.*\.trusted\.com$/,
+]);
 ```
 
 ### Eligibility Checks
@@ -871,7 +910,7 @@ ForgeFrame.destroyByTag(tag)      // Destroy all instances of a tag
 ForgeFrame.destroyAll()           // Destroy all instances
 ForgeFrame.isHost()               // Check if in host context
 ForgeFrame.isEmbedded()           // Alias for isHost() - more intuitive naming
-ForgeFrame.initHost()             // Required before direct window.hostProps access
+ForgeFrame.initHost(props?, allowedConsumers?) // Required before direct window.hostProps access
 ForgeFrame.getHostProps()         // Get hostProps in host context
 ForgeFrame.isStandardSchema(val)  // Check if value is a Standard Schema
 
@@ -895,8 +934,8 @@ interface ComponentOptions<P> {
   defaultContext?: 'iframe' | 'popup';
   containerTemplate?: (ctx: TemplateContext<P>) => HTMLElement | null;
   prerenderTemplate?: (ctx: TemplateContext<P>) => HTMLElement | null;
-  domain?: DomainMatcher;
-  allowedConsumerDomains?: DomainMatcher;
+  domain?: DomainMatcher;                 // Consumer-side trusted host origins
+  allowedConsumerDomains?: DomainMatcher; // Host-side allowed consumer origins
   eligible?: (opts: { props: P }) => { eligible: boolean; reason?: string };
   validate?: (opts: { props: P }) => void;
   attributes?: IframeAttributes | ((props: P) => IframeAttributes);
@@ -961,12 +1000,19 @@ import ForgeFrame, {
 ### Typing Host hostProps
 
 ```typescript
-import { initHost, type HostProps } from 'forgeframe';
+import { initHost, prop, type HostProps } from 'forgeframe';
 
 interface MyProps {
   name: string;
   onSubmit: (data: FormData) => void;
 }
+
+const hostProps = {
+  name: prop.string(),
+  onSubmit: prop.function<(data: FormData) => void>(),
+};
+
+const allowedConsumerDomains = ['https://app.example.com'];
 
 declare global {
   interface Window {
@@ -974,7 +1020,7 @@ declare global {
   }
 }
 
-initHost();
+initHost(hostProps, allowedConsumerDomains);
 window.hostProps!.name;
 window.hostProps!.onSubmit;
 window.hostProps!.close;

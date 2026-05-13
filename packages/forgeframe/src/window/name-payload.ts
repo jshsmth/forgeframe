@@ -1,6 +1,6 @@
 import type { WindowNamePayload, SerializedProps, ConsumerExports, HostComponentRef } from '../types';
 import type { ContextType } from '../constants';
-import { CONTEXT, WINDOW_NAME_PREFIX, VERSION } from '../constants';
+import { CONTEXT, PROTOCOL_VERSION, WINDOW_NAME_PREFIX, VERSION } from '../constants';
 
 const REQUIRED_CONSUMER_EXPORT_KEYS = [
   'init',
@@ -174,7 +174,10 @@ function isValidWindowNamePayload<P>(
     return false;
   }
 
-  if (value.version !== VERSION) {
+  if (
+    value.protocolVersion !== undefined &&
+    value.protocolVersion !== PROTOCOL_VERSION
+  ) {
     return false;
   }
 
@@ -363,6 +366,7 @@ export function createWindowPayload<P>(options: {
     uid: options.uid,
     tag: options.tag,
     version: VERSION,
+    protocolVersion: PROTOCOL_VERSION,
     context: options.context,
     consumerDomain: options.consumerDomain,
     props: options.props,
@@ -429,4 +433,34 @@ export function getInitialPayload<P>(
   win: Window = window
 ): WindowNamePayload<P> | null {
   return parseWindowName(win.name);
+}
+
+/**
+ * Reads and clears the initial ForgeFrame bootstrap payload from a window name.
+ *
+ * @typeParam P - The expected type of the props in the payload.
+ * @param win - The window to consume the payload from. Defaults to the current window.
+ * @returns The decoded WindowNamePayload, or `null` if not a valid ForgeFrame window.
+ *
+ * @remarks
+ * `window.name` persists across navigations, so host bootstrap should consume the
+ * payload once and clear it after a successful parse.
+ *
+ * @internal
+ */
+export function consumeInitialPayload<P>(
+  win: Window = window
+): WindowNamePayload<P> | null {
+  const payload = getInitialPayload<P>(win);
+  if (!payload) {
+    return null;
+  }
+
+  try {
+    win.name = '';
+  } catch {
+    // Clearing can fail for unusual window objects; payload consumption still succeeds.
+  }
+
+  return payload;
 }

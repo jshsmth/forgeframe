@@ -15,7 +15,6 @@ interface MyProps {
   count: number;
   onGreet: (message: string) => void;
   onClose: () => void;
-  onError: (error: Error) => void;
 }
 
 /**

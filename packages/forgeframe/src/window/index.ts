@@ -34,6 +34,7 @@ export {
   createWindowPayload,
   updateWindowName,
   getInitialPayload,
+  consumeInitialPayload,
 } from './name-payload';
 
 export {

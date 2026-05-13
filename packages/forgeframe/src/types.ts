@@ -1060,6 +1060,8 @@ export interface WindowNamePayload<_P = Record<string, unknown>> {
   tag: string;
   /** ForgeFrame version */
   version: string;
+  /** Stable ForgeFrame wire protocol version */
+  protocolVersion?: number;
   /** Rendering context */
   context: ContextType;
   /** Consumer window domain */

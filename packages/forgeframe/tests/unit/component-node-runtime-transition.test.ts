@@ -51,6 +51,7 @@ describe('Component host detection across runtime transitions', () => {
       isHostOfComponent: (tag: string) => hostDetected && tag === 'late-host-component',
     }));
     vi.doMock('@/core/host', () => ({
+      getHost: () => null,
       initHost,
     }));
 
@@ -108,6 +109,7 @@ describe('Component host detection across runtime transitions', () => {
       isHostOfComponent: (tag: string) => hostDetected && tag === 'sticky-host-component',
     }));
     vi.doMock('@/core/host', () => ({
+      getHost: () => null,
       initHost,
     }));
 
@@ -166,6 +168,7 @@ describe('Component host detection across runtime transitions', () => {
       isHostOfComponent: (tag: string) => hostDetected && tag === 'late-host-component',
     }));
     vi.doMock('@/core/host', () => ({
+      getHost: () => null,
       initHost,
     }));
 
