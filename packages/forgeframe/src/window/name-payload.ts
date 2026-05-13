@@ -451,16 +451,50 @@ export function getInitialPayload<P>(
 export function consumeInitialPayload<P>(
   win: Window = window
 ): WindowNamePayload<P> | null {
-  const payload = getInitialPayload<P>(win);
+  let name: string;
+  try {
+    name = win.name;
+  } catch {
+    return null;
+  }
+
+  const payload = parseWindowName<P>(name);
   if (!payload) {
     return null;
   }
 
-  try {
-    win.name = '';
-  } catch {
-    // Clearing can fail for unusual window objects; payload consumption still succeeds.
-  }
+  clearInitialPayload(win, name);
 
   return payload;
+}
+
+/**
+ * Clears the current ForgeFrame bootstrap payload from a window name.
+ *
+ * @param win - The window to clear. Defaults to the current window.
+ * @param expectedName - Optional exact window.name value that must still be present.
+ *
+ * @remarks
+ * The `expectedName` guard prevents clearing a newer or externally replaced
+ * `window.name` value after a delayed bootstrap path.
+ *
+ * @internal
+ */
+export function clearInitialPayload(
+  win: Window = window,
+  expectedName?: string
+): void {
+  try {
+    if (expectedName !== undefined) {
+      if (win.name !== expectedName) {
+        return;
+      }
+    } else if (!getInitialPayload(win)) {
+      return;
+    }
+
+    win.name = '';
+  } catch {
+    // Clearing can fail for unusual window objects; host initialization can still succeed.
+  }
 }

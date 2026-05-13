@@ -9,7 +9,8 @@
 
 import type { DomainMatcher, HostProps, PropsDefinition } from '../../types';
 import {
-  consumeInitialPayload,
+  clearInitialPayload,
+  getInitialPayload,
   isForgeFrameWindow,
 } from '../../window/name-payload';
 import { HostComponent } from './component';
@@ -48,7 +49,8 @@ export function initHost<P extends Record<string, unknown>>(
     return null;
   }
 
-  const payload = consumeInitialPayload<P>();
+  const bootstrapWindowName = window.name;
+  const payload = getInitialPayload<P>();
   if (!payload) {
     console.error('Failed to parse ForgeFrame payload from window.name');
     return null;
@@ -61,6 +63,7 @@ export function initHost<P extends Record<string, unknown>>(
       allowedConsumerDomains,
       options.deferInit ?? false
     ) as HostComponent<Record<string, unknown>>;
+    clearInitialPayload(window, bootstrapWindowName);
   } catch (error) {
     if (
       error instanceof Error &&
