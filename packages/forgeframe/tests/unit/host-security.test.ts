@@ -281,6 +281,39 @@ describe('Host security', () => {
     );
   });
 
+  it('should clear the bootstrap window name but preserve same-page retry when allowlist validation fails', () => {
+    vi
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
+      .mockReturnValue(window);
+
+    const payload: WindowNamePayload<Record<string, unknown>> = {
+      uid: 'host-uid-allowlist-retry',
+      tag: 'secure-component-allowlist-retry',
+      version: VERSION,
+      context: CONTEXT.IFRAME,
+      consumerDomain: 'https://evil.example.com',
+      props: {},
+      exports: VALID_EXPORTS,
+    };
+    const bootstrapWindowName = buildWindowName(payload);
+
+    window.name = bootstrapWindowName;
+    setDocumentReferrer('https://evil.example.com/checkout');
+
+    expect(() => initHost({}, 'https://trusted.example.com')).toThrow(
+      'is not allowed'
+    );
+
+    expect(window.name).toBe('');
+    expect((window as unknown as { hostProps?: unknown }).hostProps).toBeUndefined();
+
+    const host = initHost({}, 'https://evil.example.com', { deferInit: true });
+
+    expect(host).not.toBeNull();
+    expect(host?.hostProps.getConsumerDomain()).toBe('https://evil.example.com');
+    expect(window.name).toBe('');
+  });
+
   it('should allow wildcard consumer domains during host initialization and bind the verified origin', () => {
     vi
       .spyOn(hostSecurity, 'resolveConsumerWindow')

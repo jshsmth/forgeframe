@@ -7,7 +7,12 @@
  * init flushing decisions, and cleanup for `initHost()`/`clearHostInstance()`.
  */
 
-import type { DomainMatcher, HostProps, PropsDefinition } from '../../types';
+import type {
+  DomainMatcher,
+  HostProps,
+  PropsDefinition,
+  WindowNamePayload,
+} from '../../types';
 import {
   consumeInitialPayload,
   isForgeFrameWindow,
@@ -16,6 +21,22 @@ import { HostComponent } from './component';
 import { CONSUMER_WINDOW_RESOLUTION_ERROR } from './security';
 
 let hostInstance: HostComponent<Record<string, unknown>> | null = null;
+let pendingInitialPayload: WindowNamePayload<Record<string, unknown>> | null = null;
+
+function readInitialPayload<P>(): WindowNamePayload<P> | null {
+  if (isForgeFrameWindow()) {
+    const payload = consumeInitialPayload<P>();
+    if (!payload) {
+      console.error('Failed to parse ForgeFrame payload from window.name');
+      return null;
+    }
+
+    pendingInitialPayload = payload as WindowNamePayload<Record<string, unknown>>;
+    return payload;
+  }
+
+  return pendingInitialPayload as WindowNamePayload<P> | null;
+}
 
 export function initHost<P extends Record<string, unknown>>(
   propDefinitions?: PropsDefinition<P>,
@@ -44,23 +65,20 @@ export function initHost<P extends Record<string, unknown>>(
     return hostInstance as HostComponent<P>;
   }
 
-  if (!isForgeFrameWindow()) {
-    return null;
-  }
-
-  const payload = consumeInitialPayload<P>();
+  const payload = readInitialPayload<P>();
   if (!payload) {
-    console.error('Failed to parse ForgeFrame payload from window.name');
     return null;
   }
 
   try {
-    hostInstance = new HostComponent(
+    const nextHostInstance = new HostComponent(
       payload,
       propDefinitions,
       allowedConsumerDomains,
       options.deferInit ?? false
     ) as HostComponent<Record<string, unknown>>;
+    hostInstance = nextHostInstance;
+    pendingInitialPayload = null;
   } catch (error) {
     if (
       error instanceof Error &&
@@ -80,6 +98,8 @@ export function getHost<P extends Record<string, unknown>>(): HostComponent<P> |
 }
 
 export function clearHostInstance(): void {
+  pendingInitialPayload = null;
+
   if (hostInstance) {
     hostInstance.destroy();
     hostInstance = null;

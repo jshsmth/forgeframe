@@ -254,6 +254,43 @@ describe('Host lifecycle behavior', () => {
     expect(sendSpy).toHaveBeenCalled();
   });
 
+  it('should clear the bootstrap window name but preserve same-page retry when host prop validation fails', () => {
+    const payload = createPayload({
+      props: { amount: 'not-a-number' },
+    });
+    const bootstrapWindowName = buildWindowName(payload);
+    window.name = bootstrapWindowName;
+
+    vi
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
+      .mockReturnValue(window);
+
+    expect(() =>
+      initHost(
+        {
+          amount: { schema: prop.number() },
+        },
+        undefined,
+        { deferInit: true }
+      )
+    ).toThrow('Validation failed: amount: Expected number, got string');
+
+    expect(window.name).toBe('');
+    expect(getHostProps()).toBeUndefined();
+
+    const host = initHost(
+      {
+        amount: { schema: prop.string() },
+      },
+      undefined,
+      { deferInit: true }
+    );
+
+    expect(host).not.toBeNull();
+    expect(host?.hostProps.amount).toBe('not-a-number');
+    expect(window.name).toBe('');
+  });
+
   it('should not create a host instance for invalid bootstrap payloads', () => {
     const invalidName = '__forgeframe__not-valid-base64';
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
