@@ -281,7 +281,7 @@ describe('Host security', () => {
     );
   });
 
-  it('should preserve the bootstrap window name when allowlist validation fails', () => {
+  it('should clear the bootstrap window name but preserve same-page retry when allowlist validation fails', () => {
     vi
       .spyOn(hostSecurity, 'resolveConsumerWindow')
       .mockReturnValue(window);
@@ -304,7 +304,7 @@ describe('Host security', () => {
       'is not allowed'
     );
 
-    expect(window.name).toBe(bootstrapWindowName);
+    expect(window.name).toBe('');
     expect((window as unknown as { hostProps?: unknown }).hostProps).toBeUndefined();
 
     const host = initHost({}, 'https://evil.example.com', { deferInit: true });

@@ -254,7 +254,7 @@ describe('Host lifecycle behavior', () => {
     expect(sendSpy).toHaveBeenCalled();
   });
 
-  it('should preserve the bootstrap window name when host prop validation fails', () => {
+  it('should clear the bootstrap window name but preserve same-page retry when host prop validation fails', () => {
     const payload = createPayload({
       props: { amount: 'not-a-number' },
     });
@@ -275,7 +275,7 @@ describe('Host lifecycle behavior', () => {
       )
     ).toThrow('Validation failed: amount: Expected number, got string');
 
-    expect(window.name).toBe(bootstrapWindowName);
+    expect(window.name).toBe('');
     expect(getHostProps()).toBeUndefined();
 
     const host = initHost(
