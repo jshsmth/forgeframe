@@ -7,15 +7,9 @@ A TypeScript-first framework for embedding cross-domain iframes and popups with 
 
 ## Used By
 
-<table cellpadding="16">
-  <tr>
-    <td align="center" bgcolor="#050505">
-      <a href="https://www.tyrohealth.com/">
-        <img src="https://www.tyrohealth.com/wp-content/themes/tyro/assets/img/tyro-health-logo.png" alt="Tyro Health" width="180">
-      </a>
-    </td>
-  </tr>
-</table>
+<a href="https://www.tyrohealth.com/">
+  <img src="https://raw.githubusercontent.com/jshsmth/forgeframe/main/docs/assets/tyro-health-used-by.png" alt="Tyro Health" width="220">
+</a>
 
 ### Terminology
 
