@@ -13,7 +13,7 @@ import type {
   ForgeFrameComponent,
   ForgeFrameComponentInstance,
   HostProps,
-} from '../types';
+} from '../types/runtime';
 import { ConsumerComponent } from './consumer';
 import {
   clearIndexedInstances,

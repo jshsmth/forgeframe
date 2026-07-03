@@ -7,7 +7,7 @@
  * by converting them to references that can be called via postMessage.
  */
 
-import type { FunctionRef } from '../types';
+import type { FunctionRef } from './types';
 import { MESSAGE_NAME } from '../constants';
 import { generateShortUID } from '../utils/uid';
 import {

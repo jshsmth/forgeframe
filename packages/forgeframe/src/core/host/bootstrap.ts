@@ -7,12 +7,10 @@
  * init flushing decisions, and cleanup for `initHost()`/`clearHostInstance()`.
  */
 
-import type {
-  DomainMatcher,
-  HostProps,
-  PropsDefinition,
-  WindowNamePayload,
-} from '../../types';
+import type { HostProps } from '../../types/runtime';
+import type { PropsDefinition } from '../../types/props';
+import type { DomainMatcher } from '../../types/utility';
+import type { WindowNamePayload } from '../../window/types';
 import {
   consumeInitialPayload,
   isForgeFrameWindow,

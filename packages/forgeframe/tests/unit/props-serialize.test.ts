@@ -9,7 +9,7 @@ import { PROP_SERIALIZATION } from '@/constants';
 import { prop } from '@/props/prop';
 import { serializeProps, deserializeProps } from '@/props/serialize';
 import type { Messenger } from '@/communication/messenger';
-import type { SerializedProps } from '@/types';
+import type { SerializedProps } from '@/props/types';
 
 type GenericHandler = (...args: unknown[]) => unknown;
 

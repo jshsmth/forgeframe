@@ -7,7 +7,8 @@
  * between consumer and host windows across domain boundaries.
  */
 
-import type { PropDefinition, PropsDefinition, SerializedProps } from '../types';
+import type { SerializedProps } from './types';
+import type { PropDefinition, PropsDefinition } from '../types/props';
 import { PROP_SERIALIZATION } from '../constants';
 import {
   FunctionBridge,

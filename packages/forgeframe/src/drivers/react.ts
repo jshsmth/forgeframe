@@ -1,4 +1,4 @@
-import type { ForgeFrameComponent, ForgeFrameComponentInstance } from '../types';
+import type { ForgeFrameComponent, ForgeFrameComponentInstance } from '../types/runtime';
 import type { ContextType } from '../constants';
 
 /**

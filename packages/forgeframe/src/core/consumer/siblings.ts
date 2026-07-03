@@ -7,7 +7,7 @@
  * sibling consumer instances without keeping that logic inside the façade.
  */
 
-import type { GetPeerInstancesOptions, SiblingInfo } from '../../types';
+import type { GetPeerInstancesOptions, SiblingInfo } from '../../types/runtime';
 import {
   getComponentInstancesByTag,
   getIndexedComponentInstances,

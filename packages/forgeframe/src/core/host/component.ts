@@ -9,12 +9,10 @@
  */
 
 import { EventEmitter } from '../../events/emitter';
-import type {
-  DomainMatcher,
-  HostProps,
-  PropsDefinition,
-  WindowNamePayload,
-} from '../../types';
+import type { HostProps } from '../../types/runtime';
+import type { PropsDefinition } from '../../types/props';
+import type { DomainMatcher } from '../../types/utility';
+import type { WindowNamePayload } from '../../window/types';
 import { EMPTY_PROP_DEFINITIONS } from '../../props/definitions';
 import { HostPropsRuntime } from './props-runtime';
 import {

@@ -11,11 +11,11 @@
 import type {
   ComponentOptions,
   ForgeFrameComponentInstance,
-  Dimensions,
-  PropsDefinition,
-  ConsumerExports,
-} from '../types';
+} from '../types/runtime';
+import type { ConsumerExports } from '../communication/types';
 import type { ContextType } from '../constants';
+import type { PropsDefinition } from '../types/props';
+import type { Dimensions } from '../types/utility';
 import { CONTEXT, EVENT, MESSAGE_NAME } from '../constants';
 import { EventEmitter } from '../events/emitter';
 import { generateUID } from '../utils/uid';

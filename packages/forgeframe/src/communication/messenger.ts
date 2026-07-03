@@ -7,7 +7,8 @@
  * replacing post-robot with a minimal implementation.
  */
 
-import type { Message, DomainMatcher } from '../types';
+import type { Message } from './types';
+import type { DomainMatcher } from '../types/utility';
 import { MESSAGE_TYPE } from '../constants';
 import { generateShortUID } from '../utils/uid';
 import { createDeferred, type Deferred } from '../utils/promise';

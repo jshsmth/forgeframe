@@ -1,4 +1,6 @@
-import type { WindowNamePayload, SerializedProps, ConsumerExports, HostComponentRef } from '../types';
+import type { ConsumerExports } from '../communication/types';
+import type { SerializedProps } from '../props/types';
+import type { HostComponentRef, WindowNamePayload } from './types';
 import type { ContextType } from '../constants';
 import { CONTEXT, PROTOCOL_VERSION, WINDOW_NAME_PREFIX, VERSION } from '../constants';
 

@@ -21,7 +21,8 @@ import {
   CONTEXT,
   MESSAGE_NAME,
 } from '@/constants';
-import type { ConsumerExports, WindowNamePayload } from '@/types';
+import type { ConsumerExports } from '@/communication/types';
+import type { WindowNamePayload } from '@/window/types';
 
 const VALID_EXPORTS: ConsumerExports = {
   init: MESSAGE_NAME.INIT,
