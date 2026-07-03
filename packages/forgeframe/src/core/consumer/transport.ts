@@ -7,15 +7,12 @@
  * handshake concerns for embedded iframe and popup instances.
  */
 
-import type {
-  ConsumerExports,
-  Dimensions,
-  DomainMatcher,
-  HostComponentRef,
-  PropsDefinition,
-  SerializedProps,
-  SiblingInfo,
-} from '../../types';
+import type { ConsumerExports } from '../../communication/types';
+import type { SerializedProps } from '../../props/types';
+import type { SiblingInfo } from '../../types/runtime';
+import type { PropsDefinition } from '../../types/props';
+import type { Dimensions, DomainMatcher } from '../../types/utility';
+import type { HostComponentRef } from '../../window/types';
 import { MESSAGE_NAME } from '../../constants';
 import { Messenger, type MessageHandler } from '../../communication/messenger';
 import { FunctionBridge } from '../../communication/bridge';

@@ -12,11 +12,11 @@ import { FunctionBridge } from '../../communication/bridge';
 import { Messenger } from '../../communication/messenger';
 import { EVENT, MESSAGE_NAME } from '../../constants';
 import { getDomain } from '../../window/helpers';
+import type { SerializedProps } from '../../props/types';
 import type {
   GetPeerInstancesOptions,
-  SerializedProps,
   SiblingInfo,
-} from '../../types';
+} from '../../types/runtime';
 import type {
   HostTransportOptions,
   HostTransportPropsHandler,

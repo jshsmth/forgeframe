@@ -1,4 +1,4 @@
-import type { WindowRef } from '../types';
+import type { WindowRef } from './types';
 import { getConsumer, getOpener, getAncestor, isWindowClosed } from './helpers';
 
 /**

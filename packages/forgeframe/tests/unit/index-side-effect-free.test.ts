@@ -7,7 +7,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CONTEXT, MESSAGE_NAME, VERSION } from '@/constants';
 import { buildWindowName } from '@/window/name-payload';
-import type { ConsumerExports, WindowNamePayload } from '@/types';
+import type { ConsumerExports } from '@/communication/types';
+import type { WindowNamePayload } from '@/window/types';
 
 const originalWindowName = window.name;
 const VALID_EXPORTS: ConsumerExports = {

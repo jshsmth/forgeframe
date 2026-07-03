@@ -1,6 +1,7 @@
 import type { ContextType } from '../../constants';
 import { CONTEXT } from '../../constants';
-import type { Dimensions, TemplateContext } from '../../types';
+import type { TemplateContext } from '../../types/templates';
+import type { Dimensions } from '../../types/utility';
 import type { NormalizedOptions } from './types';
 import {
   createIframeElement,

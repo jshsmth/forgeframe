@@ -15,15 +15,10 @@ import { EMPTY_PROP_DEFINITIONS } from '../../props/definitions';
 import { getDomain } from '../../window/helpers';
 import { create } from '../component';
 import { HOST_PROPS_BUILTIN_KEYS } from './builtin-keys';
-import type {
-  ForgeFrameComponent,
-  HostComponentRef,
-  HostProps,
-  PropDefinition,
-  PropsDefinition,
-  SerializedProps,
-  WindowNamePayload,
-} from '../../types';
+import type { SerializedProps } from '../../props/types';
+import type { ForgeFrameComponent, HostProps } from '../../types/runtime';
+import type { PropDefinition, PropsDefinition } from '../../types/props';
+import type { HostComponentRef, WindowNamePayload } from '../../window/types';
 import type {
   HostPropsRuntimeOptions,
   WindowWithHostProps,

@@ -1,4 +1,4 @@
-import type { Dimensions, IframeAttributes, IframeStyles } from '../types';
+import type { Dimensions, IframeAttributes, IframeStyles } from '../types/utility';
 import { normalizeDimensionToCSS } from '../utils/dimension';
 
 /**

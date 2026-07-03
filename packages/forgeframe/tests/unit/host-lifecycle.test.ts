@@ -17,7 +17,8 @@ import {
 import * as hostSecurity from '@/core/host/security';
 import { CONTEXT, EVENT, MESSAGE_NAME, VERSION } from '@/constants';
 import { prop } from '@/props/prop';
-import type { ConsumerExports, WindowNamePayload } from '@/types';
+import type { ConsumerExports } from '@/communication/types';
+import type { WindowNamePayload } from '@/window/types';
 import * as helpers from '@/window/helpers';
 import { buildWindowName } from '@/window/name-payload';
 

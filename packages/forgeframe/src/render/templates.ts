@@ -1,4 +1,5 @@
-import type { TemplateContext, Dimensions } from '../types';
+import type { TemplateContext } from '../types/templates';
+import type { Dimensions } from '../types/utility';
 import { normalizeDimensionToCSS } from '../utils/dimension';
 
 const SPINNER_STYLE_ID = 'forgeframe-spinner-style';

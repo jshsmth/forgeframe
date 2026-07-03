@@ -8,7 +8,8 @@
  * lifecycle callbacks.
  */
 
-import type { PropDefinition, PropsDefinition, Dimensions } from '../types';
+import type { PropDefinition, PropsDefinition } from '../types/props';
+import type { Dimensions } from '../types/utility';
 import { prop } from './prop';
 
 /**

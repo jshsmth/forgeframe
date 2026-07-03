@@ -8,7 +8,7 @@
  * focused internal modules under `src/core/host/`.
  */
 
-import type { HostProps } from '../types';
+import type { HostProps } from '../types/runtime';
 import { isForgeFrameWindow } from '../window/name-payload';
 import { getHost as getActiveHost } from './host/bootstrap';
 export { HostComponent } from './host/component';

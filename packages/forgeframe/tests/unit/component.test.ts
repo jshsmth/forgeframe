@@ -25,7 +25,7 @@ import {
 import * as hostSecurity from '@/core/host/security';
 import { CONTEXT, MESSAGE_NAME, VERSION } from '@/constants';
 import { prop } from '@/props/prop';
-import type { ConsumerExports } from '@/types';
+import type { ConsumerExports } from '@/communication/types';
 import { buildWindowName } from '@/window/name-payload';
 
 const VALID_EXPORTS: ConsumerExports = {

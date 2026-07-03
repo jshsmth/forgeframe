@@ -11,7 +11,8 @@ import * as hostSecurity from '@/core/host/security';
 import { buildWindowName } from '@/window/name-payload';
 import { CONTEXT, EVENT, MESSAGE_NAME, VERSION } from '@/constants';
 import { prop } from '@/props/prop';
-import type { ConsumerExports, WindowNamePayload } from '@/types';
+import type { ConsumerExports } from '@/communication/types';
+import type { WindowNamePayload } from '@/window/types';
 
 const originalWindowName = window.name;
 const originalDocumentReferrer = document.referrer;

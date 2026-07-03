@@ -1,4 +1,4 @@
-import type { DomainMatcher } from '../types';
+import type { DomainMatcher } from '../types/utility';
 import {
   compileWildcardDomainPattern,
   testDomainRegExpStateless,

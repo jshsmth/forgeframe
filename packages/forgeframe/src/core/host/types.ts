@@ -11,15 +11,14 @@
 import type { FunctionBridge } from '../../communication/bridge';
 import type { MessageHandler, Messenger } from '../../communication/messenger';
 import type { EventEmitter } from '../../events/emitter';
+import type { SerializedProps } from '../../props/types';
 import type {
-  Dimensions,
-  DomainMatcher,
   GetPeerInstancesOptions,
   HostProps,
-  PropsDefinition,
-  SerializedProps,
   SiblingInfo,
-} from '../../types';
+} from '../../types/runtime';
+import type { PropsDefinition } from '../../types/props';
+import type { Dimensions, DomainMatcher } from '../../types/utility';
 
 export type VerifiedMessageSource = Parameters<MessageHandler>[1];
 

@@ -15,7 +15,8 @@ import {
 import * as hostSecurity from '@/core/host/security';
 import { CONTEXT, EVENT, MESSAGE_NAME, VERSION } from '@/constants';
 import { buildWindowName } from '@/window/name-payload';
-import type { ConsumerExports, HostComponentRef, WindowNamePayload } from '@/types';
+import type { ConsumerExports } from '@/communication/types';
+import type { HostComponentRef, WindowNamePayload } from '@/window/types';
 import * as namePayload from '@/window/name-payload';
 
 const VALID_EXPORTS: ConsumerExports = {

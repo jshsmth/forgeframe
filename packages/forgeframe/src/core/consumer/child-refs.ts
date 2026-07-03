@@ -7,7 +7,8 @@
  * component references included in the consumer window payload.
  */
 
-import type { HostComponentRef, PropsDefinition } from '../../types';
+import type { HostComponentRef } from '../../window/types';
+import type { PropsDefinition } from '../../types/props';
 import { getComponentOptions } from '../component';
 import type { NormalizedOptions } from './types';
 

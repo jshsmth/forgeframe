@@ -1,4 +1,4 @@
-import type { Dimensions } from '../types';
+import type { Dimensions } from '../types/utility';
 import { normalizeDimensionToNumber } from '../utils/dimension';
 
 /**
@@ -341,4 +341,3 @@ export function resizePopup(win: Window, dimensions: Dimensions): void {
     // Resize might be blocked
   }
 }
-

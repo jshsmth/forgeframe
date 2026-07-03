@@ -1,5 +1,5 @@
 import { normalizeProps, validateProps } from '../../props';
-import type { PropContext } from '../../types';
+import type { PropContext } from '../../types/props';
 import type { NormalizedOptions } from './types';
 
 /**

@@ -1,8 +1,6 @@
-import type {
-  ComponentOptions,
-  Dimensions,
-  PropsDefinition,
-} from '../../types';
+import type { ComponentOptions } from '../../types/runtime';
+import type { PropsDefinition } from '../../types/props';
+import type { Dimensions } from '../../types/utility';
 import type { ContextType } from '../../constants';
 
 /**

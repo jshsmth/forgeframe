@@ -11,8 +11,8 @@ import type {
   PropDefinition,
   PropsDefinition,
   PropContext,
-  DomainMatcher,
-} from '../types';
+} from '../types/props';
+import type { DomainMatcher } from '../types/utility';
 import { BUILTIN_PROP_DEFINITIONS } from './definitions';
 import { matchDomain } from '../window/helpers';
 import { isStandardSchema, validateWithSchema } from './schema';

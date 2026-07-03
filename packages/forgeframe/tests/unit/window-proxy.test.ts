@@ -13,7 +13,7 @@ import {
   serializeWindowRef,
   clearWindowRegistry,
 } from '@/window/proxy';
-import type { WindowRef } from '@/types';
+import type { WindowRef } from '@/window/types';
 
 describe('Window Registry', () => {
   beforeEach(() => {

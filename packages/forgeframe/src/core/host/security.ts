@@ -8,7 +8,7 @@
  * can share one security policy.
  */
 
-import type { DomainMatcher } from '../../types';
+import type { DomainMatcher } from '../../types/utility';
 import {
   getConsumer,
   getOpener,
