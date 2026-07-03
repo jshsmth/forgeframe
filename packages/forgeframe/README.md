@@ -5,6 +5,18 @@
 
 A TypeScript-first framework for embedding cross-domain iframes and popups with seamless communication. Pass data and callbacks across domains for payment forms, auth widgets, third-party integrations, and micro-frontends. Zero runtime dependencies with an ESM build.
 
+## Used By
+
+<table cellpadding="16">
+  <tr>
+    <td align="center" bgcolor="#050505">
+      <a href="https://www.tyrohealth.com/">
+        <img src="https://www.tyrohealth.com/wp-content/themes/tyro/assets/img/tyro-health-logo.png" alt="Tyro Health" width="180">
+      </a>
+    </td>
+  </tr>
+</table>
+
 ### Terminology
 
 ForgeFrame involves two sides:
