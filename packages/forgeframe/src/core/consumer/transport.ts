@@ -300,11 +300,7 @@ export class ConsumerTransport<
    * Sets up host message handlers.
    */
   setupMessageHandlers(handlers: ConsumerTransportHandlers<X>): void {
-    this.messenger.on(MESSAGE_NAME.INIT, (_data, source) => {
-      if (!this.isHostControlSource(source)) {
-        return { success: false };
-      }
-
+    this.onHostControl(MESSAGE_NAME.INIT, () => {
       this.hostInitialized = true;
       if (this.initPromise) {
         this.initPromise.resolve();
@@ -321,58 +317,34 @@ export class ConsumerTransport<
       return { success: true };
     });
 
-    this.messenger.on(MESSAGE_NAME.CLOSE, async (_data, source) => {
-      if (!this.isHostControlSource(source)) {
-        return { success: false };
-      }
-
+    this.onHostControl(MESSAGE_NAME.CLOSE, async () => {
       await handlers.onClose();
       return { success: true };
     });
 
-    this.messenger.on<Dimensions>(MESSAGE_NAME.RESIZE, async (dimensions, source) => {
-      if (!this.isHostControlSource(source)) {
-        return { success: false };
-      }
-
+    this.onHostControl<Dimensions>(MESSAGE_NAME.RESIZE, async (dimensions) => {
       await handlers.onResize(dimensions);
       return { success: true };
     });
 
-    this.messenger.on(MESSAGE_NAME.FOCUS, async (_data, source) => {
-      if (!this.isHostControlSource(source)) {
-        return { success: false };
-      }
-
+    this.onHostControl(MESSAGE_NAME.FOCUS, async () => {
       await handlers.onFocus();
       return { success: true };
     });
 
-    this.messenger.on(MESSAGE_NAME.SHOW, async (_data, source) => {
-      if (!this.isHostControlSource(source)) {
-        return { success: false };
-      }
-
+    this.onHostControl(MESSAGE_NAME.SHOW, async () => {
       await handlers.onShow();
       return { success: true };
     });
 
-    this.messenger.on(MESSAGE_NAME.HIDE, async (_data, source) => {
-      if (!this.isHostControlSource(source)) {
-        return { success: false };
-      }
-
+    this.onHostControl(MESSAGE_NAME.HIDE, async () => {
       await handlers.onHide();
       return { success: true };
     });
 
-    this.messenger.on<{ message: string; stack?: string }>(
+    this.onHostControl<{ message: string; stack?: string }>(
       MESSAGE_NAME.ERROR,
-      async (errorData, source) => {
-        if (!this.isHostControlSource(source)) {
-          return { success: false };
-        }
-
+      async (errorData) => {
         const error = new Error(errorData.message);
         error.stack = errorData.stack;
         handlers.onError(error);
@@ -380,34 +352,36 @@ export class ConsumerTransport<
       }
     );
 
-    this.messenger.on<X>(MESSAGE_NAME.EXPORT, async (exports, source) => {
-      if (!this.isHostControlSource(source)) {
-        return { success: false };
-      }
-
+    this.onHostControl<X>(MESSAGE_NAME.EXPORT, async (exports) => {
       handlers.onExport(exports);
       return { success: true };
     });
 
-    this.messenger.on<unknown>(MESSAGE_NAME.CONSUMER_EXPORT, async (data, source) => {
-      if (!this.isHostControlSource(source)) {
-        return { success: false };
-      }
-
+    this.onHostControl<unknown>(MESSAGE_NAME.CONSUMER_EXPORT, async (data) => {
       handlers.onConsumerExport(data);
       return { success: true };
     });
 
-    this.messenger.on<ConsumerSiblingRequest>(
+    this.onHostControl<ConsumerSiblingRequest>(
       MESSAGE_NAME.GET_SIBLINGS,
-      async (request, source) => {
-        if (!this.isHostControlSource(source)) {
-          return { success: false };
-        }
-
-        return handlers.onGetSiblings(request);
-      }
+      (request) => handlers.onGetSiblings(request)
     );
+  }
+
+  /**
+   * Registers a host-control message handler behind the opened-window source guard.
+   */
+  private onHostControl<T = unknown, R = unknown>(
+    name: string,
+    handler: MessageHandler<T, R>
+  ): void {
+    this.messenger.on<T, R | { success: false }>(name, (data, source) => {
+      if (!this.isHostControlSource(source)) {
+        return { success: false };
+      }
+
+      return handler(data, source);
+    });
   }
 
   /**
