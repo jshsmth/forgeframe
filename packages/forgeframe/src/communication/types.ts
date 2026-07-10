@@ -59,7 +59,14 @@ export interface Message {
     message: string;
     stack?: string;
   };
-  /** Message source info */
+  /**
+   * Message source metadata.
+   *
+   * @remarks
+   * `uid` is the logical component channel shared by the consumer and host.
+   * `domain` is the sender's declared origin; receivers use `MessageEvent.origin`
+   * for trust decisions.
+   */
   source: {
     uid: string;
     domain: string;

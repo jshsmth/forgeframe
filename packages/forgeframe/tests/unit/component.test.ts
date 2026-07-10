@@ -516,34 +516,6 @@ describe('Component Instance', () => {
     expect(ineligibleInstance.isEligible()).toBe(false);
   });
 
-  it('should clone an instance with the same normalized props snapshot', () => {
-    let tokenCounter = 0;
-    const MyComponent = create<{ token?: string }>({
-      tag: 'clone-test',
-      url: (props) => `https://example.com/${props.token}`,
-      props: {
-        token: {
-          schema: prop.string().optional(),
-          value: () => `token-${++tokenCounter}`,
-        },
-      },
-    });
-
-    const instance = MyComponent({});
-    const cloned = instance.clone();
-
-    const originalInternal = getConsumerInternals(instance);
-    const clonedInternal = getConsumerInternals(cloned);
-
-    expect(cloned).toBeDefined();
-    expect(cloned).not.toBe(instance);
-    expect(clonedInternal.propsPipeline.props.token).toBe(
-      originalInternal.propsPipeline.props.token
-    );
-    expect(clonedInternal.resolveUrl()).toBe(originalInternal.resolveUrl());
-    expect(tokenCounter).toBe(1);
-  });
-
   it('should call component validate on render and updateProps', async () => {
     const validate = vi.fn();
     const MyComponent = create<{ amount: number }>({

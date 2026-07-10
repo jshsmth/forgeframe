@@ -26,6 +26,11 @@ import {
 /**
  * Handler function for incoming messages.
  *
+ * @remarks
+ * `source.uid` identifies the shared component channel. `source.domain` and
+ * `source.window` are taken from the browser's `MessageEvent` rather than the
+ * message's claimed source metadata.
+ *
  * @typeParam T - The expected data type of incoming messages
  * @typeParam R - The return type of the handler
  * @public
@@ -44,12 +49,6 @@ interface PendingRequest {
   timeout: ReturnType<typeof setTimeout>;
   targetWin: Window;
   expectedOrigin: string | '*';
-}
-
-interface VerifiedSource {
-  uid: string;
-  domain: string;
-  window: Window;
 }
 
 function isPendingResponseSourceMatch(
@@ -135,19 +134,16 @@ export class Messenger {
   /** @internal */
   private wildcardPatternRegistry = new Map<string, RegExp>();
 
-  /** @internal */
-  private sourceUidRegistry = new WeakMap<object, string>();
-
   /**
    * Creates a new Messenger instance.
    *
-   * @param uid - Unique identifier for this messenger
+   * @param channelUid - Component channel identifier shared by the paired consumer and host messengers
    * @param win - The window to listen for messages on
    * @param domain - The origin domain of this messenger
    * @param trustedDomains - Optional domains to trust for incoming messages
    */
   constructor(
-    private uid: string,
+    private channelUid: string,
     private win: Window = window,
     private domain: string = window.location.origin,
     trustedDomains?: DomainMatcher
@@ -232,31 +228,6 @@ export class Messenger {
   }
 
   /**
-   * Resolves source identity from the browser event context.
-   * @internal
-   */
-  private resolveVerifiedSource(
-    sourceWin: Window,
-    origin: string,
-    claimedSource: Message['source']
-  ): VerifiedSource {
-    const sourceObject = sourceWin as unknown as object;
-    const existingUid = this.sourceUidRegistry.get(sourceObject);
-
-    if (existingUid) {
-      return { uid: existingUid, domain: origin, window: sourceWin };
-    }
-
-    const claimedUid =
-      claimedSource && typeof claimedSource.uid === 'string' && claimedSource.uid.length > 0
-        ? claimedSource.uid
-        : generateShortUID();
-
-    this.sourceUidRegistry.set(sourceObject, claimedUid);
-    return { uid: claimedUid, domain: origin, window: sourceWin };
-  }
-
-  /**
    * Sends a message and waits for a response.
    *
    * @typeParam T - The data type being sent
@@ -282,7 +253,7 @@ export class Messenger {
 
     const id = generateShortUID();
     const message = createRequestMessage(id, name, data, {
-      uid: this.uid,
+      uid: this.channelUid,
       domain: this.domain,
     });
 
@@ -332,7 +303,7 @@ export class Messenger {
 
     const id = generateShortUID();
     const message = createRequestMessage(id, name, data, {
-      uid: this.uid,
+      uid: this.channelUid,
       domain: this.domain,
     });
 
@@ -372,6 +343,10 @@ export class Messenger {
 
       const message = deserializeMessage(event.data);
       if (!message) return;
+
+      if (message.source.uid !== this.channelUid) {
+        return;
+      }
 
       const sourceWin = event.source;
       if (!sourceWin || typeof (sourceWin as { postMessage?: unknown }).postMessage !== 'function') {
@@ -424,11 +399,11 @@ export class Messenger {
       let responseError: Error | undefined;
 
       try {
-        const verifiedSource = this.resolveVerifiedSource(
-          sourceWin,
-          origin,
-          message.source
-        );
+        const verifiedSource = {
+          uid: this.channelUid,
+          domain: origin,
+          window: sourceWin,
+        };
         responseData = await handler(message.data, verifiedSource);
       } catch (err) {
         responseError = err instanceof Error ? err : new Error(String(err));
@@ -437,7 +412,7 @@ export class Messenger {
       const response = createResponseMessage(
         message.id,
         responseData,
-        { uid: this.uid, domain: this.domain },
+        { uid: this.channelUid, domain: this.domain },
         responseError
       );
 

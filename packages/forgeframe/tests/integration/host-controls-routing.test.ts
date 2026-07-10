@@ -190,7 +190,7 @@ describe('Host controls and routing integration', () => {
       origin: 'https://evil.example.com',
       name: MESSAGE_NAME.PROPS,
       data: serializedProps,
-      claimedUid: 'spoofed-consumer',
+      claimedUid: hostProps.uid,
       claimedDomain: harness.consumerOrigin,
     });
     await harness.flushMessages();
@@ -207,7 +207,7 @@ describe('Host controls and routing integration', () => {
       origin: harness.consumerOrigin,
       name: MESSAGE_NAME.PROPS,
       data: serializedProps,
-      claimedUid: 'spoofed-consumer',
+      claimedUid: hostProps.uid,
       claimedDomain: harness.consumerOrigin,
     });
     await harness.flushMessages();

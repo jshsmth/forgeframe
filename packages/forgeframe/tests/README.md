@@ -5,6 +5,7 @@ This index documents what each ForgeFrame test file validates and the naming con
 ## Unit Tests (`packages/forgeframe/tests/unit`)
 
 - `bridge.test.ts`: Function bridge serialization/deserialization and remote call dispatch behavior.
+- `component-clone.test.ts`: Clone snapshot preservation, lifecycle tracking, peer visibility, and global/tag cleanup.
 - `component-instance-index.test.ts`: Internal active-instance indexing, reindexing, tag clearing, and peer lookup snapshot behavior.
 - `component.test.ts`: Component creation, registration, instance lifecycle, and host-context detection.
 - `consumer-branch-coverage.test.ts`: Consumer branch/edge-path coverage for domain trust, rendering, and prop-sync internals.
@@ -19,6 +20,7 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `iframe.test.ts`: Iframe creation, visibility/sizing helpers, and content-dimension access behavior.
 - `index-side-effect-free.test.ts`: Public entrypoint import stays side-effect-free until `initHost()` is called explicitly in ForgeFrame-shaped host windows.
 - `messenger.test.ts`: Cross-window messenger request/response flow, filtering, trust checks, and teardown behavior.
+- `messenger-routing.test.ts`: Multi-instance channel routing and function bridge response isolation.
 - `popup.test.ts`: Popup open/close/focus/resize helpers and close/popup-block detection.
 - `prop-schema.test.ts`: `prop` schema builder behavior and Standard Schema compliance checks.
 - `props-serialize.test.ts`: BASE64/DOTIFY serialization round-trips and malformed wrapper fallback behavior.

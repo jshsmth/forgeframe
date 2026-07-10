@@ -376,7 +376,7 @@ describe('Consumer lifecycle behavior', () => {
     internal.transport.hostWindow = hostWindow;
 
     dispatchHostMessage(MESSAGE_NAME.INIT, spoofedWindow, {
-      claimedUid: 'spoofed-host',
+      claimedUid: consumer.uid,
     });
     await flushMessages();
 
@@ -385,7 +385,7 @@ describe('Consumer lifecycle behavior', () => {
 
     const waitPromise = internal.waitForHost.call(consumer);
     dispatchHostMessage(MESSAGE_NAME.INIT, hostWindow, {
-      claimedUid: 'real-host',
+      claimedUid: consumer.uid,
     });
     await flushMessages();
 
@@ -403,7 +403,7 @@ describe('Consumer lifecycle behavior', () => {
     internal.transport.hostWindow = hostWindow;
 
     dispatchHostMessage(MESSAGE_NAME.CLOSE, spoofedWindow, {
-      claimedUid: 'spoofed-host',
+      claimedUid: consumer.uid,
     });
     await flushMessages();
 
@@ -411,7 +411,7 @@ describe('Consumer lifecycle behavior', () => {
     expect(readResponseData(spoofedWindow)).toEqual({ success: false });
 
     dispatchHostMessage(MESSAGE_NAME.CLOSE, hostWindow, {
-      claimedUid: 'real-host',
+      claimedUid: consumer.uid,
     });
     await flushMessages();
 
@@ -468,7 +468,7 @@ describe('Consumer lifecycle behavior', () => {
 
     dispatchHostMessage(MESSAGE_NAME.ERROR, spoofedWindow, {
       data: { message: 'spoofed host failed', stack: 'spoofed-stack' },
-      claimedUid: 'spoofed-host',
+      claimedUid: consumer.uid,
     });
     await flushMessages();
 
@@ -477,7 +477,7 @@ describe('Consumer lifecycle behavior', () => {
 
     dispatchHostMessage(MESSAGE_NAME.ERROR, hostWindow, {
       data: { message: 'host failed', stack: 'host-stack' },
-      claimedUid: 'real-host',
+      claimedUid: consumer.uid,
     });
     await flushMessages();
 
@@ -499,7 +499,7 @@ describe('Consumer lifecycle behavior', () => {
 
     dispatchHostMessage(MESSAGE_NAME.EXPORT, spoofedWindow, {
       data: { ready: false },
-      claimedUid: 'spoofed-host',
+      claimedUid: consumer.uid,
     });
     await flushMessages();
 
@@ -508,7 +508,7 @@ describe('Consumer lifecycle behavior', () => {
 
     dispatchHostMessage(MESSAGE_NAME.EXPORT, hostWindow, {
       data: { ready: true },
-      claimedUid: 'real-host',
+      claimedUid: consumer.uid,
     });
     await flushMessages();
 
@@ -525,7 +525,7 @@ describe('Consumer lifecycle behavior', () => {
 
     dispatchHostMessage(MESSAGE_NAME.CONSUMER_EXPORT, spoofedWindow, {
       data: { token: 'spoofed' },
-      claimedUid: 'spoofed-host',
+      claimedUid: consumer.uid,
     });
     await flushMessages();
 
@@ -534,7 +534,7 @@ describe('Consumer lifecycle behavior', () => {
 
     dispatchHostMessage(MESSAGE_NAME.CONSUMER_EXPORT, hostWindow, {
       data: { token: 'abc' },
-      claimedUid: 'real-host',
+      claimedUid: consumer.uid,
     });
     await flushMessages();
 
@@ -567,7 +567,7 @@ describe('Consumer lifecycle behavior', () => {
         uid: instanceA.uid,
         tag: 'peer-siblings-component',
       },
-      claimedUid: 'spoofed-host',
+      claimedUid: consumer.uid,
     });
     await flushMessages();
 
@@ -578,7 +578,7 @@ describe('Consumer lifecycle behavior', () => {
         uid: instanceA.uid,
         tag: 'peer-siblings-component',
       },
-      claimedUid: 'real-host',
+      claimedUid: consumer.uid,
     });
     await flushMessages();
 
