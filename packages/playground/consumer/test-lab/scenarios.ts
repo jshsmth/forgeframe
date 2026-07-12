@@ -2,10 +2,12 @@ import ForgeFrame, { prop } from 'forgeframe';
 import type { ScenarioId, TestResult } from './types';
 import {
   runCheckoutE2EScenario,
+  runCommonActionsScenario,
   runConfigurationScenario,
   runHostControlsScenario,
   runInstancesScenario,
   runPopupScenario,
+  runReliabilityScenario,
   runTransportScenario,
 } from './extended-scenarios';
 
@@ -48,6 +50,10 @@ export async function runScenario(
       return runHostControlsScenario(sandbox);
     case 'transport':
       return runTransportScenario(sandbox);
+    case 'reliability':
+      return runReliabilityScenario(sandbox);
+    case 'common-actions':
+      return runCommonActionsScenario(sandbox);
     case 'popup':
       return runPopupScenario(sandbox);
     case 'checkout-e2e':

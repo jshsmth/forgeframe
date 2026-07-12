@@ -393,6 +393,245 @@ export async function runTransportScenario(sandbox: HTMLElement): Promise<TestRe
   return results;
 }
 
+interface ReliabilityProps extends Record<string, unknown> {
+  scenario: string;
+  label: string;
+}
+
+interface ReliabilityExports {
+  ready: boolean;
+  readState: () => Promise<{ label: string; uid: string }>;
+}
+
+export async function runReliabilityScenario(
+  sandbox: HTMLElement
+): Promise<TestResult[]> {
+  const results: TestResult[] = [];
+  let countRenderUrlCalls = false;
+  let renderUrlCalls = 0;
+  const Component = ForgeFrame.create<ReliabilityProps, ReliabilityExports>({
+    tag: uniqueTag('reliability'),
+    url: () => {
+      if (!countRenderUrlCalls) {
+        return `${HOST_URL}?scenario=reliability`;
+      }
+      renderUrlCalls += 1;
+      const snapshot = renderUrlCalls === 1 ? 'first' : 'unexpected-repeat';
+      return `${HOST_URL}?scenario=reliability&snapshot=${snapshot}`;
+    },
+    domain: HOST_ORIGIN,
+    dimensions: { width: '100%', height: 300 },
+    props: {
+      scenario: prop.string(),
+      label: prop.string(),
+    },
+  });
+
+  const firstContainer = createContainer(sandbox);
+  const first = Component({ scenario: 'reliability', label: 'first-generation' });
+
+  try {
+    countRenderUrlCalls = true;
+    renderUrlCalls = 0;
+    await first.render(firstContainer);
+    countRenderUrlCalls = false;
+    await waitFor(() => first.exports?.ready);
+    const firstFrame = firstContainer.querySelector<HTMLIFrameElement>('iframe')!;
+
+    results.push(assertResult(
+      'A dynamic URL is resolved once for the complete browser render',
+      renderUrlCalls === 1 && new URL(firstFrame.src).searchParams.get('snapshot') === 'first',
+      `resolver calls: ${renderUrlCalls}; url: ${firstFrame.src}`
+    ));
+
+    await first.updateProps({ label: 'first-updated' });
+    const updatedFirstState = await first.exports!.readState();
+    results.push(assertResult(
+      'A live host export observes the latest prop state',
+      updatedFirstState.label === 'first-updated' && updatedFirstState.uid === first.uid,
+      JSON.stringify(updatedFirstState)
+    ));
+
+    await first.close();
+    results.push(assertResult(
+      'A completed generation releases its frame and factory tracking',
+      firstContainer.querySelectorAll('iframe').length === 0 && Component.instances.length === 0,
+      `frames: ${firstContainer.querySelectorAll('iframe').length}; tracked: ${Component.instances.length}`
+    ));
+
+    const alphaContainer = createContainer(sandbox);
+    const betaContainer = createContainer(sandbox);
+    const alpha = Component({ scenario: 'reliability', label: 'alpha' });
+    const beta = Component({ scenario: 'reliability', label: 'beta' });
+
+    try {
+      await Promise.all([alpha.render(alphaContainer), beta.render(betaContainer)]);
+      await waitFor(() => alpha.exports?.ready && beta.exports?.ready);
+      const [alphaInitial, betaInitial] = await Promise.all([
+        alpha.exports!.readState(),
+        beta.exports!.readState(),
+      ]);
+      results.push(assertResult(
+        'Concurrent instances keep independent channels and initial state',
+        alphaInitial.label === 'alpha' && betaInitial.label === 'beta' &&
+          alphaInitial.uid === alpha.uid && betaInitial.uid === beta.uid,
+        `alpha: ${JSON.stringify(alphaInitial)}; beta: ${JSON.stringify(betaInitial)}`
+      ));
+
+      await Promise.all([
+        alpha.updateProps({ label: 'alpha-updated' }),
+        beta.updateProps({ label: 'beta-updated' }),
+      ]);
+      const [alphaUpdated, betaUpdated] = await Promise.all([
+        alpha.exports!.readState(),
+        beta.exports!.readState(),
+      ]);
+      results.push(assertResult(
+        'Concurrent prop updates do not cross instance boundaries',
+        alphaUpdated.label === 'alpha-updated' && betaUpdated.label === 'beta-updated',
+        `alpha: ${alphaUpdated.label}; beta: ${betaUpdated.label}`
+      ));
+
+      await alpha.close();
+      const survivingState = await beta.exports!.readState();
+      results.push(assertResult(
+        'Closing one instance leaves its peer fully operational',
+        alphaContainer.querySelectorAll('iframe').length === 0 &&
+          betaContainer.querySelectorAll('iframe').length === 1 &&
+          survivingState.label === 'beta-updated',
+        `alpha frames: ${alphaContainer.querySelectorAll('iframe').length}; beta frames: ${betaContainer.querySelectorAll('iframe').length}; beta: ${survivingState.label}`
+      ));
+
+      await beta.close();
+      results.push(assertResult(
+        'Repeated and concurrent journeys finish without leaked instances',
+        sandbox.querySelectorAll('iframe').length === 0 && Component.instances.length === 0,
+        `frames: ${sandbox.querySelectorAll('iframe').length}; tracked: ${Component.instances.length}`
+      ));
+    } catch (error) {
+      results.push(failure('Concurrent reliability journey completed', error));
+      await Promise.all([
+        alpha.close().catch(() => undefined),
+        beta.close().catch(() => undefined),
+      ]);
+    }
+  } catch (error) {
+    countRenderUrlCalls = false;
+    results.push(failure('Reliability browser scenario completed', error));
+    await first.close().catch(() => undefined);
+  }
+
+  return results;
+}
+
+interface CommonActionsProps extends Record<string, unknown> {
+  scenario: string;
+  label: string;
+  count: number;
+  onAction: (message: string) => void;
+}
+
+interface CommonActionsExports {
+  ready: boolean;
+  getSnapshot: () => Promise<{ label: string; count: number }>;
+  addToCount: (amount: number) => Promise<number>;
+  notifyConsumer: (message: string) => Promise<boolean>;
+}
+
+export async function runCommonActionsScenario(
+  sandbox: HTMLElement
+): Promise<TestResult[]> {
+  const results: TestResult[] = [];
+  const container = createContainer(sandbox);
+  let callbackMessage = '';
+  let focusEvents = 0;
+  let closeEvents = 0;
+  const Component = ForgeFrame.create<CommonActionsProps, CommonActionsExports>({
+    tag: uniqueTag('common-actions'),
+    url: `${HOST_URL}?scenario=common-actions`,
+    dimensions: { width: '100%', height: 320 },
+    props: {
+      scenario: prop.string(),
+      label: prop.string(),
+      count: prop.number().int(),
+      onAction: prop.function<(message: string) => void>(),
+    },
+  });
+  const instance = Component({
+    scenario: 'common-actions',
+    label: 'initial',
+    count: 2,
+    onAction: (message) => { callbackMessage = message; },
+  });
+  instance.event.on('focus', () => { focusEvents += 1; });
+  instance.event.on('close', () => { closeEvents += 1; });
+
+  try {
+    await instance.render(container);
+    await waitFor(() => instance.exports?.ready);
+    const iframe = container.querySelector<HTMLIFrameElement>('iframe')!;
+    results.push(assertResult(
+      'A normal component renders and exposes its ready API',
+      iframe instanceof HTMLIFrameElement && instance.exports?.ready === true,
+      `frame: ${Boolean(iframe)}; ready: ${String(instance.exports?.ready)}`
+    ));
+
+    await instance.updateProps({ label: 'updated', count: 7 });
+    const snapshot = await instance.exports!.getSnapshot();
+    results.push(assertResult(
+      'A normal prop update is immediately available to host actions',
+      snapshot.label === 'updated' && snapshot.count === 7,
+      JSON.stringify(snapshot)
+    ));
+
+    const total = await instance.exports!.addToCount(5);
+    results.push(assertResult(
+      'A consumer can call a host method and receive its return value',
+      total === 12,
+      `7 + 5 returned ${total}`
+    ));
+
+    const notified = await instance.exports!.notifyConsumer('common-action-complete');
+    results.push(assertResult(
+      'A host method can call a consumer callback',
+      notified && callbackMessage === 'common-action-complete',
+      `notified: ${notified}; callback: ${callbackMessage}`
+    ));
+
+    await instance.resize({ width: '92%', height: 360 });
+    results.push(assertResult(
+      'A consumer can resize the active iframe',
+      iframe.style.width === '92%' && iframe.style.height === '360px',
+      `${iframe.style.width} × ${iframe.style.height}`
+    ));
+
+    await instance.hide();
+    const hidden = iframe.style.display === 'none' && iframe.style.visibility === 'hidden';
+    await instance.show();
+    await instance.focus();
+    results.push(assertResult(
+      'Show, hide, and focus remain usable during the session',
+      hidden && iframe.style.display === '' && iframe.style.visibility === 'visible' &&
+        focusEvents === 1,
+      `hidden observed: ${hidden}; final display: ${iframe.style.display || '(default)'}; focus events: ${focusEvents}`
+    ));
+
+    await instance.close();
+    await instance.close();
+    results.push(assertResult(
+      'Close is safe to repeat and leaves no live frame or instance',
+      closeEvents === 1 && container.querySelectorAll('iframe').length === 0 &&
+        Component.instances.length === 0,
+      `close events: ${closeEvents}; frames: ${container.querySelectorAll('iframe').length}; tracked: ${Component.instances.length}`
+    ));
+  } catch (error) {
+    results.push(failure('Common actions browser scenario completed', error));
+    await instance.close().catch(() => undefined);
+  }
+
+  return results;
+}
+
 interface PopupProps extends Record<string, unknown> {
   scenario: string;
 }

@@ -57,6 +57,16 @@ export const SCENARIOS: ScenarioDefinition[] = [
     description: 'POST body bootstrap plus trusted-domain and private-prop delivery boundaries.',
   },
   {
+    id: 'reliability',
+    title: 'Reliability and isolation',
+    description: 'Single URL resolution, teardown recovery, concurrent instances, prop isolation, and cleanup.',
+  },
+  {
+    id: 'common-actions',
+    title: 'Common actions',
+    description: 'Render, ready exports, prop updates, remote methods, callbacks, controls, and close in one everyday journey.',
+  },
+  {
     id: 'popup',
     title: 'Popup end to end',
     description: 'A user-initiated popup opens, handshakes, exports data, focuses, resizes, and closes.',

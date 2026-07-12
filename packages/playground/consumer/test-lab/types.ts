@@ -10,6 +10,8 @@ export type ScenarioId =
   | 'instances'
   | 'host-controls'
   | 'transport'
+  | 'reliability'
+  | 'common-actions'
   | 'popup'
   | 'checkout-e2e';
 

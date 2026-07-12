@@ -33,6 +33,7 @@ interface MyProps {
   sessionId?: string;
   amount?: number;
   onApproved?: (receipt: { transactionId: string; amount: number }) => void | Promise<void>;
+  onAction?: (message: string) => void | Promise<void>;
 }
 
 /**
@@ -307,6 +308,33 @@ function renderEmbedded() {
 
     if (hostProps.scenario === 'transport') {
       await hostProps.export({ observed: getUserProps() });
+      return;
+    }
+
+    if (hostProps.scenario === 'reliability') {
+      await hostProps.export({
+        ready: true,
+        readState: () => ({
+          label: hostProps.label ?? '',
+          uid: hostProps.uid,
+        }),
+      });
+      return;
+    }
+
+    if (hostProps.scenario === 'common-actions') {
+      await hostProps.export({
+        ready: true,
+        getSnapshot: () => ({
+          label: hostProps.label ?? '',
+          count: hostProps.count ?? 0,
+        }),
+        addToCount: (amount: number) => (hostProps.count ?? 0) + amount,
+        notifyConsumer: async (message: string) => {
+          await hostProps.onAction?.(message);
+          return true;
+        },
+      });
       return;
     }
 
