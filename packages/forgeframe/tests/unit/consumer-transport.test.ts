@@ -133,6 +133,17 @@ describe('ConsumerTransport', () => {
     expect(transport.getHostDomain()).toBe('*');
   });
 
+  it('should prefer the verified active origin after host initialization', () => {
+    const transport = createTransport();
+    transport.openedHostDomain = 'https://host.example.com';
+    transport.activeHostDomain = 'https://redirected-host.example.com';
+
+    expect(transport.getHostDomain()).toBe('https://redirected-host.example.com');
+
+    transport.activeHostDomain = null;
+    expect(transport.getHostDomain()).toBe('https://host.example.com');
+  });
+
   it('should rely exclusively on an explicit domain policy when configured', () => {
     const transport = createTransport({
       options: createOptions({

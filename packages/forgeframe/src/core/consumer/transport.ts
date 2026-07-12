@@ -65,6 +65,9 @@ export class ConsumerTransport<
   /** Origin of currently opened host content. */
   public openedHostDomain: string | null = null;
 
+  /** Browser-verified origin of the initialized host window. */
+  public activeHostDomain: string | null = null;
+
   /** Dynamic origin currently trusted due to resolved URL. */
   public dynamicUrlTrustedOrigin: string | null = null;
 
@@ -146,6 +149,10 @@ export class ConsumerTransport<
    * Returns the current host domain target used for messaging.
    */
   getHostDomain(): string {
+    if (this.activeHostDomain) {
+      return this.activeHostDomain;
+    }
+
     if (this.openedHostDomain) {
       return this.openedHostDomain;
     }
@@ -290,7 +297,8 @@ export class ConsumerTransport<
    * Sets up host message handlers.
    */
   setupMessageHandlers(handlers: ConsumerTransportHandlers<X>): void {
-    this.onHostControl(MESSAGE_NAME.INIT, () => {
+    this.onHostControl(MESSAGE_NAME.INIT, (_data, source) => {
+      this.activeHostDomain = source.domain;
       this.hostInitialized = true;
       if (this.initPromise) {
         this.initPromise.resolve();

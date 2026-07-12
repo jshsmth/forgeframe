@@ -243,6 +243,46 @@ describe('Consumer lifecycle behavior', () => {
     );
   });
 
+  it('should route prop updates to the verified INIT origin after an allowed redirect', async () => {
+    const configuredOrigin = 'https://host.example.com';
+    const redirectedOrigin = 'https://redirected-host.example.com';
+    const consumer = createConsumer(
+      {
+        domain: [configuredOrigin, redirectedOrigin],
+        props: {
+          amount: { schema: prop.number(), required: true },
+        },
+      },
+      { amount: 1 }
+    );
+    const internal = getInternals(consumer);
+    const hostWindow = {
+      closed: false,
+      postMessage: vi.fn(),
+    } as unknown as Window;
+    const sendSpy = vi
+      .spyOn(internal.transport.messenger, 'send')
+      .mockResolvedValue(undefined);
+
+    internal.transport.hostWindow = hostWindow;
+    internal.transport.openedHostDomain = configuredOrigin;
+
+    dispatchHostMessage(MESSAGE_NAME.INIT, hostWindow, {
+      origin: redirectedOrigin,
+      claimedUid: consumer.uid,
+    });
+    await flushMessages();
+    await consumer.updateProps({ amount: 2 });
+
+    expect(internal.transport.hostInitialized).toBe(true);
+    expect(sendSpy).toHaveBeenCalledWith(
+      hostWindow,
+      redirectedOrigin,
+      MESSAGE_NAME.PROPS,
+      expect.objectContaining({ amount: 2 })
+    );
+  });
+
   it('should not send sameDomain props after INIT when the loaded host is cross-origin', async () => {
     const consumer = createConsumer(
       {

@@ -237,12 +237,13 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     this.checkEligibility();
     validateProps(this.propsPipeline.props, this.options.props);
     this.options.validate?.({ props: this.propsPipeline.props });
+    const baseUrl = this.resolveUrl();
     this.renderer.container = this.resolveContainer(container);
 
     this.event.emit(EVENT.PRERENDER);
     invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onPrerender');
 
-    await this.prerender();
+    await this.prerender(baseUrl);
 
     this.event.emit(EVENT.PRERENDERED);
     invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onPrerendered');
@@ -251,7 +252,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onRender');
 
     try {
-      await this.open();
+      await this.open(baseUrl);
       await this.waitForHost();
       if (this.renderer.context === CONTEXT.IFRAME && this.renderer.iframe) {
         await this.renderer.swapPrerenderContentIfNeeded();
@@ -597,10 +598,10 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * Creates and displays the prerender (loading) content.
    * @internal
    */
-  private async prerender(): Promise<void> {
+  private async prerender(baseUrl: string = this.resolveUrl()): Promise<void> {
     await this.renderer.prerender(
       (windowName) => this.createIframeElement(windowName),
-      () => this.buildWindowName()
+      () => this.buildWindowName(baseUrl)
     );
   }
 
@@ -617,16 +618,16 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * Opens the host window (iframe or popup).
    * @internal
    */
-  private async open(): Promise<void> {
-    const baseUrl = this.resolveUrl();
+  private async open(baseUrl: string = this.resolveUrl()): Promise<void> {
     this.syncTrustedDomainForUrl(baseUrl);
     this.transport.openedHostDomain = this.resolveUrlOrigin(baseUrl);
+    this.transport.activeHostDomain = null;
 
     this.transport.hostWindow = this.renderer.open({
       baseUrl,
       buildUrl: (resolvedBaseUrl) => this.buildUrl(resolvedBaseUrl),
-      buildBodyParams: () => this.buildBodyParams(),
-      buildWindowName: () => this.buildWindowName(),
+      buildBodyParams: () => this.buildBodyParams(baseUrl),
+      buildWindowName: () => this.buildWindowName(baseUrl),
       submitBodyForm: (target, actionUrl, params) =>
         this.submitBodyForm(target, actionUrl, params),
       onPopupClose: () => {
@@ -665,8 +666,8 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * Builds POST body parameters from props marked with bodyParam.
    * @internal
    */
-  private buildBodyParams(): URLSearchParams {
-    const hostDomain = this.resolveUrlOrigin(this.resolveUrl());
+  private buildBodyParams(baseUrl: string = this.resolveUrl()): URLSearchParams {
+    const hostDomain = this.resolveUrlOrigin(baseUrl);
     return propsToBodyParams(
       this.propsPipeline.props,
       this.options.props,
@@ -690,13 +691,13 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * Builds the window.name payload for the host window.
    * @internal
    */
-  private buildWindowName(): string {
+  private buildWindowName(baseUrl: string = this.resolveUrl()): string {
     return this.transport.buildWindowName({
       tag: this.options.tag,
       context: this.renderer.context,
       props: this.propsPipeline.props,
       propDefinitions: this.options.props,
-      hostDomain: this.getHostDomain(),
+      hostDomain: this.resolveUrlOrigin(baseUrl) ?? '*',
       children: buildNestedHostRefs(this.options, this.propsPipeline.props),
       exports: this.createConsumerExports(),
     });
@@ -714,14 +715,6 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
       updateProps: MESSAGE_NAME.PROPS,
       export: MESSAGE_NAME.EXPORT,
     };
-  }
-
-  /**
-   * Extracts the origin domain from the component URL.
-   * @internal
-   */
-  private getHostDomain(): string {
-    return this.transport.getHostDomain();
   }
 
   /**
@@ -853,6 +846,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     if (this.transport) {
       this.transport.hostWindow = null;
       this.transport.openedHostDomain = null;
+      this.transport.activeHostDomain = null;
       this.transport.dynamicUrlTrustedOrigin = null;
     }
     if (this.propsPipeline) {

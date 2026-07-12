@@ -612,6 +612,35 @@ describe('Component Instance', () => {
     container.remove();
   });
 
+  it('should resolve a dynamic host URL once and reuse it for the complete render', async () => {
+    const firstOrigin = 'https://origin-a.example.com';
+    const secondOrigin = 'https://origin-b.example.com';
+    const resolveDynamicUrl = vi.fn(() => `${firstOrigin}/widget`);
+    const DynamicUrlComponent = create({
+      tag: 'dynamic-url-render-snapshot-component',
+      url: resolveDynamicUrl,
+      domain: [firstOrigin, secondOrigin],
+    });
+    const instance = DynamicUrlComponent({});
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const instanceInternal = getConsumerInternals(instance);
+
+    resolveDynamicUrl.mockClear();
+    resolveDynamicUrl
+      .mockReturnValueOnce(`${firstOrigin}/widget`)
+      .mockReturnValue(`${secondOrigin}/widget`);
+    vi.spyOn(instanceInternal, 'waitForHost').mockResolvedValue(undefined);
+
+    await instance.render(container);
+
+    expect(resolveDynamicUrl).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('iframe')?.src).toBe(`${firstOrigin}/widget`);
+
+    await instance.close();
+    container.remove();
+  });
+
   it('should apply idle updateProps synchronously before awaiting', async () => {
     const DynamicUrlComponent = create<{ targetUrl: string }>({
       tag: 'dynamic-origin-sync-update-component',

@@ -723,19 +723,6 @@ describe('Consumer branch coverage and edge paths', () => {
     ).toThrow('Nested component "InvalidChild" is missing component metadata');
   });
 
-  it('should prefer openedHostDomain when computing host domain', () => {
-    const consumer = createConsumer();
-    getInternals(consumer).transport.openedHostDomain = 'https://opened.example.com';
-
-    const domain = (
-      consumer as unknown as {
-        getHostDomain: () => string;
-      }
-    ).getHostDomain();
-
-    expect(domain).toBe('https://opened.example.com');
-  });
-
   it('should close popup windows and remove prerender elements during destroy', async () => {
     const consumer = createConsumer();
     const internal = getInternals(consumer);
