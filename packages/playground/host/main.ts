@@ -457,12 +457,26 @@ function renderStandalone() {
   `;
 }
 
-// Explicitly initialize the host runtime before reading window.hostProps.
-initHost();
+const requestedInitDelay = Number(
+  new URLSearchParams(window.location.search).get('initDelay') ?? 0
+);
+const initDelay = Number.isFinite(requestedInitDelay) && requestedInitDelay > 0
+  ? Math.min(requestedInitDelay, 2000)
+  : 0;
 
-// Check if running as ForgeFrame host
-if (isHost()) {
-  renderEmbedded();
+const initializeHostPage = () => {
+  // Explicitly initialize the host runtime before reading window.hostProps.
+  initHost();
+
+  if (isHost()) {
+    renderEmbedded();
+  } else {
+    renderStandalone();
+  }
+};
+
+if (initDelay > 0) {
+  window.setTimeout(initializeHostPage, initDelay);
 } else {
-  renderStandalone();
+  initializeHostPage();
 }

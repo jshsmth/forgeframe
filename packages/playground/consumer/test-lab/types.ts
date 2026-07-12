@@ -12,6 +12,9 @@ export type ScenarioId =
   | 'transport'
   | 'reliability'
   | 'common-actions'
+  | 'redirect'
+  | 'timeout-recovery'
+  | 'stress'
   | 'popup'
   | 'checkout-e2e';
 

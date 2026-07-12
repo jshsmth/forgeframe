@@ -632,6 +632,226 @@ export async function runCommonActionsScenario(
   return results;
 }
 
+export async function runRedirectScenario(
+  sandbox: HTMLElement
+): Promise<TestResult[]> {
+  const results: TestResult[] = [];
+  const container = createContainer(sandbox);
+  let callbackMessage = '';
+  const redirectUrl = new URL('/redirect.html', window.location.origin);
+  redirectUrl.searchParams.set('scenario', 'common-actions');
+  const Component = ForgeFrame.create<CommonActionsProps, CommonActionsExports>({
+    tag: uniqueTag('redirect'),
+    url: redirectUrl.toString(),
+    domain: [window.location.origin, HOST_ORIGIN],
+    dimensions: { width: '100%', height: 320 },
+    props: {
+      scenario: prop.string(),
+      label: prop.string(),
+      count: prop.number().int(),
+      onAction: prop.function<(message: string) => void>(),
+    },
+  });
+  const instance = Component({
+    scenario: 'common-actions',
+    label: 'before-redirect',
+    count: 4,
+    onAction: (message) => { callbackMessage = message; },
+  });
+
+  try {
+    await instance.render(container);
+    await waitFor(() => instance.exports?.ready);
+    results.push(assertResult(
+      'The second allowed origin completes INIT after the redirect',
+      redirectUrl.origin !== HOST_ORIGIN && instance.exports?.ready === true,
+      `redirect origin: ${redirectUrl.origin}; host origin: ${HOST_ORIGIN}; ready: ${instance.exports?.ready}`
+    ));
+
+    await instance.updateProps({ label: 'after-redirect', count: 9 });
+    const snapshot = await instance.exports!.getSnapshot();
+    results.push(assertResult(
+      'Prop updates target the verified post-redirect origin',
+      snapshot.label === 'after-redirect' && snapshot.count === 9,
+      JSON.stringify(snapshot)
+    ));
+
+    const total = await instance.exports!.addToCount(3);
+    const notified = await instance.exports!.notifyConsumer('redirect-callback-complete');
+    results.push(assertResult(
+      'Exports and callbacks remain bidirectional after the redirect',
+      total === 12 && notified && callbackMessage === 'redirect-callback-complete',
+      `total: ${total}; notified: ${notified}; callback: ${callbackMessage}`
+    ));
+
+    await instance.close();
+    results.push(assertResult(
+      'The redirected frame tears down normally',
+      container.querySelectorAll('iframe').length === 0 && Component.instances.length === 0,
+      `frames: ${container.querySelectorAll('iframe').length}; tracked: ${Component.instances.length}`
+    ));
+  } catch (error) {
+    results.push(failure('Redirect browser scenario completed', error));
+    await instance.close().catch(() => undefined);
+  }
+
+  return results;
+}
+
+export async function runTimeoutRecoveryScenario(
+  sandbox: HTMLElement
+): Promise<TestResult[]> {
+  const results: TestResult[] = [];
+  const timeoutContainer = createContainer(sandbox);
+  const TimeoutComponent = ForgeFrame.create<ReliabilityProps, ReliabilityExports>({
+    tag: uniqueTag('timeout'),
+    url: `${HOST_URL}?scenario=reliability&initDelay=300`,
+    timeout: 100,
+    dimensions: { width: '100%', height: 260 },
+    props: {
+      scenario: prop.string(),
+      label: prop.string(),
+    },
+  });
+  const timedOut = TimeoutComponent({ scenario: 'reliability', label: 'too-slow' });
+  let timeoutMessage = '';
+
+  try {
+    await timedOut.render(timeoutContainer);
+  } catch (error) {
+    timeoutMessage = error instanceof Error ? error.message : String(error);
+  }
+
+  results.push(assertResult(
+    'A host that misses the INIT deadline rejects predictably',
+    timeoutMessage.includes('did not initialize within 100ms'),
+    timeoutMessage || 'render unexpectedly resolved'
+  ));
+  results.push(assertResult(
+    'A timed-out render removes its frame and instance tracking',
+    timeoutContainer.querySelectorAll('iframe').length === 0 &&
+      TimeoutComponent.instances.length === 0,
+    `frames: ${timeoutContainer.querySelectorAll('iframe').length}; tracked: ${TimeoutComponent.instances.length}`
+  ));
+  await timedOut.close().catch(() => undefined);
+
+  const recoveryContainer = createContainer(sandbox);
+  const RecoveryComponent = ForgeFrame.create<ReliabilityProps, ReliabilityExports>({
+    tag: uniqueTag('timeout-recovery'),
+    url: `${HOST_URL}?scenario=reliability`,
+    dimensions: { width: '100%', height: 260 },
+    props: {
+      scenario: prop.string(),
+      label: prop.string(),
+    },
+  });
+  const recovered = RecoveryComponent({ scenario: 'reliability', label: 'recovered' });
+
+  try {
+    await recovered.render(recoveryContainer);
+    await waitFor(() => recovered.exports?.ready);
+    const state = await recovered.exports!.readState();
+    results.push(assertResult(
+      'A fresh component succeeds immediately after the timeout',
+      state.label === 'recovered' && state.uid === recovered.uid,
+      JSON.stringify(state)
+    ));
+  } catch (error) {
+    results.push(failure('Timeout recovery render completed', error));
+  } finally {
+    await recovered.close().catch(() => undefined);
+  }
+
+  results.push(assertResult(
+    'Recovery leaves the playground clean',
+    sandbox.querySelectorAll('iframe').length === 0 &&
+      RecoveryComponent.instances.length === 0,
+    `frames: ${sandbox.querySelectorAll('iframe').length}; tracked: ${RecoveryComponent.instances.length}`
+  ));
+
+  return results;
+}
+
+export async function runStressScenario(
+  sandbox: HTMLElement
+): Promise<TestResult[]> {
+  const results: TestResult[] = [];
+  const Component = ForgeFrame.create<ReliabilityProps, ReliabilityExports>({
+    tag: uniqueTag('stress'),
+    url: `${HOST_URL}?scenario=reliability`,
+    dimensions: { width: '100%', height: 180 },
+    props: {
+      scenario: prop.string(),
+      label: prop.string(),
+    },
+  });
+  let renderedCount = 0;
+  let updatedCount = 0;
+  let cleanWaves = 0;
+  const active = new Set<ReturnType<typeof Component>>();
+
+  try {
+    for (let wave = 0; wave < 5; wave += 1) {
+      const entries = Array.from({ length: 4 }, (_, item) => {
+        const label = `wave-${wave}-item-${item}`;
+        const container = createContainer(sandbox);
+        const instance = Component({ scenario: 'reliability', label });
+        active.add(instance);
+        return { container, instance, label };
+      });
+
+      await Promise.all(entries.map(({ container, instance }) => instance.render(container)));
+      await Promise.all(entries.map(({ instance }) => waitFor(() => instance.exports?.ready)));
+      renderedCount += entries.length;
+
+      await Promise.all(entries.map(({ instance, label }) =>
+        instance.updateProps({ label: `${label}-updated` })
+      ));
+      const states = await Promise.all(entries.map(({ instance }) => instance.exports!.readState()));
+      updatedCount += states.filter((state, index) =>
+        state.label === `${entries[index].label}-updated` &&
+        state.uid === entries[index].instance.uid
+      ).length;
+
+      await Promise.all(entries.map(async ({ container, instance }) => {
+        await instance.close();
+        active.delete(instance);
+        container.remove();
+      }));
+      if (Component.instances.length === 0 && sandbox.querySelectorAll('iframe').length === 0) {
+        cleanWaves += 1;
+      }
+    }
+
+    results.push(assertResult(
+      'Twenty instances render and reach ready state',
+      renderedCount === 20,
+      `ready instances: ${renderedCount}/20`
+    ));
+    results.push(assertResult(
+      'Twenty live prop updates round-trip to their own hosts',
+      updatedCount === 20,
+      `updated instances: ${updatedCount}/20`
+    ));
+    results.push(assertResult(
+      'Every stress wave returns to a clean baseline',
+      cleanWaves === 5,
+      `clean waves: ${cleanWaves}/5`
+    ));
+    results.push(assertResult(
+      'The complete stress journey leaves no frames or tracked instances',
+      sandbox.querySelectorAll('iframe').length === 0 && Component.instances.length === 0,
+      `frames: ${sandbox.querySelectorAll('iframe').length}; tracked: ${Component.instances.length}`
+    ));
+  } catch (error) {
+    results.push(failure('Twenty-instance stress journey completed', error));
+  } finally {
+    await Promise.all([...active].map((instance) => instance.close().catch(() => undefined)));
+  }
+
+  return results;
+}
+
 interface PopupProps extends Record<string, unknown> {
   scenario: string;
 }

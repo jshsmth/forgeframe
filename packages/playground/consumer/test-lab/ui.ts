@@ -67,6 +67,21 @@ export const SCENARIOS: ScenarioDefinition[] = [
     description: 'Render, ready exports, prop updates, remote methods, callbacks, controls, and close in one everyday journey.',
   },
   {
+    id: 'redirect',
+    title: 'Redirect journey',
+    description: 'A frame changes to a second allowed origin before INIT, then completes props, exports, and callbacks.',
+  },
+  {
+    id: 'timeout-recovery',
+    title: 'Timeout and recovery',
+    description: 'A delayed host times out and cleans up before a fresh component renders successfully.',
+  },
+  {
+    id: 'stress',
+    title: 'Twenty-instance stress journey',
+    description: 'Twenty render, update, remote-call, and destroy cycles finish without leaked frames or instances.',
+  },
+  {
     id: 'popup',
     title: 'Popup end to end',
     description: 'A user-initiated popup opens, handshakes, exports data, focuses, resizes, and closes.',
@@ -92,6 +107,7 @@ const LAB_STYLES = `
   .lab-kicker { margin: 0 0 8px; color: #e94560; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
   .lab-title { margin: 0; font-size: clamp(28px, 5vw, 44px); line-height: 1.08; }
   .lab-description { max-width: 720px; margin: 14px 0 0; color: #69707d; font-size: 16px; line-height: 1.6; }
+  .section-title { margin: 34px 0 0; font-size: 20px; }
   .scenario-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; margin-top: 30px; }
   .scenario-card { min-height: 170px; padding: 22px; border: 1px solid #e1e4e8; border-radius: 14px; background: #fff; color: inherit; text-decoration: none; box-shadow: 0 8px 30px rgba(30, 35, 45, .05); }
   .scenario-card:hover { border-color: #e94560; transform: translateY(-1px); }
@@ -122,6 +138,13 @@ export function renderOverview(): void {
     <p class="lab-kicker">Browser test lab</p>
     <h1 class="lab-title">Focused ForgeFrame scenarios</h1>
     <p class="lab-description">Each route runs against the real consumer and host dev servers and reports its assertions in the page.</p>
+    <div class="lab-toolbar">
+      <button class="run-button" id="run-all-scenarios">Run all automatic scenarios</button>
+      <span class="summary" id="scenario-summary">Ready to run ${SCENARIOS.filter((scenario) => scenario.autoRun !== false).length} scenarios</span>
+    </div>
+    <div class="results" id="scenario-results"></div>
+    <div class="sandbox" id="scenario-sandbox"></div>
+    <h2 class="section-title">Individual scenarios</h2>
     <div class="scenario-grid">
       ${SCENARIOS.map((scenario) => `
         <a class="scenario-card" href="/tests/${scenario.id}">
@@ -157,6 +180,17 @@ export function setRunning(running: boolean): void {
   }
   const summary = document.querySelector('#scenario-summary');
   if (summary && running) summary.textContent = 'Running in Chrome…';
+  if (running) document.body.dataset.testStatus = 'running';
+}
+
+export function setSuiteRunning(running: boolean, progress?: string): void {
+  const button = document.querySelector<HTMLButtonElement>('#run-all-scenarios');
+  if (button) {
+    button.disabled = running;
+    button.textContent = running ? 'Running all scenarios…' : 'Run all automatic scenarios';
+  }
+  const summary = document.querySelector('#scenario-summary');
+  if (summary && progress) summary.textContent = progress;
   if (running) document.body.dataset.testStatus = 'running';
 }
 

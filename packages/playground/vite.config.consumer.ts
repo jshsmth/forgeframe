@@ -30,6 +30,12 @@ export default defineConfig(({ command }) => {
     build: {
       outDir: resolve(__dirname, 'dist/consumer'),
       emptyOutDir: true,
+      rollupOptions: {
+        input: {
+          main: resolve(__dirname, 'consumer/index.html'),
+          redirect: resolve(__dirname, 'consumer/redirect.html'),
+        },
+      },
     },
   };
 });
