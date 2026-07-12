@@ -174,6 +174,26 @@ describe('FunctionBridge', () => {
       expect(wrapper1).toBe(wrapper2);
     });
 
+    it('should not reuse a cached wrapper for a different remote window', async () => {
+      const firstTarget = {} as Window;
+      const secondTarget = {} as Window;
+      const ref = { __type__: 'function' as const, __id__: 'fn-shared', __name__: 'test' };
+
+      const firstWrapper = bridge.deserialize(ref, firstTarget, 'https://target.com');
+      const secondWrapper = bridge.deserialize(ref, secondTarget, 'https://target.com') as (
+        ...args: unknown[]
+      ) => Promise<unknown>;
+
+      expect(secondWrapper).not.toBe(firstWrapper);
+      await secondWrapper('next-window');
+      expect(messenger.send).toHaveBeenLastCalledWith(
+        secondTarget,
+        'https://target.com',
+        MESSAGE_NAME.CALL,
+        { id: 'fn-shared', args: ['next-window'] }
+      );
+    });
+
     it('should set function name', () => {
       const targetWin = {} as Window;
       const ref = { __type__: 'function' as const, __id__: 'fn-123', __name__: 'myFunction' };

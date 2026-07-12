@@ -23,6 +23,13 @@ import type { Messenger, MessageHandler } from './messenger';
  */
 type CallableFunction = (...args: unknown[]) => unknown | Promise<unknown>;
 
+/** Cached callable together with the remote identity it targets. @internal */
+interface RemoteFunctionEntry {
+  wrapper: CallableFunction;
+  targetWin: Window;
+  targetDomain: string;
+}
+
 /**
  * Maximum number of function references to keep in each registry.
  * @internal
@@ -68,7 +75,7 @@ export class FunctionBridge {
   private localFunctionIds = new WeakMap<CallableFunction, string>();
 
   /** @internal */
-  private remoteFunctions = new Map<string, CallableFunction>();
+  private remoteFunctions = new Map<string, RemoteFunctionEntry>();
 
   /**
    * Tracks function IDs from the current serialization batch.
@@ -146,10 +153,16 @@ export class FunctionBridge {
   ): CallableFunction {
     const cacheKey = `${ref.__id__}`;
     const cached = this.remoteFunctions.get(cacheKey);
-    if (cached) return cached;
+    if (
+      cached &&
+      cached.targetWin === targetWin &&
+      cached.targetDomain === targetDomain
+    ) {
+      return cached.wrapper;
+    }
 
     // Evict oldest entries if at capacity
-    if (this.remoteFunctions.size >= MAX_FUNCTIONS) {
+    if (!cached && this.remoteFunctions.size >= MAX_FUNCTIONS) {
       const oldestKey = this.remoteFunctions.keys().next().value;
       if (oldestKey) {
         this.remoteFunctions.delete(oldestKey);
@@ -168,7 +181,11 @@ export class FunctionBridge {
       configurable: true,
     });
 
-    this.remoteFunctions.set(cacheKey, wrapper);
+    this.remoteFunctions.set(cacheKey, {
+      wrapper,
+      targetWin,
+      targetDomain,
+    });
     return wrapper;
   }
 

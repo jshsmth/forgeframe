@@ -286,7 +286,7 @@ describe('ConsumerTransport', () => {
     expect(handlers.onError).toHaveBeenCalledWith(initFailure);
   });
 
-  it('should route host export callbacks to the verified message origin after a redirect', async () => {
+  it('should rebind cached host export callbacks to the verified origin after a redirect', async () => {
     const configuredOrigin = 'https://host.example.com';
     const redirectedOrigin = 'https://redirected-host.example.com';
     const transport = createTransport({
@@ -305,14 +305,28 @@ describe('ConsumerTransport', () => {
     transport.setupMessageHandlers(handlers);
 
     const exportHandler = getHandler(transport, MESSAGE_NAME.EXPORT);
+    const exportedFunction = {
+      __type__: 'function',
+      __id__: 'shared-host-ping',
+      __name__: 'ping',
+    };
+
     await exportHandler?.(
+      { ping: exportedFunction },
       {
-        ping: {
-          __type__: 'function',
-          __id__: 'redirected-host-ping',
-          __name__: 'ping',
-        },
-      },
+        uid: 'consumer-transport-uid',
+        domain: configuredOrigin,
+        window: hostWindow,
+      }
+    );
+
+    const initialExport = handlers.onExport.mock.calls[0]?.[0] as {
+      ping: () => Promise<unknown>;
+    };
+    await expect(initialExport.ping()).resolves.toBe('callback-result');
+
+    await exportHandler?.(
+      { ping: exportedFunction },
       {
         uid: 'consumer-transport-uid',
         domain: redirectedOrigin,
@@ -320,15 +334,15 @@ describe('ConsumerTransport', () => {
       }
     );
 
-    const exported = handlers.onExport.mock.calls[0]?.[0] as {
+    const redirectedExport = handlers.onExport.mock.calls[1]?.[0] as {
       ping: () => Promise<unknown>;
     };
-    await expect(exported.ping()).resolves.toBe('callback-result');
-    expect(sendSpy).toHaveBeenCalledWith(
+    await expect(redirectedExport.ping()).resolves.toBe('callback-result');
+    expect(sendSpy).toHaveBeenLastCalledWith(
       hostWindow,
       redirectedOrigin,
       MESSAGE_NAME.CALL,
-      { id: 'redirected-host-ping', args: [] }
+      { id: 'shared-host-ping', args: [] }
     );
   });
 });
