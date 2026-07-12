@@ -7,7 +7,10 @@ import {
   runHostControlsScenario,
   runInstancesScenario,
   runPopupScenario,
+  runRedirectScenario,
   runReliabilityScenario,
+  runStressScenario,
+  runTimeoutRecoveryScenario,
   runTransportScenario,
 } from './extended-scenarios';
 
@@ -54,6 +57,12 @@ export async function runScenario(
       return runReliabilityScenario(sandbox);
     case 'common-actions':
       return runCommonActionsScenario(sandbox);
+    case 'redirect':
+      return runRedirectScenario(sandbox);
+    case 'timeout-recovery':
+      return runTimeoutRecoveryScenario(sandbox);
+    case 'stress':
+      return runStressScenario(sandbox);
     case 'popup':
       return runPopupScenario(sandbox);
     case 'checkout-e2e':
