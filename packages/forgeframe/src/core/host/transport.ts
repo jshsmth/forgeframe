@@ -35,6 +35,8 @@ export class HostTransport {
 
   private deferredInitFlushScheduled = false;
 
+  private exportQueue: Promise<void> = Promise.resolve();
+
   constructor(private options: HostTransportOptions) {
     this.messenger = new Messenger(
       this.options.uid,
@@ -113,7 +115,13 @@ export class HostTransport {
     });
   }
 
-  async exportData<T>(exports: T): Promise<void> {
+  exportData<T>(exports: T): Promise<void> {
+    const operation = this.exportQueue.then(() => this.sendExportBatch(exports));
+    this.exportQueue = operation.catch(() => undefined);
+    return operation;
+  }
+
+  private async sendExportBatch<T>(exports: T): Promise<void> {
     this.bridge.startBatch();
     try {
       const serialized = serializeFunctions(exports, this.bridge);
