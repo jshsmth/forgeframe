@@ -234,7 +234,7 @@ describe('Host security', () => {
 
     dispatchConsumerMessage(MESSAGE_NAME.PROPS, spoofedWindow, {
       data: { amount: 42 },
-      claimedUid: 'spoofed-consumer',
+      claimedUid: 'host-uid-pinned-props',
     });
     await flushMessages();
 
@@ -246,7 +246,7 @@ describe('Host security', () => {
 
     dispatchConsumerMessage(MESSAGE_NAME.PROPS, consumerWindow, {
       data: { amount: 42 },
-      claimedUid: 'real-consumer',
+      claimedUid: 'host-uid-pinned-props',
     });
     await flushMessages();
 

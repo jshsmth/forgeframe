@@ -142,7 +142,38 @@ export function create<P extends Record<string, unknown> = Record<string, unknow
   validateComponentOptions(options);
 
   const instances: ForgeFrameComponentInstance<P, X>[] = [];
+  const componentTag = options.tag;
   let componentHostProps: HostProps<P> | undefined;
+
+  function trackInstance(
+    instance: ConsumerComponent<P, X>
+  ): ConsumerComponent<P, X> {
+    const internalInstance = instance as unknown as ForgeFrameComponentInstance<P, X> & {
+      destroyed?: boolean;
+    };
+
+    if (internalInstance.destroyed) {
+      return instance;
+    }
+
+    instances.push(instance);
+    indexComponentInstance(componentTag, instance);
+
+    instance.event.once('destroy', () => {
+      const index = instances.indexOf(instance);
+      if (index !== -1) {
+        instances.splice(index, 1);
+      }
+
+      removeIndexedComponentInstance(instance.uid);
+    });
+
+    return instance;
+  }
+
+  function createTrackedInstance(props: Partial<P>): ConsumerComponent<P, X> {
+    return trackInstance(new ConsumerComponent<P, X>(options, props, trackInstance));
+  }
 
   const canDetectComponentHost = (): boolean => {
     return hasBrowserWindow() && isHostOfComponent(options.tag);
@@ -186,28 +217,7 @@ export function create<P extends Record<string, unknown> = Record<string, unknow
    * @returns A new component instance
    */
   const Component = function (props: Partial<P> = {} as Partial<P>): ForgeFrameComponentInstance<P, X> {
-    const instance = new ConsumerComponent<P, X>(options, props);
-    const internalInstance = instance as unknown as ForgeFrameComponentInstance<P, X> & {
-      destroyed?: boolean;
-    };
-
-    if (internalInstance.destroyed) {
-      return instance;
-    }
-
-    instances.push(instance);
-    indexComponentInstance(options.tag, instance);
-
-    instance.event.once('destroy', () => {
-      const index = instances.indexOf(instance);
-      if (index !== -1) {
-        instances.splice(index, 1);
-      }
-
-      removeIndexedComponentInstance(instance.uid);
-    });
-
-    return instance;
+    return createTrackedInstance(props);
   } as ForgeFrameComponent<P, X>;
 
   Component.instances = instances;

@@ -60,7 +60,7 @@ export function deserializeMessage(data: unknown): Message | null {
  * @param id - Unique message identifier
  * @param name - Message name/type
  * @param data - Message payload
- * @param source - Sender identification
+ * @param source - Source metadata containing the shared component channel UID and sender domain
  * @returns A formatted request message
  *
  * @public
@@ -85,7 +85,7 @@ export function createRequestMessage(
  *
  * @param requestId - The ID of the request being responded to
  * @param data - Response payload
- * @param source - Sender identification
+ * @param source - Source metadata containing the shared component channel UID and sender domain
  * @param error - Optional error if the request failed
  * @returns A formatted response message
  *
@@ -116,7 +116,7 @@ export function createResponseMessage(
  * Creates an acknowledgement message.
  *
  * @param requestId - The ID of the request being acknowledged
- * @param source - Sender identification
+ * @param source - Source metadata containing the shared component channel UID and sender domain
  * @returns A formatted acknowledgement message
  *
  * @public

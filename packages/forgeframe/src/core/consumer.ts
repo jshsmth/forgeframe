@@ -44,6 +44,15 @@ import { ConsumerTransport } from './consumer/transport';
 import type { NormalizedOptions } from './consumer/types';
 
 /**
+ * Registration callback used to track instances through their owning component.
+ * @internal
+ */
+type ConsumerInstanceTracker<
+  P extends Record<string, unknown>,
+  X,
+> = (instance: ConsumerComponent<P, X>) => ConsumerComponent<P, X>;
+
+/**
  * Consumer-side component implementation.
  *
  * @remarks
@@ -53,13 +62,7 @@ import type { NormalizedOptions } from './consumer/types';
  * @typeParam P - The props type passed to the component
  * @typeParam X - The exports type that the host can expose to the consumer
  *
- * @example
- * ```typescript
- * const instance = new ConsumerComponent(options, { email: 'user@example.com' });
- * await instance.render('#container');
- * ```
- *
- * @public
+ * @internal
  */
 export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
   implements ForgeFrameComponentInstance<P, X>
@@ -116,8 +119,13 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    *
    * @param options - Component configuration options
    * @param props - Initial props to pass to the component
+   * @param trackInstance - Owning component registration callback used for clones
    */
-  constructor(options: ComponentOptions<P>, props: Partial<P> = {}) {
+  constructor(
+    options: ComponentOptions<P>,
+    props: Partial<P> = {},
+    private trackInstance?: ConsumerInstanceTracker<P, X>
+  ) {
     this._uid = generateUID();
     this.options = this.normalizeOptions(options);
 
@@ -401,9 +409,13 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * @returns A new unrendered component instance with identical configuration
    */
   clone(): ForgeFrameComponentInstance<P, X> {
-    const cloned = new ConsumerComponent<P, X>(this.options, this.propsPipeline.props);
+    const cloned = new ConsumerComponent<P, X>(
+      this.options,
+      this.propsPipeline.props,
+      this.trackInstance
+    );
     cloned.propsPipeline.inputProps = { ...this.propsPipeline.inputProps };
-    return cloned;
+    return this.trackInstance ? this.trackInstance(cloned) : cloned;
   }
 
   /**

@@ -100,7 +100,7 @@ describe('Messenger', () => {
       const response = createResponseMessage(
         sentMessage.id,
         { greeting: 'Hello, World!' },
-        { uid: 'target-uid', domain: 'https://target.com' }
+        { uid: 'test-uid', domain: 'https://target.com' }
       );
 
       dispatchMessage(serializeMessage(response), targetWindow, 'https://target.com');
@@ -153,7 +153,7 @@ describe('Messenger', () => {
       const response = createResponseMessage(
         sentMessage.id,
         null,
-        { uid: 'target-uid', domain: 'https://target.com' },
+        { uid: 'test-uid', domain: 'https://target.com' },
         new Error('Handler failed')
       );
 
@@ -180,7 +180,7 @@ describe('Messenger', () => {
       const spoofedResponse = createResponseMessage(
         sentMessage.id,
         { from: 'spoofed' },
-        { uid: 'spoofed-uid', domain: 'https://target.com' }
+        { uid: 'test-uid', domain: 'https://target.com' }
       );
       const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
       dispatchMessage(
@@ -192,7 +192,7 @@ describe('Messenger', () => {
       const trustedResponse = createResponseMessage(
         sentMessage.id,
         { from: 'trusted' },
-        { uid: 'target-uid', domain: 'https://target.com' }
+        { uid: 'test-uid', domain: 'https://target.com' }
       );
       dispatchMessage(
         serializeMessage(trustedResponse),
@@ -219,7 +219,7 @@ describe('Messenger', () => {
       const wrongOriginResponse = createResponseMessage(
         sentMessage.id,
         { from: 'wrong-origin' },
-        { uid: 'target-uid', domain: 'https://host.com' }
+        { uid: 'test-uid', domain: 'https://host.com' }
       );
       dispatchMessage(
         serializeMessage(wrongOriginResponse),
@@ -230,7 +230,7 @@ describe('Messenger', () => {
       const trustedResponse = createResponseMessage(
         sentMessage.id,
         { from: 'trusted-origin' },
-        { uid: 'target-uid', domain: 'https://target.com' }
+        { uid: 'test-uid', domain: 'https://target.com' }
       );
       dispatchMessage(
         serializeMessage(trustedResponse),
@@ -257,7 +257,7 @@ describe('Messenger', () => {
       const response = createResponseMessage(
         sentMessage.id,
         { ok: true },
-        { uid: 'target-uid', domain: 'https://host.com' }
+        { uid: 'test-uid', domain: 'https://host.com' }
       );
       dispatchMessage(serializeMessage(response), targetWindow, 'https://host.com');
 
@@ -280,7 +280,7 @@ describe('Messenger', () => {
       const response = createResponseMessage(
         sentMessage.id,
         { ok: 'normalized' },
-        { uid: 'target-uid', domain: 'https://target.com' }
+        { uid: 'test-uid', domain: 'https://target.com' }
       );
       dispatchMessage(serializeMessage(response), targetWindow, 'https://target.com');
 
@@ -307,7 +307,7 @@ describe('Messenger', () => {
       const response = createResponseMessage(
         sentMessage.id,
         { ok: 'same-origin' },
-        { uid: 'consumer-uid', domain: 'https://consumer.com' }
+        { uid: 'test-uid', domain: 'https://consumer.com' }
       );
       dispatchMessage(
         serializeMessage(response),
@@ -375,7 +375,7 @@ describe('Messenger', () => {
       } as unknown as Window;
 
       const request = createRequestMessage('req-1', 'testMessage', { input: 'data' }, {
-        uid: 'sender-uid',
+        uid: 'test-uid',
         domain: 'https://sender.com',
       });
 
@@ -386,7 +386,7 @@ describe('Messenger', () => {
 
       expect(handler).toHaveBeenCalledWith(
         { input: 'data' },
-        { uid: 'sender-uid', domain: 'https://sender.com', window: sourceWindow }
+        { uid: 'test-uid', domain: 'https://sender.com', window: sourceWindow }
       );
     });
 
@@ -398,7 +398,7 @@ describe('Messenger', () => {
 
       const targetWindow = {} as Window;
       const request = createRequestMessage('req-1', 'testMessage', {}, {
-        uid: 'uid',
+        uid: 'test-uid',
         domain: 'https://example.com',
       });
 
@@ -417,7 +417,7 @@ describe('Messenger', () => {
       } as unknown as Window;
 
       const request = createRequestMessage('req-1', 'testMessage', {}, {
-        uid: 'sender-uid',
+        uid: 'test-uid',
         domain: 'https://sender.com',
       });
 
@@ -449,7 +449,7 @@ describe('Messenger', () => {
       } as unknown as Window;
 
       const request = createRequestMessage('req-1', 'testMessage', {}, {
-        uid: 'sender-uid',
+        uid: 'test-uid',
         domain: 'https://sender.com',
       });
 
@@ -472,7 +472,7 @@ describe('Messenger', () => {
       messenger.on('test', handler);
 
       const request = createRequestMessage('req-1', 'test', {}, {
-        uid: 'uid',
+        uid: 'test-uid',
         domain: 'https://example.com',
       });
 
@@ -498,7 +498,7 @@ describe('Messenger', () => {
       } as unknown as Window;
 
       const request = createRequestMessage('req-1', 'unknownMessage', {}, {
-        uid: 'uid',
+        uid: 'test-uid',
         domain: 'https://example.com',
       });
 
@@ -518,7 +518,7 @@ describe('Messenger', () => {
       messenger.on('test', handler);
 
       const request = createRequestMessage('req-1', 'test', { data: 'value' }, {
-        uid: 'malicious-uid',
+        uid: 'test-uid',
         domain: 'https://malicious.com',
       });
 
@@ -536,7 +536,7 @@ describe('Messenger', () => {
       messenger.on('test', handler);
 
       const request = createRequestMessage('req-1', 'test', { data: 'value' }, {
-        uid: 'trusted-uid',
+        uid: 'test-uid',
         domain: 'https://host.com',
       });
 
@@ -554,7 +554,7 @@ describe('Messenger', () => {
 
       const sourceWindow = { postMessage: vi.fn() } as unknown as Window;
       const request = createRequestMessage('req-1', 'test', { data: 'value' }, {
-        uid: 'trusted-uid',
+        uid: 'test-uid',
         domain: 'https://spoofed.example.com',
       });
 
@@ -563,38 +563,8 @@ describe('Messenger', () => {
 
       expect(handler).toHaveBeenCalledWith(
         { data: 'value' },
-        { uid: 'trusted-uid', domain: 'https://host.com', window: sourceWindow }
+        { uid: 'test-uid', domain: 'https://host.com', window: sourceWindow }
       );
-    });
-
-    it('should keep first bound uid for a source window', async () => {
-      const handler = vi.fn().mockReturnValue({ ok: true });
-      messenger.on('test', handler);
-
-      const sourceWindow = { postMessage: vi.fn() } as unknown as Window;
-      const first = createRequestMessage('req-1', 'test', {}, {
-        uid: 'original-uid',
-        domain: 'https://host.com',
-      });
-      const second = createRequestMessage('req-2', 'test', {}, {
-        uid: 'spoofed-uid',
-        domain: 'https://host.com',
-      });
-
-      dispatchMessage(serializeMessage(first), sourceWindow, 'https://host.com');
-      dispatchMessage(serializeMessage(second), sourceWindow, 'https://host.com');
-      await new Promise((resolve) => setTimeout(resolve, 0));
-
-      expect(handler).toHaveBeenNthCalledWith(1, {}, {
-        uid: 'original-uid',
-        domain: 'https://host.com',
-        window: sourceWindow,
-      });
-      expect(handler).toHaveBeenNthCalledWith(2, {}, {
-        uid: 'original-uid',
-        domain: 'https://host.com',
-        window: sourceWindow,
-      });
     });
 
     it('should expose the browser-verified source window to handlers', async () => {
@@ -603,7 +573,7 @@ describe('Messenger', () => {
 
       const sourceWindow = { postMessage: vi.fn() } as unknown as Window;
       const request = createRequestMessage('req-source-window', 'source-window', {}, {
-        uid: 'source-window-uid',
+        uid: 'test-uid',
         domain: 'https://host.com',
       });
 
@@ -613,7 +583,7 @@ describe('Messenger', () => {
       expect(handler).toHaveBeenCalledWith(
         {},
         expect.objectContaining({
-          uid: 'source-window-uid',
+          uid: 'test-uid',
           domain: 'https://host.com',
           window: sourceWindow,
         })
@@ -625,7 +595,7 @@ describe('Messenger', () => {
       messenger.on('test', handler);
 
       const request = createRequestMessage('req-1', 'test', { data: 'value' }, {
-        uid: 'new-uid',
+        uid: 'test-uid',
         domain: 'https://new-trusted.com',
       });
 
@@ -648,7 +618,7 @@ describe('Messenger', () => {
       messenger.on('test-remove-string', handler);
 
       const request = createRequestMessage('req-rm-1', 'test-remove-string', {}, {
-        uid: 'remove-string-uid',
+        uid: 'test-uid',
         domain: 'https://remove-string.com',
       });
       const source = { postMessage: vi.fn() } as unknown as Window;
@@ -673,7 +643,7 @@ describe('Messenger', () => {
         'test-remove-wildcard',
         {},
         {
-          uid: 'remove-wildcard-uid',
+          uid: 'test-uid',
           domain: 'https://api.remove-wildcard.com',
         }
       );
@@ -713,14 +683,14 @@ describe('Messenger', () => {
         'req-rm-3',
         'test-remove-array',
         {},
-        { uid: 'remove-array-string-uid', domain: 'https://remove-array.com' }
+        { uid: 'test-uid', domain: 'https://remove-array.com' }
       );
       const regexRequest = createRequestMessage(
         'req-rm-4',
         'test-remove-array',
         {},
         {
-          uid: 'remove-array-regex-uid',
+          uid: 'test-uid',
           domain: 'https://sub.remove-array.com',
         }
       );
@@ -761,7 +731,7 @@ describe('Messenger', () => {
       regexMessenger.on('test', handler);
 
       const request = createRequestMessage('req-1', 'test', {}, {
-        uid: 'subdomain-uid',
+        uid: 'regex-uid',
         domain: 'https://sub.trusted.com',
       });
 
@@ -786,7 +756,7 @@ describe('Messenger', () => {
       regexMessenger.on('test', handler);
 
       const request = createRequestMessage('req-1', 'test', {}, {
-        uid: 'global-uid',
+        uid: 'regex-global-uid',
         domain: 'https://trusted-global.com',
       });
       const sourceWindow = { postMessage: vi.fn() } as unknown as Window;
