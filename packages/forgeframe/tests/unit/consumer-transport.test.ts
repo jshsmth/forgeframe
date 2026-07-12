@@ -274,4 +274,50 @@ describe('ConsumerTransport', () => {
 
     expect(handlers.onError).toHaveBeenCalledWith(initFailure);
   });
+
+  it('should route host export callbacks to the verified message origin after a redirect', async () => {
+    const configuredOrigin = 'https://host.example.com';
+    const redirectedOrigin = 'https://redirected-host.example.com';
+    const transport = createTransport({
+      options: createOptions({
+        domain: [configuredOrigin, redirectedOrigin],
+      }),
+    });
+    const handlers = createHandlers();
+    const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+    const sendSpy = vi
+      .spyOn(transport.messenger, 'send')
+      .mockResolvedValue('callback-result');
+
+    transport.hostWindow = hostWindow;
+    transport.openedHostDomain = configuredOrigin;
+    transport.setupMessageHandlers(handlers);
+
+    const exportHandler = getHandler(transport, MESSAGE_NAME.EXPORT);
+    await exportHandler?.(
+      {
+        ping: {
+          __type__: 'function',
+          __id__: 'redirected-host-ping',
+          __name__: 'ping',
+        },
+      },
+      {
+        uid: 'consumer-transport-uid',
+        domain: redirectedOrigin,
+        window: hostWindow,
+      }
+    );
+
+    const exported = handlers.onExport.mock.calls[0]?.[0] as {
+      ping: () => Promise<unknown>;
+    };
+    await expect(exported.ping()).resolves.toBe('callback-result');
+    expect(sendSpy).toHaveBeenCalledWith(
+      hostWindow,
+      redirectedOrigin,
+      MESSAGE_NAME.CALL,
+      { id: 'redirected-host-ping', args: [] }
+    );
+  });
 });

@@ -341,7 +341,7 @@ export class ConsumerTransport<
       }
     );
 
-    this.onHostControl<unknown>(MESSAGE_NAME.EXPORT, async (exports) => {
+    this.onHostControl<unknown>(MESSAGE_NAME.EXPORT, async (exports, source) => {
       if (!this.hostWindow) {
         return { success: false };
       }
@@ -350,7 +350,7 @@ export class ConsumerTransport<
           exports,
           this.bridge,
           this.hostWindow,
-          this.getHostDomain()
+          source.domain
         ) as X
       );
       return { success: true };
