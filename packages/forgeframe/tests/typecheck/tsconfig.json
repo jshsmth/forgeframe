@@ -3,7 +3,8 @@
   "compilerOptions": {
     "noEmit": true,
     "declaration": false,
-    "emitDeclarationOnly": false
+    "emitDeclarationOnly": false,
+    "jsx": "preserve"
   },
-  "include": ["./**/*.ts"]
+  "include": ["./**/*.ts", "./**/*.tsx"]
 }

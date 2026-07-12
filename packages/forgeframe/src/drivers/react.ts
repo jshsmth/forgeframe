@@ -11,12 +11,21 @@ import type { ContextType } from '../constants';
  *
  * @internal
  */
-interface ReactLike {
+interface ReactLike<E> {
+  createElement: (...args: never[]) => E;
+  useRef: (...args: never[]) => unknown;
+  useEffect: (...args: never[]) => unknown;
+  useState: (...args: never[]) => unknown;
+  forwardRef: (...args: never[]) => unknown;
+}
+
+/** Internal callable shape used after the public compatibility check. @internal */
+interface ReactRuntime<E> {
   createElement: (
-    type: unknown,
+    type: string,
     props?: Record<string, unknown> | null,
     ...children: unknown[]
-  ) => unknown;
+  ) => E;
   useRef: <T>(initial: T | null) => { current: T | null };
   useEffect: (effect: () => void | (() => void), deps?: unknown[]) => void;
   useState: <T>(initial: T) => [T, (v: T) => void];
@@ -24,8 +33,8 @@ interface ReactLike {
     render: (
       props: P,
       ref: ((value: T | null) => void) | { current: T | null } | null
-    ) => unknown
-  ) => unknown;
+    ) => E
+  ) => ReactComponentType<P, E>;
 }
 
 /**
@@ -147,7 +156,7 @@ function shallowEqualProps(
  *
  * @public
  */
-export interface ReactDriverOptions {
+export interface ReactDriverOptions<E = unknown> {
   /**
    * The React library instance to use for component creation.
    *
@@ -155,7 +164,7 @@ export interface ReactDriverOptions {
    * Must provide `createElement`, `useRef`, `useEffect`, `useState`, and `forwardRef`.
    * Compatible with React 16.8+ and Preact with compat.
    */
-  React: ReactLike;
+  React: ReactLike<E>;
 }
 
 /**
@@ -170,14 +179,14 @@ export interface ReactDriverOptions {
  *
  * @public
  */
-export interface ReactComponentType<P> {
+export interface ReactComponentType<P, E = unknown> {
   /**
    * Renders the component with the given props.
    *
    * @param props - The component props
    * @returns A React element (type varies by React version)
    */
-  (props: P): unknown;
+  (props: P): E;
 
   /**
    * Display name shown in React DevTools.
@@ -230,12 +239,16 @@ export interface ReactComponentType<P> {
  *
  * @public
  */
-export function createReactComponent<P extends Record<string, unknown>, X = unknown>(
+export function createReactComponent<
+  P extends Record<string, unknown>,
+  X = unknown,
+  E = unknown,
+>(
   Component: ForgeFrameComponent<P, X>,
-  options: ReactDriverOptions
-): ReactComponentType<FullReactComponentProps<P>> {
-  const { React } = options;
-  const { createElement, useRef, useEffect, useState, forwardRef } = React;
+  options: ReactDriverOptions<E>
+): ReactComponentType<FullReactComponentProps<P>, E> {
+  const { createElement, useRef, useEffect, useState, forwardRef } =
+    options.React as unknown as ReactRuntime<E>;
 
   const ReactComponent = forwardRef<HTMLDivElement, FullReactComponentProps<P>>(
     function ForgeFrameComponent(props, ref) {
@@ -364,9 +377,9 @@ export function createReactComponent<P extends Record<string, unknown>, X = unkn
   );
 
   const displayName = `ForgeFrame(${(Component as { name?: string }).name || 'Component'})`;
-  (ReactComponent as ReactComponentType<FullReactComponentProps<P>>).displayName = displayName;
+  ReactComponent.displayName = displayName;
 
-  return ReactComponent as ReactComponentType<FullReactComponentProps<P>>;
+  return ReactComponent;
 }
 
 /**
@@ -402,7 +415,7 @@ export function createReactComponent<P extends Record<string, unknown>, X = unkn
  *
  * @public
  */
-export function withReactComponent(React: ReactLike) {
+export function withReactComponent<E>(React: ReactLike<E>) {
   /**
    * Factory function that wraps a ForgeFrame component as a React component.
    *
@@ -416,7 +429,7 @@ export function withReactComponent(React: ReactLike) {
    */
   return function createComponent<P extends Record<string, unknown>, X = unknown>(
     Component: ForgeFrameComponent<P, X>
-  ): ReactComponentType<FullReactComponentProps<P>> {
+  ): ReactComponentType<FullReactComponentProps<P>, E> {
     return createReactComponent(Component, { React });
   };
 }

@@ -103,8 +103,6 @@ export const MESSAGE_TYPE = {
   REQUEST: 'request',
   /** Response to a previous request */
   RESPONSE: 'response',
-  /** Acknowledgment message */
-  ACK: 'ack',
 } as const;
 
 /**

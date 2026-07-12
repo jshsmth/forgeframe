@@ -7,7 +7,6 @@ import type { EventEmitterInterface } from './events';
 import type { PropsDefinition } from './props';
 import type { ContainerTemplate, PrerenderTemplate } from './templates';
 import type {
-  AutoResizeOptions,
   Dimensions,
   DomainMatcher,
   EligibilityResult,
@@ -80,11 +79,6 @@ export interface ComponentOptions<P = Record<string, unknown>> {
    * Default dimensions for the component.
    */
   dimensions?: Dimensions | ((props: P) => Dimensions);
-
-  /**
-   * Configuration for automatic resizing based on content.
-   */
-  autoResize?: AutoResizeOptions;
 
   /**
    * Default rendering context (iframe or popup).
@@ -187,7 +181,7 @@ export interface ForgeFrameComponentInstance<P = Record<string, unknown>, X = un
    * @returns Promise that resolves when rendering is complete
    */
   render(
-    container?: string | HTMLElement,
+    container: string | HTMLElement,
     context?: ContextType
   ): Promise<void>;
 
@@ -205,7 +199,7 @@ export interface ForgeFrameComponentInstance<P = Record<string, unknown>, X = un
    */
   renderTo(
     win: Window,
-    container?: string | HTMLElement,
+    container: string | HTMLElement,
     context?: ContextType
   ): Promise<void>;
 

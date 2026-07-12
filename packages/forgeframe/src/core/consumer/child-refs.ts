@@ -9,7 +9,7 @@
 
 import type { HostComponentRef } from '../../window/types';
 import type { PropsDefinition } from '../../types/props';
-import { getComponentOptions } from '../component';
+import { getComponentOptions } from '../component-registry';
 import type { NormalizedOptions } from './types';
 
 /**
@@ -35,7 +35,7 @@ export function buildNestedHostRefs<P extends Record<string, unknown>>(
 
     if (typeof nestedOptions.url !== 'string') {
       throw new Error(
-        `Nested component "${name}" must use a static string URL. Function URLs are not supported in children.`
+        `Nested component "${name}" must use a static string URL for protocol-v1 compatibility.`
       );
     }
 

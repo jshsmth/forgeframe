@@ -26,11 +26,6 @@ export interface PlaygroundConfig {
   };
   style?: Record<string, string | number>;
   attributes?: Record<string, string | boolean>;
-  autoResize?: {
-    width?: boolean;
-    height?: boolean;
-    element?: string;
-  };
   timeout?: number;
   modalStyle?: ModalStyle;
   props?: {

@@ -20,6 +20,7 @@ import { CONTEXT, EVENT, MESSAGE_NAME } from '../constants';
 import { EventEmitter } from '../events/emitter';
 import { generateUID } from '../utils/uid';
 import { CleanupManager } from '../utils/cleanup';
+import { createDeferred } from '../utils/promise';
 import { registerWindow, unregisterWindow } from '../window/proxy';
 import {
   validateProps,
@@ -42,6 +43,7 @@ import { ConsumerRenderer } from './consumer/renderer';
 import { getSiblingInstances } from './consumer/siblings';
 import { ConsumerTransport } from './consumer/transport';
 import type { NormalizedOptions } from './consumer/types';
+import { resolveComponentHostUrl } from '../utils/url';
 
 /**
  * Registration callback used to track instances through their owning component.
@@ -109,10 +111,19 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
   private rendered = false;
 
   /** @internal */
+  private renderPromise: Promise<void> | null = null;
+
+  /** @internal */
   private destroyed = false;
 
   /** @internal */
   private closing = false;
+
+  /** @internal */
+  private constructing = true;
+
+  /** @internal */
+  private constructionActions: Array<'close' | 'focus'> = [];
 
   /**
    * Creates a new ConsumerComponent instance.
@@ -149,10 +160,6 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
       (nextProps) => this.createPropContext(nextProps)
     );
 
-    if (this.destroyed) {
-      return;
-    }
-
     this.transport = new ConsumerTransport(
       this.uid,
       this.options,
@@ -162,6 +169,12 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
 
     this.setupMessageHandlers();
     this.setupCleanup();
+
+    this.constructing = false;
+    for (const action of this.constructionActions) {
+      void this[action]();
+    }
+    this.constructionActions = [];
   }
 
   /**
@@ -183,7 +196,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * ```
    */
   async render(
-    container?: string | HTMLElement,
+    container: string | HTMLElement,
     context?: ContextType
   ): Promise<void> {
     if (this.destroyed) {
@@ -194,6 +207,31 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
       throw new Error('Component has already been rendered');
     }
 
+    if (this.renderPromise) {
+      return this.renderPromise;
+    }
+
+    const renderTask = createDeferred<void>();
+    const operation = renderTask.promise;
+    this.renderPromise = operation;
+    void this.performRender(container, context).then(
+      renderTask.resolve,
+      renderTask.reject
+    );
+    try {
+      await operation;
+    } finally {
+      if (!this.rendered && !this.destroyed && this.renderPromise === operation) {
+        this.renderPromise = null;
+      }
+    }
+  }
+
+  /** @internal */
+  private async performRender(
+    container: string | HTMLElement,
+    context?: ContextType
+  ): Promise<void> {
     this.renderer.context = context ?? this.options.defaultContext;
 
     this.checkEligibility();
@@ -245,7 +283,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    */
   async renderTo(
     win: Window,
-    container?: string | HTMLElement,
+    container: string | HTMLElement,
     context?: ContextType
   ): Promise<void> {
     if (win !== window) {
@@ -341,6 +379,9 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * @param newProps - Partial props object to merge with existing props
    */
   async updateProps(newProps: Partial<P>): Promise<void> {
+    if (this.renderPromise && !this.rendered) {
+      throw new Error('Cannot update props while the component is rendering');
+    }
     return this.applyPropsUpdate(newProps);
   }
 
@@ -380,7 +421,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     const openedHostDomain = this.transport?.openedHostDomain;
 
     if (
-      this.rendered &&
+      (this.rendered || this.renderPromise !== null) &&
       openedHostDomain &&
       nextHostOrigin &&
       nextHostOrigin !== openedHostDomain
@@ -416,6 +457,11 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     );
     cloned.propsPipeline.inputProps = { ...this.propsPipeline.inputProps };
     return this.trackInstance ? this.trackInstance(cloned) : cloned;
+  }
+
+  /** Returns whether construction or lifecycle callbacks destroyed this instance. @internal */
+  isDestroyed(): boolean {
+    return this.destroyed;
   }
 
   /**
@@ -470,19 +516,11 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * @internal
    */
   private resolveUrlOrigin(url: string): string | null {
-    try {
-      return new URL(url, window.location.origin).origin;
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * Returns true when the domain option explicitly includes this origin.
-   * @internal
-   */
-  private isExplicitDomainTrust(origin: string): boolean {
-    return this.transport ? this.transport.isExplicitDomainTrust(origin) : false;
+    return resolveComponentHostUrl(
+      url,
+      window.location.origin,
+      this.options.domain
+    ).origin;
   }
 
   /**
@@ -490,11 +528,8 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * @internal
    */
   private syncTrustedDomainForUrl(url: string): void {
-    const origin = this.resolveUrlOrigin(url);
-    if (origin) {
-      this.isExplicitDomainTrust(origin);
-    }
     if (!this.transport) {
+      this.resolveUrlOrigin(url);
       return;
     }
 
@@ -511,8 +546,20 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     return {
       props: contextProps,
       state: this.state,
-      close: () => this.close(),
-      focus: () => this.focus(),
+      close: () => {
+        if (this.constructing) {
+          this.constructionActions.push('close');
+          return Promise.resolve();
+        }
+        return this.close();
+      },
+      focus: () => {
+        if (this.constructing) {
+          this.constructionActions.push('focus');
+          return Promise.resolve();
+        }
+        return this.focus();
+      },
       onError: (err: Error) =>
         emitConsumerError(
           this.event,
@@ -600,7 +647,12 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * @internal
    */
   private buildUrl(baseUrl: string = this.resolveUrl()): string {
-    const queryParams = propsToQueryParams(this.propsPipeline.props, this.options.props);
+    const hostDomain = this.resolveUrlOrigin(baseUrl);
+    const queryParams = propsToQueryParams(
+      this.propsPipeline.props,
+      this.options.props,
+      hostDomain ?? ''
+    );
     const queryString = queryParams.toString();
 
     if (!queryString) return baseUrl;
@@ -614,7 +666,12 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * @internal
    */
   private buildBodyParams(): URLSearchParams {
-    return propsToBodyParams(this.propsPipeline.props, this.options.props);
+    const hostDomain = this.resolveUrlOrigin(this.resolveUrl());
+    return propsToBodyParams(
+      this.propsPipeline.props,
+      this.options.props,
+      hostDomain ?? ''
+    );
   }
 
   /**
@@ -645,10 +702,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     });
   }
 
-  /**
-   * Creates the exports object sent to the host.
-   * @internal
-   */
+  /** Legacy protocol-v1 bootstrap metadata retained for mixed-version hosts. @internal */
   private createConsumerExports(): ConsumerExports {
     return {
       init: MESSAGE_NAME.INIT,

@@ -133,7 +133,7 @@ describe('ConsumerTransport', () => {
     expect(transport.getHostDomain()).toBe('*');
   });
 
-  it('should rotate dynamic trusted origins but preserve explicitly trusted domains', () => {
+  it('should rely exclusively on an explicit domain policy when configured', () => {
     const transport = createTransport({
       options: createOptions({
         domain: ['https://explicit.example.com'],
@@ -145,8 +145,8 @@ describe('ConsumerTransport', () => {
 
     transport.syncTrustedDomainForUrl('https://dynamic-next.example.com/widget');
 
-    expect(removeSpy).toHaveBeenCalledWith('https://dynamic-old.example.com');
-    expect(addSpy).toHaveBeenCalledWith('https://dynamic-next.example.com');
+    expect(removeSpy).not.toHaveBeenCalled();
+    expect(addSpy).not.toHaveBeenCalled();
     expect(transport.dynamicUrlTrustedOrigin).toBe('https://dynamic-next.example.com');
 
     removeSpy.mockClear();
@@ -156,7 +156,7 @@ describe('ConsumerTransport', () => {
     transport.syncTrustedDomainForUrl('https://dynamic-final.example.com/widget');
 
     expect(removeSpy).not.toHaveBeenCalled();
-    expect(addSpy).toHaveBeenCalledWith('https://dynamic-final.example.com');
+    expect(addSpy).not.toHaveBeenCalled();
     expect(transport.dynamicUrlTrustedOrigin).toBe('https://dynamic-final.example.com');
   });
 

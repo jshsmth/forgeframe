@@ -380,7 +380,6 @@ export class Messenger {
 
         if (message.error) {
           const error = new Error(message.error.message);
-          error.stack = message.error.stack;
           pending.deferred.reject(error);
         } else {
           pending.deferred.resolve(message.data);

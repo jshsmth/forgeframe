@@ -8,7 +8,7 @@
  * registration for the host runtime.
  */
 
-import { FunctionBridge } from '../../communication/bridge';
+import { FunctionBridge, serializeFunctions } from '../../communication/bridge';
 import { Messenger } from '../../communication/messenger';
 import { EVENT, MESSAGE_NAME } from '../../constants';
 import { getDomain } from '../../window/helpers';
@@ -42,7 +42,10 @@ export class HostTransport {
       getDomain(),
       this.options.consumerDomain
     );
-    this.bridge = new FunctionBridge(this.messenger);
+    this.bridge = new FunctionBridge(
+      this.messenger,
+      (source) => source.window === this.options.consumerWindow
+    );
   }
 
   registerPropsHandler(handler: HostTransportPropsHandler): void {
@@ -107,12 +110,19 @@ export class HostTransport {
   async onError(error: Error): Promise<void> {
     await this.sendMessage(MESSAGE_NAME.ERROR, {
       message: error.message,
-      stack: error.stack,
     });
   }
 
   async exportData<T>(exports: T): Promise<void> {
-    await this.sendMessage(MESSAGE_NAME.EXPORT, exports);
+    this.bridge.startBatch();
+    try {
+      const serialized = serializeFunctions(exports, this.bridge);
+      await this.sendMessage(MESSAGE_NAME.EXPORT, serialized);
+      this.bridge.finishBatch();
+    } catch (error) {
+      this.bridge.finishBatch(true);
+      throw error;
+    }
   }
 
   async consumerExport<T>(data: T): Promise<void> {

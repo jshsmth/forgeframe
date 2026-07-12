@@ -15,7 +15,7 @@ import {
   encodeDateWireValue,
   isDateWireValue,
 } from '../utils/wire-value';
-import type { Messenger } from './messenger';
+import type { Messenger, MessageHandler } from './messenger';
 
 /**
  * Generic function type for cross-domain callable functions.
@@ -65,6 +65,9 @@ export class FunctionBridge {
   private localFunctions = new Map<string, CallableFunction>();
 
   /** @internal */
+  private localFunctionIds = new WeakMap<CallableFunction, string>();
+
+  /** @internal */
   private remoteFunctions = new Map<string, CallableFunction>();
 
   /**
@@ -79,7 +82,10 @@ export class FunctionBridge {
    *
    * @param messenger - The messenger to use for cross-domain calls
    */
-  constructor(private messenger: Messenger) {
+  constructor(
+    private messenger: Messenger,
+    private isExpectedSource: (source: Parameters<MessageHandler>[1]) => boolean = () => true
+  ) {
     this.setupCallHandler();
   }
 
@@ -91,16 +97,27 @@ export class FunctionBridge {
    * @returns A function reference that can be sent across domains
    */
   serialize(fn: CallableFunction, name?: string): FunctionRef {
+    const existingId = this.localFunctionIds.get(fn);
+    if (existingId && this.localFunctions.get(existingId) === fn) {
+      this.currentBatchIds.add(existingId);
+      return {
+        __type__: 'function',
+        __id__: existingId,
+        __name__: name || fn.name || 'anonymous',
+      };
+    }
+
     // Evict oldest entries if at capacity
     if (this.localFunctions.size >= MAX_FUNCTIONS) {
       const oldestKey = this.localFunctions.keys().next().value;
       if (oldestKey) {
-        this.localFunctions.delete(oldestKey);
+        this.removeLocal(oldestKey);
       }
     }
 
     const id = generateShortUID();
     this.localFunctions.set(id, fn);
+    this.localFunctionIds.set(fn, id);
     this.currentBatchIds.add(id);
 
     return {
@@ -177,7 +194,10 @@ export class FunctionBridge {
   private setupCallHandler(): void {
     this.messenger.on<{ id: string; args: unknown[] }>(
       MESSAGE_NAME.CALL,
-      async ({ id, args }) => {
+      async ({ id, args }, source) => {
+        if (!this.isExpectedSource(source)) {
+          throw new Error('Function call rejected from unexpected window');
+        }
         const fn = this.localFunctions.get(id);
         if (!fn) {
           throw new Error(`Function with id "${id}" not found`);
@@ -193,7 +213,11 @@ export class FunctionBridge {
    * @param id - The function reference ID to remove
    */
   removeLocal(id: string): void {
+    const fn = this.localFunctions.get(id);
     this.localFunctions.delete(id);
+    if (fn && this.localFunctionIds.get(fn) === id) {
+      this.localFunctionIds.delete(fn);
+    }
   }
 
   /**
@@ -232,7 +256,7 @@ export class FunctionBridge {
     // Remove functions not in the current batch
     for (const id of this.localFunctions.keys()) {
       if (!this.currentBatchIds.has(id)) {
-        this.localFunctions.delete(id);
+        this.removeLocal(id);
       }
     }
     this.currentBatchIds.clear();
@@ -270,6 +294,7 @@ export class FunctionBridge {
    */
   destroy(): void {
     this.localFunctions.clear();
+    this.localFunctionIds = new WeakMap();
     this.remoteFunctions.clear();
     this.currentBatchIds.clear();
   }

@@ -17,7 +17,7 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `host-lifecycle.test.ts`: Host lifecycle message handling, hostProps synchronization, and consumer window resolution.
 - `host-transport.test.ts`: Direct host transport behavior for deferred init scheduling, trust updates, props routing, and teardown.
 - `host-security.test.ts`: Host allowlist enforcement and deferred-init security gating.
-- `iframe.test.ts`: Iframe creation, visibility/sizing helpers, and content-dimension access behavior.
+- `iframe.test.ts`: Iframe creation, reserved-attribute guards, visibility, and sizing helpers.
 - `index-side-effect-free.test.ts`: Public entrypoint import stays side-effect-free until `initHost()` is called explicitly in ForgeFrame-shaped host windows.
 - `messenger.test.ts`: Cross-window messenger request/response flow, filtering, trust checks, and teardown behavior.
 - `messenger-routing.test.ts`: Multi-instance channel routing and function bridge response isolation.
@@ -50,6 +50,7 @@ This index documents what each ForgeFrame test file validates and the naming con
 
 ## Type Tests (`packages/forgeframe/tests/typecheck`)
 
+- `react-jsx.tsx`: Compile-time assertions for React JSX wrapper props and element return types.
 - `schema.typecheck.ts`: Compile-time assertions for Standard Schema utility and contract types.
 
 ## Naming Conventions

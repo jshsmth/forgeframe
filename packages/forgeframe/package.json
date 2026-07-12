@@ -19,7 +19,7 @@
   ],
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "vite build && tsc --emitDeclarationOnly",
+    "build": "vite build && tsc --emitDeclarationOnly && node scripts/fix-dts-imports.mjs",
     "typecheck": "tsc --noEmit && npm run typecheck:tests",
     "typecheck:tests": "tsc -p tests/typecheck/tsconfig.json --noEmit",
     "test": "vitest",
@@ -46,6 +46,7 @@
     "url": "git+https://github.com/jshsmth/ForgeFrame.git"
   },
   "devDependencies": {
+    "@types/react": "^19.2.17",
     "valibot": "^1.2.0",
     "zod": "^4.3.6"
   }

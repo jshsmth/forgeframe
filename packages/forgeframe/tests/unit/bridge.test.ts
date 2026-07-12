@@ -100,6 +100,30 @@ describe('FunctionBridge', () => {
       expect(ref1.__id__).not.toBe(ref2.__id__);
     });
 
+    it('should preserve the ID of the same function across serialization batches', async () => {
+      const fn = () => 'stable';
+      bridge.startBatch();
+      const first = bridge.serialize(fn);
+      bridge.finishBatch();
+
+      bridge.startBatch();
+      const second = bridge.serialize(fn);
+      bridge.finishBatch();
+
+      expect(second.__id__).toBe(first.__id__);
+      await expect(messenger.simulateCall(first.__id__, [])).resolves.toBe('stable');
+    });
+
+    it('should reject calls from an unexpected peer window', async () => {
+      const guardedBridge = new FunctionBridge(messenger, () => false);
+      const ref = guardedBridge.serialize(() => 'private');
+
+      await expect(messenger.simulateCall(ref.__id__, [])).rejects.toThrow(
+        'Function call rejected from unexpected window'
+      );
+      guardedBridge.destroy();
+    });
+
     it('should evict the oldest local function reference when capacity is exceeded', async () => {
       const firstRef = bridge.serialize(() => 'first');
 
