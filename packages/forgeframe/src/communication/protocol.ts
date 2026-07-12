@@ -106,29 +106,7 @@ export function createResponseMessage(
     error: error
       ? {
           message: error.message,
-          stack: error.stack,
         }
       : undefined,
-  };
-}
-
-/**
- * Creates an acknowledgement message.
- *
- * @param requestId - The ID of the request being acknowledged
- * @param source - Source metadata containing the shared component channel UID and sender domain
- * @returns A formatted acknowledgement message
- *
- * @public
- */
-export function createAckMessage(
-  requestId: string,
-  source: { uid: string; domain: string }
-): Message {
-  return {
-    id: requestId,
-    type: MESSAGE_TYPE.ACK,
-    name: 'ack',
-    source,
   };
 }

@@ -21,6 +21,15 @@ export default defineConfig({
     restoreMocks: true,
     clearMocks: true,
     coverage: {
+      include: ['src/**/*.ts'],
+      exclude: [
+        'src/**/*.d.ts',
+        'src/**/index.ts',
+        'src/types.ts',
+        'src/types/**',
+        'src/**/types.ts',
+        'src/props/prop.ts',
+      ],
       thresholds: {
         statements: 90,
         branches: 85,

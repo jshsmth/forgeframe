@@ -21,5 +21,4 @@ export {
   deserializeMessage,
   createRequestMessage,
   createResponseMessage,
-  createAckMessage,
 } from './protocol';

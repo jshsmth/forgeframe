@@ -48,6 +48,15 @@
         font-size: 0.8rem;
         color: #888;
       }
+      .test-route-link {
+        color: #e94560;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-decoration: none;
+      }
+      .test-route-link:hover {
+        text-decoration: underline;
+      }
 
       /* Mode Toggle */
       .mode-group {
@@ -466,6 +475,7 @@
         <div class="header-info" id="header-info">
           <!-- Updated dynamically -->
         </div>
+        <a class="test-route-link" href="/tests">Test routes</a>
       </div>
     </header>
 
@@ -514,6 +524,6 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
-    <script type="module" src="./main.ts"></script>
+    <script type="module" src="/router.ts"></script>
   </body>
 </html>

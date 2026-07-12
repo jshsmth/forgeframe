@@ -100,6 +100,30 @@ describe('FunctionBridge', () => {
       expect(ref1.__id__).not.toBe(ref2.__id__);
     });
 
+    it('should preserve the ID of the same function across serialization batches', async () => {
+      const fn = () => 'stable';
+      bridge.startBatch();
+      const first = bridge.serialize(fn);
+      bridge.finishBatch();
+
+      bridge.startBatch();
+      const second = bridge.serialize(fn);
+      bridge.finishBatch();
+
+      expect(second.__id__).toBe(first.__id__);
+      await expect(messenger.simulateCall(first.__id__, [])).resolves.toBe('stable');
+    });
+
+    it('should reject calls from an unexpected peer window', async () => {
+      const guardedBridge = new FunctionBridge(messenger, () => false);
+      const ref = guardedBridge.serialize(() => 'private');
+
+      await expect(messenger.simulateCall(ref.__id__, [])).rejects.toThrow(
+        'Function call rejected from unexpected window'
+      );
+      guardedBridge.destroy();
+    });
+
     it('should evict the oldest local function reference when capacity is exceeded', async () => {
       const firstRef = bridge.serialize(() => 'first');
 
@@ -148,6 +172,26 @@ describe('FunctionBridge', () => {
       const wrapper2 = bridge.deserialize(ref, targetWin, 'https://target.com');
 
       expect(wrapper1).toBe(wrapper2);
+    });
+
+    it('should not reuse a cached wrapper for a different remote window', async () => {
+      const firstTarget = {} as Window;
+      const secondTarget = {} as Window;
+      const ref = { __type__: 'function' as const, __id__: 'fn-shared', __name__: 'test' };
+
+      const firstWrapper = bridge.deserialize(ref, firstTarget, 'https://target.com');
+      const secondWrapper = bridge.deserialize(ref, secondTarget, 'https://target.com') as (
+        ...args: unknown[]
+      ) => Promise<unknown>;
+
+      expect(secondWrapper).not.toBe(firstWrapper);
+      await secondWrapper('next-window');
+      expect(messenger.send).toHaveBeenLastCalledWith(
+        secondTarget,
+        'https://target.com',
+        MESSAGE_NAME.CALL,
+        { id: 'fn-shared', args: ['next-window'] }
+      );
     });
 
     it('should set function name', () => {

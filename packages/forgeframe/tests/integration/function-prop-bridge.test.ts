@@ -21,6 +21,7 @@ interface CallbackResult {
 
 interface CallbackBridgeProps {
   onApprove: (payload: CallbackPayload) => Promise<CallbackResult>;
+  label?: string;
 }
 
 const CALLBACK_PROP_DEFINITIONS: PropsDefinition<CallbackBridgeProps> = {
@@ -28,6 +29,7 @@ const CALLBACK_PROP_DEFINITIONS: PropsDefinition<CallbackBridgeProps> = {
     schema: prop.function<(payload: CallbackPayload) => Promise<CallbackResult>>(),
     required: true,
   },
+  label: { schema: prop.string().optional() },
 };
 
 describe('Function prop bridge integration', () => {
@@ -80,11 +82,17 @@ describe('Function prop bridge integration', () => {
     });
     expect(onApprove).toHaveBeenNthCalledWith(1, firstPayload);
 
+    const cachedOnApprove = hostProps.onApprove;
+    await instance.updateProps({ label: 'unrelated update' });
+    await expect(
+      cachedOnApprove({ orderId: 'order-cached', amount: 5 })
+    ).resolves.toEqual({ approved: true, receipt: 'order-cached:5' });
+
     shouldThrow = true;
     const secondPayload: CallbackPayload = { orderId: 'order-2', amount: 17 };
     await expect(hostProps.onApprove(secondPayload)).rejects.toThrow(
       'consumer callback failed'
     );
-    expect(onApprove).toHaveBeenNthCalledWith(2, secondPayload);
+    expect(onApprove).toHaveBeenNthCalledWith(3, secondPayload);
   });
 });

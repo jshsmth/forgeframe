@@ -1,7 +1,7 @@
 /**
  * Unit tests for `@/render/iframe`.
  *
- * Covers iframe creation/destruction, visibility and sizing helpers, attribute handling, and same-origin dimension reads.
+ * Covers iframe creation/destruction, visibility and sizing helpers, and attribute handling.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
@@ -12,7 +12,6 @@ import {
   showIframe,
   hideIframe,
   focusIframe,
-  getIframeContentDimensions,
 } from '@/render/iframe';
 
 describe('createIframe', () => {
@@ -75,6 +74,21 @@ describe('createIframe', () => {
     expect(iframe.getAttribute('title')).toBe('Payment Widget');
     expect(iframe.getAttribute('sandbox')).toBe('allow-scripts allow-forms');
   });
+
+  it.each(['name', 'src', 'srcdoc']) (
+    'should reject the reserved %s bootstrap attribute',
+    (attribute) => {
+      expect(() =>
+        createIframe({
+          url: 'https://example.com',
+          name: 'trusted-bootstrap',
+          container,
+          dimensions: { width: 100, height: 100 },
+          attributes: { [attribute]: 'attacker-controlled' },
+        })
+      ).toThrow(`Iframe attribute "${attribute}" is managed by ForgeFrame`);
+    }
+  );
 
   it('should preserve an explicit empty sandbox attribute', () => {
     const iframe = createIframe({
@@ -330,68 +344,5 @@ describe('focusIframe', () => {
     });
 
     expect(() => focusIframe(iframe)).not.toThrow();
-  });
-});
-
-describe('getIframeContentDimensions', () => {
-  it('should return null for cross-origin iframe', () => {
-    const iframe = document.createElement('iframe');
-    // contentDocument is null for cross-origin
-    Object.defineProperty(iframe, 'contentDocument', {
-      get() {
-        return null;
-      },
-    });
-
-    expect(getIframeContentDimensions(iframe)).toBeNull();
-  });
-
-  it('should return null when access throws', () => {
-    const iframe = document.createElement('iframe');
-    Object.defineProperty(iframe, 'contentDocument', {
-      get() {
-        throw new Error('Cross-origin');
-      },
-    });
-
-    expect(getIframeContentDimensions(iframe)).toBeNull();
-  });
-
-  it('should return dimensions for same-origin iframe', () => {
-    const iframe = document.createElement('iframe');
-
-    const mockBody = {
-      scrollWidth: 800,
-      scrollHeight: 600,
-      offsetWidth: 750,
-      offsetHeight: 550,
-    };
-
-    const mockHtml = {
-      clientWidth: 700,
-      clientHeight: 500,
-      scrollWidth: 800,
-      scrollHeight: 600,
-      offsetWidth: 780,
-      offsetHeight: 580,
-    };
-
-    const mockDoc = {
-      body: mockBody,
-      documentElement: mockHtml,
-    };
-
-    Object.defineProperty(iframe, 'contentDocument', {
-      get() {
-        return mockDoc;
-      },
-    });
-
-    const dimensions = getIframeContentDimensions(iframe);
-
-    expect(dimensions).toEqual({
-      width: 800, // max of all width values
-      height: 600, // max of all height values
-    });
   });
 });

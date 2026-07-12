@@ -430,5 +430,3 @@ function isBase64Encoded(
     typeof (value as Record<string, unknown>).__value__ === 'string'
   );
 }
-
-export { cloneProps } from './clone';

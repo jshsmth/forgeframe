@@ -18,7 +18,6 @@ export {
   showIframe,
   hideIframe,
   focusIframe,
-  getIframeContentDimensions,
   type IframeOptions,
 } from './iframe';
 

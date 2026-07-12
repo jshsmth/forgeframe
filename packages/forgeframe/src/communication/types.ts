@@ -49,7 +49,7 @@ export interface Message {
   /** Unique message ID */
   id: string;
   /** Message type */
-  type: 'request' | 'response' | 'ack';
+  type: 'request' | 'response';
   /** Message name/action */
   name: string;
   /** Message payload */
@@ -57,7 +57,6 @@ export interface Message {
   /** Error information (for error responses) */
   error?: {
     message: string;
-    stack?: string;
   };
   /**
    * Message source metadata.

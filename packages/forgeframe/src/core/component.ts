@@ -28,29 +28,17 @@ import { getHost, initHost } from './host';
 import { HOST_PROPS_BUILTIN_KEYS } from './host/builtin-keys';
 import { isHostOfComponent } from '../window/name-payload';
 import { hasBrowserWindow } from '../utils/browser';
-
-/**
- * Global registry of all defined components.
- * @internal
- */
-const componentRegistry = new Map<string, ForgeFrameComponent<Record<string, unknown>>>();
-
-/**
- * Internal symbol used to attach component options metadata to component factories.
- * @internal
- */
-const INTERNAL_COMPONENT_OPTIONS = Symbol('forgeframe.component.options');
-
-/**
- * Component factory augmented with internal metadata.
- * @internal
- */
-type InternalForgeFrameComponent<
-  P extends Record<string, unknown> = Record<string, unknown>,
-  X = unknown,
-> = ForgeFrameComponent<P, X> & {
-  [INTERNAL_COMPONENT_OPTIONS]?: ComponentOptions<P>;
-};
+import { resolveComponentHostUrl } from '../utils/url';
+import {
+  clearRegisteredComponents,
+  deleteRegisteredComponent,
+  getComponentOptions,
+  getRegisteredComponent,
+  getRegisteredComponentEntries,
+  getRegisteredComponentTags,
+  hasRegisteredComponent,
+  registerComponent,
+} from './component-registry';
 
 /**
  * Validates component configuration options.
@@ -87,19 +75,29 @@ function validateComponentOptions<P>(options: ComponentOptions<P>): void {
 
   // Validate URL format if it's a string (can't validate function URLs at definition time)
   if (typeof options.url === 'string') {
+    const browserAvailable = hasBrowserWindow();
+    const validationBaseUrl = browserAvailable
+      ? window.location.origin
+      : 'https://forgeframe.invalid';
+    let hasAbsoluteUrl = true;
+
     try {
-      const validationBaseUrl = hasBrowserWindow()
-        ? window.location.origin
-        : 'https://forgeframe.invalid';
-      new URL(options.url, validationBaseUrl);
+      new URL(options.url);
     } catch {
-      throw new Error(
-        `Invalid component URL "${options.url}". Must be a valid absolute or relative URL.`
-      );
+      hasAbsoluteUrl = false;
     }
+
+    // A relative URL has no real origin until it is resolved in a browser.
+    // Validate its syntax and protocol here, then enforce the domain policy
+    // against the actual resolved URL when an instance renders.
+    resolveComponentHostUrl(
+      options.url,
+      validationBaseUrl,
+      browserAvailable || hasAbsoluteUrl ? options.domain : undefined
+    );
   }
 
-  if (componentRegistry.has(options.tag)) {
+  if (hasRegisteredComponent(options.tag)) {
     throw new Error(`Component "${options.tag}" is already registered`);
   }
 }
@@ -148,11 +146,7 @@ export function create<P extends Record<string, unknown> = Record<string, unknow
   function trackInstance(
     instance: ConsumerComponent<P, X>
   ): ConsumerComponent<P, X> {
-    const internalInstance = instance as unknown as ForgeFrameComponentInstance<P, X> & {
-      destroyed?: boolean;
-    };
-
-    if (internalInstance.destroyed) {
+    if (instance.isDestroyed()) {
       return instance;
     }
 
@@ -236,14 +230,12 @@ export function create<P extends Record<string, unknown> = Record<string, unknow
     get: () => syncHostProps(),
   });
 
-  (Component as InternalForgeFrameComponent<P, X>)[INTERNAL_COMPONENT_OPTIONS] = options;
-
   Component.canRenderTo = async (win: Window): Promise<boolean> => {
     // Cross-window render targets are not currently supported.
     return win === window;
   };
 
-  componentRegistry.set(options.tag, Component as ForgeFrameComponent<Record<string, unknown>>);
+  registerComponent(Component, options);
 
   return Component;
 }
@@ -269,7 +261,7 @@ export function create<P extends Record<string, unknown> = Record<string, unknow
 export function getComponent<P extends Record<string, unknown> = Record<string, unknown>, X = unknown>(
   tag: string
 ): ForgeFrameComponent<P, X> | undefined {
-  return componentRegistry.get(tag) as ForgeFrameComponent<P, X> | undefined;
+  return getRegisteredComponent<P, X>(tag);
 }
 
 /**
@@ -279,7 +271,7 @@ export function getComponent<P extends Record<string, unknown> = Record<string, 
 export function getRegisteredComponents(): Array<
   [string, ForgeFrameComponent<Record<string, unknown>>]
 > {
-  return Array.from(componentRegistry.entries());
+  return getRegisteredComponentEntries();
 }
 
 /**
@@ -302,12 +294,7 @@ export function getIndexedComponentInstances(): Array<{ tag: string; instance: I
  * Returns the internal options metadata for a component factory.
  * @internal
  */
-export function getComponentOptions<
-  P extends Record<string, unknown> = Record<string, unknown>,
-  X = unknown,
->(component: ForgeFrameComponent<P, X>): ComponentOptions<P> | undefined {
-  return (component as InternalForgeFrameComponent<P, X>)[INTERNAL_COMPONENT_OPTIONS];
-}
+export { getComponentOptions };
 
 /**
  * Destroys a single component instance.
@@ -352,7 +339,7 @@ export async function destroy<P extends Record<string, unknown>>(
  * @public
  */
 export async function destroyByTag(tag: string): Promise<void> {
-  const component = componentRegistry.get(tag);
+  const component = getRegisteredComponent(tag);
   if (!component) return;
 
   const instances = [...component.instances];
@@ -377,7 +364,7 @@ export async function destroyByTag(tag: string): Promise<void> {
  * @public
  */
 export async function destroyAll(): Promise<void> {
-  const tags = Array.from(componentRegistry.keys());
+  const tags = getRegisteredComponentTags();
   await Promise.all(tags.map((tag) => destroyByTag(tag)));
 }
 
@@ -391,7 +378,7 @@ export async function destroyAll(): Promise<void> {
  * @internal
  */
 export function unregisterComponent(tag: string): void {
-  componentRegistry.delete(tag);
+  deleteRegisteredComponent(tag);
   clearIndexedInstancesByTag(tag);
 }
 
@@ -404,6 +391,6 @@ export function unregisterComponent(tag: string): void {
  * @internal
  */
 export function clearComponents(): void {
-  componentRegistry.clear();
+  clearRegisteredComponents();
   clearIndexedInstances();
 }

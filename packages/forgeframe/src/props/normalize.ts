@@ -192,13 +192,7 @@ export function getPropsForHost<P extends Record<string, unknown>>(
     const propKey = key as keyof P;
     const value = props[propKey];
 
-    if (definition.sendToHost === false) continue;
-    if (definition.sameDomain && !isSameDomain) continue;
-
-    if (definition.trustedDomains) {
-      const trusted = definition.trustedDomains as DomainMatcher;
-      if (!matchDomain(trusted, hostDomain)) continue;
-    }
+    if (!shouldSendPropToHost(definition, hostDomain, isSameDomain)) continue;
 
     let finalValue = value;
     if (definition.hostDecorate && value !== undefined) {
@@ -209,6 +203,28 @@ export function getPropsForHost<P extends Record<string, unknown>>(
   }
 
   return result;
+}
+
+/**
+ * Applies the delivery policy shared by postMessage, query-string, and POST
+ * body transports.
+ *
+ * @internal
+ */
+function shouldSendPropToHost<P extends Record<string, unknown>>(
+  definition: PropDefinition<unknown, P>,
+  hostDomain: string,
+  isSameDomain: boolean
+): boolean {
+  if (definition.sendToHost === false) return false;
+  if (definition.sameDomain && !isSameDomain) return false;
+
+  if (definition.trustedDomains) {
+    const trusted = definition.trustedDomains as DomainMatcher;
+    if (!matchDomain(trusted, hostDomain)) return false;
+  }
+
+  return true;
 }
 
 /**
@@ -223,7 +239,9 @@ export function getPropsForHost<P extends Record<string, unknown>>(
  */
 export function propsToQueryParams<P extends Record<string, unknown>>(
   props: P,
-  definitions: PropsDefinition<P>
+  definitions: PropsDefinition<P>,
+  hostDomain: string,
+  isSameDomain = false
 ): URLSearchParams {
   const params = new URLSearchParams();
 
@@ -234,6 +252,7 @@ export function propsToQueryParams<P extends Record<string, unknown>>(
     if (value === undefined) continue;
     if (typeof value === 'function') continue;
     if (!definition.queryParam) continue;
+    if (!shouldSendPropToHost(definition, hostDomain, isSameDomain)) continue;
 
     const paramName =
       typeof definition.queryParam === 'string' ? definition.queryParam : key;
@@ -265,7 +284,9 @@ export function propsToQueryParams<P extends Record<string, unknown>>(
  */
 export function propsToBodyParams<P extends Record<string, unknown>>(
   props: P,
-  definitions: PropsDefinition<P>
+  definitions: PropsDefinition<P>,
+  hostDomain: string,
+  isSameDomain = false
 ): URLSearchParams {
   const params = new URLSearchParams();
 
@@ -276,6 +297,7 @@ export function propsToBodyParams<P extends Record<string, unknown>>(
     if (value === undefined) continue;
     if (typeof value === 'function') continue;
     if (!definition.bodyParam) continue;
+    if (!shouldSendPropToHost(definition, hostDomain, isSameDomain)) continue;
 
     const paramName =
       typeof definition.bodyParam === 'string' ? definition.bodyParam : key;

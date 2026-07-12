@@ -100,8 +100,18 @@ describe('Host controls and routing integration', () => {
       })
     );
 
-    await harness.withHostGlobalsAsync(() => hostProps.export({ ready: true }));
-    expect(instance.exports).toEqual({ ready: true });
+    await harness.withHostGlobalsAsync(() =>
+      hostProps.export({
+        ready: true,
+        ping: (value: string) => `pong:${value}`,
+      })
+    );
+    const exported = instance.exports as {
+      ready: boolean;
+      ping: (value: string) => Promise<string>;
+    };
+    expect(exported.ready).toBe(true);
+    await expect(exported.ping('live')).resolves.toBe('pong:live');
 
     await harness.withHostGlobalsAsync(() => hostProps.consumer.export({ ping: true }));
     expect(instance.consumerExports).toEqual({ ping: true });

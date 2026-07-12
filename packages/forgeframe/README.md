@@ -76,6 +76,7 @@ Imagine a payment company (like Stripe) wants to let merchants embed a checkout 
 - [Templates (Advanced)](#templates-advanced)
 - [React Integration (Optional)](#react-integration-optional)
 - [Advanced Features](#advanced-features)
+- [Migrating from 0.0.15 to 0.1.0](#migrating-from-0015-to-010)
 - [API Reference](#api-reference)
 - [TypeScript](#typescript)
 - [Browser Support](#browser-support)
@@ -484,8 +485,8 @@ const Checkout = ForgeFrame.create({
   tag: 'checkout',
   url: 'https://payments.example.com/checkout',
   props: {
-    sessionToken: { schema: prop.string(), queryParam: true }, // ?sessionToken=...
-    csrf: { schema: prop.string(), bodyParam: true }, // POST body field "csrf"
+    checkoutId: { schema: prop.string(), queryParam: true }, // ?checkoutId=...
+    requestNonce: { schema: prop.string(), bodyParam: true }, // POST body field
     userId: { schema: prop.string(), bodyParam: 'user_id' }, // custom body field name
   },
 });
@@ -495,6 +496,8 @@ const Checkout = ForgeFrame.create({
 - `bodyParam`: sends values in a hidden form `POST` for initial load (iframe and popup).
 - `bodyParam` only affects the initial navigation; later `updateProps()` uses postMessage.
 - Object values are JSON-stringified. Function and `undefined` values are skipped.
+- Never put credentials, bearer tokens, session identifiers, or sensitive personal data in `queryParam`; URLs commonly leak through browser history, referrers, analytics, and server logs.
+- `sendToHost`, `sameDomain`, and `trustedDomains` are enforced for query and body parameters as well as postMessage props. Because same-origin status is not verified until the host loads, `sameDomain` props are never included in the initial request.
 - Most apps do not need this unless the host server requires initial URL/body parameters.
 
 ### Updating Props
@@ -808,18 +811,6 @@ const PopupComponent = ForgeFrame.create({
 });
 ```
 
-### Auto-Resize
-
-Automatically resize based on host content.
-
-```typescript
-const AutoResizeComponent = ForgeFrame.create({
-  tag: 'auto-resize',
-  url: 'https://widgets.stripe.com/component',
-  autoResize: { height: true, width: false, element: '.content' },
-});
-```
-
 ### Domain Security
 
 Restrict which domains can embed or communicate.
@@ -857,6 +848,10 @@ initHost(secureProps, [
   /^https:\/\/.*\.trusted\.com$/,
 ]);
 ```
+
+When `allowedConsumerDomains` is configured, the host fails closed if the browser does not provide a usable consumer origin. A `no-referrer` navigation can therefore prevent initialization; do not weaken the allowlist to work around that browser privacy setting.
+
+Public API removals or behavioral changes are documented in GitHub release notes. Pre-1.0 releases may include breaking changes, so pin an exact version for production integrations and review release notes before upgrading.
 
 ### Eligibility Checks
 
@@ -897,9 +892,48 @@ const ContainerComponent = ForgeFrame.create({
 > **`Host`**
 
 ```typescript
+// Import or define the same child factories before initializing hostProps.
+// Their schemas remain executable code and are never JSON-serialized.
+import { CardFieldComponent, CVVFieldComponent } from './child-components';
+
+initHost(containerPropDefinitions, allowedConsumerDomains);
 const { children } = window.hostProps;
 children.CardField({ onValid: () => {} }).render('#card-container');
 ```
+
+Each child tag must be registered in the host bundle before `hostProps` is initialized. Current hosts resolve executable validators, defaults, decorators, and regular expressions from that local registry instead of reconstructing them from JSON. Protocol-v1 metadata is still emitted for older hosts during staged upgrades, so nested child URLs must remain static strings.
+
+---
+
+## Migrating from 0.0.15 to 0.1.0
+
+Version 0.1.0 keeps ForgeFrame's existing iframe/popup model, but makes several previously permissive or ambiguous behaviors explicit. Ordinary integrations using an HTTP(S) URL, a matching domain policy, standard props, and `await instance.render(container)` should upgrade without code changes.
+
+### Upgrade checklist
+
+Before upgrading, check the integration for these less-common patterns:
+
+- `autoResize` configuration or an `AutoResizeOptions` type import.
+- `render()` or `renderTo()` calls without a container, or `updateProps()` calls made before rendering finishes.
+- Computed component URLs that are not HTTP(S) or do not match `domain`.
+- `name`, `src`, or `srcdoc` inside custom iframe `attributes`.
+- Sensitive or server-required `queryParam` / `bodyParam` props whose delivery depends on `sendToHost`, `sameDomain`, or `trustedDomains`.
+- Nested components that are not also imported or defined by the host bundle.
+- Consumer diagnostics that depend on receiving the host's remote `Error.stack`.
+
+If none of these apply, the upgrade should be drop-in for the normal create, render, callback, prop-update, export, resize, and close flows.
+
+| Area | Change in 0.1.0 | Migration action |
+|------|-----------------|------------------|
+| Component URLs | Only HTTP(S) URLs are accepted, and `domain` is enforced against the resolved host origin. | Ensure every static or computed URL uses HTTP(S) and matches `domain`. |
+| Rendering | `render()` and `renderTo()` require a container. Concurrent `render()` calls share one operation, and `updateProps()` rejects while rendering is in progress. | Always pass a container and await `render()` before updating props. |
+| Initial query/body props | `sendToHost`, `sameDomain`, and `trustedDomains` now apply to `queryParam` and `bodyParam`; `sameDomain` values are withheld from the initial request. | Check any server bootstrap fields and never place secrets in the URL. |
+| Iframe attributes | ForgeFrame owns `name`, `src`, and `srcdoc`. | Remove those keys from custom `attributes`; configure navigation with `url`. |
+| Auto-resize | The unused `autoResize` option and exported `AutoResizeOptions` type were removed, along with the internal content-dimension helper. | Remove `autoResize` and `AutoResizeOptions` imports; use `instance.resize()` or host-driven sizing. |
+| Nested components | Hosts resolve child factories from their local component registry so executable schemas are preserved. | Import or define child components in the host bundle before `initHost()`. Keep child URLs static for protocol-v1 compatibility. |
+| Remote errors | Error messages still cross the bridge, but remote stack traces do not. | Do not depend on a remote `Error.stack`; collect host-side diagnostics locally. |
+
+The wire protocol remains version 1 and retains legacy nested-component metadata for staged upgrades. Upgrade both sides together where practical. If upgrading separately, ensure the host bundle registers every nested child before switching the consumer, and do not rely on newly callable host exports until both sides are current.
 
 ---
 
@@ -916,7 +950,7 @@ ForgeFrame.destroyByTag(tag)      // Destroy all instances of a tag
 ForgeFrame.destroyAll()           // Destroy all instances
 ForgeFrame.isHost()               // Check if in host context
 ForgeFrame.isEmbedded()           // Alias for isHost() - more intuitive naming
-ForgeFrame.initHost(props?, allowedConsumers?) // Required before direct window.hostProps access
+ForgeFrame.initHost(props?, allowedConsumerDomains?) // Required before direct window.hostProps access
 ForgeFrame.getHostProps()         // Get hostProps in host context
 ForgeFrame.isStandardSchema(val)  // Check if value is a Standard Schema
 
@@ -935,7 +969,6 @@ interface ComponentOptions<P> {
   tag: string;
   url: string | ((props: P) => string);
   dimensions?: { width?: number | string; height?: number | string } | ((props: P) => { width?: number | string; height?: number | string });
-  autoResize?: { width?: boolean; height?: boolean; element?: string };
   props?: PropsDefinition<P>;
   defaultContext?: 'iframe' | 'popup';
   containerTemplate?: (ctx: TemplateContext<P>) => HTMLElement | null;
@@ -957,7 +990,7 @@ interface ComponentOptions<P> {
 const instance = MyComponent(props);
 
 await instance.render(container, context?)   // Render into a container (container is required)
-await instance.renderTo(window, container?)  // Supports only current window; throws for other windows
+await instance.renderTo(window, container)   // Supports only current window; throws for other windows
 await instance.close()                       // Close and destroy
 await instance.focus()                       // Focus
 await instance.resize({ width, height })     // Resize

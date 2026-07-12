@@ -30,11 +30,23 @@ jobs:
       - name: Run type check
         run: npm run typecheck
 
+      - name: Run lint
+        run: npm run lint
+
       - name: Run tests
         run: npm run test:run
 
       - name: Run tests with coverage
         run: npm run test:coverage
+
+      - name: Build and validate published types
+        run: npm run build && npm run typecheck:package
+
+      - name: Audit runtime dependencies
+        run: npm audit --omit=dev
+
+      - name: Validate package contents
+        run: npm pack --dry-run -w forgeframe
 
       - name: Upload coverage reports
         uses: codecov/codecov-action@v4

@@ -45,7 +45,6 @@ type ConsumerInternals = {
   };
   options: Record<string, unknown>;
   resolveUrlOrigin: (url: string) => string | null;
-  isExplicitDomainTrust: (origin: string) => boolean;
   syncTrustedDomainForUrl: (url: string) => void;
   createPropContext: () => {
     close: () => Promise<void>;
@@ -100,6 +99,7 @@ afterEach(async () => {
 describe('Consumer branch coverage and edge paths', () => {
   it('should trust domain option when configured as string', () => {
     const consumer = createConsumer({
+      url: 'https://trusted.example.com/widget',
       domain: 'https://trusted.example.com',
     });
     const allowedOrigins = Array.from(getInternals(consumer).transport.messenger.allowedOrigins);
@@ -109,6 +109,7 @@ describe('Consumer branch coverage and edge paths', () => {
 
   it('should trust domain option when configured as array', () => {
     const consumer = createConsumer({
+      url: 'https://trusted-a.example.com/widget',
       domain: ['https://trusted-a.example.com', 'https://trusted-b.example.com'],
     });
     const allowedOrigins = Array.from(getInternals(consumer).transport.messenger.allowedOrigins);
@@ -119,6 +120,7 @@ describe('Consumer branch coverage and edge paths', () => {
 
   it('should trust mixed array domain option entries including RegExp', () => {
     const consumer = createConsumer({
+      url: 'https://api.trusted.example.com/widget',
       domain: ['https://trusted-a.example.com', /^https:\/\/.*\.trusted\.example\.com$/],
     });
     const internalMessenger = getInternals(consumer).transport.messenger;
@@ -130,6 +132,7 @@ describe('Consumer branch coverage and edge paths', () => {
 
   it('should trust domain option when configured as RegExp', () => {
     const consumer = createConsumer({
+      url: 'https://api.trusted.example.com/widget',
       domain: /^https:\/\/.*\.trusted\.example\.com$/,
     });
     const patterns = getInternals(consumer).transport.messenger.allowedOriginPatterns;
@@ -226,75 +229,24 @@ describe('Consumer branch coverage and edge paths', () => {
     expect(resizePopupSpy).toHaveBeenCalledWith(popup, { width: 480, height: 300 });
   });
 
-  it('should return null for invalid origins when resolving URL origin', () => {
+  it('should reject invalid origins when resolving URL origin', () => {
     const consumer = createConsumer();
-    const origin = (
-      consumer as unknown as {
-        resolveUrlOrigin: (url: string) => string | null;
-      }
-    ).resolveUrlOrigin('http://%');
-
-    expect(origin).toBeNull();
+    expect(() => getInternals(consumer).resolveUrlOrigin('http://%')).toThrow(
+      'Invalid component URL'
+    );
   });
 
-  it('should evaluate explicit domain trust for string and array domain options', () => {
-    const stringDomainConsumer = createConsumer({
-      domain: 'https://trusted.example.com',
-    });
-    const arrayDomainConsumer = createConsumer({
-      domain: ['https://trusted-a.example.com', 'https://trusted-b.example.com'],
-    });
-
-    const isTrustedString = (
-      stringDomainConsumer as unknown as {
-        isExplicitDomainTrust: (origin: string) => boolean;
-      }
-    ).isExplicitDomainTrust('https://trusted.example.com');
-    const isTrustedArray = (
-      arrayDomainConsumer as unknown as {
-        isExplicitDomainTrust: (origin: string) => boolean;
-      }
-    ).isExplicitDomainTrust('https://trusted-b.example.com');
-
-    expect(isTrustedString).toBe(true);
-    expect(isTrustedArray).toBe(true);
+  it('should reject a URL origin outside the configured domain policy', () => {
+    expect(() =>
+      createConsumer({ domain: 'https://trusted.example.com' })
+    ).toThrow('is not allowed by the configured domain policy');
   });
 
-  it('should evaluate explicit domain trust for wildcard and RegExp domain options', () => {
-    const wildcardDomainConsumer = createConsumer({
-      domain: 'https://*.trusted.example.com',
-    });
-    const regexDomainConsumer = createConsumer({
-      domain: /^https:\/\/.*\.trusted\.example\.com$/,
-    });
-
-    const isTrustedWildcard = (
-      wildcardDomainConsumer as unknown as {
-        isExplicitDomainTrust: (origin: string) => boolean;
-      }
-    ).isExplicitDomainTrust('https://api.trusted.example.com');
-    const isTrustedRegex = (
-      regexDomainConsumer as unknown as {
-        isExplicitDomainTrust: (origin: string) => boolean;
-      }
-    ).isExplicitDomainTrust('https://api.trusted.example.com');
-
-    expect(isTrustedWildcard).toBe(true);
-    expect(isTrustedRegex).toBe(true);
-  });
-
-  it('should skip trusted-domain sync when URL origin is invalid', () => {
+  it('should reject invalid URLs during trusted-domain sync', () => {
     const consumer = createConsumer();
-    const internalMessenger = getInternals(consumer).transport.messenger;
-    const addTrustedSpy = vi.spyOn(internalMessenger, 'addTrustedDomain');
-
-    (
-      consumer as unknown as {
-        syncTrustedDomainForUrl: (url: string) => void;
-      }
-    ).syncTrustedDomainForUrl('http://%');
-
-    expect(addTrustedSpy).not.toHaveBeenCalled();
+    expect(() => getInternals(consumer).syncTrustedDomainForUrl('http://%')).toThrow(
+      'Invalid component URL'
+    );
   });
 
   it('should expose working close/focus/onError callbacks from prop context', () => {
@@ -769,19 +721,6 @@ describe('Consumer branch coverage and edge paths', () => {
         getInternals(consumer).propsPipeline.props
       )
     ).toThrow('Nested component "InvalidChild" is missing component metadata');
-  });
-
-  it('should prefer openedHostDomain when computing host domain', () => {
-    const consumer = createConsumer();
-    getInternals(consumer).transport.openedHostDomain = 'https://opened.example.com';
-
-    const domain = (
-      consumer as unknown as {
-        getHostDomain: () => string;
-      }
-    ).getHostDomain();
-
-    expect(domain).toBe('https://opened.example.com');
   });
 
   it('should close popup windows and remove prerender elements during destroy', async () => {

@@ -86,6 +86,8 @@ export type {
   ForgeFrameComponentInstance,
   HostProps,
   HostPropsBuiltins,
+  ChildrenDefinition,
+  ConsumerNamespace,
 
   // Props types
   PropDefinition,
@@ -105,7 +107,6 @@ export type {
   // Utility types
   Dimensions,
   DomainMatcher,
-  AutoResizeOptions,
   IframeAttributes,
   IframeStyles,
   EligibilityResult,

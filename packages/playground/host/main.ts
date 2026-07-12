@@ -4,7 +4,17 @@
  * This demonstrates how to use ForgeFrame from the host (embedded) side.
  * The host receives props from the consumer via window.hostProps.
  */
-import { initHost, isHost, type HostProps } from "forgeframe";
+import { create, initHost, isHost, prop, type HostProps } from "forgeframe";
+
+const NESTED_CHILD_TAG = 'playground-browser-nested-child';
+const hostOrigin = window.location.origin;
+
+create({
+  tag: NESTED_CHILD_TAG,
+  url: `${hostOrigin}/?scenario=nested-child`,
+  dimensions: { width: '100%', height: 240 },
+  props: { scenario: prop.string().optional() },
+});
 
 /**
  * Define your custom props interface.
@@ -15,6 +25,15 @@ interface MyProps {
   count: number;
   onGreet: (message: string) => void;
   onClose: () => void;
+  scenario?: string;
+  onCalculate?: (left: number, right: number) => number | Promise<number>;
+  onObservedProps?: (props: Record<string, unknown>) => void | Promise<void>;
+  label?: string;
+  status?: string;
+  sessionId?: string;
+  amount?: number;
+  onApproved?: (receipt: { transactionId: string; amount: number }) => void | Promise<void>;
+  onAction?: (message: string) => void | Promise<void>;
 }
 
 /**
@@ -245,10 +264,182 @@ function renderEmbedded() {
       }
     }
     setStatus("Props updated");
+    if (hostProps.scenario === 'props') {
+      void hostProps.onObservedProps?.(newProps as Record<string, unknown>);
+    }
   });
 
-  // Export initial data to consumer
-  hostProps.export({ ready: true, timestamp: Date.now() });
+  const exportInitialData = async () => {
+    if (hostProps.scenario === 'configuration') {
+      await hostProps.export({ observed: getUserProps() });
+      return;
+    }
+
+    if (hostProps.scenario === 'instances') {
+      const peers = await hostProps.getPeerInstances();
+      await hostProps.export({
+        instanceLabel: hostProps.label,
+        peerUids: peers.map((peer) => peer.uid),
+        peerCount: peers.length,
+      });
+      return;
+    }
+
+    if (hostProps.scenario === 'host-controls') {
+      await hostProps.export({
+        runControls: async () => {
+          await hostProps.resize({ width: 460, height: 350 });
+          await hostProps.focus();
+          await hostProps.hide();
+          await new Promise((resolve) => setTimeout(resolve, 120));
+          await hostProps.show();
+          return {
+            consumerDomain: hostProps.getConsumerDomain(),
+            parentMatched: hostProps.getConsumer() === window.parent,
+          };
+        },
+        requestClose: async () => {
+          setTimeout(() => void hostProps.close(), 60);
+          return true;
+        },
+      });
+      return;
+    }
+
+    if (hostProps.scenario === 'transport') {
+      await hostProps.export({ observed: getUserProps() });
+      return;
+    }
+
+    if (hostProps.scenario === 'reliability') {
+      await hostProps.export({
+        ready: true,
+        readState: () => ({
+          label: hostProps.label ?? '',
+          uid: hostProps.uid,
+        }),
+      });
+      return;
+    }
+
+    if (hostProps.scenario === 'common-actions') {
+      await hostProps.export({
+        ready: true,
+        getSnapshot: () => ({
+          label: hostProps.label ?? '',
+          count: hostProps.count ?? 0,
+        }),
+        addToCount: (amount: number) => (hostProps.count ?? 0) + amount,
+        notifyConsumer: async (message: string) => {
+          await hostProps.onAction?.(message);
+          return true;
+        },
+      });
+      return;
+    }
+
+    if (hostProps.scenario === 'popup') {
+      await hostProps.export({
+        popupReady: true,
+        hasOpener: window.opener !== null,
+        consumerDomain: hostProps.getConsumerDomain(),
+      });
+      return;
+    }
+
+    if (hostProps.scenario === 'checkout-e2e') {
+      await hostProps.export({
+        checkoutReady: true,
+        submitPayment: async (token: string) => {
+          const receipt = {
+            transactionId: 'txn-browser-e2e',
+            amount: hostProps.amount ?? 0,
+          };
+          await hostProps.onApproved?.(receipt);
+          return {
+            ...receipt,
+            status: hostProps.status,
+            tokenAccepted: token === 'tok_browser_success',
+            sessionId: hostProps.sessionId,
+          };
+        },
+      });
+      return;
+    }
+
+    if (hostProps.scenario === 'bridge' && hostProps.onCalculate) {
+      const callbackResult = await hostProps.onCalculate(19, 23);
+      await hostProps.export({
+        ready: true,
+        callbackResult,
+        multiply: (left: number, right: number) => left * right,
+        exportedAt: new Date(),
+      });
+      return;
+    }
+
+    if (hostProps.scenario === 'nested-parent') {
+      const ChildComponent = hostProps.children?.Child;
+      if (!ChildComponent) {
+        throw new Error('Nested child was not resolved from the host registry');
+      }
+
+      const nestedMount = document.createElement('div');
+      nestedMount.id = 'nested-child-container';
+      Object.assign(nestedMount.style, {
+        marginTop: '12px',
+        border: '1px solid #e8e8e8',
+        borderRadius: '8px',
+        overflow: 'hidden',
+      });
+      app.appendChild(nestedMount);
+
+      const childInstance = ChildComponent({ scenario: 'nested-child' });
+      await childInstance.render(nestedMount);
+      await waitFor(() => childInstance.exports !== undefined);
+      await hostProps.export({
+        nestedReady: true,
+        childTag: NESTED_CHILD_TAG,
+        childExportReady: Boolean(
+          (childInstance.exports as { nestedChildReady?: boolean } | undefined)
+            ?.nestedChildReady
+        ),
+      });
+      return;
+    }
+
+    if (hostProps.scenario === 'nested-child') {
+      await hostProps.export({ nestedChildReady: true });
+      return;
+    }
+
+    if (hostProps.scenario === 'errors') {
+      await hostProps.export({
+        explode: () => {
+          throw new Error('Expected host function failure');
+        },
+      });
+      await hostProps.onError(new Error('Expected host-reported error'));
+      return;
+    }
+
+    await hostProps.export({ ready: true, timestamp: Date.now() });
+  };
+
+  void exportInitialData().catch((error: unknown) => {
+    const hostError = error instanceof Error ? error : new Error(String(error));
+    console.error('[Host] Initial export failed:', hostError);
+    void hostProps.onError(hostError);
+  });
+}
+
+async function waitFor(read: () => boolean, timeoutMs = 4000): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (read()) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`Timed out after ${timeoutMs}ms`);
 }
 
 /**

@@ -240,7 +240,6 @@ describe('Host branch coverage and edge paths', () => {
     const invalidChildren: Record<string, HostComponentRef> = {
       BrokenChild: {
         tag: 'InvalidTag',
-        url: 'https://child.example.com',
       },
     };
 
@@ -250,8 +249,7 @@ describe('Host branch coverage and edge paths', () => {
 
     expect(host.hostProps.children).toBeUndefined();
     expect(warnSpy).toHaveBeenCalledWith(
-      'Failed to create nested component "BrokenChild":',
-      expect.any(Error)
+      'Nested component "BrokenChild" (InvalidTag) must be registered in the host bundle before hostProps is initialized'
     );
   });
 

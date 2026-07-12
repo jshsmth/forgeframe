@@ -210,7 +210,6 @@ export function createComponent(config: PlaygroundConfig, context: 'iframe' | 'p
     dimensions,
     style: config.style as Record<string, string>,
     attributes: config.attributes,
-    autoResize: config.autoResize,
     timeout: config.timeout,
     props: buildPropsSchema(config),
   });

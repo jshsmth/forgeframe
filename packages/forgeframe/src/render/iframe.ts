@@ -65,6 +65,16 @@ interface IframeElementOptions {
   style?: IframeStyles;
 }
 
+const RESERVED_IFRAME_ATTRIBUTES = new Set(['name', 'src', 'srcdoc']);
+
+function assertSafeIframeAttributes(attributes: IframeAttributes): void {
+  for (const key of Object.keys(attributes)) {
+    if (RESERVED_IFRAME_ATTRIBUTES.has(key.toLowerCase())) {
+      throw new Error(`Iframe attribute "${key}" is managed by ForgeFrame`);
+    }
+  }
+}
+
 /**
  * Creates a configured iframe element without appending it or setting `src`.
  *
@@ -74,6 +84,7 @@ export function createIframeElement(
   options: IframeElementOptions
 ): HTMLIFrameElement {
   const { name, dimensions, attributes = {}, style = {} } = options;
+  assertSafeIframeAttributes(attributes);
   const iframe = document.createElement('iframe');
 
   iframe.name = name;
@@ -396,63 +407,4 @@ function applyDefaultSandbox(
     'sandbox',
     'allow-scripts allow-same-origin allow-forms allow-popups'
   );
-}
-
-
-/**
- * Retrieves the content dimensions from an iframe for auto-resize functionality.
- *
- * @remarks
- * This function attempts to read the actual content dimensions from the iframe's
- * document. It calculates the maximum of various dimension properties (`scrollWidth`,
- * `offsetWidth`, `clientWidth`, etc.) from both the body and documentElement to
- * ensure accurate measurements across different browsers.
- *
- * This function will return `null` if:
- * - The iframe's content document is not accessible (cross-origin restrictions)
- * - Any error occurs while reading dimensions
- *
- * @param iframe - The iframe element to measure
- * @returns The content dimensions, or `null` if dimensions cannot be determined
- *
- * @example
- * ```typescript
- * const dimensions = getIframeContentDimensions(iframe);
- * if (dimensions) {
- *   resizeIframe(iframe, dimensions);
- * }
- * ```
- *
- * @public
- */
-export function getIframeContentDimensions(
-  iframe: HTMLIFrameElement
-): Dimensions | null {
-  try {
-    const doc = iframe.contentDocument;
-    if (!doc) return null;
-
-    const body = doc.body;
-    const html = doc.documentElement;
-
-    return {
-      width: Math.max(
-        body.scrollWidth,
-        body.offsetWidth,
-        html.clientWidth,
-        html.scrollWidth,
-        html.offsetWidth
-      ),
-      height: Math.max(
-        body.scrollHeight,
-        body.offsetHeight,
-        html.clientHeight,
-        html.scrollHeight,
-        html.offsetHeight
-      ),
-    };
-  } catch {
-    // Cross-origin access denied
-    return null;
-  }
 }

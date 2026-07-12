@@ -15,14 +15,9 @@ import type { Dimensions, DomainMatcher } from '../../types/utility';
 import type { HostComponentRef } from '../../window/types';
 import { MESSAGE_NAME } from '../../constants';
 import { Messenger, type MessageHandler } from '../../communication/messenger';
-import { FunctionBridge } from '../../communication/bridge';
+import { FunctionBridge, deserializeFunctions } from '../../communication/bridge';
 import { createDeferred, promiseTimeout } from '../../utils/promise';
-import {
-  getDomain,
-  isSameDomain,
-  isWindowClosed,
-  matchDomain,
-} from '../../window/helpers';
+import { getDomain, isSameDomain, isWindowClosed } from '../../window/helpers';
 import { buildWindowName, createWindowPayload } from '../../window/name-payload';
 import { getPropsForHost, serializeProps } from '../../props';
 import type { ContextType } from '../../constants';
@@ -70,6 +65,9 @@ export class ConsumerTransport<
   /** Origin of currently opened host content. */
   public openedHostDomain: string | null = null;
 
+  /** Browser-verified origin of the initialized host window. */
+  public activeHostDomain: string | null = null;
+
   /** Dynamic origin currently trusted due to resolved URL. */
   public dynamicUrlTrustedOrigin: string | null = null;
 
@@ -87,7 +85,10 @@ export class ConsumerTransport<
   ) {
     const trustedDomains = this.buildTrustedDomains();
     this.messenger = new Messenger(this.uid, window, getDomain(), trustedDomains);
-    this.bridge = new FunctionBridge(this.messenger);
+    this.bridge = new FunctionBridge(
+      this.messenger,
+      (source) => Boolean(this.hostWindow && source.window === this.hostWindow)
+    );
   }
 
   /**
@@ -98,7 +99,9 @@ export class ConsumerTransport<
 
     const hostOrigin = this.resolveUrlOrigin(this.resolveUrl());
     if (hostOrigin) {
-      domains.push(hostOrigin);
+      if (!this.options.domain) {
+        domains.push(hostOrigin);
+      }
       this.dynamicUrlTrustedOrigin = hostOrigin;
     }
 
@@ -120,17 +123,6 @@ export class ConsumerTransport<
   }
 
   /**
-   * Returns true when the domain option explicitly includes this origin.
-   */
-  isExplicitDomainTrust(origin: string): boolean {
-    if (!this.options.domain) {
-      return false;
-    }
-
-    return matchDomain(this.options.domain, origin);
-  }
-
-  /**
    * Ensures the messenger trusts the origin for a resolved host URL.
    */
   syncTrustedDomainForUrl(url: string): void {
@@ -140,11 +132,12 @@ export class ConsumerTransport<
     }
 
     const previousOrigin = this.dynamicUrlTrustedOrigin;
-    if (
-      previousOrigin &&
-      previousOrigin !== origin &&
-      !this.isExplicitDomainTrust(previousOrigin)
-    ) {
+    if (this.options.domain) {
+      this.dynamicUrlTrustedOrigin = origin;
+      return;
+    }
+
+    if (previousOrigin && previousOrigin !== origin) {
       this.messenger.removeTrustedDomain(previousOrigin);
     }
 
@@ -156,6 +149,10 @@ export class ConsumerTransport<
    * Returns the current host domain target used for messaging.
    */
   getHostDomain(): string {
+    if (this.activeHostDomain) {
+      return this.activeHostDomain;
+    }
+
     if (this.openedHostDomain) {
       return this.openedHostDomain;
     }
@@ -300,7 +297,8 @@ export class ConsumerTransport<
    * Sets up host message handlers.
    */
   setupMessageHandlers(handlers: ConsumerTransportHandlers<X>): void {
-    this.onHostControl(MESSAGE_NAME.INIT, () => {
+    this.onHostControl(MESSAGE_NAME.INIT, (_data, source) => {
+      this.activeHostDomain = source.domain;
       this.hostInitialized = true;
       if (this.initPromise) {
         this.initPromise.resolve();
@@ -342,18 +340,27 @@ export class ConsumerTransport<
       return { success: true };
     });
 
-    this.onHostControl<{ message: string; stack?: string }>(
+    this.onHostControl<{ message: string }>(
       MESSAGE_NAME.ERROR,
       async (errorData) => {
         const error = new Error(errorData.message);
-        error.stack = errorData.stack;
         handlers.onError(error);
         return { success: true };
       }
     );
 
-    this.onHostControl<X>(MESSAGE_NAME.EXPORT, async (exports) => {
-      handlers.onExport(exports);
+    this.onHostControl<unknown>(MESSAGE_NAME.EXPORT, async (exports, source) => {
+      if (!this.hostWindow) {
+        return { success: false };
+      }
+      handlers.onExport(
+        deserializeFunctions(
+          exports,
+          this.bridge,
+          this.hostWindow,
+          source.domain
+        ) as X
+      );
       return { success: true };
     });
 

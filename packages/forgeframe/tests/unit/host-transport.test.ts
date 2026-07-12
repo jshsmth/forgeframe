@@ -9,6 +9,7 @@ import { EVENT, MESSAGE_NAME } from '@/constants';
 import { EventEmitter } from '@/events/emitter';
 import { HostTransport } from '@/core/host/transport';
 import type { HostTransportOptions } from '@/core/host/types';
+import { createDeferred } from '@/utils/promise';
 
 type PropsHandlerSource = {
   uid: string;
@@ -250,6 +251,48 @@ describe('HostTransport', () => {
         options: undefined,
       }
     );
+  });
+
+  it('should serialize overlapping function export batches in call order', async () => {
+    const { transport } = createTransport();
+    const firstSend = createDeferred<void>();
+    const secondSend = createDeferred<void>();
+    const sendSpy = vi.spyOn(transport.messenger, 'send');
+    sendSpy
+      .mockImplementationOnce(() => firstSend.promise)
+      .mockImplementationOnce(() => secondSend.promise);
+
+    const firstExport = transport.exportData({ first: () => 'first' });
+    const secondExport = transport.exportData({ second: () => 'second' });
+    await flushMicrotasks();
+
+    expect(sendSpy).toHaveBeenCalledTimes(1);
+    expect(sendSpy.mock.calls[0]?.[2]).toBe(MESSAGE_NAME.EXPORT);
+
+    firstSend.resolve();
+    await firstExport;
+    await flushMicrotasks();
+
+    expect(sendSpy).toHaveBeenCalledTimes(2);
+    expect(sendSpy.mock.calls[1]?.[2]).toBe(MESSAGE_NAME.EXPORT);
+
+    secondSend.resolve();
+    await expect(secondExport).resolves.toBeUndefined();
+  });
+
+  it('should continue queued exports after an earlier export fails', async () => {
+    const { transport } = createTransport();
+    const sendSpy = vi.spyOn(transport.messenger, 'send');
+    sendSpy
+      .mockRejectedValueOnce(new Error('first export failed'))
+      .mockResolvedValueOnce(undefined);
+
+    const firstExport = transport.exportData({ first: () => 'first' });
+    const secondExport = transport.exportData({ second: () => 'second' });
+
+    await expect(firstExport).rejects.toThrow('first export failed');
+    await expect(secondExport).resolves.toBeUndefined();
+    expect(sendSpy).toHaveBeenCalledTimes(2);
   });
 
   it('should destroy the messenger and bridge only once', () => {

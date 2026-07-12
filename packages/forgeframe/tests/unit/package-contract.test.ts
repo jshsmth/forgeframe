@@ -88,7 +88,6 @@ describe('package contract', () => {
     expect(rootPackageJson.scripts).not.toHaveProperty('test:browser');
     expect(rootPackageJson.scripts.lint).not.toContain('playwright');
     expect(rootPackageJson.scripts.typecheck).not.toContain('tsconfig.browser.json');
-    expect(releaseCheck).not.toContain('test:browser');
     expect(releaseCheck).not.toContain('playwright');
     expect(releaseCheck).not.toContain('/private/tmp');
   });

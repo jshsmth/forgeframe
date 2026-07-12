@@ -42,24 +42,6 @@ export interface Dimensions {
 }
 
 /**
- * Configuration for automatic component resizing.
- *
- * @remarks
- * When enabled, the consumer will automatically resize the iframe
- * based on the host content dimensions.
- *
- * @public
- */
-export interface AutoResizeOptions {
-  /** Enable automatic width resizing */
-  width?: boolean;
-  /** Enable automatic height resizing */
-  height?: boolean;
-  /** CSS selector of element to measure for auto-resize */
-  element?: string;
-}
-
-/**
  * HTML attributes that can be applied to an iframe element.
  *
  * @remarks

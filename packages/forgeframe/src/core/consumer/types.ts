@@ -22,6 +22,5 @@ export interface NormalizedOptions<P extends Record<string, unknown>> {
   validate?: ComponentOptions<P>['validate'];
   attributes?: ComponentOptions<P>['attributes'];
   style?: ComponentOptions<P>['style'];
-  autoResize?: ComponentOptions<P>['autoResize'];
   children?: ComponentOptions<P>['children'];
 }

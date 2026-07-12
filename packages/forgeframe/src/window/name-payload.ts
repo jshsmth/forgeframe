@@ -126,7 +126,11 @@ function isValidHostComponentRef(value: unknown): value is HostComponentRef {
     return false;
   }
 
-  if (value.defaultContext !== undefined && value.defaultContext !== CONTEXT.IFRAME && value.defaultContext !== CONTEXT.POPUP) {
+  if (
+    value.defaultContext !== undefined &&
+    value.defaultContext !== CONTEXT.IFRAME &&
+    value.defaultContext !== CONTEXT.POPUP
+  ) {
     return false;
   }
 
@@ -135,7 +139,7 @@ function isValidHostComponentRef(value: unknown): value is HostComponentRef {
       return false;
     }
 
-    const { width, height } = value.dimensions as { width?: unknown; height?: unknown };
+    const { width, height } = value.dimensions;
     if (
       (width !== undefined && typeof width !== 'string' && typeof width !== 'number') ||
       (height !== undefined && typeof height !== 'string' && typeof height !== 'number')
@@ -312,6 +316,10 @@ function encodePayload<P>(payload: WindowNamePayload<P>): string {
  * @internal
  */
 function decodePayload<P>(encoded: string): WindowNamePayload<P> | null {
+  if (encoded.length > MAX_PAYLOAD_SIZE) {
+    return null;
+  }
+
   try {
     const json = decodeURIComponent(atob(encoded));
     const parsed = JSON.parse(json) as unknown;

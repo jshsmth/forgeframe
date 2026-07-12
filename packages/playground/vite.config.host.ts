@@ -11,7 +11,20 @@ export default defineConfig(({ command }) => {
   const shouldUseMkcert = command === 'serve' && process.env.FORGEFRAME_SKIP_MKCERT !== '1';
 
   return {
-    plugins: shouldUseMkcert ? [mkcert()] : [],
+    plugins: [
+      ...(shouldUseMkcert ? [mkcert()] : []),
+      {
+        name: 'forgeframe-playground-post-fallback',
+        configureServer(server) {
+          server.middlewares.use((request, _response, next) => {
+            if (request.method === 'POST') {
+              request.method = 'GET';
+            }
+            next();
+          });
+        },
+      },
+    ],
     root: resolve(__dirname, 'host'),
     define: {
       __FORGEFRAME_VERSION__: JSON.stringify(forgeframePackageJson.version),

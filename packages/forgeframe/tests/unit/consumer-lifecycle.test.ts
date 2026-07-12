@@ -11,7 +11,7 @@ import {
 } from '@/communication/protocol';
 import { ConsumerComponent } from '@/core/consumer';
 import { clearComponents, create } from '@/core/component';
-import { CONTEXT, MESSAGE_NAME } from '@/constants';
+import { CONTEXT, EVENT, MESSAGE_NAME } from '@/constants';
 import { prop } from '@/props/prop';
 import * as popupRender from '@/render/popup';
 import * as templateRender from '@/render/templates';
@@ -243,6 +243,46 @@ describe('Consumer lifecycle behavior', () => {
     );
   });
 
+  it('should route prop updates to the verified INIT origin after an allowed redirect', async () => {
+    const configuredOrigin = 'https://host.example.com';
+    const redirectedOrigin = 'https://redirected-host.example.com';
+    const consumer = createConsumer(
+      {
+        domain: [configuredOrigin, redirectedOrigin],
+        props: {
+          amount: { schema: prop.number(), required: true },
+        },
+      },
+      { amount: 1 }
+    );
+    const internal = getInternals(consumer);
+    const hostWindow = {
+      closed: false,
+      postMessage: vi.fn(),
+    } as unknown as Window;
+    const sendSpy = vi
+      .spyOn(internal.transport.messenger, 'send')
+      .mockResolvedValue(undefined);
+
+    internal.transport.hostWindow = hostWindow;
+    internal.transport.openedHostDomain = configuredOrigin;
+
+    dispatchHostMessage(MESSAGE_NAME.INIT, hostWindow, {
+      origin: redirectedOrigin,
+      claimedUid: consumer.uid,
+    });
+    await flushMessages();
+    await consumer.updateProps({ amount: 2 });
+
+    expect(internal.transport.hostInitialized).toBe(true);
+    expect(sendSpy).toHaveBeenCalledWith(
+      hostWindow,
+      redirectedOrigin,
+      MESSAGE_NAME.PROPS,
+      expect.objectContaining({ amount: 2 })
+    );
+  });
+
   it('should not send sameDomain props after INIT when the loaded host is cross-origin', async () => {
     const consumer = createConsumer(
       {
@@ -361,9 +401,12 @@ describe('Consumer lifecycle behavior', () => {
     expect(latestPayload.count).toBe(2);
     expect(latestPayload.secret).toBe('same-origin-only');
     expect(latestPayload.onReady.__id__).toEqual(expect.any(String));
-    await expect(callHandler!({ id: latestPayload.onReady.__id__, args: [] })).resolves.toBe(
-      undefined
-    );
+    await expect(
+      callHandler!(
+        { id: latestPayload.onReady.__id__, args: [] },
+        createMessageSource(internal.transport.hostWindow!, window.location.origin)
+      )
+    ).resolves.toBe(undefined);
     expect(onReady).toHaveBeenCalledTimes(1);
   });
 
@@ -467,7 +510,7 @@ describe('Consumer lifecycle behavior', () => {
     internal.transport.hostWindow = hostWindow;
 
     dispatchHostMessage(MESSAGE_NAME.ERROR, spoofedWindow, {
-      data: { message: 'spoofed host failed', stack: 'spoofed-stack' },
+      data: { message: 'spoofed host failed' },
       claimedUid: consumer.uid,
     });
     await flushMessages();
@@ -476,16 +519,13 @@ describe('Consumer lifecycle behavior', () => {
     expect(readResponseData(spoofedWindow)).toEqual({ success: false });
 
     dispatchHostMessage(MESSAGE_NAME.ERROR, hostWindow, {
-      data: { message: 'host failed', stack: 'host-stack' },
+      data: { message: 'host failed' },
       claimedUid: consumer.uid,
     });
     await flushMessages();
 
     expect(onError).toHaveBeenCalledWith(
-      expect.objectContaining({
-        message: 'host failed',
-        stack: 'host-stack',
-      })
+      expect.objectContaining({ message: 'host failed' })
     );
     expect(readResponseData(hostWindow)).toEqual({ success: true });
   });
@@ -769,6 +809,79 @@ describe('Consumer lifecycle behavior', () => {
     await expect(unrenderedInstance.render('#missing-container')).rejects.toThrow(
       'Container "#missing-container" not found'
     );
+  });
+
+  it('should share one in-flight render and reject prop mutation during bootstrap', async () => {
+    const consumer = createConsumer();
+    const internal = getInternals(consumer);
+    const container = document.createElement('div');
+    let releasePrerender: (() => void) | undefined;
+
+    const prerenderSpy = vi.spyOn(internal, 'prerender').mockImplementation(
+      () => new Promise<void>((resolve) => {
+        releasePrerender = resolve;
+      })
+    );
+    const openSpy = vi.spyOn(internal, 'open').mockResolvedValue(undefined);
+    vi.spyOn(internal, 'waitForHost').mockResolvedValue(undefined);
+
+    const firstRender = consumer.render(container);
+    const secondRender = consumer.render(container);
+
+    await expect(consumer.updateProps({ value: 'racing' })).rejects.toThrow(
+      'Cannot update props while the component is rendering'
+    );
+    expect(prerenderSpy).toHaveBeenCalledTimes(1);
+
+    releasePrerender?.();
+    await expect(Promise.all([firstRender, secondRender])).resolves.toEqual([
+      undefined,
+      undefined,
+    ]);
+    expect(openSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('should establish the render lock before lifecycle callbacks can re-enter', async () => {
+    const consumer = createConsumer();
+    const internal = getInternals(consumer);
+    const container = document.createElement('div');
+    let releasePrerender: (() => void) | undefined;
+    let reentrantRender: Promise<void> | undefined;
+    let propUpdateResult: Promise<string> | undefined;
+
+    const prerenderGate = new Promise<void>((resolve) => {
+      releasePrerender = resolve;
+    });
+    const prerenderSpy = vi
+      .spyOn(internal, 'prerender')
+      .mockReturnValue(prerenderGate);
+    const openSpy = vi.spyOn(internal, 'open').mockResolvedValue(undefined);
+    vi.spyOn(internal, 'waitForHost').mockResolvedValue(undefined);
+
+    consumer.event.once(EVENT.PRERENDER, () => {
+      reentrantRender = consumer.render(container);
+      propUpdateResult = consumer.updateProps({ value: 'racing' }).then(
+        () => 'resolved',
+        (error: Error) => error.message
+      );
+    });
+
+    const firstRender = consumer.render(container);
+
+    await vi.waitFor(() => {
+      expect(reentrantRender).toBeDefined();
+      expect(propUpdateResult).toBeDefined();
+    });
+    await expect(propUpdateResult).resolves.toBe(
+      'Cannot update props while the component is rendering'
+    );
+    expect(prerenderSpy).toHaveBeenCalledTimes(1);
+
+    releasePrerender?.();
+    await expect(
+      Promise.all([firstRender, reentrantRender as Promise<void>])
+    ).resolves.toEqual([undefined, undefined]);
+    expect(openSpy).toHaveBeenCalledTimes(1);
   });
 
   it('should isolate callback failures in callPropCallback', async () => {

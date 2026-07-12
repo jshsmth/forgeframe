@@ -25,8 +25,6 @@ export {
   deserializeProps,
 } from './serialize';
 
-export { cloneProps } from './clone';
-
 export {
   isStandardSchema,
   validateWithSchema,

@@ -13,7 +13,7 @@ import { deserializeProps } from '../../props/serialize';
 import { isStandardSchema, validateProps } from '../../props';
 import { EMPTY_PROP_DEFINITIONS } from '../../props/definitions';
 import { getDomain } from '../../window/helpers';
-import { create } from '../component';
+import { getRegisteredComponent } from '../component-registry';
 import { HOST_PROPS_BUILTIN_KEYS } from './builtin-keys';
 import type { SerializedProps } from '../../props/types';
 import type { ForgeFrameComponent, HostProps } from '../../types/runtime';
@@ -205,16 +205,13 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
     const components: Record<string, ForgeFrameComponent> = {};
 
     for (const [name, ref] of Object.entries(nestedRefs)) {
-      try {
-        components[name] = create({
-          tag: ref.tag,
-          url: ref.url,
-          props: ref.props,
-          dimensions: ref.dimensions,
-          defaultContext: ref.defaultContext,
-        });
-      } catch (error) {
-        console.warn(`Failed to create nested component "${name}":`, error);
+      const component = getRegisteredComponent(ref.tag);
+      if (component) {
+        components[name] = component;
+      } else {
+        console.warn(
+          `Nested component "${name}" (${ref.tag}) must be registered in the host bundle before hostProps is initialized`
+        );
       }
     }
 

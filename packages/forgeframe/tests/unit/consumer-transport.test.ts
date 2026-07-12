@@ -133,7 +133,18 @@ describe('ConsumerTransport', () => {
     expect(transport.getHostDomain()).toBe('*');
   });
 
-  it('should rotate dynamic trusted origins but preserve explicitly trusted domains', () => {
+  it('should prefer the verified active origin after host initialization', () => {
+    const transport = createTransport();
+    transport.openedHostDomain = 'https://host.example.com';
+    transport.activeHostDomain = 'https://redirected-host.example.com';
+
+    expect(transport.getHostDomain()).toBe('https://redirected-host.example.com');
+
+    transport.activeHostDomain = null;
+    expect(transport.getHostDomain()).toBe('https://host.example.com');
+  });
+
+  it('should rely exclusively on an explicit domain policy when configured', () => {
     const transport = createTransport({
       options: createOptions({
         domain: ['https://explicit.example.com'],
@@ -145,8 +156,8 @@ describe('ConsumerTransport', () => {
 
     transport.syncTrustedDomainForUrl('https://dynamic-next.example.com/widget');
 
-    expect(removeSpy).toHaveBeenCalledWith('https://dynamic-old.example.com');
-    expect(addSpy).toHaveBeenCalledWith('https://dynamic-next.example.com');
+    expect(removeSpy).not.toHaveBeenCalled();
+    expect(addSpy).not.toHaveBeenCalled();
     expect(transport.dynamicUrlTrustedOrigin).toBe('https://dynamic-next.example.com');
 
     removeSpy.mockClear();
@@ -156,7 +167,7 @@ describe('ConsumerTransport', () => {
     transport.syncTrustedDomainForUrl('https://dynamic-final.example.com/widget');
 
     expect(removeSpy).not.toHaveBeenCalled();
-    expect(addSpy).toHaveBeenCalledWith('https://dynamic-final.example.com');
+    expect(addSpy).not.toHaveBeenCalled();
     expect(transport.dynamicUrlTrustedOrigin).toBe('https://dynamic-final.example.com');
   });
 
@@ -273,5 +284,65 @@ describe('ConsumerTransport', () => {
     await flushMicrotasks();
 
     expect(handlers.onError).toHaveBeenCalledWith(initFailure);
+  });
+
+  it('should rebind cached host export callbacks to the verified origin after a redirect', async () => {
+    const configuredOrigin = 'https://host.example.com';
+    const redirectedOrigin = 'https://redirected-host.example.com';
+    const transport = createTransport({
+      options: createOptions({
+        domain: [configuredOrigin, redirectedOrigin],
+      }),
+    });
+    const handlers = createHandlers();
+    const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+    const sendSpy = vi
+      .spyOn(transport.messenger, 'send')
+      .mockResolvedValue('callback-result');
+
+    transport.hostWindow = hostWindow;
+    transport.openedHostDomain = configuredOrigin;
+    transport.setupMessageHandlers(handlers);
+
+    const exportHandler = getHandler(transport, MESSAGE_NAME.EXPORT);
+    const exportedFunction = {
+      __type__: 'function',
+      __id__: 'shared-host-ping',
+      __name__: 'ping',
+    };
+
+    await exportHandler?.(
+      { ping: exportedFunction },
+      {
+        uid: 'consumer-transport-uid',
+        domain: configuredOrigin,
+        window: hostWindow,
+      }
+    );
+
+    const initialExport = handlers.onExport.mock.calls[0]?.[0] as {
+      ping: () => Promise<unknown>;
+    };
+    await expect(initialExport.ping()).resolves.toBe('callback-result');
+
+    await exportHandler?.(
+      { ping: exportedFunction },
+      {
+        uid: 'consumer-transport-uid',
+        domain: redirectedOrigin,
+        window: hostWindow,
+      }
+    );
+
+    const redirectedExport = handlers.onExport.mock.calls[1]?.[0] as {
+      ping: () => Promise<unknown>;
+    };
+    await expect(redirectedExport.ping()).resolves.toBe('callback-result');
+    expect(sendSpy).toHaveBeenLastCalledWith(
+      hostWindow,
+      redirectedOrigin,
+      MESSAGE_NAME.CALL,
+      { id: 'shared-host-ping', args: [] }
+    );
   });
 });

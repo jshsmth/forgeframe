@@ -92,6 +92,34 @@ describe('Component Creation', () => {
     expect(MyComponent.isHost()).toBe(false);
   });
 
+  it.each(['javascript:alert(1)', 'data:text/html,unsafe', 'blob:https://example.com/id']) (
+    'should reject unsupported host URL %s',
+    (url) => {
+      expect(() => create({ tag: `unsafe-url-${url.split(':')[0]}`, url })).toThrow(
+        'Only http: and https: are supported'
+      );
+    }
+  );
+
+  it('should enforce domain as a host URL allowlist', () => {
+    expect(() =>
+      create({
+        tag: 'domain-policy-component',
+        url: 'https://attacker.example.com/widget',
+        domain: 'https://trusted.example.com',
+      })
+    ).toThrow('is not allowed by the configured domain policy');
+  });
+
+  it('should validate function URLs when an instance resolves them', () => {
+    const DynamicComponent = create({
+      tag: 'dynamic-unsafe-url-component',
+      url: () => 'javascript:alert(1)',
+    });
+
+    expect(() => DynamicComponent({})).toThrow('Only http: and https: are supported');
+  });
+
   it('should render and update components without custom props definitions', async () => {
     const MyComponent = create({
       tag: 'no-custom-props-component',
@@ -584,6 +612,35 @@ describe('Component Instance', () => {
     container.remove();
   });
 
+  it('should resolve a dynamic host URL once and reuse it for the complete render', async () => {
+    const firstOrigin = 'https://origin-a.example.com';
+    const secondOrigin = 'https://origin-b.example.com';
+    const resolveDynamicUrl = vi.fn(() => `${firstOrigin}/widget`);
+    const DynamicUrlComponent = create({
+      tag: 'dynamic-url-render-snapshot-component',
+      url: resolveDynamicUrl,
+      domain: [firstOrigin, secondOrigin],
+    });
+    const instance = DynamicUrlComponent({});
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const instanceInternal = getConsumerInternals(instance);
+
+    resolveDynamicUrl.mockClear();
+    resolveDynamicUrl
+      .mockReturnValueOnce(`${firstOrigin}/widget`)
+      .mockReturnValue(`${secondOrigin}/widget`);
+    vi.spyOn(instanceInternal, 'waitForHost').mockResolvedValue(undefined);
+
+    await instance.render(container);
+
+    expect(resolveDynamicUrl).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('iframe')?.src).toBe(`${firstOrigin}/widget`);
+
+    await instance.close();
+    container.remove();
+  });
+
   it('should apply idle updateProps synchronously before awaiting', async () => {
     const DynamicUrlComponent = create<{ targetUrl: string }>({
       tag: 'dynamic-origin-sync-update-component',
@@ -723,7 +780,7 @@ describe('Component Instance', () => {
     });
   });
 
-  it('should throw when nested child component uses dynamic url', () => {
+  it('should reject dynamic nested URLs that cannot support protocol-v1 hosts', () => {
     const DynamicChild = create<{ childPath: string }>({
       tag: 'dynamic-child-url-component',
       url: (props) => `https://example.com/${props.childPath}`,
@@ -742,7 +799,7 @@ describe('Component Instance', () => {
 
     expect(() =>
       buildNestedHostRefs(getComponentOptions(ParentComponent)!, {})
-    ).toThrow('must use a static string URL');
+    ).toThrow('must use a static string URL for protocol-v1 compatibility');
   });
 });
 
@@ -1109,7 +1166,7 @@ describe('Host Context Detection', () => {
       const MyComponent = create({
         tag: 'render-to-cross-origin-window-test',
         url: 'https://example.com',
-        domain: 'https://widgets.example.com',
+        domain: 'https://example.com',
       });
 
       const crossOriginWindow = {

@@ -9,7 +9,6 @@ import {
   deserializeMessage,
   createRequestMessage,
   createResponseMessage,
-  createAckMessage,
   PROTOCOL_PREFIX,
 } from '@/communication/protocol';
 import { MESSAGE_TYPE } from '@/constants';
@@ -133,7 +132,7 @@ describe('createResponseMessage', () => {
 
     expect(message.error).toBeDefined();
     expect(message.error?.message).toBe('Something went wrong');
-    expect(message.error?.stack).toContain('Something went wrong');
+    expect(message.error).toEqual({ message: 'Something went wrong' });
   });
 
   it('should not include error when not provided', () => {
@@ -143,22 +142,6 @@ describe('createResponseMessage', () => {
     });
 
     expect(message.error).toBeUndefined();
-  });
-});
-
-describe('createAckMessage', () => {
-  it('should create ack message with correct type', () => {
-    const message = createAckMessage('req-789', {
-      uid: 'acker-uid',
-      domain: 'https://acker.com',
-    });
-
-    expect(message.id).toBe('req-789');
-    expect(message.type).toBe(MESSAGE_TYPE.ACK);
-    expect(message.name).toBe('ack');
-    expect(message.source.uid).toBe('acker-uid');
-    expect(message.source.domain).toBe('https://acker.com');
-    expect(message.data).toBeUndefined();
   });
 });
 
