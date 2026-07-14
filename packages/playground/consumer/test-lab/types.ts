@@ -1,22 +1,6 @@
-export type ScenarioId =
-  | 'lifecycle'
-  | 'security'
-  | 'bridge'
-  | 'props'
-  | 'controls'
-  | 'nested'
-  | 'errors'
-  | 'configuration'
-  | 'instances'
-  | 'host-controls'
-  | 'transport'
-  | 'reliability'
-  | 'common-actions'
-  | 'redirect'
-  | 'timeout-recovery'
-  | 'stress'
-  | 'popup'
-  | 'checkout-e2e';
+import type { TEST_SCENARIO_IDS } from './scenario-ids';
+
+export type ScenarioId = (typeof TEST_SCENARIO_IDS)[number];
 
 export interface TestResult {
   name: string;
