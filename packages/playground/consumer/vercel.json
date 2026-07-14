@@ -6,7 +6,7 @@
       "destination": "/index.html"
     },
     {
-      "source": "/tests/(.*)",
+      "source": "/tests/:path*",
       "destination": "/index.html"
     }
   ]
