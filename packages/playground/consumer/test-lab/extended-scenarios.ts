@@ -324,12 +324,16 @@ export async function runHostControlsScenario(sandbox: HTMLElement): Promise<Tes
   return results;
 }
 
-interface TransportProps extends Record<string, unknown> {
+interface TrustPolicyProps extends Record<string, unknown> {
   scenario: string;
-  bodySecret: string;
   trustedValue: string;
   blockedValue: string;
   privateValue: string;
+}
+
+interface PostTransportProps extends Record<string, unknown> {
+  scenario: string;
+  bodySecret: string;
 }
 
 interface TransportExports {
@@ -338,31 +342,72 @@ interface TransportExports {
 
 export async function runTransportScenario(sandbox: HTMLElement): Promise<TestResult[]> {
   const results: TestResult[] = [];
-  const container = createContainer(sandbox);
-  const Component = ForgeFrame.create<TransportProps, TransportExports>({
-    tag: uniqueTag('transport'),
+  const trustContainer = createContainer(sandbox);
+  const TrustComponent = ForgeFrame.create<TrustPolicyProps, TransportExports>({
+    tag: uniqueTag('trust-policy'),
     url: `${HOST_URL}?scenario=transport`,
     dimensions: { width: '100%', height: 320 },
     props: {
       scenario: prop.string(),
-      bodySecret: { schema: prop.string(), bodyParam: 'payload' },
       trustedValue: { schema: prop.string(), trustedDomains: [HOST_ORIGIN] },
       blockedValue: { schema: prop.string(), trustedDomains: ['https://blocked.example.com'] },
       privateValue: { schema: prop.string(), sendToHost: false },
     },
   });
-  const instance = Component({
+  const trustInstance = TrustComponent({
     scenario: 'transport',
-    bodySecret: 'posted-not-queried',
     trustedValue: 'trusted-host-value',
     blockedValue: 'must-not-cross',
     privateValue: 'consumer-only',
   });
 
   try {
-    await instance.render(container);
-    await waitFor(() => instance.exports?.observed);
-    const iframe = container.querySelector<HTMLIFrameElement>('iframe')!;
+    await trustInstance.render(trustContainer);
+    await waitFor(() => trustInstance.exports?.observed);
+    results.push(assertResult(
+      'Trusted-domain props reach an allowed host',
+      trustInstance.exports?.observed.trustedValue === 'trusted-host-value',
+      `host observed: ${String(trustInstance.exports?.observed.trustedValue)}`
+    ));
+    results.push(assertResult(
+      'Blocked and consumer-only props never reach the host',
+      !('blockedValue' in trustInstance.exports!.observed) &&
+        !('privateValue' in trustInstance.exports!.observed),
+      `host keys: ${Object.keys(trustInstance.exports!.observed).join(', ')}`
+    ));
+  } catch (error) {
+    results.push(failure('Trust-policy browser journey completed', error));
+  } finally {
+    await trustInstance.close().catch(() => undefined);
+  }
+
+  if (!import.meta.env.DEV) {
+    results.push(skipResult(
+      'POST body bootstrap requires a POST-capable host',
+      'Skipped in production because the deployed static host returns HTTP 405 for POST; covered by local browser and integration tests.'
+    ));
+    return results;
+  }
+
+  const postContainer = createContainer(sandbox);
+  const PostComponent = ForgeFrame.create<PostTransportProps, TransportExports>({
+    tag: uniqueTag('post-transport'),
+    url: `${HOST_URL}?scenario=transport`,
+    dimensions: { width: '100%', height: 320 },
+    props: {
+      scenario: prop.string(),
+      bodySecret: { schema: prop.string(), bodyParam: 'payload' },
+    },
+  });
+  const postInstance = PostComponent({
+    scenario: 'transport',
+    bodySecret: 'posted-not-queried',
+  });
+
+  try {
+    await postInstance.render(postContainer);
+    await waitFor(() => postInstance.exports?.observed);
+    const iframe = postContainer.querySelector<HTMLIFrameElement>('iframe')!;
     results.push(assertResult(
       'POST body props do not leak into the URL',
       !iframe.src.includes('payload=') && !iframe.src.includes('posted-not-queried'),
@@ -370,24 +415,13 @@ export async function runTransportScenario(sandbox: HTMLElement): Promise<TestRe
     ));
     results.push(assertResult(
       'POST body bootstrap still delivers the prop to the host',
-      instance.exports?.observed.bodySecret === 'posted-not-queried',
-      `host observed: ${String(instance.exports?.observed.bodySecret)}`
-    ));
-    results.push(assertResult(
-      'Trusted-domain props reach an allowed host',
-      instance.exports?.observed.trustedValue === 'trusted-host-value',
-      `host observed: ${String(instance.exports?.observed.trustedValue)}`
-    ));
-    results.push(assertResult(
-      'Blocked and consumer-only props never reach the host',
-      !('blockedValue' in instance.exports!.observed) &&
-        !('privateValue' in instance.exports!.observed),
-      `host keys: ${Object.keys(instance.exports!.observed).join(', ')}`
+      postInstance.exports?.observed.bodySecret === 'posted-not-queried',
+      `host observed: ${String(postInstance.exports?.observed.bodySecret)}`
     ));
   } catch (error) {
-    results.push(failure('POST and trust-policy browser scenario completed', error));
+    results.push(failure('POST body-param browser journey completed', error));
   } finally {
-    await instance.close().catch(() => undefined);
+    await postInstance.close().catch(() => undefined);
   }
 
   return results;
@@ -1039,6 +1073,10 @@ function failure(name: string, error: unknown): TestResult {
     status: 'fail',
     detail: error instanceof Error ? error.message : String(error),
   };
+}
+
+function skipResult(name: string, detail: string): TestResult {
+  return { name, status: 'skip', detail };
 }
 
 async function expectFailure(
