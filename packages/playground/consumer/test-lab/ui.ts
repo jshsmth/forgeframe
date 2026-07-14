@@ -121,9 +121,11 @@ const LAB_STYLES = `
   .results { display: grid; gap: 10px; }
   .result { display: grid; grid-template-columns: 22px minmax(180px, .7fr) 1fr; gap: 10px; align-items: start; padding: 14px 16px; border: 1px solid #e1e4e8; border-radius: 10px; background: #fff; }
   .result.pass { border-left: 4px solid #1f9d55; }
+  .result.skip { border-left: 4px solid #b7791f; }
   .result.fail { border-left: 4px solid #d64545; }
   .result-icon { font-weight: 900; }
   .result.pass .result-icon { color: #1f9d55; }
+  .result.skip .result-icon { color: #b7791f; }
   .result.fail .result-icon { color: #d64545; }
   .result-name { font-size: 14px; font-weight: 700; }
   .result-detail { color: #69707d; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
@@ -196,14 +198,15 @@ export function setSuiteRunning(running: boolean, progress?: string): void {
 
 export function renderResults(results: TestResult[]): void {
   const passed = results.filter((result) => result.status === 'pass').length;
-  const failed = results.length - passed;
+  const skipped = results.filter((result) => result.status === 'skip').length;
+  const failed = results.filter((result) => result.status === 'fail').length;
   const summary = document.querySelector('#scenario-summary');
   const target = document.querySelector('#scenario-results');
-  if (summary) summary.textContent = `${passed} passed · ${failed} failed`;
+  if (summary) summary.textContent = `${passed} passed · ${skipped} skipped · ${failed} failed`;
   if (target) {
     target.innerHTML = results.map((result) => `
       <div class="result ${result.status}">
-        <span class="result-icon">${result.status === 'pass' ? '✓' : '×'}</span>
+        <span class="result-icon">${result.status === 'pass' ? '✓' : result.status === 'skip' ? '–' : '×'}</span>
         <span class="result-name">${escapeHtml(result.name)}</span>
         <span class="result-detail">${escapeHtml(result.detail)}</span>
       </div>

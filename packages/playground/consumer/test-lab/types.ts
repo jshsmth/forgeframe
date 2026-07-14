@@ -4,7 +4,7 @@ export type ScenarioId = (typeof TEST_SCENARIO_IDS)[number];
 
 export interface TestResult {
   name: string;
-  status: 'pass' | 'fail';
+  status: 'pass' | 'skip' | 'fail';
   detail: string;
 }
 
