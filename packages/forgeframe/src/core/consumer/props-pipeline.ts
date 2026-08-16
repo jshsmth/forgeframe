@@ -67,7 +67,8 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
   } {
     const materializedNewProps = materializePropAliases(
       newProps,
-      this.options.props
+      this.options.props,
+      PROP_RESET
     );
     const nextInputProps = { ...this.inputProps } as Record<string, unknown>;
     const mergedProps = { ...this.props } as Record<string, unknown>;

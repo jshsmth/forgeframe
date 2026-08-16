@@ -7,6 +7,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EVENT } from '@/constants';
 import { clearComponents, create, destroyAll } from '@/core/component';
+import { PROP_RESET } from '@/core/consumer/props-pipeline';
 import { prop } from '@/props/prop';
 
 interface AliasProps {
@@ -124,6 +125,33 @@ describe('Consumer prop alias updates', () => {
 
     expect(internal.propsPipeline.props.email).toBeUndefined();
     expect(internal.propsPipeline.inputProps).toEqual({ email: undefined });
+  });
+
+  it('should prefer an alias value over a synthetic canonical reset', async () => {
+    const AliasComponent = create<AliasProps>({
+      tag: 'alias-update-react-reset-component',
+      url: 'https://host.example.com/widget',
+      props: {
+        email: {
+          schema: prop.string().optional(),
+          alias: 'userEmail',
+        },
+      },
+    });
+    const instance = AliasComponent({ email: 'initial@example.com' });
+    const internal = getPropsInternals(instance);
+
+    await instance.updateProps({
+      email: PROP_RESET,
+      userEmail: 'alias-update@example.com',
+    } as never);
+
+    expect(internal.propsPipeline.props.email).toBe(
+      'alias-update@example.com'
+    );
+    expect(internal.propsPipeline.inputProps).toEqual({
+      email: 'alias-update@example.com',
+    });
   });
 
   it('should roll back an alias patch that fails required validation', async () => {

@@ -80,13 +80,19 @@ function getCompiledPropDefinitions<P extends Record<string, unknown>>(
  * Alias materialization must happen before a patch is merged with the current
  * normalized props. Otherwise an older canonical value would take precedence
  * over a newer value supplied through its alias. When a patch contains both
- * spellings, the canonical key wins.
+ * spellings, the canonical key wins unless it only contains the driver's
+ * synthetic reset marker and the alias contains a concrete value.
+ *
+ * @param props - Incoming initial props or update patch.
+ * @param definitions - Prop definitions containing canonical keys and aliases.
+ * @param resetValue - Optional internal marker used to distinguish omission resets.
  *
  * @internal
  */
 export function materializePropAliases<P extends Record<string, unknown>>(
   props: Partial<P>,
-  definitions: PropsDefinition<P>
+  definitions: PropsDefinition<P>,
+  resetValue?: unknown
 ): Partial<P> {
   const source = props as Record<string, unknown>;
   const result = { ...source } as Record<string, unknown>;
@@ -101,7 +107,17 @@ export function materializePropAliases<P extends Record<string, unknown>>(
       continue;
     }
 
-    if (!hasOwn(source, key) && hasOwn(source, aliasKey)) {
+    const canonicalIsReset =
+      resetValue !== undefined &&
+      hasOwn(source, key) &&
+      source[key] === resetValue;
+    const aliasIsConcrete =
+      hasOwn(source, aliasKey) && source[aliasKey] !== resetValue;
+
+    if (
+      (!hasOwn(source, key) || (canonicalIsReset && aliasIsConcrete)) &&
+      hasOwn(source, aliasKey)
+    ) {
       result[key] = source[aliasKey];
     }
 
