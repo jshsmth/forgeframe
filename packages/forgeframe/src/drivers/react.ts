@@ -1,4 +1,8 @@
-import type { ForgeFrameComponent, ForgeFrameComponentInstance } from '../types/runtime';
+import type {
+  ConsumerPropsUpdate,
+  ForgeFrameComponent,
+  ForgeFrameComponentInstance,
+} from '../types/runtime';
 import type { ContextType } from '../constants';
 import { PROP_RESET } from '../core/consumer/props-pipeline';
 
@@ -110,6 +114,7 @@ export interface ReactComponentProps<_P = unknown> {
  * Full props type combining driver props with component-specific props.
  *
  * @typeParam P - The component-specific props type from the ForgeFrame component
+ * @typeParam I - An alternate consumer input shape, such as legacy alias keys
  *
  * @remarks
  * This type merges {@link ReactComponentProps} with the component's own props,
@@ -117,7 +122,8 @@ export interface ReactComponentProps<_P = unknown> {
  *
  * @internal
  */
-type FullReactComponentProps<P> = ReactComponentProps<P> & Partial<P>;
+type FullReactComponentProps<P, I = P> = ReactComponentProps<P> &
+  ConsumerPropsUpdate<P, I>;
 
 /**
  * Performs a shallow equality check for prop objects.
@@ -184,10 +190,10 @@ interface ReactPropUpdate<P extends Record<string, unknown>> {
 interface ReactPropSyncState<
   P extends Record<string, unknown>,
   X,
+  I,
 > {
-  instance: ForgeFrameComponentInstance<P, X>;
-  initialProps: Partial<P>;
-  successfulProps: Partial<P> | null;
+  instance: ForgeFrameComponentInstance<P, X, I>;
+  comparableProps: Partial<P> | null;
   knownKeys: Set<string>;
   queue: Array<ReactPropUpdate<P>>;
   inFlightUpdate: ReactPropUpdate<P> | null;
@@ -200,7 +206,8 @@ interface ReactPropSyncState<
 function deactivatePropSyncState<
   P extends Record<string, unknown>,
   X,
->(state: ReactPropSyncState<P, X>): void {
+  I,
+>(state: ReactPropSyncState<P, X, I>): void {
   state.active = false;
   state.queue.length = 0;
   state.inFlightUpdate = null;
@@ -297,6 +304,10 @@ export interface ReactComponentType<P, E = unknown> {
  *
  * @param Component - The ForgeFrame component to wrap
  * @param options - Configuration options including the React instance
+ * @typeParam P - The canonical props type defined by the ForgeFrame component
+ * @typeParam X - The export type for data shared from the host component
+ * @typeParam E - The forwarded React element ref type
+ * @typeParam I - An alternate consumer input shape, such as legacy alias keys
  *
  * @returns A React component that renders the ForgeFrame component
  *
@@ -335,14 +346,15 @@ export function createReactComponent<
   P extends Record<string, unknown>,
   X = unknown,
   E = unknown,
+  I extends Record<string, unknown> = P,
 >(
-  Component: ForgeFrameComponent<P, X>,
+  Component: ForgeFrameComponent<P, X, I>,
   options: ReactDriverOptions<E>
-): ReactComponentType<FullReactComponentProps<P>, E> {
+): ReactComponentType<FullReactComponentProps<P, I>, E> {
   const { createElement, useRef, useEffect, useState, forwardRef } =
     options.React as unknown as ReactRuntime<E>;
 
-  const ReactComponent = forwardRef<HTMLDivElement, FullReactComponentProps<P>>(
+  const ReactComponent = forwardRef<HTMLDivElement, FullReactComponentProps<P, I>>(
     function ForgeFrameComponent(props, ref) {
       const {
         onRendered,
@@ -355,19 +367,21 @@ export function createReactComponent<
       } = props;
 
       const containerRef = useRef<HTMLDivElement>(null);
-      const instanceRef = useRef<ForgeFrameComponentInstance<P, X> | null>(null);
-      const propSyncRef = useRef<ReactPropSyncState<P, X> | null>(null);
+      const instanceRef = useRef<ForgeFrameComponentInstance<P, X, I> | null>(null);
+      const propSyncRef = useRef<ReactPropSyncState<P, X, I> | null>(null);
       const onRenderedRef = useRef<typeof onRendered>(onRendered);
       const onErrorRef = useRef<typeof onError>(onError);
       const onCloseRef = useRef<typeof onClose>(onClose);
       const [error, setError] = useState<Error | null>(null);
 
-      const isCurrentSyncState = (state: ReactPropSyncState<P, X>): boolean =>
+      const isCurrentSyncState = (state: ReactPropSyncState<P, X, I>): boolean =>
         state.active &&
         instanceRef.current === state.instance &&
         propSyncRef.current === state;
 
-      const drainPropUpdates = async (state: ReactPropSyncState<P, X>): Promise<void> => {
+      const drainPropUpdates = async (
+        state: ReactPropSyncState<P, X, I>
+      ): Promise<void> => {
         if (state.draining || !state.renderReady || !isCurrentSyncState(state)) {
           return;
         }
@@ -398,6 +412,7 @@ export function createReactComponent<
                   retryOnFailure: false,
                 });
               }
+              state.comparableProps = null;
               reportReactError(onErrorRef.current ?? undefined, err as Error);
               continue;
             }
@@ -408,7 +423,7 @@ export function createReactComponent<
 
             state.inFlightUpdate = null;
             state.queue.shift();
-            state.successfulProps = update.desired;
+            state.comparableProps = update.desired;
           }
         } finally {
           state.inFlightUpdate = null;
@@ -430,10 +445,9 @@ export function createReactComponent<
 
         const initialProps = snapshotProps(componentProps as Partial<P>);
         const instance = Component(initialProps as P);
-        const syncState: ReactPropSyncState<P, X> = {
+        const syncState: ReactPropSyncState<P, X, I> = {
           instance,
-          initialProps,
-          successfulProps: null,
+          comparableProps: initialProps,
           knownKeys: new Set(Object.keys(initialProps)),
           queue: [],
           inFlightUpdate: null,
@@ -462,7 +476,6 @@ export function createReactComponent<
               return;
             }
 
-            syncState.successfulProps = syncState.initialProps;
             syncState.renderReady = true;
             void drainPropUpdates(syncState);
           },
@@ -499,12 +512,12 @@ export function createReactComponent<
 
         const nextProps = snapshotProps(componentProps as Partial<P>);
         const pendingUpdate = syncState.queue.at(-1);
-        const pendingProps = pendingUpdate?.desired;
-        const prevProps = (pendingProps ??
-          syncState.successfulProps ??
-          syncState.initialProps) as Record<string, unknown>;
+        const prevProps = pendingUpdate?.desired ?? syncState.comparableProps;
         const nextPropsRecord = nextProps as Record<string, unknown>;
-        if (shallowEqualProps(prevProps, nextPropsRecord)) {
+        if (
+          prevProps &&
+          shallowEqualProps(prevProps as Record<string, unknown>, nextPropsRecord)
+        ) {
           if (pendingUpdate && syncState.inFlightUpdate === pendingUpdate) {
             pendingUpdate.retryOnFailure = true;
           }
@@ -600,15 +613,20 @@ export function withReactComponent<E>(React: ReactLike<E>) {
    *
    * @typeParam P - The props type defined in the ForgeFrame component
    * @typeParam X - The export type for data shared from the host component
+   * @typeParam I - An alternate consumer input shape, such as legacy alias keys
    *
    * @param Component - The ForgeFrame component to wrap
    * @returns A React component that renders the ForgeFrame component
    *
    * @internal
    */
-  return function createComponent<P extends Record<string, unknown>, X = unknown>(
-    Component: ForgeFrameComponent<P, X>
-  ): ReactComponentType<FullReactComponentProps<P>, E> {
+  return function createComponent<
+    P extends Record<string, unknown>,
+    X = unknown,
+    I extends Record<string, unknown> = P,
+  >(
+    Component: ForgeFrameComponent<P, X, I>
+  ): ReactComponentType<FullReactComponentProps<P, I>, E> {
     return createReactComponent(Component, { React });
   };
 }

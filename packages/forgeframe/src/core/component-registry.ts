@@ -13,15 +13,20 @@ const INTERNAL_COMPONENT_OPTIONS = Symbol('forgeframe.component.options');
 type InternalForgeFrameComponent<
   P extends Record<string, unknown> = Record<string, unknown>,
   X = unknown,
-> = ForgeFrameComponent<P, X> & {
+  I = P,
+> = ForgeFrameComponent<P, X, I> & {
   [INTERNAL_COMPONENT_OPTIONS]?: ComponentOptions<P>;
 };
 
-export function registerComponent<P extends Record<string, unknown>, X>(
-  component: ForgeFrameComponent<P, X>,
+export function registerComponent<
+  P extends Record<string, unknown>,
+  X,
+  I,
+>(
+  component: ForgeFrameComponent<P, X, I>,
   options: ComponentOptions<P>
 ): void {
-  (component as InternalForgeFrameComponent<P, X>)[INTERNAL_COMPONENT_OPTIONS] = options;
+  (component as InternalForgeFrameComponent<P, X, I>)[INTERNAL_COMPONENT_OPTIONS] = options;
   componentRegistry.set(
     options.tag,
     component as ForgeFrameComponent<Record<string, unknown>>
@@ -35,8 +40,9 @@ export function hasRegisteredComponent(tag: string): boolean {
 export function getRegisteredComponent<
   P extends Record<string, unknown> = Record<string, unknown>,
   X = unknown,
->(tag: string): ForgeFrameComponent<P, X> | undefined {
-  return componentRegistry.get(tag) as ForgeFrameComponent<P, X> | undefined;
+  I = P,
+>(tag: string): ForgeFrameComponent<P, X, I> | undefined {
+  return componentRegistry.get(tag) as ForgeFrameComponent<P, X, I> | undefined;
 }
 
 export function getRegisteredComponentEntries(): Array<
@@ -48,8 +54,9 @@ export function getRegisteredComponentEntries(): Array<
 export function getComponentOptions<
   P extends Record<string, unknown> = Record<string, unknown>,
   X = unknown,
->(component: ForgeFrameComponent<P, X>): ComponentOptions<P> | undefined {
-  return (component as InternalForgeFrameComponent<P, X>)[INTERNAL_COMPONENT_OPTIONS];
+  I = P,
+>(component: ForgeFrameComponent<P, X, I>): ComponentOptions<P> | undefined {
+  return (component as InternalForgeFrameComponent<P, X, I>)[INTERNAL_COMPONENT_OPTIONS];
 }
 
 export function getRegisteredComponentTags(): string[] {

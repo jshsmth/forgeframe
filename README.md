@@ -477,6 +477,32 @@ const SecureWidget = ForgeFrame.create({
 | `trustedDomains` | Only send the prop to matching host domains |
 | `serialization` | Choose how object props are transferred: `JSON` (default), `BASE64`, or `DOTIFY` |
 | `queryParam` / `bodyParam` | Include the prop in the host page's initial HTTP request |
+| `alias` | Accept a backwards-compatible input name. Alias links through other defined props resolve transitively; an explicitly supplied canonical key wins at that level |
+
+TypeScript consumers can model alias inputs separately from the canonical props received by the host:
+
+```typescript
+type WidgetProps = {
+  email: string;
+};
+
+type LegacyWidgetInput = {
+  userEmail: string;
+};
+
+const Widget = ForgeFrame.create<WidgetProps, unknown, LegacyWidgetInput>({
+  tag: 'legacy-widget',
+  url: 'https://widgets.example.com/legacy',
+  props: {
+    email: { schema: prop.string(), required: true, alias: 'userEmail' },
+  },
+});
+
+Widget({ userEmail: 'user@example.com' });
+```
+
+The alternate input type may also be a subset of the canonical props when one
+canonical key doubles as another prop's alias.
 
 - Use `sameDomain` for values that should never be exposed during cross-origin bootstrap.
 - `DOTIFY` safely preserves nested object keys that contain separators such as `.`, `&`, or `=`.

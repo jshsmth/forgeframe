@@ -10,6 +10,7 @@
 
 import type {
   ComponentOptions,
+  ConsumerPropsInput,
   ForgeFrameComponent,
   ForgeFrameComponentInstance,
   HostProps,
@@ -112,6 +113,7 @@ function validateComponentOptions<P>(options: ComponentOptions<P>): void {
  *
  * @typeParam P - The props type for the component
  * @typeParam X - The exports type that the host can expose
+ * @typeParam I - An alternate consumer input shape, such as legacy alias keys
  * @param options - Component configuration options
  * @returns A component factory function
  *
@@ -134,18 +136,22 @@ function validateComponentOptions<P>(options: ComponentOptions<P>): void {
  *
  * @public
  */
-export function create<P extends Record<string, unknown> = Record<string, unknown>, X = unknown>(
+export function create<
+  P extends Record<string, unknown> = Record<string, unknown>,
+  X = unknown,
+  I extends Record<string, unknown> = P,
+>(
   options: ComponentOptions<P>
-): ForgeFrameComponent<P, X> {
+): ForgeFrameComponent<P, X, I> {
   validateComponentOptions(options);
 
-  const instances: ForgeFrameComponentInstance<P, X>[] = [];
+  const instances: ForgeFrameComponentInstance<P, X, I>[] = [];
   const componentTag = options.tag;
   let componentHostProps: HostProps<P> | undefined;
 
   function trackInstance(
-    instance: ConsumerComponent<P, X>
-  ): ConsumerComponent<P, X> {
+    instance: ConsumerComponent<P, X, I>
+  ): ConsumerComponent<P, X, I> {
     if (instance.isDestroyed()) {
       return instance;
     }
@@ -165,8 +171,12 @@ export function create<P extends Record<string, unknown> = Record<string, unknow
     return instance;
   }
 
-  function createTrackedInstance(props: Partial<P>): ConsumerComponent<P, X> {
-    return trackInstance(new ConsumerComponent<P, X>(options, props, trackInstance));
+  function createTrackedInstance(
+    props?: ConsumerPropsInput<P, I>
+  ): ConsumerComponent<P, X, I> {
+    return trackInstance(
+      new ConsumerComponent<P, X, I>(options, props, trackInstance)
+    );
   }
 
   const canDetectComponentHost = (): boolean => {
@@ -210,9 +220,11 @@ export function create<P extends Record<string, unknown> = Record<string, unknow
    * @param props - Props to pass to the component instance
    * @returns A new component instance
    */
-  const Component = function (props: Partial<P> = {} as Partial<P>): ForgeFrameComponentInstance<P, X> {
+  const Component = function (
+    props?: ConsumerPropsInput<P, I>
+  ): ForgeFrameComponentInstance<P, X, I> {
     return createTrackedInstance(props);
-  } as ForgeFrameComponent<P, X>;
+  } as ForgeFrameComponent<P, X, I>;
 
   Component.instances = instances;
 
@@ -258,10 +270,14 @@ export function create<P extends Record<string, unknown> = Record<string, unknow
  *
  * @public
  */
-export function getComponent<P extends Record<string, unknown> = Record<string, unknown>, X = unknown>(
+export function getComponent<
+  P extends Record<string, unknown> = Record<string, unknown>,
+  X = unknown,
+  I = P,
+>(
   tag: string
-): ForgeFrameComponent<P, X> | undefined {
-  return getRegisteredComponent<P, X>(tag);
+): ForgeFrameComponent<P, X, I> | undefined {
+  return getRegisteredComponent<P, X, I>(tag);
 }
 
 /**
@@ -315,8 +331,8 @@ export { getComponentOptions };
  *
  * @public
  */
-export async function destroy<P extends Record<string, unknown>>(
-  instance: ForgeFrameComponentInstance<P>
+export async function destroy<P extends Record<string, unknown>, I = P>(
+  instance: ForgeFrameComponentInstance<P, unknown, I>
 ): Promise<void> {
   await instance.close();
 }

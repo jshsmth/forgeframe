@@ -10,6 +10,8 @@
 
 import type {
   ComponentOptions,
+  ConsumerPropsInput,
+  ConsumerPropsUpdate,
   ForgeFrameComponentInstance,
 } from '../types/runtime';
 import type { ConsumerExports } from '../communication/types';
@@ -52,7 +54,8 @@ import { resolveComponentHostUrl } from '../utils/url';
 type ConsumerInstanceTracker<
   P extends Record<string, unknown>,
   X,
-> = (instance: ConsumerComponent<P, X>) => ConsumerComponent<P, X>;
+  I extends Record<string, unknown>,
+> = (instance: ConsumerComponent<P, X, I>) => ConsumerComponent<P, X, I>;
 
 /**
  * Consumer-side component implementation.
@@ -63,11 +66,15 @@ type ConsumerInstanceTracker<
  *
  * @typeParam P - The props type passed to the component
  * @typeParam X - The exports type that the host can expose to the consumer
+ * @typeParam I - An alternate consumer input shape, such as legacy alias keys
  *
  * @internal
  */
-export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
-  implements ForgeFrameComponentInstance<P, X>
+export class ConsumerComponent<
+  P extends Record<string, unknown>,
+  X = unknown,
+  I extends Record<string, unknown> = P,
+> implements ForgeFrameComponentInstance<P, X, I>
 {
   /** Event emitter for lifecycle events. */
   public event: EventEmitter;
@@ -137,8 +144,8 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    */
   constructor(
     options: ComponentOptions<P>,
-    props: Partial<P> = {},
-    private trackInstance?: ConsumerInstanceTracker<P, X>
+    props?: ConsumerPropsInput<P, I>,
+    private trackInstance?: ConsumerInstanceTracker<P, X, I>
   ) {
     this._uid = generateUID();
     this.options = this.normalizeOptions(options);
@@ -411,7 +418,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    *
    * @param newProps - Partial props object to merge with existing props
    */
-  async updateProps(newProps: Partial<P>): Promise<void> {
+  async updateProps(newProps: ConsumerPropsUpdate<P, I>): Promise<void> {
     if (this.renderPromise && !this.rendered) {
       throw new Error('Cannot update props while the component is rendering');
     }
@@ -422,7 +429,9 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    * Applies a props update and synchronizes it to the host when connected.
    * @internal
    */
-  private async applyPropsUpdate(newProps: Partial<P>): Promise<void> {
+  private async applyPropsUpdate(
+    newProps: ConsumerPropsUpdate<P, I>
+  ): Promise<void> {
     const hooks: ConsumerPropsUpdateHooks<P> = {
       resolveUrl: (nextProps) => this.resolveUrl(nextProps),
       resolveUrlOrigin: (url) => this.resolveUrlOrigin(url),
@@ -443,7 +452,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
       },
     };
 
-    await this.propsPipeline.updateProps(newProps, hooks);
+    await this.propsPipeline.updateProps({ ...newProps }, hooks);
   }
 
   /**
@@ -482,8 +491,8 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
    *
    * @returns A new unrendered component instance with identical configuration
    */
-  clone(): ForgeFrameComponentInstance<P, X> {
-    const cloned = new ConsumerComponent<P, X>(
+  clone(): ForgeFrameComponentInstance<P, X, I> {
+    const cloned = new ConsumerComponent<P, X, I>(
       this.options,
       this.propsPipeline.props,
       this.trackInstance

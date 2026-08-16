@@ -34,6 +34,11 @@ interface CompiledPropDefinition<P extends Record<string, unknown>> {
   definition: PropDefinition<unknown, P>;
 }
 
+interface PropAliasEdge {
+  canonicalKey: string;
+  aliasKey: string;
+}
+
 const compiledPropDefinitionsCache = new WeakMap<
   object,
   readonly CompiledPropDefinition<Record<string, unknown>>[]
@@ -81,7 +86,8 @@ function getCompiledPropDefinitions<P extends Record<string, unknown>>(
  * normalized props. Otherwise an older canonical value would take precedence
  * over a newer value supplied through its alias. When a patch contains both
  * spellings, the canonical key wins unless it only contains the driver's
- * synthetic reset marker and the alias contains a concrete value.
+ * synthetic reset marker and the alias contains a concrete value. Aliases that
+ * reference another canonical prop are resolved transitively.
  *
  * @param props - Incoming initial props or update patch.
  * @param definitions - Prop definitions containing canonical keys and aliases.
@@ -90,7 +96,7 @@ function getCompiledPropDefinitions<P extends Record<string, unknown>>(
  * @internal
  */
 export function materializePropAliases<P extends Record<string, unknown>>(
-  props: Partial<P>,
+  props: Record<string, unknown>,
   definitions: PropsDefinition<P>,
   resetValue?: unknown
 ): Partial<P> {
@@ -100,27 +106,48 @@ export function materializePropAliases<P extends Record<string, unknown>>(
   const canonicalKeys = new Set(
     compiledDefinitions.map(({ key }) => key)
   );
+  const aliasEdges = compiledDefinitions.flatMap<PropAliasEdge>(
+    ({ key, definition }) => {
+      const aliasKey = definition.alias;
+      return aliasKey && aliasKey !== key
+        ? [{ canonicalKey: key, aliasKey }]
+        : [];
+    }
+  );
 
-  for (const { key, definition } of compiledDefinitions) {
-    const aliasKey = definition.alias;
-    if (!aliasKey || aliasKey === key) {
-      continue;
+  // Each pass can advance a value by at least one alias edge. Bounding the
+  // passes by the edge count supports chains while guaranteeing cyclic alias
+  // definitions terminate.
+  for (let pass = 0; pass < aliasEdges.length; pass += 1) {
+    let changed = false;
+
+    for (const { canonicalKey, aliasKey } of aliasEdges) {
+      const canonicalIsReset =
+        resetValue !== undefined &&
+        hasOwn(source, canonicalKey) &&
+        source[canonicalKey] === resetValue;
+      const hasAliasValue = hasOwn(result, aliasKey);
+      const aliasValue = result[aliasKey];
+      const aliasIsConcrete = hasAliasValue && aliasValue !== resetValue;
+
+      if (
+        (!hasOwn(source, canonicalKey) ||
+          (canonicalIsReset && aliasIsConcrete)) &&
+        hasAliasValue &&
+        (!hasOwn(result, canonicalKey) ||
+          !Object.is(result[canonicalKey], aliasValue))
+      ) {
+        result[canonicalKey] = aliasValue;
+        changed = true;
+      }
     }
 
-    const canonicalIsReset =
-      resetValue !== undefined &&
-      hasOwn(source, key) &&
-      source[key] === resetValue;
-    const aliasIsConcrete =
-      hasOwn(source, aliasKey) && source[aliasKey] !== resetValue;
-
-    if (
-      (!hasOwn(source, key) || (canonicalIsReset && aliasIsConcrete)) &&
-      hasOwn(source, aliasKey)
-    ) {
-      result[key] = source[aliasKey];
+    if (!changed) {
+      break;
     }
+  }
 
+  for (const { aliasKey } of aliasEdges) {
     // Preserve an alias key that is also a separately defined canonical prop.
     if (!canonicalKeys.has(aliasKey)) {
       Reflect.deleteProperty(result, aliasKey);
