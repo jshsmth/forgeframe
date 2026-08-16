@@ -1,4 +1,5 @@
 import { normalizeProps, validateProps } from '../../props';
+import { materializePropAliases } from '../../props/normalize';
 import type { PropContext } from '../../types/props';
 import type { NormalizedOptions } from './types';
 
@@ -45,7 +46,10 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
     initialInputProps: Partial<P>,
     private createPropContext: (props: P) => PropContext<P>
   ) {
-    this.inputProps = { ...initialInputProps };
+    this.inputProps = materializePropAliases(
+      initialInputProps,
+      this.options.props
+    );
     const initialProps = this.inputProps as P;
     const propContext = this.createPropContext(initialProps);
     this.props = normalizeProps(initialProps, this.options.props, propContext);
@@ -58,8 +62,12 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
     nextInputProps: Partial<P>;
     nextProps: P;
   } {
-    const nextInputProps = { ...this.inputProps, ...newProps };
-    const mergedProps = { ...this.props, ...newProps } as P;
+    const materializedNewProps = materializePropAliases(
+      newProps,
+      this.options.props
+    );
+    const nextInputProps = { ...this.inputProps, ...materializedNewProps };
+    const mergedProps = { ...this.props, ...materializedNewProps } as P;
     const propContext = this.createPropContext(mergedProps);
     const nextProps = normalizeProps(mergedProps, this.options.props, propContext);
     validateProps(nextProps, this.options.props);

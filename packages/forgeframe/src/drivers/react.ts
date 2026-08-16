@@ -146,6 +146,58 @@ function shallowEqualProps(
   return true;
 }
 
+/** A committed React prop snapshot waiting to be synchronized. @internal */
+interface ReactPropUpdate<P extends Record<string, unknown>> {
+  desired: Partial<P>;
+  payload: Partial<P>;
+}
+
+/** Per-instance state for serializing React prop updates. @internal */
+interface ReactPropSyncState<
+  P extends Record<string, unknown>,
+  X,
+> {
+  instance: ForgeFrameComponentInstance<P, X>;
+  initialProps: Partial<P>;
+  successfulProps: Partial<P> | null;
+  knownKeys: Set<string>;
+  queue: Array<ReactPropUpdate<P>>;
+  renderReady: boolean;
+  draining: boolean;
+  active: boolean;
+}
+
+/** Creates a shallow, stable snapshot of the component props for one React commit. @internal */
+function snapshotProps<P extends Record<string, unknown>>(props: Partial<P>): Partial<P> {
+  return { ...props };
+}
+
+/**
+ * Builds a self-contained update payload, clearing every previously observed missing key.
+ * @internal
+ */
+function buildPropUpdate<P extends Record<string, unknown>>(
+  desired: Partial<P>,
+  knownKeys: Set<string>
+): ReactPropUpdate<P> {
+  const payload = snapshotProps(desired) as Record<string, unknown>;
+
+  for (const key of Object.keys(desired)) {
+    knownKeys.add(key);
+  }
+
+  for (const key of knownKeys) {
+    if (!Object.prototype.hasOwnProperty.call(desired, key)) {
+      payload[key] = undefined;
+    }
+  }
+
+  return {
+    desired,
+    payload: payload as Partial<P>,
+  };
+}
+
 /**
  * Configuration options for creating a React driver.
  *
@@ -264,11 +316,54 @@ export function createReactComponent<
 
       const containerRef = useRef<HTMLDivElement>(null);
       const instanceRef = useRef<ForgeFrameComponentInstance<P, X> | null>(null);
-      const syncedPropsRef = useRef<Partial<P> | null>(null);
+      const propSyncRef = useRef<ReactPropSyncState<P, X> | null>(null);
       const onRenderedRef = useRef<typeof onRendered>(onRendered);
       const onErrorRef = useRef<typeof onError>(onError);
       const onCloseRef = useRef<typeof onClose>(onClose);
       const [error, setError] = useState<Error | null>(null);
+
+      const isCurrentSyncState = (state: ReactPropSyncState<P, X>): boolean =>
+        state.active &&
+        instanceRef.current === state.instance &&
+        propSyncRef.current === state;
+
+      const drainPropUpdates = async (state: ReactPropSyncState<P, X>): Promise<void> => {
+        if (state.draining || !state.renderReady || !isCurrentSyncState(state)) {
+          return;
+        }
+
+        state.draining = true;
+
+        try {
+          while (state.queue.length > 0 && isCurrentSyncState(state)) {
+            const update = state.queue[0];
+            if (!update) {
+              return;
+            }
+
+            try {
+              await state.instance.updateProps(update.payload);
+            } catch (err) {
+              if (!isCurrentSyncState(state)) {
+                return;
+              }
+
+              state.queue.shift();
+              onErrorRef.current?.(err as Error);
+              continue;
+            }
+
+            if (!isCurrentSyncState(state)) {
+              return;
+            }
+
+            state.queue.shift();
+            state.successfulProps = update.desired;
+          }
+        } finally {
+          state.draining = false;
+        }
+      };
 
       useEffect(() => {
         onRenderedRef.current = onRendered;
@@ -282,9 +377,21 @@ export function createReactComponent<
 
         setError(null);
 
-        const instance = Component(componentProps as P);
+        const initialProps = snapshotProps(componentProps as Partial<P>);
+        const instance = Component(initialProps as P);
+        const syncState: ReactPropSyncState<P, X> = {
+          instance,
+          initialProps,
+          successfulProps: null,
+          knownKeys: new Set(Object.keys(initialProps)),
+          queue: [],
+          renderReady: false,
+          draining: false,
+          active: true,
+        };
+
         instanceRef.current = instance;
-        syncedPropsRef.current = componentProps as Partial<P>;
+        propSyncRef.current = syncState;
 
         const unsubscribeRendered = instance.event.once('rendered', () => {
           onRenderedRef.current?.();
@@ -296,44 +403,59 @@ export function createReactComponent<
           onErrorRef.current?.(err);
         });
 
-        instance.render(container, context).catch((err: Error) => {
-          if (instanceRef.current !== instance) {
-            return;
-          }
+        instance.render(container, context).then(
+          () => {
+            if (!isCurrentSyncState(syncState)) {
+              return;
+            }
 
-          setError(err);
-          onErrorRef.current?.(err);
-        });
+            syncState.successfulProps = syncState.initialProps;
+            syncState.renderReady = true;
+            void drainPropUpdates(syncState);
+          },
+          (err: Error) => {
+            if (!isCurrentSyncState(syncState)) {
+              return;
+            }
+
+            setError(err);
+            onErrorRef.current?.(err);
+          }
+        );
 
         return () => {
+          syncState.active = false;
+          syncState.queue.length = 0;
           instance.close().catch(() => undefined);
           unsubscribeRendered();
           unsubscribeClose();
           unsubscribeError();
-          instanceRef.current = null;
-          syncedPropsRef.current = null;
+
+          if (instanceRef.current === instance) {
+            instanceRef.current = null;
+          }
+          if (propSyncRef.current === syncState) {
+            propSyncRef.current = null;
+          }
         };
       }, [context]);
 
       useEffect(() => {
-        const instance = instanceRef.current;
-        if (!instance) return;
+        const syncState = propSyncRef.current;
+        if (!syncState || !isCurrentSyncState(syncState)) return;
 
-        const nextProps = componentProps as Partial<P>;
-        const prevProps = syncedPropsRef.current as Record<string, unknown> | null;
+        const nextProps = snapshotProps(componentProps as Partial<P>);
+        const pendingProps = syncState.queue.at(-1)?.desired;
+        const prevProps = (pendingProps ??
+          syncState.successfulProps ??
+          syncState.initialProps) as Record<string, unknown>;
         const nextPropsRecord = nextProps as Record<string, unknown>;
-        if (prevProps && shallowEqualProps(prevProps, nextPropsRecord)) {
+        if (shallowEqualProps(prevProps, nextPropsRecord)) {
           return;
         }
 
-        syncedPropsRef.current = nextProps;
-        instance.updateProps(nextProps).catch((err: Error) => {
-          if (instanceRef.current !== instance) {
-            return;
-          }
-
-          onErrorRef.current?.(err);
-        });
+        syncState.queue.push(buildPropUpdate(nextProps, syncState.knownKeys));
+        void drainPropUpdates(syncState);
       });
 
       useEffect(() => {

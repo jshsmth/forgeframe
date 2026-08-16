@@ -116,6 +116,30 @@ async function runLifecycleScenario(sandbox: HTMLElement): Promise<TestResult[]>
       container.querySelectorAll('iframe').length === 0,
       `iframes after close: ${container.querySelectorAll('iframe').length}`
     ));
+
+    const cancelledContainer = createContainer(sandbox);
+    const cancelledTag = uniqueTag('lifecycle-cancelled');
+    const CancelledComponent = ForgeFrame.create({
+      tag: cancelledTag,
+      url: HOST_URL,
+    });
+    const cancelledInstance = CancelledComponent({});
+    const cancelledRender = cancelledInstance.render(cancelledContainer);
+    const cancellationMessage = `Component "${cancelledTag}" was closed before rendering completed`;
+    const cancellationResult = expectFailure(
+      'Close rejects an in-flight render',
+      () => cancelledRender,
+      cancellationMessage
+    );
+
+    await cancelledInstance.close();
+    results.push(await cancellationResult);
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    results.push(assertResult(
+      'Cancelled render leaves no frame behind',
+      cancelledContainer.querySelectorAll('iframe').length === 0,
+      `iframes after cancellation: ${cancelledContainer.querySelectorAll('iframe').length}`
+    ));
   } catch (error) {
     results.push(failure('Lifecycle browser scenario completed', error));
     await instance.close().catch(() => undefined);

@@ -20,7 +20,7 @@ import { CONTEXT, EVENT, MESSAGE_NAME } from '../constants';
 import { EventEmitter } from '../events/emitter';
 import { generateUID } from '../utils/uid';
 import { CleanupManager } from '../utils/cleanup';
-import { createDeferred } from '../utils/promise';
+import { createDeferred, type Deferred } from '../utils/promise';
 import { registerWindow, unregisterWindow } from '../window/proxy';
 import {
   validateProps,
@@ -112,6 +112,9 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
 
   /** @internal */
   private renderPromise: Promise<void> | null = null;
+
+  /** @internal */
+  private activeRenderTask: Deferred<void> | null = null;
 
   /** @internal */
   private destroyed = false;
@@ -214,6 +217,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     const renderTask = createDeferred<void>();
     const operation = renderTask.promise;
     this.renderPromise = operation;
+    this.activeRenderTask = renderTask;
     void this.performRender(container, context).then(
       renderTask.resolve,
       renderTask.reject
@@ -221,6 +225,9 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     try {
       await operation;
     } finally {
+      if (this.activeRenderTask === renderTask) {
+        this.activeRenderTask = null;
+      }
       if (!this.rendered && !this.destroyed && this.renderPromise === operation) {
         this.renderPromise = null;
       }
@@ -235,40 +242,64 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     this.renderer.context = context ?? this.options.defaultContext;
 
     this.checkEligibility();
+    this.assertRenderActive();
     validateProps(this.propsPipeline.props, this.options.props);
+    this.assertRenderActive();
     this.options.validate?.({ props: this.propsPipeline.props });
+    this.assertRenderActive();
     const baseUrl = this.resolveUrl();
+    this.assertRenderActive();
     this.renderer.container = this.resolveContainer(container);
 
     this.event.emit(EVENT.PRERENDER);
+    this.assertRenderActive();
     invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onPrerender');
+    this.assertRenderActive();
 
     await this.prerender(baseUrl);
+    this.assertRenderActive();
 
     this.event.emit(EVENT.PRERENDERED);
+    this.assertRenderActive();
     invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onPrerendered');
+    this.assertRenderActive();
 
     this.event.emit(EVENT.RENDER);
+    this.assertRenderActive();
     invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onRender');
+    this.assertRenderActive();
 
     try {
+      this.assertRenderActive();
       await this.open(baseUrl);
+      this.assertRenderActive();
       await this.waitForHost();
+      this.assertRenderActive();
       if (this.renderer.context === CONTEXT.IFRAME && this.renderer.iframe) {
         await this.renderer.swapPrerenderContentIfNeeded();
+        this.assertRenderActive();
       }
     } catch (err) {
+      const renderWasCancelled = this.isRenderCancelled();
       await this.destroy().catch(() => undefined);
+      if (renderWasCancelled) {
+        this.teardownRenderResources();
+        throw this.createRenderCancellationError();
+      }
       throw err;
     }
 
     this.rendered = true;
 
     this.event.emit(EVENT.RENDERED);
+    this.assertRenderActive();
     invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onRendered');
+    this.assertRenderActive();
 
     this.event.emit(EVENT.DISPLAY);
+    this.assertRenderActive();
     invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onDisplay');
+    this.assertRenderActive();
   }
 
   /**
@@ -304,6 +335,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     if (this.destroyed || this.closing) return;
 
     this.closing = true;
+    this.activeRenderTask?.reject(this.createRenderCancellationError());
 
     try {
       const callbackProps = this.propsPipeline ? this.propsPipeline.props : ({} as P);
@@ -725,13 +757,38 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     await this.transport.waitForHost(
       this.options.timeout,
       this.options.tag,
-      (error) =>
-        emitConsumerError(
-          this.event,
-          this.propsPipeline.props as Record<string, unknown>,
-          error
-        )
+      (error) => {
+        if (!this.isRenderCancelled()) {
+          emitConsumerError(
+            this.event,
+            this.propsPipeline.props as Record<string, unknown>,
+            error
+          );
+        }
+      }
     );
+  }
+
+  /** Returns an error describing intentional cancellation of an in-flight render. @internal */
+  private createRenderCancellationError(): Error {
+    return new Error(
+      `Component "${this.options.tag}" was closed before rendering completed`
+    );
+  }
+
+  /** Returns whether close/destroy has cancelled the active render operation. @internal */
+  private isRenderCancelled(): boolean {
+    return this.closing || this.destroyed;
+  }
+
+  /** Stops a cancelled render before it can advance to another lifecycle stage. @internal */
+  private assertRenderActive(): void {
+    if (!this.isRenderCancelled()) {
+      return;
+    }
+
+    this.teardownRenderResources();
+    throw this.createRenderCancellationError();
   }
 
   /**
@@ -819,6 +876,27 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
   }
 
   /**
+   * Removes render artifacts, including resources created after destroy began.
+   * Safe to call repeatedly while an asynchronous render unwinds.
+   * @internal
+   */
+  private teardownRenderResources(): void {
+    const hostWindow = this.transport ? this.transport.hostWindow : null;
+
+    if (this.renderer) {
+      this.renderer.destroy(hostWindow);
+    }
+    unregisterWindow(this.uid);
+
+    if (this.transport) {
+      this.transport.hostWindow = null;
+      this.transport.openedHostDomain = null;
+      this.transport.activeHostDomain = null;
+      this.transport.dynamicUrlTrustedOrigin = null;
+    }
+  }
+
+  /**
    * Destroys the component and cleans up all resources.
    * @internal
    */
@@ -827,8 +905,6 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
     this.destroyed = true;
 
     const callbackProps = this.propsPipeline ? this.propsPipeline.props : ({} as P);
-    const hostWindow = this.transport ? this.transport.hostWindow : null;
-
     if (this.transport && this.transport.initPromise) {
       this.transport.initPromise.reject(
         new Error(
@@ -841,14 +917,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
       this.transport.hostInitialized = false;
     }
 
-    this.renderer.destroy(hostWindow);
-
-    if (this.transport) {
-      this.transport.hostWindow = null;
-      this.transport.openedHostDomain = null;
-      this.transport.activeHostDomain = null;
-      this.transport.dynamicUrlTrustedOrigin = null;
-    }
+    this.teardownRenderResources();
     if (this.propsPipeline) {
       this.propsPipeline.pendingPropsUpdate = null;
     }

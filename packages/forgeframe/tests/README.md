@@ -24,6 +24,7 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `popup.test.ts`: Popup open/close/focus/resize helpers and close/popup-block detection.
 - `prop-schema.test.ts`: `prop` schema builder behavior and Standard Schema compliance checks.
 - `props-serialize.test.ts`: BASE64/DOTIFY serialization round-trips and malformed wrapper fallback behavior.
+- `props-alias-updates.test.ts`: Alias patch precedence, explicit clearing, validation rollback, and materialized-value preservation.
 - `props.test.ts`: Prop normalization, schema validation, host/query/body filtering and conversion rules.
 - `protocol.test.ts`: Protocol message factory, serialization/deserialization, and prefix contract validation.
 - `react-driver-lifecycle.test.ts`: React driver lifecycle integration, cleanup, prop synchronization, and error forwarding.
@@ -46,6 +47,7 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `function-prop-bridge.test.ts`: Real cross-window callback bridging from host `window.hostProps` back to consumer callbacks, including async results and thrown errors.
 - `host-controls-routing.test.ts`: Real host-builtins coverage for close/focus/resize/show/hide/error/export/peer lookup, plus spoofed-source rejection on consumer and host runtimes.
 - `popup-host-handshake.test.ts`: End-to-end popup happy path and popup-blocked failure coverage through `render(..., 'popup')` and `initHost()`.
+- `props-alias-sync.test.ts`: End-to-end canonical host synchronization for initial and updated alias values.
 - `props-sync.test.ts`: Post-connect prop updates across the real messaging pipeline, including host snapshot replacement, stale key removal, and `onProps` subscriber delivery.
 
 ## Type Tests (`packages/forgeframe/tests/typecheck`)

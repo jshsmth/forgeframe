@@ -280,6 +280,11 @@ const login = LoginForm({
 await login.render('#login-container');
 ```
 
+Calling `close()` while `render()` is still in flight cancels the render, removes
+its loading and host artifacts, and prevents any not-yet-opened iframe or popup
+from opening. The render promise rejects with
+`Component "<tag>" was closed before rendering completed`.
+
 ### 4. Handle Events
 
 > **`Consumer`**

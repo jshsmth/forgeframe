@@ -54,6 +54,13 @@ function createDeferredPromise<T>() {
   return { promise, resolve, reject };
 }
 
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 /**
  * Creates a mock ForgeFrame component factory and instance with event emitter stubs.
  */
@@ -170,7 +177,7 @@ describe('createReactComponent lifecycle integration', () => {
     expect(component).not.toHaveBeenCalled();
   });
 
-  it('should skip the initial prop sync and only update when props change', () => {
+  it('should skip the initial prop sync and only update when props change', async () => {
     const { React, refs, effects } = createReactHarness();
     const { component, instance } = createForgeFrameComponentMock();
     const onError = vi.fn();
@@ -183,12 +190,14 @@ describe('createReactComponent lifecycle integration', () => {
     effects[1]?.(); // mount
     effects[2]?.(); // initial prop sync
     effects[2]?.(); // same props, should no-op
+    await flushMicrotasks();
 
     expect(instance.updateProps).not.toHaveBeenCalled();
 
     ReactComponent({ amount: 2, onError });
     effects[0]?.(); // onError ref sync
     effects[2]?.(); // changed props
+    await flushMicrotasks();
 
     expect(instance.updateProps).toHaveBeenCalledTimes(1);
     expect(instance.updateProps).toHaveBeenCalledWith({ amount: 2 });
@@ -206,12 +215,151 @@ describe('createReactComponent lifecycle integration', () => {
     refs[0].current = document.createElement('div');
     effects[0]?.(); // onError ref sync
     effects[1]?.(); // mount
+    await flushMicrotasks();
 
     ReactComponent({ amount: 2, onError });
     effects[0]?.(); // onError ref sync
     effects[2]?.(); // prop sync with changed value
-    await Promise.resolve();
+    await flushMicrotasks();
 
+    expect(onError).toHaveBeenCalledWith(updateError);
+  });
+
+  it('should clear component props that are omitted from a later React commit', async () => {
+    const { React, refs, effects } = createReactHarness();
+    const { component, instance } = createForgeFrameComponentMock();
+
+    const ReactComponent = createReactComponent(component as never, { React: React as never });
+    ReactComponent({ amount: 1, label: 'initial' });
+    refs[0].current = document.createElement('div');
+    effects[0]?.();
+    effects[1]?.();
+    effects[2]?.();
+    await flushMicrotasks();
+
+    ReactComponent({ amount: 2 });
+    effects[0]?.();
+    effects[2]?.();
+    await flushMicrotasks();
+
+    expect(instance.updateProps).toHaveBeenCalledTimes(1);
+    expect(instance.updateProps).toHaveBeenCalledWith({
+      amount: 2,
+      label: undefined,
+    });
+  });
+
+  it('should gate queued prop snapshots behind render and preserve FIFO order', async () => {
+    const { React, refs, effects } = createReactHarness();
+    const { component, instance } = createForgeFrameComponentMock();
+    const deferredRender = createDeferredPromise<void>();
+    const deferredFirstUpdate = createDeferredPromise<void>();
+    instance.render.mockReturnValueOnce(deferredRender.promise);
+    instance.updateProps
+      .mockReturnValueOnce(deferredFirstUpdate.promise)
+      .mockResolvedValueOnce(undefined);
+
+    const ReactComponent = createReactComponent(component as never, { React: React as never });
+    ReactComponent({ amount: 1 });
+    refs[0].current = document.createElement('div');
+    effects[0]?.();
+    effects[1]?.();
+    effects[2]?.();
+
+    ReactComponent({ amount: 2 });
+    effects[0]?.();
+    effects[2]?.();
+    ReactComponent({ amount: 3 });
+    effects[0]?.();
+    effects[2]?.();
+
+    expect(instance.updateProps).not.toHaveBeenCalled();
+
+    deferredRender.resolve();
+    await flushMicrotasks();
+
+    expect(instance.updateProps).toHaveBeenCalledTimes(1);
+    expect(instance.updateProps).toHaveBeenNthCalledWith(1, { amount: 2 });
+
+    deferredFirstUpdate.resolve();
+    await flushMicrotasks();
+
+    expect(instance.updateProps).toHaveBeenCalledTimes(2);
+    expect(instance.updateProps).toHaveBeenNthCalledWith(2, { amount: 3 });
+  });
+
+  it('should continue queued prop updates after reporting one failed update', async () => {
+    const { React, refs, effects } = createReactHarness();
+    const { component, instance } = createForgeFrameComponentMock();
+    const onError = vi.fn();
+    const updateError = new Error('first update failed');
+    const deferredFirstUpdate = createDeferredPromise<void>();
+    instance.updateProps
+      .mockReturnValueOnce(deferredFirstUpdate.promise)
+      .mockResolvedValueOnce(undefined);
+
+    const ReactComponent = createReactComponent(component as never, { React: React as never });
+    ReactComponent({ amount: 1, label: 'initial', onError });
+    refs[0].current = document.createElement('div');
+    effects[0]?.();
+    effects[1]?.();
+    effects[2]?.();
+    await flushMicrotasks();
+
+    ReactComponent({ amount: 2, label: 'pending', onError });
+    effects[0]?.();
+    effects[2]?.();
+    ReactComponent({ amount: 3, onError });
+    effects[0]?.();
+    effects[2]?.();
+
+    expect(instance.updateProps).toHaveBeenCalledTimes(1);
+
+    deferredFirstUpdate.reject(updateError);
+    await flushMicrotasks();
+
+    expect(instance.updateProps).toHaveBeenCalledTimes(2);
+    expect(instance.updateProps).toHaveBeenNthCalledWith(1, {
+      amount: 2,
+      label: 'pending',
+    });
+    expect(instance.updateProps).toHaveBeenNthCalledWith(2, {
+      amount: 3,
+      label: undefined,
+    });
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith(updateError);
+  });
+
+  it('should retry an identical React prop snapshot after its prior update fails', async () => {
+    const { React, refs, effects } = createReactHarness();
+    const { component, instance } = createForgeFrameComponentMock();
+    const onError = vi.fn();
+    const updateError = new Error('retry update');
+    instance.updateProps.mockRejectedValueOnce(updateError).mockResolvedValueOnce(undefined);
+
+    const ReactComponent = createReactComponent(component as never, { React: React as never });
+    ReactComponent({ amount: 1, onError });
+    refs[0].current = document.createElement('div');
+    effects[0]?.();
+    effects[1]?.();
+    effects[2]?.();
+    await flushMicrotasks();
+
+    ReactComponent({ amount: 2, onError });
+    effects[0]?.();
+    effects[2]?.();
+    await flushMicrotasks();
+
+    ReactComponent({ amount: 2, onError });
+    effects[0]?.();
+    effects[2]?.();
+    await flushMicrotasks();
+
+    expect(instance.updateProps).toHaveBeenCalledTimes(2);
+    expect(instance.updateProps).toHaveBeenNthCalledWith(1, { amount: 2 });
+    expect(instance.updateProps).toHaveBeenNthCalledWith(2, { amount: 2 });
+    expect(onError).toHaveBeenCalledTimes(1);
     expect(onError).toHaveBeenCalledWith(updateError);
   });
 
@@ -313,6 +461,7 @@ describe('createReactComponent lifecycle integration', () => {
     effects[0]?.();
     const firstCleanup = effects[1]?.();
     effects[2]?.();
+    await flushMicrotasks();
 
     ReactComponent({ amount: 2, context: 'popup', onError });
     effects[0]?.();
@@ -326,11 +475,59 @@ describe('createReactComponent lifecycle integration', () => {
     effects[2]?.();
 
     deferredUpdate.reject(staleUpdateError);
-    await Promise.resolve();
+    await flushMicrotasks();
 
     expect(first.instance.updateProps).toHaveBeenCalledWith({ amount: 2 });
     expect(second.instance.updateProps).not.toHaveBeenCalled();
     expect(onError).not.toHaveBeenCalledWith(staleUpdateError);
+  });
+
+  it('should not let a stale update completion advance a remounted instance', async () => {
+    const { React, refs, effects } = createReactHarness();
+    const first = createForgeFrameComponentMock();
+    const second = createForgeFrameComponentMock();
+    const deferredUpdate = createDeferredPromise<void>();
+    first.instance.updateProps.mockReturnValueOnce(deferredUpdate.promise);
+
+    const component = vi
+      .fn()
+      .mockReturnValueOnce(first.instance)
+      .mockReturnValueOnce(second.instance);
+    Object.defineProperty(component, 'name', { value: 'LifecycleComponent' });
+    const container = document.createElement('div');
+
+    const ReactComponent = createReactComponent(component as never, { React: React as never });
+
+    ReactComponent({ amount: 1, context: 'popup' });
+    refs[0].current = container;
+    effects[0]?.();
+    const firstCleanup = effects[1]?.();
+    effects[2]?.();
+    await flushMicrotasks();
+
+    ReactComponent({ amount: 2, context: 'popup' });
+    effects[0]?.();
+    effects[2]?.();
+    expect(first.instance.updateProps).toHaveBeenCalledWith({ amount: 2 });
+
+    ReactComponent({ amount: 10, context: 'iframe' });
+    refs[0].current = container;
+    effects[0]?.();
+    (firstCleanup as (() => void) | undefined)?.();
+    effects[1]?.();
+    effects[2]?.();
+    await flushMicrotasks();
+
+    deferredUpdate.resolve();
+    await flushMicrotasks();
+
+    ReactComponent({ amount: 2, context: 'iframe' });
+    effects[0]?.();
+    effects[2]?.();
+    await flushMicrotasks();
+
+    expect(second.instance.updateProps).toHaveBeenCalledTimes(1);
+    expect(second.instance.updateProps).toHaveBeenCalledWith({ amount: 2 });
   });
 
   it('should invoke onClose during cleanup before unsubscribing the close listener', async () => {
@@ -402,7 +599,7 @@ describe('createReactComponent lifecycle integration', () => {
     expect(event.once).toHaveBeenCalledTimes(2);
   });
 
-  it('should update props without remounting when non-structural props change', () => {
+  it('should update props without remounting when non-structural props change', async () => {
     const { React, refs, effects } = createReactHarness();
     const { component, instance } = createForgeFrameComponentMock();
 
@@ -413,10 +610,12 @@ describe('createReactComponent lifecycle integration', () => {
     effects[0]?.();
     effects[1]?.();
     effects[2]?.();
+    await flushMicrotasks();
 
     ReactComponent({ amount: 2, context: 'popup' });
     effects[0]?.();
     effects[2]?.();
+    await flushMicrotasks();
 
     expect(component).toHaveBeenCalledTimes(1);
     expect(instance.render).toHaveBeenCalledTimes(1);
