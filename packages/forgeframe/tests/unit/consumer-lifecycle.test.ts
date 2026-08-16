@@ -11,6 +11,7 @@ import {
 } from '@/communication/protocol';
 import { ConsumerComponent } from '@/core/consumer';
 import { clearComponents, create } from '@/core/component';
+import { PROP_RESET } from '@/core/consumer/props-pipeline';
 import { CONTEXT, EVENT, MESSAGE_NAME } from '@/constants';
 import { prop } from '@/props/prop';
 import * as popupRender from '@/render/popup';
@@ -40,6 +41,7 @@ type ConsumerInternals = {
   };
   propsPipeline: {
     props: Record<string, unknown>;
+    inputProps: Record<string, unknown>;
   };
   waitForHost: () => Promise<void>;
   open: () => Promise<void>;
@@ -1114,6 +1116,54 @@ describe('Consumer lifecycle behavior', () => {
     await expect(consumer.updateProps({ amount: undefined })).rejects.toThrow(
       'Prop "amount" is required but was not provided'
     );
+  });
+
+  it('should reapply configured defaults for props omitted by React', async () => {
+    const optionalDefault = vi.fn(() => 'optional-default');
+    const stableDefault = vi.fn(() => 'stable-default');
+    const consumer = createConsumer(
+      {
+        props: {
+          optionalLabel: {
+            schema: prop.string().optional(),
+            default: optionalDefault,
+          },
+          requiredLabel: {
+            schema: prop.string(),
+            required: true,
+            default: 'required-default',
+          },
+          stableLabel: {
+            schema: prop.string(),
+            default: stableDefault,
+          },
+        },
+      },
+      {
+        optionalLabel: 'custom-optional',
+        requiredLabel: 'custom-required',
+      }
+    );
+    const internal = getInternals(consumer);
+
+    await consumer.updateProps({
+      optionalLabel: PROP_RESET,
+      requiredLabel: PROP_RESET,
+    } as never);
+
+    expect(internal.propsPipeline.props).toMatchObject({
+      optionalLabel: 'optional-default',
+      requiredLabel: 'required-default',
+      stableLabel: 'stable-default',
+    });
+    expect(internal.propsPipeline.inputProps).not.toHaveProperty(
+      'optionalLabel'
+    );
+    expect(internal.propsPipeline.inputProps).not.toHaveProperty(
+      'requiredLabel'
+    );
+    expect(optionalDefault).toHaveBeenCalledTimes(1);
+    expect(stableDefault).toHaveBeenCalledTimes(1);
   });
 
   it('should reject updateProps when a prop violates its schema', async () => {

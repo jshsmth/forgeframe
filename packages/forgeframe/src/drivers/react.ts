@@ -1,5 +1,6 @@
 import type { ForgeFrameComponent, ForgeFrameComponentInstance } from '../types/runtime';
 import type { ContextType } from '../constants';
+import { PROP_RESET } from '../core/consumer/props-pipeline';
 
 /**
  * Minimal React-like interface for driver compatibility.
@@ -173,7 +174,7 @@ function snapshotProps<P extends Record<string, unknown>>(props: Partial<P>): Pa
 }
 
 /**
- * Builds a self-contained update payload, clearing every previously observed missing key.
+ * Builds a self-contained update payload, resetting every previously observed missing key.
  * @internal
  */
 function buildPropUpdate<P extends Record<string, unknown>>(
@@ -188,7 +189,7 @@ function buildPropUpdate<P extends Record<string, unknown>>(
 
   for (const key of knownKeys) {
     if (!Object.prototype.hasOwnProperty.call(desired, key)) {
-      payload[key] = undefined;
+      payload[key] = PROP_RESET;
     }
   }
 
@@ -397,6 +398,8 @@ export function createReactComponent<
           onRenderedRef.current?.();
         });
         const unsubscribeClose = instance.event.once('close', () => {
+          syncState.active = false;
+          syncState.queue.length = 0;
           onCloseRef.current?.();
         });
         const unsubscribeError = instance.event.on('error', (err: Error) => {

@@ -3,6 +3,9 @@ import { materializePropAliases } from '../../props/normalize';
 import type { PropContext } from '../../types/props';
 import type { NormalizedOptions } from './types';
 
+/** Internal marker used by framework drivers to restore an omitted prop. @internal */
+export const PROP_RESET = Symbol('forgeframe.prop-reset');
+
 /**
  * Hooks used by the props pipeline to coordinate host synchronization behavior.
  * @internal
@@ -66,13 +69,29 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
       newProps,
       this.options.props
     );
-    const nextInputProps = { ...this.inputProps, ...materializedNewProps };
-    const mergedProps = { ...this.props, ...materializedNewProps } as P;
-    const propContext = this.createPropContext(mergedProps);
-    const nextProps = normalizeProps(mergedProps, this.options.props, propContext);
+    const nextInputProps = { ...this.inputProps } as Record<string, unknown>;
+    const mergedProps = { ...this.props } as Record<string, unknown>;
+
+    for (const [key, value] of Object.entries(materializedNewProps)) {
+      if (value === PROP_RESET) {
+        Reflect.deleteProperty(nextInputProps, key);
+        Reflect.deleteProperty(mergedProps, key);
+        continue;
+      }
+
+      nextInputProps[key] = value;
+      mergedProps[key] = value;
+    }
+
+    const propContext = this.createPropContext(mergedProps as P);
+    const nextProps = normalizeProps(
+      mergedProps as P,
+      this.options.props,
+      propContext
+    );
     validateProps(nextProps, this.options.props);
     this.options.validate?.({ props: nextProps });
-    return { nextInputProps, nextProps };
+    return { nextInputProps: nextInputProps as Partial<P>, nextProps };
   }
 
   /**

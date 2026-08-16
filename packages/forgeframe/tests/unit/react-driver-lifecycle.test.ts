@@ -4,6 +4,7 @@
  * Covers mount/unmount flows, listener cleanup, prop synchronization guards, error propagation, and forwarded ref wiring.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { PROP_RESET } from '@/core/consumer/props-pipeline';
 import { createReactComponent } from '@/drivers/react';
 
 /**
@@ -225,7 +226,7 @@ describe('createReactComponent lifecycle integration', () => {
     expect(onError).toHaveBeenCalledWith(updateError);
   });
 
-  it('should clear component props that are omitted from a later React commit', async () => {
+  it('should reset component props that are omitted from a later React commit', async () => {
     const { React, refs, effects } = createReactHarness();
     const { component, instance } = createForgeFrameComponentMock();
 
@@ -245,7 +246,7 @@ describe('createReactComponent lifecycle integration', () => {
     expect(instance.updateProps).toHaveBeenCalledTimes(1);
     expect(instance.updateProps).toHaveBeenCalledWith({
       amount: 2,
-      label: undefined,
+      label: PROP_RESET,
     });
   });
 
@@ -325,7 +326,7 @@ describe('createReactComponent lifecycle integration', () => {
     });
     expect(instance.updateProps).toHaveBeenNthCalledWith(2, {
       amount: 3,
-      label: undefined,
+      label: PROP_RESET,
     });
     expect(onError).toHaveBeenCalledTimes(1);
     expect(onError).toHaveBeenCalledWith(updateError);
@@ -545,6 +546,34 @@ describe('createReactComponent lifecycle integration', () => {
 
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(unsubscribes.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('should not report an intentional close while the initial render is pending', async () => {
+    const { React, refs, effects, setState } = createReactHarness();
+    const { component, instance, handlers } = createForgeFrameComponentMock();
+    const deferredRender = createDeferredPromise<void>();
+    const onClose = vi.fn();
+    const onError = vi.fn();
+    const cancellationError = new Error(
+      'Component "react-close-component" was closed before rendering completed'
+    );
+    instance.render.mockReturnValueOnce(deferredRender.promise);
+
+    const ReactComponent = createReactComponent(component as never, {
+      React: React as never,
+    });
+    ReactComponent({ amount: 1, onClose, onError });
+    refs[0].current = document.createElement('div');
+    effects[0]?.();
+    effects[1]?.();
+
+    deferredRender.reject(cancellationError);
+    handlers.close?.();
+    await flushMicrotasks();
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onError).not.toHaveBeenCalled();
+    expect(setState).not.toHaveBeenCalledWith(cancellationError);
   });
 
   it('should call the latest onRendered callback when props change after mount', () => {
