@@ -82,6 +82,8 @@ export {
 export type {
   // Component types
   ComponentOptions,
+  ConsumerPropsInput,
+  ConsumerPropsUpdate,
   ForgeFrameComponent,
   ForgeFrameComponentInstance,
   HostProps,

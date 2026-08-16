@@ -117,7 +117,15 @@ export interface PropDefinition<T = unknown, P = Record<string, unknown>> {
   /** Transform the prop value in host context */
   hostDecorate?: (opts: { value: T; props: P }) => T;
 
-  /** Alternative name for the prop */
+  /**
+   * Alternative runtime input name for the prop.
+   *
+   * @remarks
+   * Aliases that reference another defined prop resolve transitively. When an
+   * input supplies both an alias and its canonical key, the canonical value
+   * wins at that level. TypeScript callers can model alternate input shapes
+   * with the third generic accepted by `ForgeFrame.create()`.
+   */
   alias?: string;
 }
 

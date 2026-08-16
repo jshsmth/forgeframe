@@ -46,7 +46,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
 
   constructor(
     private options: NormalizedOptions<P>,
-    initialInputProps: Partial<P>,
+    initialInputProps: Record<string, unknown>,
     private createPropContext: (props: P) => PropContext<P>
   ) {
     this.inputProps = materializePropAliases(
@@ -61,7 +61,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
   /**
    * Builds and validates the next props snapshot.
    */
-  buildNextProps(newProps: Partial<P>): {
+  buildNextProps(newProps: Record<string, unknown>): {
     nextInputProps: Partial<P>;
     nextProps: P;
   } {
@@ -99,7 +99,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
    * Applies a props update and synchronizes it to the host when connected.
    */
   updateProps(
-    newProps: Partial<P>,
+    newProps: Record<string, unknown>,
     hooks: ConsumerPropsUpdateHooks<P>
   ): Promise<void> {
     return this.queuePropsUpdate(async () => {

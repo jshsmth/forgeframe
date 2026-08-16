@@ -18,9 +18,13 @@ const componentInstanceIndexByTag = new Map<string, Map<string, IndexedComponent
  * Adds an instance to the internal lookup index.
  * @internal
  */
-export function indexComponentInstance<P extends Record<string, unknown>, X>(
+export function indexComponentInstance<
+  P extends Record<string, unknown>,
+  X,
+  I,
+>(
   tag: string,
-  instance: ForgeFrameComponentInstance<P, X>
+  instance: ForgeFrameComponentInstance<P, X, I>
 ): void {
   const indexedInstance = instance as IndexedComponentInstance;
   const existing = componentInstanceIndexByUid.get(indexedInstance.uid);

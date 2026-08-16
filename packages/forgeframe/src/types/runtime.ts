@@ -14,6 +14,46 @@ import type {
   IframeStyles,
 } from './utility';
 
+/** Whether two prop shapes expose the same set of keys. @internal */
+type HasSamePropKeys<A, B> = [Exclude<keyof A, keyof B>] extends [never]
+  ? [Exclude<keyof B, keyof A>] extends [never]
+    ? true
+    : false
+  : false;
+
+/**
+ * Props accepted when creating a component instance.
+ *
+ * @typeParam P - Canonical normalized props exposed to the host.
+ * @typeParam I - An alternate consumer input shape, such as legacy aliases.
+ *
+ * @remarks
+ * Supplying a distinct input shape permits initial props to use or mix
+ * canonical and alias spellings, including aliases that are themselves
+ * canonical keys. Required-prop validation remains owned by the component's
+ * runtime prop definitions because TypeScript cannot infer alias-to-canonical
+ * relationships from the runtime `alias` strings.
+ * @public
+ */
+export type ConsumerPropsInput<P, I = P> =
+  | P
+  | (HasSamePropKeys<P, I> extends true
+      ? never
+      : I |
+          (Exclude<keyof I, keyof P> extends never ? never : Partial<P & I>));
+
+/**
+ * Partial props accepted by component updates.
+ *
+ * @typeParam P - Canonical normalized props exposed to the host.
+ * @typeParam I - An alternate consumer input shape, such as legacy aliases.
+ * @public
+ */
+export type ConsumerPropsUpdate<P, I = P> =
+  | Partial<P>
+  | Partial<I>
+  | Partial<P & I>;
+
 /**
  * Function that returns nested components for composition.
  *
@@ -152,6 +192,7 @@ export interface ComponentOptions<P = Record<string, unknown>> {
  *
  * @typeParam P - The props type for the component
  * @typeParam X - The type of exports from the host
+ * @typeParam I - An alternate consumer input shape, such as legacy aliases
  *
  * @remarks
  * Component instances are created by calling the component factory function
@@ -167,7 +208,11 @@ export interface ComponentOptions<P = Record<string, unknown>> {
  *
  * @public
  */
-export interface ForgeFrameComponentInstance<P = Record<string, unknown>, X = unknown> {
+export interface ForgeFrameComponentInstance<
+  P = Record<string, unknown>,
+  X = unknown,
+  I = P,
+> {
   /**
    * Unique instance identifier.
    */
@@ -248,14 +293,14 @@ export interface ForgeFrameComponentInstance<P = Record<string, unknown>, X = un
    * @param props - Partial props to merge with existing
    * @returns Promise that resolves when props are updated
    */
-  updateProps(props: Partial<P>): Promise<void>;
+  updateProps(props: ConsumerPropsUpdate<P, I>): Promise<void>;
 
   /**
    * Create a copy of this instance with the same props.
    *
    * @returns New component instance
    */
-  clone(): ForgeFrameComponentInstance<P, X>;
+  clone(): ForgeFrameComponentInstance<P, X, I>;
 
   /**
    * Check if the component is eligible to render.
@@ -285,6 +330,7 @@ export interface ForgeFrameComponentInstance<P = Record<string, unknown>, X = un
  *
  * @typeParam P - The props type for the component
  * @typeParam X - The type of exports from the host
+ * @typeParam I - An alternate consumer input shape, such as legacy aliases
  *
  * @remarks
  * This is the return type of `ForgeFrame.create()`. It can be called as a
@@ -305,14 +351,18 @@ export interface ForgeFrameComponentInstance<P = Record<string, unknown>, X = un
  *
  * @public
  */
-export interface ForgeFrameComponent<P = Record<string, unknown>, X = unknown> {
+export interface ForgeFrameComponent<
+  P = Record<string, unknown>,
+  X = unknown,
+  I = P,
+> {
   /**
    * Create a new component instance with props.
    *
    * @param props - Props to pass to the component
    * @returns New component instance
    */
-  (props?: P): ForgeFrameComponentInstance<P, X>;
+  (props?: ConsumerPropsInput<P, I>): ForgeFrameComponentInstance<P, X, I>;
 
   /**
    * Check if current window is a host instance of this component.
@@ -359,7 +409,7 @@ export interface ForgeFrameComponent<P = Record<string, unknown>, X = unknown> {
   /**
    * All active instances of this component.
    */
-  instances: ForgeFrameComponentInstance<P, X>[];
+  instances: ForgeFrameComponentInstance<P, X, I>[];
 }
 
 /**
