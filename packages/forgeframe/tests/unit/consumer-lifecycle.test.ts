@@ -1077,6 +1077,36 @@ describe('Consumer lifecycle behavior', () => {
     expect(getWindowByUID(consumer.uid)).toBeNull();
   });
 
+  it('should stop before opening a popup when dynamic dimensions close the instance', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    let dimensionCalls = 0;
+    const consumer = createConsumer({
+      defaultContext: CONTEXT.POPUP,
+      dimensions: () => {
+        dimensionCalls += 1;
+        if (dimensionCalls === 2) {
+          void consumer.close();
+        }
+        return { width: 320, height: 180 };
+      },
+    });
+    const openPopupSpy = vi.spyOn(popupRender, 'openPopup');
+    const waitForHostSpy = vi
+      .spyOn(getInternals(consumer), 'waitForHost')
+      .mockResolvedValue(undefined);
+
+    await expect(consumer.render(container, CONTEXT.POPUP)).rejects.toThrow(
+      'Component "consumer-lifecycle-component" was closed before rendering completed'
+    );
+
+    expect(dimensionCalls).toBe(2);
+    expect(openPopupSpy).not.toHaveBeenCalled();
+    expect(waitForHostSpy).not.toHaveBeenCalled();
+    expect(getInternals(consumer).transport.hostWindow).toBeNull();
+    expect(getWindowByUID(consumer.uid)).toBeNull();
+  });
+
   it('should isolate callback failures in callPropCallback', async () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 

@@ -657,6 +657,7 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
 
     this.transport.hostWindow = this.renderer.open({
       baseUrl,
+      assertActive: () => this.assertRenderActive(),
       buildUrl: (resolvedBaseUrl) => this.buildUrl(resolvedBaseUrl),
       buildBodyParams: () => this.buildBodyParams(baseUrl),
       buildWindowName: () => this.buildWindowName(baseUrl),

@@ -30,6 +30,7 @@ import {
  */
 export interface ConsumerOpenParams {
   baseUrl: string;
+  assertActive: () => void;
   buildUrl: (baseUrl: string) => string;
   buildBodyParams: () => URLSearchParams;
   buildWindowName: () => string;
@@ -203,7 +204,9 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
    */
   open(params: ConsumerOpenParams): Window | null {
     const url = params.buildUrl(params.baseUrl);
+    params.assertActive();
     const bodyParams = params.buildBodyParams();
+    params.assertActive();
     const hasBodyParams = bodyParams.toString().length > 0;
 
     if (this.context === CONTEXT.IFRAME) {
@@ -211,6 +214,7 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
         throw new Error('Iframe not created during prerender');
       }
 
+      params.assertActive();
       if (hasBodyParams) {
         params.submitBodyForm(this.iframe.name, url, bodyParams);
       } else {
@@ -221,14 +225,23 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
     }
 
     const windowName = params.buildWindowName();
+    params.assertActive();
+    const dimensions = this.resolveDimensions();
+    params.assertActive();
     const popup = openPopup({
       url: hasBodyParams ? 'about:blank' : url,
       name: windowName,
-      dimensions: this.resolveDimensions(),
+      dimensions,
     });
 
-    if (hasBodyParams) {
-      params.submitBodyForm(windowName, url, bodyParams);
+    try {
+      params.assertActive();
+      if (hasBodyParams) {
+        params.submitBodyForm(windowName, url, bodyParams);
+      }
+    } catch (error) {
+      closePopup(popup);
+      throw error;
     }
 
     const stopWatching = watchPopupClose(popup, () => {

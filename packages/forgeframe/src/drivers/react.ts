@@ -147,10 +147,37 @@ function shallowEqualProps(
   return true;
 }
 
+/** Reports React driver errors without allowing observer failures to break lifecycle work. @internal */
+function reportReactError(
+  callback: ((error: Error) => void) | undefined,
+  error: Error
+): void {
+  if (!callback) {
+    return;
+  }
+
+  try {
+    const result = (callback as (reportedError: Error) => unknown)(error);
+    if (
+      result &&
+      typeof result === 'object' &&
+      'catch' in result &&
+      typeof result.catch === 'function'
+    ) {
+      (result as Promise<unknown>).catch((callbackError: unknown) => {
+        console.error('Error in React onError callback:', callbackError);
+      });
+    }
+  } catch (callbackError) {
+    console.error('Error in React onError callback:', callbackError);
+  }
+}
+
 /** A committed React prop snapshot waiting to be synchronized. @internal */
 interface ReactPropUpdate<P extends Record<string, unknown>> {
   desired: Partial<P>;
   payload: Partial<P>;
+  retryOnFailure: boolean;
 }
 
 /** Per-instance state for serializing React prop updates. @internal */
@@ -163,6 +190,7 @@ interface ReactPropSyncState<
   successfulProps: Partial<P> | null;
   knownKeys: Set<string>;
   queue: Array<ReactPropUpdate<P>>;
+  inFlightUpdate: ReactPropUpdate<P> | null;
   renderReady: boolean;
   draining: boolean;
   active: boolean;
@@ -196,6 +224,7 @@ function buildPropUpdate<P extends Record<string, unknown>>(
   return {
     desired,
     payload: payload as Partial<P>,
+    retryOnFailure: false,
   };
 }
 
@@ -342,6 +371,8 @@ export function createReactComponent<
               return;
             }
 
+            state.inFlightUpdate = update;
+
             try {
               await state.instance.updateProps(update.payload);
             } catch (err) {
@@ -349,8 +380,15 @@ export function createReactComponent<
                 return;
               }
 
+              state.inFlightUpdate = null;
               state.queue.shift();
-              onErrorRef.current?.(err as Error);
+              if (update.retryOnFailure) {
+                state.queue.unshift({
+                  ...update,
+                  retryOnFailure: false,
+                });
+              }
+              reportReactError(onErrorRef.current ?? undefined, err as Error);
               continue;
             }
 
@@ -358,10 +396,12 @@ export function createReactComponent<
               return;
             }
 
+            state.inFlightUpdate = null;
             state.queue.shift();
             state.successfulProps = update.desired;
           }
         } finally {
+          state.inFlightUpdate = null;
           state.draining = false;
         }
       };
@@ -386,6 +426,7 @@ export function createReactComponent<
           successfulProps: null,
           knownKeys: new Set(Object.keys(initialProps)),
           queue: [],
+          inFlightUpdate: null,
           renderReady: false,
           draining: false,
           active: true,
@@ -403,7 +444,7 @@ export function createReactComponent<
           onCloseRef.current?.();
         });
         const unsubscribeError = instance.event.on('error', (err: Error) => {
-          onErrorRef.current?.(err);
+          reportReactError(onErrorRef.current ?? undefined, err);
         });
 
         instance.render(container, context).then(
@@ -422,7 +463,7 @@ export function createReactComponent<
             }
 
             setError(err);
-            onErrorRef.current?.(err);
+            reportReactError(onErrorRef.current ?? undefined, err);
           }
         );
 
@@ -448,12 +489,16 @@ export function createReactComponent<
         if (!syncState || !isCurrentSyncState(syncState)) return;
 
         const nextProps = snapshotProps(componentProps as Partial<P>);
-        const pendingProps = syncState.queue.at(-1)?.desired;
+        const pendingUpdate = syncState.queue.at(-1);
+        const pendingProps = pendingUpdate?.desired;
         const prevProps = (pendingProps ??
           syncState.successfulProps ??
           syncState.initialProps) as Record<string, unknown>;
         const nextPropsRecord = nextProps as Record<string, unknown>;
         if (shallowEqualProps(prevProps, nextPropsRecord)) {
+          if (pendingUpdate && syncState.inFlightUpdate === pendingUpdate) {
+            pendingUpdate.retryOnFailure = true;
+          }
           return;
         }
 
