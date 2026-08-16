@@ -196,6 +196,16 @@ interface ReactPropSyncState<
   active: boolean;
 }
 
+/** Prevents a completed or failed instance from retaining further prop work. @internal */
+function deactivatePropSyncState<
+  P extends Record<string, unknown>,
+  X,
+>(state: ReactPropSyncState<P, X>): void {
+  state.active = false;
+  state.queue.length = 0;
+  state.inFlightUpdate = null;
+}
+
 /** Creates a shallow, stable snapshot of the component props for one React commit. @internal */
 function snapshotProps<P extends Record<string, unknown>>(props: Partial<P>): Partial<P> {
   return { ...props };
@@ -439,8 +449,7 @@ export function createReactComponent<
           onRenderedRef.current?.();
         });
         const unsubscribeClose = instance.event.once('close', () => {
-          syncState.active = false;
-          syncState.queue.length = 0;
+          deactivatePropSyncState(syncState);
           onCloseRef.current?.();
         });
         const unsubscribeError = instance.event.on('error', (err: Error) => {
@@ -462,14 +471,14 @@ export function createReactComponent<
               return;
             }
 
+            deactivatePropSyncState(syncState);
             setError(err);
             reportReactError(onErrorRef.current ?? undefined, err);
           }
         );
 
         return () => {
-          syncState.active = false;
-          syncState.queue.length = 0;
+          deactivatePropSyncState(syncState);
           instance.close().catch(() => undefined);
           unsubscribeRendered();
           unsubscribeClose();

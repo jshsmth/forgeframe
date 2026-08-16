@@ -750,6 +750,47 @@ describe('createReactComponent lifecycle integration', () => {
     expect(onError).toHaveBeenCalledWith(renderError);
   });
 
+  it('should deactivate and clear prop sync after initial render fails', async () => {
+    const { React, refs, effects } = createReactHarness();
+    const { component, instance } = createForgeFrameComponentMock();
+    const deferredRender = createDeferredPromise<void>();
+    const renderError = new Error('render failed');
+    instance.render.mockReturnValueOnce(deferredRender.promise);
+
+    const ReactComponent = createReactComponent(component as never, { React: React as never });
+    ReactComponent({ amount: 1 });
+    refs[0].current = document.createElement('div');
+    effects[0]?.();
+    effects[1]?.();
+    effects[2]?.();
+
+    ReactComponent({ amount: 2 });
+    effects[0]?.();
+    effects[2]?.();
+
+    const syncState = refs[2]?.current as {
+      active: boolean;
+      queue: unknown[];
+      renderReady: boolean;
+    };
+    expect(syncState.active).toBe(true);
+    expect(syncState.renderReady).toBe(false);
+    expect(syncState.queue).toHaveLength(1);
+
+    deferredRender.reject(renderError);
+    await flushMicrotasks();
+
+    expect(syncState.active).toBe(false);
+    expect(syncState.queue).toHaveLength(0);
+
+    ReactComponent({ amount: 3 });
+    effects[0]?.();
+    effects[2]?.();
+
+    expect(syncState.queue).toHaveLength(0);
+    expect(instance.updateProps).not.toHaveBeenCalled();
+  });
+
   it('should clear prior render errors before remounting on context changes', async () => {
     const { React, refs, effects, setState } = createReactHarness();
     const first = createForgeFrameComponentMock();
