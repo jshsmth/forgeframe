@@ -633,7 +633,8 @@ export class ConsumerComponent<P extends Record<string, unknown>, X = unknown>
   private async prerender(baseUrl: string = this.resolveUrl()): Promise<void> {
     await this.renderer.prerender(
       (windowName) => this.createIframeElement(windowName),
-      () => this.buildWindowName(baseUrl)
+      () => this.buildWindowName(baseUrl),
+      () => this.assertRenderActive()
     );
   }
 

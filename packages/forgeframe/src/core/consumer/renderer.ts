@@ -100,7 +100,8 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
    */
   async prerender(
     createIframeElement: (windowName: string) => HTMLIFrameElement,
-    buildWindowName: () => string
+    buildWindowName: () => string,
+    assertActive: () => void
   ): Promise<void> {
     if (!this.container) return;
 
@@ -114,13 +115,16 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
       this.options.containerTemplate ?? defaultContainerTemplate;
 
     const dimensions = this.resolveDimensions();
+    assertActive();
     const cspNonce = (props as Record<string, unknown>).cspNonce as
       | string
       | undefined;
 
     if (this.context === CONTEXT.IFRAME) {
       const windowName = buildWindowName();
+      assertActive();
       this.iframe = createIframeElement(windowName);
+      assertActive();
       hideIframe(this.iframe);
     }
 
@@ -140,6 +144,7 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
     };
 
     this.prerenderElement = prerenderTemplateFn(prerenderContext);
+    assertActive();
 
     const templateContext: TemplateContext<P> & { cspNonce?: string } = {
       uid: this.uid,
@@ -157,22 +162,26 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
     };
 
     const containerEl = containerTemplateFn(templateContext);
+    assertActive();
     if (containerEl) {
       if (containerEl !== mountContainer) {
         const ownsContainer = !containerEl.parentNode;
-        mountContainer.appendChild(containerEl);
         if (ownsContainer) {
           this.ownedContainer = containerEl;
         }
+        mountContainer.appendChild(containerEl);
+        assertActive();
       }
       this.container = containerEl;
     }
 
     if (this.prerenderElement && !this.prerenderElement.parentNode) {
       this.container.appendChild(this.prerenderElement);
+      assertActive();
     }
     if (this.iframe && !this.iframe.parentNode) {
       this.container.appendChild(this.iframe);
+      assertActive();
     }
   }
 

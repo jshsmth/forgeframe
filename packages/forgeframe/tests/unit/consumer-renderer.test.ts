@@ -45,7 +45,8 @@ describe('ConsumerRenderer teardown', () => {
 
     await renderer.prerender(
       (windowName) => renderer.createIframeElement(windowName),
-      () => 'renderer-test-frame'
+      () => 'renderer-test-frame',
+      () => undefined
     );
 
     expect(
@@ -73,7 +74,8 @@ describe('ConsumerRenderer teardown', () => {
 
     await renderer.prerender(
       (windowName) => renderer.createIframeElement(windowName),
-      () => 'renderer-test-frame'
+      () => 'renderer-test-frame',
+      () => undefined
     );
 
     expect(mountContainer.querySelector('iframe')).toBeInstanceOf(HTMLIFrameElement);

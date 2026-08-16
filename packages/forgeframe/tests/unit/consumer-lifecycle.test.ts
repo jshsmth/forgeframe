@@ -1047,6 +1047,30 @@ describe('Consumer lifecycle behavior', () => {
     expect(container.querySelectorAll('iframe')).toHaveLength(0);
   });
 
+  it('should stop between prerender and container templates when context close is called', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const latePrerender = document.createElement('div');
+    const containerTemplate = vi.fn(() => document.createElement('section'));
+    const consumer = createConsumer({
+      prerenderTemplate: ({ close }: { close: () => Promise<void> }) => {
+        void close();
+        return latePrerender;
+      },
+      containerTemplate,
+    });
+    const openSpy = vi.spyOn(getInternals(consumer), 'open').mockResolvedValue(undefined);
+
+    await expect(consumer.render(container)).rejects.toThrow(
+      'Component "consumer-lifecycle-component" was closed before rendering completed'
+    );
+
+    expect(containerTemplate).not.toHaveBeenCalled();
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(latePrerender.parentNode).toBeNull();
+    expect(container.childElementCount).toBe(0);
+  });
+
   it('should tear down a popup returned after close has already begun', async () => {
     const container = document.createElement('div');
     document.body.appendChild(container);
