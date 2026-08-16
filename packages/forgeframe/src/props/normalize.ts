@@ -39,6 +39,9 @@ const compiledPropDefinitionsCache = new WeakMap<
   readonly CompiledPropDefinition<Record<string, unknown>>[]
 >();
 
+const hasOwn = (value: object, key: PropertyKey): boolean =>
+  Object.prototype.hasOwnProperty.call(value, key);
+
 function getCompiledPropDefinitions<P extends Record<string, unknown>>(
   definitions: PropsDefinition<P>
 ): readonly CompiledPropDefinition<P>[] {
@@ -68,6 +71,63 @@ function getCompiledPropDefinitions<P extends Record<string, unknown>>(
   );
 
   return compiledDefinitions;
+}
+
+/**
+ * Rewrites aliases in an incoming prop patch to their canonical prop keys.
+ *
+ * @remarks
+ * Alias materialization must happen before a patch is merged with the current
+ * normalized props. Otherwise an older canonical value would take precedence
+ * over a newer value supplied through its alias. When a patch contains both
+ * spellings, the canonical key wins unless it only contains the driver's
+ * synthetic reset marker and the alias contains a concrete value.
+ *
+ * @param props - Incoming initial props or update patch.
+ * @param definitions - Prop definitions containing canonical keys and aliases.
+ * @param resetValue - Optional internal marker used to distinguish omission resets.
+ *
+ * @internal
+ */
+export function materializePropAliases<P extends Record<string, unknown>>(
+  props: Partial<P>,
+  definitions: PropsDefinition<P>,
+  resetValue?: unknown
+): Partial<P> {
+  const source = props as Record<string, unknown>;
+  const result = { ...source } as Record<string, unknown>;
+  const compiledDefinitions = getCompiledPropDefinitions(definitions);
+  const canonicalKeys = new Set(
+    compiledDefinitions.map(({ key }) => key)
+  );
+
+  for (const { key, definition } of compiledDefinitions) {
+    const aliasKey = definition.alias;
+    if (!aliasKey || aliasKey === key) {
+      continue;
+    }
+
+    const canonicalIsReset =
+      resetValue !== undefined &&
+      hasOwn(source, key) &&
+      source[key] === resetValue;
+    const aliasIsConcrete =
+      hasOwn(source, aliasKey) && source[aliasKey] !== resetValue;
+
+    if (
+      (!hasOwn(source, key) || (canonicalIsReset && aliasIsConcrete)) &&
+      hasOwn(source, aliasKey)
+    ) {
+      result[key] = source[aliasKey];
+    }
+
+    // Preserve an alias key that is also a separately defined canonical prop.
+    if (!canonicalKeys.has(aliasKey)) {
+      Reflect.deleteProperty(result, aliasKey);
+    }
+  }
+
+  return result as Partial<P>;
 }
 
 /**

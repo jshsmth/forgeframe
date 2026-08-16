@@ -1,6 +1,10 @@
 import { normalizeProps, validateProps } from '../../props';
+import { materializePropAliases } from '../../props/normalize';
 import type { PropContext } from '../../types/props';
 import type { NormalizedOptions } from './types';
+
+/** Internal marker used by framework drivers to restore an omitted prop. @internal */
+export const PROP_RESET = Symbol('forgeframe.prop-reset');
 
 /**
  * Hooks used by the props pipeline to coordinate host synchronization behavior.
@@ -45,7 +49,10 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
     initialInputProps: Partial<P>,
     private createPropContext: (props: P) => PropContext<P>
   ) {
-    this.inputProps = { ...initialInputProps };
+    this.inputProps = materializePropAliases(
+      initialInputProps,
+      this.options.props
+    );
     const initialProps = this.inputProps as P;
     const propContext = this.createPropContext(initialProps);
     this.props = normalizeProps(initialProps, this.options.props, propContext);
@@ -58,13 +65,34 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
     nextInputProps: Partial<P>;
     nextProps: P;
   } {
-    const nextInputProps = { ...this.inputProps, ...newProps };
-    const mergedProps = { ...this.props, ...newProps } as P;
-    const propContext = this.createPropContext(mergedProps);
-    const nextProps = normalizeProps(mergedProps, this.options.props, propContext);
+    const materializedNewProps = materializePropAliases(
+      newProps,
+      this.options.props,
+      PROP_RESET
+    );
+    const nextInputProps = { ...this.inputProps } as Record<string, unknown>;
+    const mergedProps = { ...this.props } as Record<string, unknown>;
+
+    for (const [key, value] of Object.entries(materializedNewProps)) {
+      if (value === PROP_RESET) {
+        Reflect.deleteProperty(nextInputProps, key);
+        Reflect.deleteProperty(mergedProps, key);
+        continue;
+      }
+
+      nextInputProps[key] = value;
+      mergedProps[key] = value;
+    }
+
+    const propContext = this.createPropContext(mergedProps as P);
+    const nextProps = normalizeProps(
+      mergedProps as P,
+      this.options.props,
+      propContext
+    );
     validateProps(nextProps, this.options.props);
     this.options.validate?.({ props: nextProps });
-    return { nextInputProps, nextProps };
+    return { nextInputProps: nextInputProps as Partial<P>, nextProps };
   }
 
   /**

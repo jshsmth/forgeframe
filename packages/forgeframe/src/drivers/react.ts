@@ -1,5 +1,6 @@
 import type { ForgeFrameComponent, ForgeFrameComponentInstance } from '../types/runtime';
 import type { ContextType } from '../constants';
+import { PROP_RESET } from '../core/consumer/props-pipeline';
 
 /**
  * Minimal React-like interface for driver compatibility.
@@ -146,6 +147,97 @@ function shallowEqualProps(
   return true;
 }
 
+/** Reports React driver errors without allowing observer failures to break lifecycle work. @internal */
+function reportReactError(
+  callback: ((error: Error) => void) | undefined,
+  error: Error
+): void {
+  if (!callback) {
+    return;
+  }
+
+  try {
+    const result = (callback as (reportedError: Error) => unknown)(error);
+    if (
+      result &&
+      typeof result === 'object' &&
+      'catch' in result &&
+      typeof result.catch === 'function'
+    ) {
+      (result as Promise<unknown>).catch((callbackError: unknown) => {
+        console.error('Error in React onError callback:', callbackError);
+      });
+    }
+  } catch (callbackError) {
+    console.error('Error in React onError callback:', callbackError);
+  }
+}
+
+/** A committed React prop snapshot waiting to be synchronized. @internal */
+interface ReactPropUpdate<P extends Record<string, unknown>> {
+  desired: Partial<P>;
+  payload: Partial<P>;
+  retryOnFailure: boolean;
+}
+
+/** Per-instance state for serializing React prop updates. @internal */
+interface ReactPropSyncState<
+  P extends Record<string, unknown>,
+  X,
+> {
+  instance: ForgeFrameComponentInstance<P, X>;
+  initialProps: Partial<P>;
+  successfulProps: Partial<P> | null;
+  knownKeys: Set<string>;
+  queue: Array<ReactPropUpdate<P>>;
+  inFlightUpdate: ReactPropUpdate<P> | null;
+  renderReady: boolean;
+  draining: boolean;
+  active: boolean;
+}
+
+/** Prevents a completed or failed instance from retaining further prop work. @internal */
+function deactivatePropSyncState<
+  P extends Record<string, unknown>,
+  X,
+>(state: ReactPropSyncState<P, X>): void {
+  state.active = false;
+  state.queue.length = 0;
+  state.inFlightUpdate = null;
+}
+
+/** Creates a shallow, stable snapshot of the component props for one React commit. @internal */
+function snapshotProps<P extends Record<string, unknown>>(props: Partial<P>): Partial<P> {
+  return { ...props };
+}
+
+/**
+ * Builds a self-contained update payload, resetting every previously observed missing key.
+ * @internal
+ */
+function buildPropUpdate<P extends Record<string, unknown>>(
+  desired: Partial<P>,
+  knownKeys: Set<string>
+): ReactPropUpdate<P> {
+  const payload = snapshotProps(desired) as Record<string, unknown>;
+
+  for (const key of Object.keys(desired)) {
+    knownKeys.add(key);
+  }
+
+  for (const key of knownKeys) {
+    if (!Object.prototype.hasOwnProperty.call(desired, key)) {
+      payload[key] = PROP_RESET;
+    }
+  }
+
+  return {
+    desired,
+    payload: payload as Partial<P>,
+    retryOnFailure: false,
+  };
+}
+
 /**
  * Configuration options for creating a React driver.
  *
@@ -264,11 +356,65 @@ export function createReactComponent<
 
       const containerRef = useRef<HTMLDivElement>(null);
       const instanceRef = useRef<ForgeFrameComponentInstance<P, X> | null>(null);
-      const syncedPropsRef = useRef<Partial<P> | null>(null);
+      const propSyncRef = useRef<ReactPropSyncState<P, X> | null>(null);
       const onRenderedRef = useRef<typeof onRendered>(onRendered);
       const onErrorRef = useRef<typeof onError>(onError);
       const onCloseRef = useRef<typeof onClose>(onClose);
       const [error, setError] = useState<Error | null>(null);
+
+      const isCurrentSyncState = (state: ReactPropSyncState<P, X>): boolean =>
+        state.active &&
+        instanceRef.current === state.instance &&
+        propSyncRef.current === state;
+
+      const drainPropUpdates = async (state: ReactPropSyncState<P, X>): Promise<void> => {
+        if (state.draining || !state.renderReady || !isCurrentSyncState(state)) {
+          return;
+        }
+
+        state.draining = true;
+
+        try {
+          while (state.queue.length > 0 && isCurrentSyncState(state)) {
+            const update = state.queue[0];
+            if (!update) {
+              return;
+            }
+
+            state.inFlightUpdate = update;
+
+            try {
+              await state.instance.updateProps(update.payload);
+            } catch (err) {
+              if (!isCurrentSyncState(state)) {
+                return;
+              }
+
+              state.inFlightUpdate = null;
+              state.queue.shift();
+              if (update.retryOnFailure) {
+                state.queue.unshift({
+                  ...update,
+                  retryOnFailure: false,
+                });
+              }
+              reportReactError(onErrorRef.current ?? undefined, err as Error);
+              continue;
+            }
+
+            if (!isCurrentSyncState(state)) {
+              return;
+            }
+
+            state.inFlightUpdate = null;
+            state.queue.shift();
+            state.successfulProps = update.desired;
+          }
+        } finally {
+          state.inFlightUpdate = null;
+          state.draining = false;
+        }
+      };
 
       useEffect(() => {
         onRenderedRef.current = onRendered;
@@ -282,58 +428,91 @@ export function createReactComponent<
 
         setError(null);
 
-        const instance = Component(componentProps as P);
+        const initialProps = snapshotProps(componentProps as Partial<P>);
+        const instance = Component(initialProps as P);
+        const syncState: ReactPropSyncState<P, X> = {
+          instance,
+          initialProps,
+          successfulProps: null,
+          knownKeys: new Set(Object.keys(initialProps)),
+          queue: [],
+          inFlightUpdate: null,
+          renderReady: false,
+          draining: false,
+          active: true,
+        };
+
         instanceRef.current = instance;
-        syncedPropsRef.current = componentProps as Partial<P>;
+        propSyncRef.current = syncState;
 
         const unsubscribeRendered = instance.event.once('rendered', () => {
           onRenderedRef.current?.();
         });
         const unsubscribeClose = instance.event.once('close', () => {
+          deactivatePropSyncState(syncState);
           onCloseRef.current?.();
         });
         const unsubscribeError = instance.event.on('error', (err: Error) => {
-          onErrorRef.current?.(err);
+          reportReactError(onErrorRef.current ?? undefined, err);
         });
 
-        instance.render(container, context).catch((err: Error) => {
-          if (instanceRef.current !== instance) {
-            return;
+        instance.render(container, context).then(
+          () => {
+            if (!isCurrentSyncState(syncState)) {
+              return;
+            }
+
+            syncState.successfulProps = syncState.initialProps;
+            syncState.renderReady = true;
+            void drainPropUpdates(syncState);
+          },
+          (err: Error) => {
+            if (!isCurrentSyncState(syncState)) {
+              return;
+            }
+
+            deactivatePropSyncState(syncState);
+            setError(err);
+            reportReactError(onErrorRef.current ?? undefined, err);
           }
-
-          setError(err);
-          onErrorRef.current?.(err);
-        });
+        );
 
         return () => {
+          deactivatePropSyncState(syncState);
           instance.close().catch(() => undefined);
           unsubscribeRendered();
           unsubscribeClose();
           unsubscribeError();
-          instanceRef.current = null;
-          syncedPropsRef.current = null;
+
+          if (instanceRef.current === instance) {
+            instanceRef.current = null;
+          }
+          if (propSyncRef.current === syncState) {
+            propSyncRef.current = null;
+          }
         };
       }, [context]);
 
       useEffect(() => {
-        const instance = instanceRef.current;
-        if (!instance) return;
+        const syncState = propSyncRef.current;
+        if (!syncState || !isCurrentSyncState(syncState)) return;
 
-        const nextProps = componentProps as Partial<P>;
-        const prevProps = syncedPropsRef.current as Record<string, unknown> | null;
+        const nextProps = snapshotProps(componentProps as Partial<P>);
+        const pendingUpdate = syncState.queue.at(-1);
+        const pendingProps = pendingUpdate?.desired;
+        const prevProps = (pendingProps ??
+          syncState.successfulProps ??
+          syncState.initialProps) as Record<string, unknown>;
         const nextPropsRecord = nextProps as Record<string, unknown>;
-        if (prevProps && shallowEqualProps(prevProps, nextPropsRecord)) {
+        if (shallowEqualProps(prevProps, nextPropsRecord)) {
+          if (pendingUpdate && syncState.inFlightUpdate === pendingUpdate) {
+            pendingUpdate.retryOnFailure = true;
+          }
           return;
         }
 
-        syncedPropsRef.current = nextProps;
-        instance.updateProps(nextProps).catch((err: Error) => {
-          if (instanceRef.current !== instance) {
-            return;
-          }
-
-          onErrorRef.current?.(err);
-        });
+        syncState.queue.push(buildPropUpdate(nextProps, syncState.knownKeys));
+        void drainPropUpdates(syncState);
       });
 
       useEffect(() => {

@@ -11,10 +11,12 @@ import {
 } from '@/communication/protocol';
 import { ConsumerComponent } from '@/core/consumer';
 import { clearComponents, create } from '@/core/component';
+import { PROP_RESET } from '@/core/consumer/props-pipeline';
 import { CONTEXT, EVENT, MESSAGE_NAME } from '@/constants';
 import { prop } from '@/props/prop';
 import * as popupRender from '@/render/popup';
 import * as templateRender from '@/render/templates';
+import { getWindowByUID } from '@/window/proxy';
 
 const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
 let dispatchedMessageCount = 0;
@@ -26,6 +28,7 @@ type ConsumerInternals = {
     hostWindow: Window | null;
     openedHostDomain: string | null;
     hostInitialized: boolean;
+    initPromise: { promise: Promise<void>; reject: (error: Error) => void } | null;
     messenger: {
       handlers: Map<string, DirectHandler>;
       send: (...args: unknown[]) => Promise<unknown>;
@@ -38,6 +41,7 @@ type ConsumerInternals = {
   };
   propsPipeline: {
     props: Record<string, unknown>;
+    inputProps: Record<string, unknown>;
   };
   waitForHost: () => Promise<void>;
   open: () => Promise<void>;
@@ -884,6 +888,249 @@ describe('Consumer lifecycle behavior', () => {
     expect(openSpy).toHaveBeenCalledTimes(1);
   });
 
+  it('should promptly reject every caller when close cancels a delayed render', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const onError = vi.fn();
+    const consumer = createConsumer({}, { onError });
+    const internal = getInternals(consumer);
+    const lifecycle = {
+      prerendered: vi.fn(),
+      render: vi.fn(),
+      rendered: vi.fn(),
+      display: vi.fn(),
+      close: vi.fn(),
+      destroy: vi.fn(),
+    };
+    let releasePrerender: (() => void) | undefined;
+
+    vi.spyOn(internal, 'prerender').mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          releasePrerender = resolve;
+        })
+    );
+    const openSpy = vi.spyOn(internal, 'open').mockResolvedValue(undefined);
+    consumer.event.on(EVENT.PRERENDERED, lifecycle.prerendered);
+    consumer.event.on(EVENT.RENDER, lifecycle.render);
+    consumer.event.on(EVENT.RENDERED, lifecycle.rendered);
+    consumer.event.on(EVENT.DISPLAY, lifecycle.display);
+    consumer.event.on(EVENT.CLOSE, lifecycle.close);
+    consumer.event.on(EVENT.DESTROY, lifecycle.destroy);
+
+    const firstRender = consumer.render(container);
+    const secondRender = consumer.render(container);
+    const cancellationMessage =
+      'Component "consumer-lifecycle-component" was closed before rendering completed';
+
+    await vi.waitFor(() => {
+      expect(releasePrerender).toBeTypeOf('function');
+    });
+
+    const firstRejection = expect(firstRender).rejects.toThrow(
+      cancellationMessage
+    );
+    const secondRejection = expect(secondRender).rejects.toThrow(
+      cancellationMessage
+    );
+
+    await expect(consumer.close()).resolves.toBeUndefined();
+    await Promise.all([firstRejection, secondRejection]);
+    await consumer.close();
+
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(lifecycle.prerendered).not.toHaveBeenCalled();
+    expect(lifecycle.render).not.toHaveBeenCalled();
+    expect(lifecycle.rendered).not.toHaveBeenCalled();
+    expect(lifecycle.display).not.toHaveBeenCalled();
+    expect(lifecycle.close).toHaveBeenCalledTimes(1);
+    expect(lifecycle.destroy).toHaveBeenCalledTimes(1);
+    expect(onError).not.toHaveBeenCalled();
+
+    releasePrerender?.();
+    await flushMessages();
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+
+  it('should cancel initialization without forwarding an intentional close as an error', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const onError = vi.fn();
+    const consumer = createConsumer({ timeout: 1000 }, { onError });
+    const internal = getInternals(consumer);
+
+    vi.spyOn(internal, 'prerender').mockResolvedValue(undefined);
+    vi.spyOn(internal, 'open').mockResolvedValue(undefined);
+
+    const renderPromise = consumer.render(container);
+    const renderRejection = expect(renderPromise).rejects.toThrow(
+      'Component "consumer-lifecycle-component" was closed before rendering completed'
+    );
+
+    await vi.waitFor(() => {
+      expect(internal.transport.initPromise).not.toBeNull();
+    });
+    await consumer.close();
+    await renderRejection;
+    await flushMessages();
+
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('should stop before prerender when a lifecycle listener closes the instance', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const consumer = createConsumer();
+    const internal = getInternals(consumer);
+    const prerenderSpy = vi.spyOn(internal, 'prerender');
+    const openSpy = vi.spyOn(internal, 'open').mockResolvedValue(undefined);
+
+    consumer.event.once(EVENT.PRERENDER, () => {
+      void consumer.close();
+    });
+
+    await expect(consumer.render(container)).rejects.toThrow(
+      'Component "consumer-lifecycle-component" was closed before rendering completed'
+    );
+
+    expect(prerenderSpy).not.toHaveBeenCalled();
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(container.querySelectorAll('iframe')).toHaveLength(0);
+  });
+
+  it('should stop before prerender when a lifecycle prop closes the instance', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const consumer = createConsumer(
+      {},
+      {
+        onPrerender: () => {
+          void consumer.close();
+        },
+      }
+    );
+    const internal = getInternals(consumer);
+    const prerenderSpy = vi.spyOn(internal, 'prerender');
+    const openSpy = vi.spyOn(internal, 'open').mockResolvedValue(undefined);
+
+    await expect(consumer.render(container)).rejects.toThrow(
+      'Component "consumer-lifecycle-component" was closed before rendering completed'
+    );
+
+    expect(prerenderSpy).not.toHaveBeenCalled();
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(container.querySelectorAll('iframe')).toHaveLength(0);
+  });
+
+  it('should remove artifacts created by a template after close begins', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const lateContainer = document.createElement('section');
+    const consumer = createConsumer({
+      containerTemplate: () => {
+        void consumer.close();
+        return lateContainer;
+      },
+    });
+    const openSpy = vi
+      .spyOn(getInternals(consumer), 'open')
+      .mockResolvedValue(undefined);
+
+    await expect(consumer.render(container)).rejects.toThrow(
+      'Component "consumer-lifecycle-component" was closed before rendering completed'
+    );
+    await vi.waitFor(() => {
+      expect(container.contains(lateContainer)).toBe(false);
+    });
+
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(container.querySelectorAll('iframe')).toHaveLength(0);
+  });
+
+  it('should stop between prerender and container templates when context close is called', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const latePrerender = document.createElement('div');
+    const containerTemplate = vi.fn(() => document.createElement('section'));
+    const consumer = createConsumer({
+      prerenderTemplate: ({ close }: { close: () => Promise<void> }) => {
+        void close();
+        return latePrerender;
+      },
+      containerTemplate,
+    });
+    const openSpy = vi.spyOn(getInternals(consumer), 'open').mockResolvedValue(undefined);
+
+    await expect(consumer.render(container)).rejects.toThrow(
+      'Component "consumer-lifecycle-component" was closed before rendering completed'
+    );
+
+    expect(containerTemplate).not.toHaveBeenCalled();
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(latePrerender.parentNode).toBeNull();
+    expect(container.childElementCount).toBe(0);
+  });
+
+  it('should tear down a popup returned after close has already begun', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const popupWindow = {
+      closed: false,
+      close: vi.fn(),
+    } as unknown as Window;
+    const consumer = createConsumer({ defaultContext: CONTEXT.POPUP });
+
+    vi.spyOn(popupRender, 'openPopup').mockImplementation(() => {
+      void consumer.close();
+      return popupWindow;
+    });
+    vi.spyOn(popupRender, 'watchPopupClose').mockReturnValue(() => undefined);
+    const waitForHostSpy = vi
+      .spyOn(getInternals(consumer), 'waitForHost')
+      .mockResolvedValue(undefined);
+
+    await expect(consumer.render(container, CONTEXT.POPUP)).rejects.toThrow(
+      'Component "consumer-lifecycle-component" was closed before rendering completed'
+    );
+    await vi.waitFor(() => {
+      expect(popupWindow.close).toHaveBeenCalledTimes(1);
+    });
+
+    expect(waitForHostSpy).not.toHaveBeenCalled();
+    expect(getInternals(consumer).transport.hostWindow).toBeNull();
+    expect(getWindowByUID(consumer.uid)).toBeNull();
+  });
+
+  it('should stop before opening a popup when dynamic dimensions close the instance', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    let dimensionCalls = 0;
+    const consumer = createConsumer({
+      defaultContext: CONTEXT.POPUP,
+      dimensions: () => {
+        dimensionCalls += 1;
+        if (dimensionCalls === 2) {
+          void consumer.close();
+        }
+        return { width: 320, height: 180 };
+      },
+    });
+    const openPopupSpy = vi.spyOn(popupRender, 'openPopup');
+    const waitForHostSpy = vi
+      .spyOn(getInternals(consumer), 'waitForHost')
+      .mockResolvedValue(undefined);
+
+    await expect(consumer.render(container, CONTEXT.POPUP)).rejects.toThrow(
+      'Component "consumer-lifecycle-component" was closed before rendering completed'
+    );
+
+    expect(dimensionCalls).toBe(2);
+    expect(openPopupSpy).not.toHaveBeenCalled();
+    expect(waitForHostSpy).not.toHaveBeenCalled();
+    expect(getInternals(consumer).transport.hostWindow).toBeNull();
+    expect(getWindowByUID(consumer.uid)).toBeNull();
+  });
+
   it('should isolate callback failures in callPropCallback', async () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -923,6 +1170,54 @@ describe('Consumer lifecycle behavior', () => {
     await expect(consumer.updateProps({ amount: undefined })).rejects.toThrow(
       'Prop "amount" is required but was not provided'
     );
+  });
+
+  it('should reapply configured defaults for props omitted by React', async () => {
+    const optionalDefault = vi.fn(() => 'optional-default');
+    const stableDefault = vi.fn(() => 'stable-default');
+    const consumer = createConsumer(
+      {
+        props: {
+          optionalLabel: {
+            schema: prop.string().optional(),
+            default: optionalDefault,
+          },
+          requiredLabel: {
+            schema: prop.string(),
+            required: true,
+            default: 'required-default',
+          },
+          stableLabel: {
+            schema: prop.string(),
+            default: stableDefault,
+          },
+        },
+      },
+      {
+        optionalLabel: 'custom-optional',
+        requiredLabel: 'custom-required',
+      }
+    );
+    const internal = getInternals(consumer);
+
+    await consumer.updateProps({
+      optionalLabel: PROP_RESET,
+      requiredLabel: PROP_RESET,
+    } as never);
+
+    expect(internal.propsPipeline.props).toMatchObject({
+      optionalLabel: 'optional-default',
+      requiredLabel: 'required-default',
+      stableLabel: 'stable-default',
+    });
+    expect(internal.propsPipeline.inputProps).not.toHaveProperty(
+      'optionalLabel'
+    );
+    expect(internal.propsPipeline.inputProps).not.toHaveProperty(
+      'requiredLabel'
+    );
+    expect(optionalDefault).toHaveBeenCalledTimes(1);
+    expect(stableDefault).toHaveBeenCalledTimes(1);
   });
 
   it('should reject updateProps when a prop violates its schema', async () => {
