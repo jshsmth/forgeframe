@@ -518,7 +518,7 @@ export function createReactComponent<
           prevProps &&
           shallowEqualProps(prevProps as Record<string, unknown>, nextPropsRecord)
         ) {
-          if (pendingUpdate && syncState.inFlightUpdate === pendingUpdate) {
+          if (pendingUpdate) {
             pendingUpdate.retryOnFailure = true;
           }
           return;

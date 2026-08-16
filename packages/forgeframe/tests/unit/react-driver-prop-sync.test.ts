@@ -316,6 +316,55 @@ describe('createReactComponent prop synchronization', () => {
     expect(instance.updateProps).toHaveBeenCalledTimes(2);
   });
 
+  it('should retain an identical commit while its prop update is queued', async () => {
+    const { React, refs, effects } = createReactHarness();
+    const { component, instance } = createForgeFrameComponentMock();
+    const onError = vi.fn();
+    const queuedUpdateError = new Error('queued update failed');
+    const deferredFirstUpdate = createDeferredPromise<void>();
+    instance.updateProps
+      .mockReturnValueOnce(deferredFirstUpdate.promise)
+      .mockRejectedValueOnce(queuedUpdateError)
+      .mockResolvedValueOnce(undefined);
+
+    const ReactComponent = createReactComponent(component as never, { React: React as never });
+    ReactComponent({ amount: 1, onError });
+    refs[0].current = document.createElement('div');
+    effects[0]?.();
+    effects[1]?.();
+    effects[2]?.();
+    await flushMicrotasks();
+
+    ReactComponent({ amount: 2, onError });
+    effects[0]?.();
+    effects[2]?.();
+    ReactComponent({ amount: 3, onError });
+    effects[0]?.();
+    effects[2]?.();
+    ReactComponent({ amount: 3, onError });
+    effects[0]?.();
+    effects[2]?.();
+
+    expect(instance.updateProps).toHaveBeenCalledTimes(1);
+    expect(instance.updateProps).toHaveBeenNthCalledWith(1, { amount: 2 });
+
+    deferredFirstUpdate.resolve();
+    await flushMicrotasks();
+
+    expect(instance.updateProps).toHaveBeenCalledTimes(3);
+    expect(instance.updateProps).toHaveBeenNthCalledWith(2, { amount: 3 });
+    expect(instance.updateProps).toHaveBeenNthCalledWith(3, { amount: 3 });
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith(queuedUpdateError);
+
+    ReactComponent({ amount: 3, onError });
+    effects[0]?.();
+    effects[2]?.();
+    await flushMicrotasks();
+
+    expect(instance.updateProps).toHaveBeenCalledTimes(3);
+  });
+
   it('should retry an identical React prop snapshot after its prior update fails', async () => {
     const { React, refs, effects } = createReactHarness();
     const { component, instance } = createForgeFrameComponentMock();
