@@ -54,6 +54,7 @@ This index documents what each ForgeFrame test file validates and the naming con
 
 ## Type Tests (`packages/forgeframe/tests/typecheck`)
 
+- `component-inference.typecheck.ts`: Compile-time assertions for inferred and explicit schema-backed component props, third-party schemas, callbacks, and typed children.
 - `alias-inputs.ts`: Compile-time assertions for canonical-key aliases, legacy aliases, mixed updates, and React wrapper input props.
 - `react-jsx.tsx`: Compile-time assertions for React JSX wrapper props and element return types.
 - `schema.typecheck.ts`: Compile-time assertions for Standard Schema utility and contract types.

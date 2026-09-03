@@ -130,6 +130,21 @@ export interface PropDefinition<T = unknown, P = Record<string, unknown>> {
 }
 
 /**
+ * A prop entry accepted by {@link PropsDefinition}.
+ *
+ * @remarks
+ * ForgeFrame accepts Standard Schema implementations directly for concise
+ * declarations. Use {@link PropDefinition} when transport, alias, or lifecycle
+ * options are also required.
+ *
+ * @public
+ */
+export type PropDefinitionEntry<
+  T = unknown,
+  P = Record<string, unknown>,
+> = PropDefinition<T, P> | StandardSchemaV1<unknown, T>;
+
+/**
  * Map of prop names to their definitions.
  *
  * @typeParam P - The props type for the component
@@ -137,7 +152,40 @@ export interface PropDefinition<T = unknown, P = Record<string, unknown>> {
  * @public
  */
 export type PropsDefinition<P> = {
-  [K in keyof P]?: PropDefinition<P[K], P>;
+  [K in keyof P]?: PropDefinitionEntry<P[K], P>;
+};
+
+/** Infers the normalized value produced by a prop-definition entry. @internal */
+type InferPropDefinitionValue<D> =
+  D extends StandardSchemaV1<unknown, infer Output>
+    ? Output
+    : D extends { schema: StandardSchemaV1<unknown, infer Output> }
+      ? Output
+      : unknown;
+
+/** Keys whose schemas can produce `undefined`. @internal */
+type OptionalPropDefinitionKeys<D extends Record<string, unknown>> = {
+  [K in keyof D]-?: undefined extends InferPropDefinitionValue<D[K]>
+    ? K
+    : never;
+}[keyof D];
+
+/** Keys whose schemas always produce a value. @internal */
+type RequiredPropDefinitionKeys<D extends Record<string, unknown>> = Exclude<
+  keyof D,
+  OptionalPropDefinitionKeys<D>
+>;
+
+/**
+ * Infers normalized component props from direct or wrapped Standard Schemas.
+ *
+ * @typeParam D - A map of prop names to schema-backed definitions.
+ * @public
+ */
+export type InferPropsDefinition<D extends Record<string, unknown>> = {
+  [K in RequiredPropDefinitionKeys<D>]: InferPropDefinitionValue<D[K]>;
+} & {
+  [K in OptionalPropDefinitionKeys<D>]?: InferPropDefinitionValue<D[K]>;
 };
 
 /**

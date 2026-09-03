@@ -20,7 +20,7 @@ create({
  * Define your custom props interface.
  * These are the props passed from the consumer component.
  */
-interface MyProps {
+interface MyProps extends Record<string, unknown> {
   name: string;
   count: number;
   onGreet: (message: string) => void;

@@ -72,6 +72,9 @@ export interface HostHostConfiguration<P extends Record<string, unknown>> {
   allowedConsumerDomains?: DomainMatcher;
 }
 
-export interface WindowWithHostProps<P extends Record<string, unknown>> extends Window {
+export type WindowWithHostProps<P extends Record<string, unknown>> = Omit<
+  Window,
+  'hostProps'
+> & {
   hostProps?: HostProps<P>;
-}
+};

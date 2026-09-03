@@ -74,20 +74,24 @@ describe('package contract', () => {
       resolve(repoRoot, 'package.json')
     );
     const releaseCheck = rootPackageJson.scripts['release:check'];
+    const typecheck = rootPackageJson.scripts.typecheck;
 
     expect(rootPackageJson.scripts.release).toContain('release:check');
     expect(rootPackageJson.scripts.prepublishOnly).toBe('npm run release:check');
+    expect(typecheck).toContain('npm run typecheck -w forgeframe');
+    expect(typecheck).toContain('npm run typecheck -w @forgeframe/playground');
     expect(releaseCheck).toContain('npm run lint');
     expect(releaseCheck).toContain('npm run typecheck');
     expect(releaseCheck).toContain('npm run test:run');
     expect(releaseCheck).toContain('npm run test:coverage');
     expect(releaseCheck).toContain('npm run build');
     expect(releaseCheck).toContain('npm run build:playground');
-    expect(releaseCheck).toContain('npm audit --omit=dev');
+    expect(releaseCheck).toContain('npm audit');
+    expect(releaseCheck).not.toContain('npm audit --omit=dev');
     expect(releaseCheck).toContain('npm pack --dry-run -w forgeframe');
     expect(rootPackageJson.scripts).not.toHaveProperty('test:browser');
     expect(rootPackageJson.scripts.lint).not.toContain('playwright');
-    expect(rootPackageJson.scripts.typecheck).not.toContain('tsconfig.browser.json');
+    expect(typecheck).not.toContain('tsconfig.browser.json');
     expect(releaseCheck).not.toContain('playwright');
     expect(releaseCheck).not.toContain('/private/tmp');
   });

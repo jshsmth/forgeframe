@@ -14,6 +14,12 @@
     "moduleDetection": "force",
     "noEmit": true,
 
+    /* Typecheck the live workspace source, matching the Vite aliases. */
+    "baseUrl": ".",
+    "paths": {
+      "forgeframe": ["../forgeframe/src/index.ts"]
+    },
+
     /* Linting */
     "strict": true,
     "noUnusedLocals": true,

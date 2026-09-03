@@ -1,6 +1,7 @@
 import type {
   ComponentOptions,
   ForgeFrameComponent,
+  ForgeFrameComponentReference,
 } from '../types/runtime';
 
 const componentRegistry = new Map<
@@ -55,8 +56,8 @@ export function getComponentOptions<
   P extends Record<string, unknown> = Record<string, unknown>,
   X = unknown,
   I = P,
->(component: ForgeFrameComponent<P, X, I>): ComponentOptions<P> | undefined {
-  return (component as InternalForgeFrameComponent<P, X, I>)[INTERNAL_COMPONENT_OPTIONS];
+>(component: ForgeFrameComponentReference): ComponentOptions<P> | undefined {
+  return (component as unknown as InternalForgeFrameComponent<P, X, I>)[INTERNAL_COMPONENT_OPTIONS];
 }
 
 export function getRegisteredComponentTags(): string[] {

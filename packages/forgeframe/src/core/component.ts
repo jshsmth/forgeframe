@@ -14,7 +14,10 @@ import type {
   ForgeFrameComponent,
   ForgeFrameComponentInstance,
   HostProps,
+  InferablePropsDefinition,
+  InferredComponentOptions,
 } from '../types/runtime';
+import type { InferPropsDefinition } from '../types/props';
 import { ConsumerComponent } from './consumer';
 import {
   clearIndexedInstances,
@@ -136,6 +139,20 @@ function validateComponentOptions<P>(options: ComponentOptions<P>): void {
  *
  * @public
  */
+export function create<
+  const D extends InferablePropsDefinition,
+  X = unknown,
+  I extends Record<string, unknown> = InferPropsDefinition<D>,
+>(
+  options: InferredComponentOptions<D>
+): ForgeFrameComponent<InferPropsDefinition<D>, X, I>;
+export function create<
+  P extends Record<string, unknown> = Record<string, unknown>,
+  X = unknown,
+  I extends Record<string, unknown> = P,
+>(
+  options: ComponentOptions<P>
+): ForgeFrameComponent<P, X, I>;
 export function create<
   P extends Record<string, unknown> = Record<string, unknown>,
   X = unknown,

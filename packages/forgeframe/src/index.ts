@@ -85,6 +85,7 @@ export type {
   ConsumerPropsInput,
   ConsumerPropsUpdate,
   ForgeFrameComponent,
+  ForgeFrameComponentReference,
   ForgeFrameComponentInstance,
   HostProps,
   HostPropsBuiltins,
@@ -93,7 +94,9 @@ export type {
 
   // Props types
   PropDefinition,
+  PropDefinitionEntry,
   PropsDefinition,
+  InferPropsDefinition,
   PropContext,
 
   // Standard Schema types

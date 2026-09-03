@@ -3,8 +3,9 @@
  */
 
 import type { ContextType } from '../constants';
+import type { StandardSchemaV1 } from '../props/schema';
 import type { EventEmitterInterface } from './events';
-import type { PropsDefinition } from './props';
+import type { InferPropsDefinition, PropsDefinition } from './props';
 import type { ContainerTemplate, PrerenderTemplate } from './templates';
 import type {
   Dimensions,
@@ -69,7 +70,40 @@ export type ConsumerPropsUpdate<P, I = P> =
  */
 export type ChildrenDefinition<P = Record<string, unknown>> = (props: {
   props: P;
-}) => Record<string, ForgeFrameComponent>;
+}) => Record<string, ForgeFrameComponentReference>;
+
+/**
+ * Type-erased reference to a component definition used for composition.
+ *
+ * @remarks
+ * This surface intentionally exposes only the members required to identify a
+ * ForgeFrame component. It allows a children map to contain components with
+ * different prop and export types without weakening their callable APIs.
+ *
+ * @public
+ */
+export interface ForgeFrameComponentReference {
+  /** Check if the current window hosts this component. */
+  isHost(): boolean;
+  /** Check if the current window is embedded by this component. */
+  isEmbedded(): boolean;
+  /** Check whether the component can render to the target window. */
+  canRenderTo(win: Window): Promise<boolean>;
+}
+
+/** A schema-backed definition map from which `create()` can infer props. @internal */
+export type InferablePropsDefinition = Record<
+  string,
+  | StandardSchemaV1<unknown, unknown>
+  | { schema: StandardSchemaV1<unknown, unknown> }
+>;
+
+/** Component options whose prop values are inferred from their schemas. @internal */
+export type InferredComponentOptions<
+  D extends InferablePropsDefinition,
+> = Omit<ComponentOptions<InferPropsDefinition<D>>, 'props'> & {
+  props: D & PropsDefinition<InferPropsDefinition<D>>;
+};
 
 /**
  * Configuration options for creating a component.

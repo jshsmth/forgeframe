@@ -995,6 +995,9 @@ ForgeFrame.VERSION                // Library version
 
 ### Component Options
 
+`props` accepts direct Standard Schemas for concise definitions or full
+`PropDefinition` objects when transport, alias, and lifecycle options are needed.
+
 ```typescript
 interface ComponentOptions<P> {
   tag: string;
@@ -1011,7 +1014,7 @@ interface ComponentOptions<P> {
   attributes?: IframeAttributes | ((props: P) => IframeAttributes);
   style?: IframeStyles | ((props: P) => IframeStyles);
   timeout?: number;
-  children?: (opts: { props: P }) => Record<string, ForgeFrameComponent>;
+  children?: (opts: { props: P }) => Record<string, ForgeFrameComponentReference>;
 }
 ```
 
