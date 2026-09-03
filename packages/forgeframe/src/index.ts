@@ -97,6 +97,7 @@ export type {
   PropDefinitionEntry,
   PropsDefinition,
   InferPropsDefinition,
+  InferPropsDefinitionInput,
   PropContext,
 
   // Standard Schema types

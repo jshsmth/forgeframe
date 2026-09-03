@@ -17,7 +17,10 @@ import type {
   InferablePropsDefinition,
   InferredComponentOptions,
 } from '../types/runtime';
-import type { InferPropsDefinition } from '../types/props';
+import type {
+  InferPropsDefinition,
+  InferPropsDefinitionInput,
+} from '../types/props';
 import { ConsumerComponent } from './consumer';
 import {
   clearIndexedInstances,
@@ -142,7 +145,7 @@ function validateComponentOptions<P>(options: ComponentOptions<P>): void {
 export function create<
   const D extends InferablePropsDefinition,
   X = unknown,
-  I extends Record<string, unknown> = InferPropsDefinition<D>,
+  I extends Record<string, unknown> = InferPropsDefinitionInput<D>,
 >(
   options: InferredComponentOptions<D>
 ): ForgeFrameComponent<InferPropsDefinition<D>, X, I>;

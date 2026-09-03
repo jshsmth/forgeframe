@@ -494,7 +494,7 @@ export class ConsumerComponent<
   clone(): ForgeFrameComponentInstance<P, X, I> {
     const cloned = new ConsumerComponent<P, X, I>(
       this.options,
-      this.propsPipeline.props,
+      this.propsPipeline.props as ConsumerPropsInput<P, I>,
       this.trackInstance
     );
     cloned.propsPipeline.inputProps = { ...this.propsPipeline.inputProps };

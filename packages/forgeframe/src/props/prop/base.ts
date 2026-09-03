@@ -89,14 +89,19 @@ export function validateDateBound(date: Date, method: 'min' | 'max'): number {
   return time;
 }
 
-export type InferSchemaValue<S extends PropSchema<unknown>> =
-  S extends PropSchema<infer U> ? U : never;
+export type InferSchemaValue<S extends PropSchema<unknown, unknown>> =
+  S extends PropSchema<infer Output, unknown> ? Output : never;
 
 export type InferUnionSchemaOutput<
-  S extends readonly [PropSchema<unknown>, ...PropSchema<unknown>[]],
+  S extends readonly [
+    PropSchema<unknown, unknown>,
+    ...PropSchema<unknown, unknown>[],
+  ],
 > = InferSchemaValue<S[number]>;
 
-export type InferTupleShape<S extends readonly PropSchema<unknown>[]> = {
+export type InferTupleShape<
+  S extends readonly PropSchema<unknown, unknown>[],
+> = {
   -readonly [K in keyof S]: InferSchemaValue<S[K]>;
 };
 
@@ -109,10 +114,11 @@ export type InferTupleShape<S extends readonly PropSchema<unknown>[]> = {
  * schemas instead of mutating the original instance.
  *
  * @typeParam T - The output type after validation.
+ * @typeParam I - The input type accepted before validation.
  *
  * @public
  */
-export abstract class PropSchema<T> implements StandardSchemaV1<unknown, T> {
+export abstract class PropSchema<T, I = T> implements StandardSchemaV1<I, T> {
   /** @internal */
   protected _optional = false;
   /** @internal */
@@ -121,7 +127,7 @@ export abstract class PropSchema<T> implements StandardSchemaV1<unknown, T> {
   protected _default?: T | (() => T);
 
   /** @internal */
-  readonly '~standard': StandardSchemaV1Props<unknown, T> = {
+  readonly '~standard': StandardSchemaV1Props<I, T> = {
     version: 1,
     vendor: 'forgeframe',
     validate: (value: unknown): StandardSchemaV1Result<T> =>
@@ -165,10 +171,10 @@ export abstract class PropSchema<T> implements StandardSchemaV1<unknown, T> {
    *
    * @returns A cloned schema that accepts `undefined`.
    */
-  optional(): PropSchema<T | undefined> {
+  optional(): PropSchema<T | undefined, I | undefined> {
     const clone = this._clone();
     clone._optional = true;
-    return clone as PropSchema<T | undefined>;
+    return clone as PropSchema<T | undefined, I | undefined>;
   }
 
   /**
@@ -176,10 +182,10 @@ export abstract class PropSchema<T> implements StandardSchemaV1<unknown, T> {
    *
    * @returns A cloned schema that accepts `null`.
    */
-  nullable(): PropSchema<T | null> {
+  nullable(): PropSchema<T | null, I | null> {
     const clone = this._clone();
     clone._nullable = true;
-    return clone as PropSchema<T | null>;
+    return clone as PropSchema<T | null, I | null>;
   }
 
   /**
@@ -188,17 +194,17 @@ export abstract class PropSchema<T> implements StandardSchemaV1<unknown, T> {
    * @param value - Default value or a factory that returns the default value.
    * @returns A cloned schema that uses the default when input is `undefined`.
    */
-  default(value: T | (() => T)): PropSchema<T> {
+  default(value: T | (() => T)): PropSchema<T, I | undefined> {
     const clone = this._clone();
     clone._default = value;
-    return clone;
+    return clone as PropSchema<T, I | undefined>;
   }
 
   /** @internal */
-  protected abstract _clone(): PropSchema<T>;
+  protected abstract _clone(): PropSchema<T, I>;
 
   /** @internal */
-  protected _copyBaseTo<S extends PropSchema<unknown>>(clone: S): S {
+  protected _copyBaseTo<S extends PropSchema<unknown, unknown>>(clone: S): S {
     clone._optional = this._optional;
     clone._nullable = this._nullable;
     clone._default = this._default;
@@ -206,7 +212,7 @@ export abstract class PropSchema<T> implements StandardSchemaV1<unknown, T> {
   }
 
   /** @internal */
-  protected _copyPresenceTo<S extends PropSchema<unknown>>(clone: S): S {
+  protected _copyPresenceTo<S extends PropSchema<unknown, unknown>>(clone: S): S {
     clone._optional = this._optional;
     clone._nullable = this._nullable;
     return clone;

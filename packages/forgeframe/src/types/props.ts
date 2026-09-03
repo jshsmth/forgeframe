@@ -163,6 +163,14 @@ type InferPropDefinitionValue<D> =
       ? Output
       : unknown;
 
+/** Infers the value accepted by a prop-definition entry. @internal */
+type InferPropDefinitionInput<D> =
+  D extends StandardSchemaV1<infer Input, unknown>
+    ? Input
+    : D extends { schema: StandardSchemaV1<infer Input, unknown> }
+      ? Input
+      : unknown;
+
 /** Keys whose schemas can produce `undefined`. @internal */
 type OptionalPropDefinitionKeys<D extends Record<string, unknown>> = {
   [K in keyof D]-?: undefined extends InferPropDefinitionValue<D[K]>
@@ -186,6 +194,35 @@ export type InferPropsDefinition<D extends Record<string, unknown>> = {
   [K in RequiredPropDefinitionKeys<D>]: InferPropDefinitionValue<D[K]>;
 } & {
   [K in OptionalPropDefinitionKeys<D>]?: InferPropDefinitionValue<D[K]>;
+};
+
+/** Keys whose schemas accept omission as input. @internal */
+type OptionalPropDefinitionInputKeys<D extends Record<string, unknown>> = {
+  [K in keyof D]-?: undefined extends InferPropDefinitionInput<D[K]>
+    ? K
+    : never;
+}[keyof D];
+
+/** Keys whose schemas require an input value. @internal */
+type RequiredPropDefinitionInputKeys<D extends Record<string, unknown>> = Exclude<
+  keyof D,
+  OptionalPropDefinitionInputKeys<D>
+>;
+
+/**
+ * Infers consumer input props from direct or wrapped Standard Schemas.
+ *
+ * @remarks
+ * Unlike {@link InferPropsDefinition}, this type uses each schema's accepted
+ * input and marks properties optional when that input includes `undefined`.
+ *
+ * @typeParam D - A map of prop names to schema-backed definitions.
+ * @public
+ */
+export type InferPropsDefinitionInput<D extends Record<string, unknown>> = {
+  [K in RequiredPropDefinitionInputKeys<D>]: InferPropDefinitionInput<D[K]>;
+} & {
+  [K in OptionalPropDefinitionInputKeys<D>]?: InferPropDefinitionInput<D[K]>;
 };
 
 /**

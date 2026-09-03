@@ -29,19 +29,20 @@ type HasSamePropKeys<A, B> = [Exclude<keyof A, keyof B>] extends [never]
  * @typeParam I - An alternate consumer input shape, such as legacy aliases.
  *
  * @remarks
- * Supplying a distinct input shape permits initial props to use or mix
- * canonical and alias spellings, including aliases that are themselves
- * canonical keys. Required-prop validation remains owned by the component's
- * runtime prop definitions because TypeScript cannot infer alias-to-canonical
- * relationships from the runtime `alias` strings.
+ * Supplying a distinct input shape permits initial props to use schema input
+ * types or mix canonical and alias spellings. When the input and normalized
+ * shapes have the same keys, the input shape is authoritative because schema
+ * transforms can produce outputs that are not valid inputs. Required-prop
+ * validation remains owned by the component's runtime prop definitions when
+ * aliases prevent TypeScript from inferring canonical requirements.
  * @public
  */
 export type ConsumerPropsInput<P, I = P> =
-  | P
-  | (HasSamePropKeys<P, I> extends true
-      ? never
-      : I |
-          (Exclude<keyof I, keyof P> extends never ? never : Partial<P & I>));
+  HasSamePropKeys<P, I> extends true
+    ? I
+    : | P
+      | I
+      | (Exclude<keyof I, keyof P> extends never ? never : Partial<P & I>);
 
 /**
  * Partial props accepted by component updates.
@@ -51,9 +52,9 @@ export type ConsumerPropsInput<P, I = P> =
  * @public
  */
 export type ConsumerPropsUpdate<P, I = P> =
-  | Partial<P>
-  | Partial<I>
-  | Partial<P & I>;
+  HasSamePropKeys<P, I> extends true
+    ? Partial<I>
+    : Partial<P> | Partial<I> | Partial<P & I>;
 
 /**
  * Function that returns nested components for composition.

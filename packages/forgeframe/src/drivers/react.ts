@@ -1,4 +1,5 @@
 import type {
+  ConsumerPropsInput,
   ConsumerPropsUpdate,
   ForgeFrameComponent,
   ForgeFrameComponentInstance,
@@ -180,9 +181,9 @@ function reportReactError(
 }
 
 /** A committed React prop snapshot waiting to be synchronized. @internal */
-interface ReactPropUpdate<P extends Record<string, unknown>> {
-  desired: Partial<P>;
-  payload: Partial<P>;
+interface ReactPropUpdate<I extends Record<string, unknown>> {
+  desired: Partial<I>;
+  payload: Partial<I>;
   retryOnFailure: boolean;
 }
 
@@ -190,13 +191,13 @@ interface ReactPropUpdate<P extends Record<string, unknown>> {
 interface ReactPropSyncState<
   P extends Record<string, unknown>,
   X,
-  I,
+  I extends Record<string, unknown>,
 > {
   instance: ForgeFrameComponentInstance<P, X, I>;
-  comparableProps: Partial<P> | null;
+  comparableProps: Partial<I> | null;
   knownKeys: Set<string>;
-  queue: Array<ReactPropUpdate<P>>;
-  inFlightUpdate: ReactPropUpdate<P> | null;
+  queue: Array<ReactPropUpdate<I>>;
+  inFlightUpdate: ReactPropUpdate<I> | null;
   renderReady: boolean;
   draining: boolean;
   active: boolean;
@@ -206,7 +207,7 @@ interface ReactPropSyncState<
 function deactivatePropSyncState<
   P extends Record<string, unknown>,
   X,
-  I,
+  I extends Record<string, unknown>,
 >(state: ReactPropSyncState<P, X, I>): void {
   state.active = false;
   state.queue.length = 0;
@@ -398,7 +399,9 @@ export function createReactComponent<
             state.inFlightUpdate = update;
 
             try {
-              await state.instance.updateProps(update.payload);
+              await state.instance.updateProps(
+                update.payload as ConsumerPropsUpdate<P, I>
+              );
             } catch (err) {
               if (!isCurrentSyncState(state)) {
                 return;
@@ -443,8 +446,8 @@ export function createReactComponent<
 
         setError(null);
 
-        const initialProps = snapshotProps(componentProps as Partial<P>);
-        const instance = Component(initialProps as P);
+        const initialProps = snapshotProps(componentProps as Partial<I>);
+        const instance = Component(initialProps as ConsumerPropsInput<P, I>);
         const syncState: ReactPropSyncState<P, X, I> = {
           instance,
           comparableProps: initialProps,
@@ -510,7 +513,7 @@ export function createReactComponent<
         const syncState = propSyncRef.current;
         if (!syncState || !isCurrentSyncState(syncState)) return;
 
-        const nextProps = snapshotProps(componentProps as Partial<P>);
+        const nextProps = snapshotProps(componentProps as Partial<I>);
         const pendingUpdate = syncState.queue.at(-1);
         const prevProps = pendingUpdate?.desired ?? syncState.comparableProps;
         const nextPropsRecord = nextProps as Record<string, unknown>;

@@ -21,9 +21,11 @@ const InferredComponent = create({
 
 void InferredComponent({
   label: 'ready',
-  count: 1,
   onSubmit: (_value) => undefined,
 });
+
+const inferredHostCount: number | undefined = InferredComponent.hostProps?.count;
+void inferredHostCount;
 
 // @ts-expect-error inferred direct schemas reject the wrong value type
 void InferredComponent({ label: 1, count: 1, onSubmit: () => undefined });
@@ -63,10 +65,15 @@ const ExternalSchemaComponent = create({
   props: {
     zodValue: z.string(),
     valibotValue: v.string(),
+    transformedValue: z.string().transform(Number),
+    defaultedValue: z.string().default('fallback'),
     wrappedValue: {
       schema: z.number(),
       required: true,
       sameDomain: true,
+    },
+    wrappedTransformedValue: {
+      schema: z.string().transform((value) => value.length),
     },
   },
 });
@@ -74,11 +81,38 @@ const ExternalSchemaComponent = create({
 void ExternalSchemaComponent({
   zodValue: 'zod',
   valibotValue: 'valibot',
+  transformedValue: '42',
   wrappedValue: 42,
+  wrappedTransformedValue: 'wrapped',
 });
 
-// @ts-expect-error third-party Standard Schema outputs are inferred
-void ExternalSchemaComponent({ zodValue: 1, valibotValue: 'ok', wrappedValue: 42 });
+void ExternalSchemaComponent({
+  // @ts-expect-error third-party Standard Schema inputs are inferred
+  zodValue: 1,
+  valibotValue: 'ok',
+  transformedValue: '42',
+  wrappedValue: 42,
+  wrappedTransformedValue: 'wrapped',
+});
+
+void ExternalSchemaComponent({
+  zodValue: 'zod',
+  valibotValue: 'valibot',
+  // @ts-expect-error transformed schema outputs are not accepted as consumer inputs
+  transformedValue: 42,
+  wrappedValue: 42,
+  wrappedTransformedValue: 'wrapped',
+});
+
+const transformedHostValue: number | undefined =
+  ExternalSchemaComponent.hostProps?.transformedValue;
+const defaultedHostValue: string | undefined =
+  ExternalSchemaComponent.hostProps?.defaultedValue;
+const wrappedTransformedHostValue: number | undefined =
+  ExternalSchemaComponent.hostProps?.wrappedTransformedValue;
+void transformedHostValue;
+void defaultedHostValue;
+void wrappedTransformedHostValue;
 
 const ChildComponent = create({
   tag: 'typed-child-component',
