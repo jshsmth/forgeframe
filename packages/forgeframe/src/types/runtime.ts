@@ -3,9 +3,13 @@
  */
 
 import type { ContextType } from '../constants';
-import type { StandardSchemaV1 } from '../props/schema';
+import type { InferOutput, StandardSchemaV1 } from '../props/schema';
 import type { EventEmitterInterface } from './events';
-import type { InferPropsDefinition, PropsDefinition } from './props';
+import type {
+  InferPropsDefinition,
+  PropDefinition,
+  PropsDefinition,
+} from './props';
 import type { ContainerTemplate, PrerenderTemplate } from './templates';
 import type {
   Dimensions,
@@ -99,12 +103,53 @@ export type InferablePropsDefinition = Record<
   | { schema: StandardSchemaV1<unknown, unknown> }
 >;
 
+type ContextualSchemaMap = Record<string, StandardSchemaV1>;
+
+/** Extracts each entry's schema for contextual callback inference. @internal */
+type InferContextualSchemas<D extends InferablePropsDefinition> = {
+  [K in keyof D]: D[K] extends StandardSchemaV1
+    ? D[K]
+    : D[K] extends { schema: infer Schema extends StandardSchemaV1 }
+      ? Schema
+      : never;
+};
+
+/** Normalized values visible to validation and transport callbacks. @internal */
+type ContextualOutputProps<S extends ContextualSchemaMap> = Partial<{
+  [K in keyof S]: InferOutput<S[K]>;
+}>;
+
+/** A wrapped inferred definition whose callbacks receive normalized outputs. @internal */
+type ContextualWrappedPropDefinition<
+  Schema extends StandardSchemaV1,
+  S extends ContextualSchemaMap,
+> = Omit<
+  PropDefinition<InferOutput<Schema>, ContextualOutputProps<S>>,
+  'schema'
+> & {
+  schema: Schema;
+};
+
+/** Contextual callback types inferred from each entry's schema. @internal */
+type ContextualPropsDefinition<S extends ContextualSchemaMap> = {
+  [K in keyof S]?:
+    | S[K]
+    | ContextualWrappedPropDefinition<S[K], S>;
+};
+
 /** Component options whose prop values are inferred from their schemas. @internal */
 export type InferredComponentOptions<
   D extends InferablePropsDefinition,
+  ContextualSchemas extends ContextualSchemaMap = InferContextualSchemas<D>,
 > = Omit<ComponentOptions<InferPropsDefinition<D>>, 'props'> & {
-  props: D & PropsDefinition<InferPropsDefinition<D>>;
+  props: D & ContextualPropsDefinition<ContextualSchemas>;
 };
+
+/** Arguments accepted by a component factory based on required input keys. @internal */
+type ComponentFactoryArguments<P, I, RequireProps extends boolean> =
+  RequireProps extends true
+    ? [props: ConsumerPropsInput<P, I>]
+    : [props?: ConsumerPropsInput<P, I>];
 
 /**
  * Configuration options for creating a component.
@@ -228,6 +273,7 @@ export interface ComponentOptions<P = Record<string, unknown>> {
  * @typeParam P - The props type for the component
  * @typeParam X - The type of exports from the host
  * @typeParam I - An alternate consumer input shape, such as legacy aliases
+ * @typeParam RequireProps - Whether the factory requires a props argument
  *
  * @remarks
  * Component instances are created by calling the component factory function
@@ -390,6 +436,7 @@ export interface ForgeFrameComponent<
   P = Record<string, unknown>,
   X = unknown,
   I = P,
+  RequireProps extends boolean = false,
 > {
   /**
    * Create a new component instance with props.
@@ -397,7 +444,7 @@ export interface ForgeFrameComponent<
    * @param props - Props to pass to the component
    * @returns New component instance
    */
-  (props?: ConsumerPropsInput<P, I>): ForgeFrameComponentInstance<P, X, I>;
+  (...args: ComponentFactoryArguments<P, I, RequireProps>): ForgeFrameComponentInstance<P, X, I>;
 
   /**
    * Check if current window is a host instance of this component.

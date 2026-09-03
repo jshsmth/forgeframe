@@ -6,7 +6,15 @@
  */
 import * as v from 'valibot';
 import { z } from 'zod';
-import { create, prop } from '../../src';
+import {
+  create,
+  createReactComponent,
+  prop,
+  withReactComponent,
+} from '../../src';
+
+declare const maybeDefault: string | undefined;
+declare const optionalComputedValue: (() => string) | undefined;
 
 const InferredComponent = create({
   tag: 'inferred-component',
@@ -57,6 +65,22 @@ void ExplicitComponent({
   label: 'ready',
   enabled: true,
   onChange: (_enabled) => undefined,
+});
+
+interface ExplicitDefinedOutputProps extends Record<string, unknown> {
+  label: string;
+}
+
+create<ExplicitDefinedOutputProps>({
+  tag: 'explicit-defined-output-component',
+  url: 'https://example.com/explicit-defined-output',
+  props: {
+    label: {
+      // @ts-expect-error explicit normalized props must include every schema output
+      schema: z.string().transform(() => undefined),
+      required: true,
+    },
+  },
 });
 
 const ExternalSchemaComponent = create({
@@ -122,9 +146,15 @@ const WrappedOptionalityComponent = create({
     const optionalTransportValue: string | undefined = props.transportOnly;
     const dynamicRequiredValue: string | undefined =
       props.dynamicRequiredWrapper;
-    const requiredOptionalSchemaValue: string = props.requiredOptionalSchema;
+    const maybeDefaultValue: string | undefined = props.maybeDefaultWrapper;
+    const optionalComputedResult: string | undefined =
+      props.optionalComputedWrapper;
+    const requiredOptionalSchemaValue: string | undefined =
+      props.requiredOptionalSchema;
     void optionalTransportValue;
     void dynamicRequiredValue;
+    void maybeDefaultValue;
+    void optionalComputedResult;
     return `https://example.com/wrapped-optionality/${requiredOptionalSchemaValue}`;
   },
   props: {
@@ -135,6 +165,14 @@ const WrappedOptionalityComponent = create({
     dynamicRequiredWrapper: {
       schema: prop.string(),
       required: dynamicRequired,
+    },
+    maybeDefaultWrapper: {
+      schema: prop.string(),
+      default: maybeDefault,
+    },
+    optionalComputedWrapper: {
+      schema: prop.string(),
+      value: optionalComputedValue,
     },
     requiredOptionalSchema: {
       schema: prop.string().optional(),
@@ -162,7 +200,11 @@ if (WrappedOptionalityComponent.hostProps) {
     WrappedOptionalityComponent.hostProps.transportOnly;
   const dynamicRequiredValue: string | undefined =
     WrappedOptionalityComponent.hostProps.dynamicRequiredWrapper;
-  const requiredOptionalSchemaValue: string =
+  const maybeDefaultValue: string | undefined =
+    WrappedOptionalityComponent.hostProps.maybeDefaultWrapper;
+  const optionalComputedResult: string | undefined =
+    WrappedOptionalityComponent.hostProps.optionalComputedWrapper;
+  const requiredOptionalSchemaValue: string | undefined =
     WrappedOptionalityComponent.hostProps.requiredOptionalSchema;
   const defaultedWrapperValue: string =
     WrappedOptionalityComponent.hostProps.defaultedWrapper;
@@ -170,6 +212,8 @@ if (WrappedOptionalityComponent.hostProps) {
     WrappedOptionalityComponent.hostProps.computedWrapper;
   void optionalTransportValue;
   void dynamicRequiredValue;
+  void maybeDefaultValue;
+  void optionalComputedResult;
   void requiredOptionalSchemaValue;
   void defaultedWrapperValue;
   void computedWrapperValue;
@@ -180,6 +224,100 @@ void WrappedOptionalityComponent({});
 
 // @ts-expect-error wrapped required metadata rejects an explicit undefined value
 void WrappedOptionalityComponent({ requiredOptionalSchema: undefined });
+
+const WrappedSchemaDefaultComponent = create({
+  tag: 'wrapped-schema-default-component',
+  url: (props) => {
+    const defaultedValue: string = props.defaultedValue;
+    return `https://example.com/wrapped-schema-default/${defaultedValue}`;
+  },
+  props: {
+    defaultedValue: {
+      schema: z.string().default('fallback'),
+      required: true,
+      sameDomain: true,
+    },
+  },
+});
+
+void WrappedSchemaDefaultComponent({});
+
+const ContextualCallbacksComponent = create({
+  tag: 'contextual-callbacks-component',
+  url: 'https://example.com/contextual-callbacks',
+  props: {
+    amount: {
+      schema: z.string().transform(Number),
+      required: true,
+      value: (context) => {
+        const amount: number | undefined = context.props.amount;
+        void amount;
+        return 1;
+      },
+      validate: ({ value, props }) => {
+        const amount: number = value;
+        const propAmount: number | undefined = props.amount;
+        void amount;
+        void propAmount;
+      },
+      decorate: ({ value }) => value + 1,
+      hostDecorate: ({ value }) => value + 1,
+      queryParam: ({ value }) => value.toFixed(0),
+      bodyParam: ({ value }) => value.toFixed(0),
+    },
+  },
+});
+
+void ContextualCallbacksComponent({ amount: '1' });
+
+const RequiredTransformComponent = create({
+  tag: 'required-transform-component',
+  url: (props) => {
+    const transformedValue: string | undefined = props.transformedValue;
+    return `https://example.com/required-transform/${transformedValue ?? 'missing'}`;
+  },
+  props: {
+    transformedValue: {
+      schema: z.string().transform((value) =>
+        value.length > 0 ? value : undefined
+      ),
+      required: true,
+    },
+  },
+});
+
+void RequiredTransformComponent({ transformedValue: 'input' });
+
+if (RequiredTransformComponent.hostProps) {
+  const transformedValue: string | undefined =
+    RequiredTransformComponent.hostProps.transformedValue;
+  void transformedValue;
+}
+
+const RequiredMaybeMetadataComponent = create({
+  tag: 'required-maybe-metadata-component',
+  url: 'https://example.com/required-maybe-metadata',
+  props: {
+    maybeDefaultValue: {
+      schema: prop.string(),
+      required: true,
+      default: maybeDefault,
+    },
+    optionalComputedValue: {
+      schema: prop.string(),
+      required: true,
+      value: optionalComputedValue,
+    },
+  },
+});
+
+void RequiredMaybeMetadataComponent({
+  maybeDefaultValue: 'default',
+  optionalComputedValue: 'computed',
+});
+
+// @ts-expect-error possibly undefined metadata cannot satisfy required omission
+void RequiredMaybeMetadataComponent({});
 
 const AnyComponent = create({
   tag: 'any-component',
@@ -251,3 +389,22 @@ const ParentComponent = create({
 
 void ParentComponent({ parentLabel: 'parent' });
 void ChildComponent({ childLabel: 'child' });
+
+createReactComponent(InferredComponent, { React: {} as never });
+withReactComponent({} as never)(InferredComponent);
+
+// @ts-expect-error factories with required inferred inputs reject zero arguments
+void InferredComponent();
+
+const OptionalOnlyComponent = create({
+  tag: 'optional-only-component',
+  url: 'https://example.com/optional-only',
+  props: {
+    description: prop.string().optional(),
+  },
+});
+
+void OptionalOnlyComponent();
+
+// Explicit component factories preserve the existing optional argument API.
+void ExplicitComponent();

@@ -87,7 +87,7 @@ export interface PropDefinition<T = unknown, P = Record<string, unknown>> {
    *
    * @see https://standardschema.dev/
    */
-  schema?: StandardSchemaV1<unknown, T | undefined>;
+  schema?: StandardSchemaV1<unknown, T>;
 
   /** Whether the prop is required */
   required?: boolean;
@@ -155,22 +155,63 @@ export type PropsDefinition<P> = {
   [K in keyof P]?: PropDefinitionEntry<P[K], P>;
 };
 
-/** Whether a wrapped definition guarantees a normalized value. @internal */
-type WrappedPropDefinitionProducesValue<D> =
-  D extends { default: unknown } | { value: unknown }
+/** Resolves the value returned by a wrapped `value` callback. @internal */
+type InferPropDefinitionValueResult<Value> =
+  Value extends (...args: never[]) => infer Result ? Result : never;
+
+/** Resolves a wrapped literal or factory default. @internal */
+type InferPropDefinitionDefaultResult<Default> =
+  Default extends (...args: never[]) => infer Result ? Result : Default;
+
+/** Resolves the fallback used when a wrapped `value` callback is absent. @internal */
+type InferPropDefinitionDefault<D> =
+  D extends { default: infer Default }
+    ? InferPropDefinitionDefaultResult<Default>
+    : undefined;
+
+/** Resolves every value that wrapped metadata can produce for omission. @internal */
+type InferPropDefinitionMetadataValue<D> =
+  D extends { value: infer Value }
+    ? InferPropDefinitionValueResult<Exclude<Value, undefined>> |
+        (undefined extends Value ? InferPropDefinitionDefault<D> : never)
+    : InferPropDefinitionDefault<D>;
+
+/** Whether wrapped metadata guarantees a defined value for omission. @internal */
+type WrappedPropDefinitionMetadataProducesValue<D> =
+  [InferPropDefinitionMetadataValue<D>] extends [never]
+    ? false
+    : undefined extends InferPropDefinitionMetadataValue<D>
+      ? false
+      : true;
+
+/** Whether a wrapped schema accepts omission and guarantees a defined output. @internal */
+type WrappedPropDefinitionSchemaProducesValue<D> =
+  D extends { schema: StandardSchemaV1<infer Input, infer Output> }
+    ? undefined extends Input
+      ? undefined extends Output
+        ? false
+        : true
+      : false
+    : false;
+
+/** Whether omitting a wrapped prop is guaranteed to produce a defined value. @internal */
+type WrappedPropDefinitionOmissionProducesValue<D> =
+  WrappedPropDefinitionMetadataProducesValue<D> extends true
     ? true
-    : D extends { required: true }
-      ? true
-      : false;
+    : WrappedPropDefinitionSchemaProducesValue<D>;
+
+/** Whether a wrapped definition guarantees a normalized property. @internal */
+type WrappedPropDefinitionProducesValue<D> =
+  D extends { required: true }
+    ? true
+    : WrappedPropDefinitionOmissionProducesValue<D>;
 
 /** Infers the normalized value produced by a prop-definition entry. @internal */
 type InferPropDefinitionValue<D> =
   D extends StandardSchemaV1<unknown, infer Output>
     ? Output
     : D extends { schema: StandardSchemaV1<unknown, infer Output> }
-      ? WrappedPropDefinitionProducesValue<D> extends true
-        ? Exclude<Output, undefined>
-        : Output
+      ? Output
       : unknown;
 
 /** Infers the value accepted by a prop-definition entry. @internal */
@@ -224,11 +265,11 @@ type IsOptionalPropDefinitionInput<D> =
     ? undefined extends Input
       ? true
       : false
-    : D extends { default: unknown } | { value: unknown }
-      ? true
-      : D extends { required: true }
-        ? false
-        : true;
+    : D extends { required: true }
+      ? WrappedPropDefinitionOmissionProducesValue<D> extends true
+        ? true
+        : false
+      : true;
 
 /** Keys whose definitions accept omission as input. @internal */
 type OptionalPropDefinitionInputKeys<D extends Record<string, unknown>> = {

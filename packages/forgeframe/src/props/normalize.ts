@@ -173,11 +173,45 @@ export function normalizeProps<P extends Record<string, unknown>>(
   definitions: PropsDefinition<P>,
   context: PropContext<P>
 ): P {
-  const result = {} as P;
+  return normalizePropsInternal(userProps, definitions, context, {});
+}
 
-  for (const { key, definition } of getCompiledPropDefinitions(definitions)) {
+interface ConsumerNormalizationOptions {
+  schemaValidatedKeys: Set<string>;
+  fallbackSchemaKeys?: Set<string>;
+  decorateKeys?: ReadonlySet<string>;
+  fallbackKeys?: ReadonlySet<string>;
+  deferCustomNormalization?: boolean;
+}
+
+/** Normalizes props while tracking consumer-side schema state. @internal */
+export function normalizeConsumerProps<P extends Record<string, unknown>>(
+  userProps: Partial<P>,
+  definitions: PropsDefinition<P>,
+  context: PropContext<P>,
+  options: ConsumerNormalizationOptions
+): P {
+  return normalizePropsInternal(userProps, definitions, context, options);
+}
+
+function normalizePropsInternal<P extends Record<string, unknown>>(
+  userProps: Partial<P>,
+  definitions: PropsDefinition<P>,
+  context: PropContext<P>,
+  options: Partial<ConsumerNormalizationOptions>
+): P {
+  const result = {} as P;
+  const callbackProps = options.schemaValidatedKeys
+    ? ({ ...userProps } as P)
+    : result;
+
+  for (const { key, isDirectSchema, definition } of getCompiledPropDefinitions(definitions)) {
     const propKey = key as keyof P;
+    const shouldDeferCustomNormalization =
+      options.deferCustomNormalization === true && hasOwn(definitions, key);
     let value: unknown;
+    let usedFallback = false;
+    let fallbackCanBeSchemaValidated = false;
 
     const aliasKey = definition.alias;
     const hasValue = key in userProps;
@@ -187,27 +221,78 @@ export function normalizeProps<P extends Record<string, unknown>>(
       value = userProps[propKey];
     } else if (hasAliasValue) {
       value = userProps[aliasKey as keyof P];
-    } else if (definition.value) {
-      value = definition.value(context);
-    } else if (definition.default !== undefined) {
-      value =
-        typeof definition.default === 'function'
-          ? (definition.default as (ctx: PropContext<P>) => unknown)(context)
-          : definition.default;
-    } else if (definition.schema && isStandardSchema(definition.schema)) {
-      // Check if schema provides a default by validating undefined
-      // This allows prop.string().default('value') to work in normalizeProps
-      const schemaResult = definition.schema['~standard'].validate(undefined);
-      if (!(schemaResult instanceof Promise) && !schemaResult.issues) {
-        value = schemaResult.value;
+    }
+
+    if (
+      value === undefined &&
+      !shouldDeferCustomNormalization &&
+      !options.schemaValidatedKeys?.has(key) &&
+      (!options.fallbackKeys || options.fallbackKeys.has(key))
+    ) {
+      if (definition.value) {
+        usedFallback = true;
+        value = definition.value({ ...context, props: callbackProps });
+        if (value !== undefined && definition.schema) {
+          options.schemaValidatedKeys?.add(key);
+        }
+      } else if (definition.default !== undefined) {
+        usedFallback = true;
+        value =
+          typeof definition.default === 'function'
+            ? (definition.default as (ctx: PropContext<P>) => unknown)({
+                ...context,
+                props: callbackProps,
+              })
+            : definition.default;
+        if (value !== undefined && definition.schema) {
+          options.schemaValidatedKeys?.add(key);
+        }
+      } else if (definition.schema && isStandardSchema(definition.schema)) {
+        usedFallback = true;
+        // Check if schema provides a default by validating undefined.
+        // Record successful validation so callers do not feed the output back
+        // through a schema whose input and output types may differ.
+        const schemaResult = definition.schema['~standard'].validate(undefined);
+        if (!(schemaResult instanceof Promise) && !schemaResult.issues) {
+          value = schemaResult.value;
+          if (value !== undefined || isDirectSchema || !definition.required) {
+            options.schemaValidatedKeys?.add(key);
+          }
+        }
       }
     }
 
-    if (value !== undefined && definition.decorate) {
-      value = definition.decorate({ value, props: result as P });
+    if (
+      usedFallback &&
+      definition.schema &&
+      isStandardSchema(definition.schema)
+    ) {
+      const revalidationResult = definition.schema['~standard'].validate(value);
+      fallbackCanBeSchemaValidated =
+        !(revalidationResult instanceof Promise) &&
+        !revalidationResult.issues;
+    }
+
+    if (
+      value !== undefined &&
+      !shouldDeferCustomNormalization &&
+      definition.decorate &&
+      (!options.decorateKeys || options.decorateKeys.has(key)) &&
+      // Consumer schema inputs are decorated after validation so decorators
+      // consistently receive the schema's normalized output type.
+      (!options.schemaValidatedKeys ||
+        options.schemaValidatedKeys.has(key) ||
+        !definition.schema)
+    ) {
+      value = definition.decorate({ value, props: callbackProps });
     }
 
     (result as Record<string, unknown>)[key] = value;
+    (callbackProps as Record<string, unknown>)[key] = value;
+
+    if (fallbackCanBeSchemaValidated) {
+      options.fallbackSchemaKeys?.add(key);
+    }
   }
 
   return result;
@@ -227,26 +312,103 @@ export function validateProps<P extends Record<string, unknown>>(
   props: P,
   definitions: PropsDefinition<P>
 ): void {
-  for (const { key, isDirectSchema, definition } of getCompiledPropDefinitions(definitions)) {
-    const propKey = key as keyof P;
-    let value: unknown = props[propKey];
+  validatePropsInternal(props, definitions, {});
+}
 
-    if (definition.required && value === undefined) {
+interface ConsumerValidationOptions {
+  schemaKeys?: ReadonlySet<string>;
+  schemaValidatedKeys?: ReadonlySet<string>;
+  schemaInputProps?: Readonly<Record<string, unknown>>;
+  validationKeys?: ReadonlySet<string>;
+  preserveValidatedValues?: boolean;
+  skipCustomValidation?: boolean;
+}
+
+/** Validates consumer props while respecting prior schema normalization. @internal */
+export function validateConsumerProps<P extends Record<string, unknown>>(
+  props: P,
+  definitions: PropsDefinition<P>,
+  options: ConsumerValidationOptions
+): void {
+  validatePropsInternal(props, definitions, options);
+}
+
+function validatePropsInternal<P extends Record<string, unknown>>(
+  props: P,
+  definitions: PropsDefinition<P>,
+  options: ConsumerValidationOptions
+): void {
+  const compiledDefinitions = getCompiledPropDefinitions(definitions);
+
+  // Convert every selected schema input before any output-typed callback runs.
+  // This keeps callback behavior independent of prop-definition order.
+  for (const { key, isDirectSchema, definition } of compiledDefinitions) {
+    if (options.validationKeys && !options.validationKeys.has(key)) {
+      continue;
+    }
+
+    const propKey = key as keyof P;
+    const shouldValidateSchema =
+      (!options.schemaKeys || options.schemaKeys.has(key)) &&
+      !options.schemaValidatedKeys?.has(key);
+    const hasSchemaInput =
+      shouldValidateSchema &&
+      options.schemaInputProps !== undefined &&
+      hasOwn(options.schemaInputProps, key);
+    let value: unknown = hasSchemaInput
+      ? options.schemaInputProps?.[key]
+      : props[propKey];
+
+    if (
+      definition.required &&
+      value === undefined &&
+      !options.schemaValidatedKeys?.has(key) &&
+      (!options.schemaKeys || options.schemaKeys.has(key))
+    ) {
       throw new Error(`Prop "${key}" is required but was not provided`);
     }
 
-    // Validate using schema (handles type checking, defaults, and optional)
     if (definition.schema && isStandardSchema(definition.schema)) {
-      // Direct schemas handle undefined via .optional() and .default()
-      if (value !== undefined || isDirectSchema) {
+      if (
+        shouldValidateSchema &&
+        (value !== undefined || isDirectSchema || hasSchemaInput)
+      ) {
         value = validateWithSchema(definition.schema, value, key);
-        (props as Record<string, unknown>)[key] = value;
+        if (!options.preserveValidatedValues) {
+          (props as Record<string, unknown>)[key] = value;
+        }
       }
-    } else if (value === undefined) {
+    }
+  }
+
+  if (options.preserveValidatedValues) {
+    if (!options.skipCustomValidation) {
+      for (const { key, definition } of compiledDefinitions) {
+        if (
+          options.validationKeys?.has(key) &&
+          definition.validate
+        ) {
+          definition.validate({
+            value: (props as Record<string, unknown>)[key],
+            props,
+          });
+        }
+      }
+    }
+    return;
+  }
+
+  if (options.skipCustomValidation) {
+    return;
+  }
+
+  for (const { key, definition } of compiledDefinitions) {
+    if (options.validationKeys && !options.validationKeys.has(key)) {
       continue;
     }
 
     if (definition.validate) {
+      const value = (props as Record<string, unknown>)[key];
       definition.validate({ value, props });
     }
   }

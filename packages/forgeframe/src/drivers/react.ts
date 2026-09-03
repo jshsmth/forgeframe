@@ -309,6 +309,7 @@ export interface ReactComponentType<P, E = unknown> {
  * @typeParam X - The export type for data shared from the host component
  * @typeParam E - The forwarded React element ref type
  * @typeParam I - An alternate consumer input shape, such as legacy alias keys
+ * @typeParam RequireProps - Whether the wrapped factory requires props
  *
  * @returns A React component that renders the ForgeFrame component
  *
@@ -348,12 +349,16 @@ export function createReactComponent<
   X = unknown,
   E = unknown,
   I extends Record<string, unknown> = P,
+  RequireProps extends boolean = false,
 >(
-  Component: ForgeFrameComponent<P, X, I>,
+  Component: ForgeFrameComponent<P, X, I, RequireProps>,
   options: ReactDriverOptions<E>
 ): ReactComponentType<FullReactComponentProps<P, I>, E> {
   const { createElement, useRef, useEffect, useState, forwardRef } =
     options.React as unknown as ReactRuntime<E>;
+  const createInstance = Component as unknown as (
+    props: ConsumerPropsInput<P, I>
+  ) => ForgeFrameComponentInstance<P, X, I>;
 
   const ReactComponent = forwardRef<HTMLDivElement, FullReactComponentProps<P, I>>(
     function ForgeFrameComponent(props, ref) {
@@ -447,7 +452,7 @@ export function createReactComponent<
         setError(null);
 
         const initialProps = snapshotProps(componentProps as Partial<I>);
-        const instance = Component(initialProps as ConsumerPropsInput<P, I>);
+        const instance = createInstance(initialProps as ConsumerPropsInput<P, I>);
         const syncState: ReactPropSyncState<P, X, I> = {
           instance,
           comparableProps: initialProps,
@@ -617,6 +622,7 @@ export function withReactComponent<E>(React: ReactLike<E>) {
    * @typeParam P - The props type defined in the ForgeFrame component
    * @typeParam X - The export type for data shared from the host component
    * @typeParam I - An alternate consumer input shape, such as legacy alias keys
+   * @typeParam RequireProps - Whether the wrapped factory requires props
    *
    * @param Component - The ForgeFrame component to wrap
    * @returns A React component that renders the ForgeFrame component
@@ -627,8 +633,9 @@ export function withReactComponent<E>(React: ReactLike<E>) {
     P extends Record<string, unknown>,
     X = unknown,
     I extends Record<string, unknown> = P,
+    RequireProps extends boolean = false,
   >(
-    Component: ForgeFrameComponent<P, X, I>
+    Component: ForgeFrameComponent<P, X, I, RequireProps>
   ): ReactComponentType<FullReactComponentProps<P, I>, E> {
     return createReactComponent(Component, { React });
   };

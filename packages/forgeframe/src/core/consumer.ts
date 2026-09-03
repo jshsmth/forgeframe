@@ -25,7 +25,6 @@ import { CleanupManager } from '../utils/cleanup';
 import { createDeferred, type Deferred } from '../utils/promise';
 import { registerWindow, unregisterWindow } from '../window/proxy';
 import {
-  validateProps,
   propsToQueryParams,
   propsToBodyParams,
   isStandardSchema,
@@ -39,6 +38,7 @@ import {
 import { buildNestedHostRefs } from './consumer/child-refs';
 import {
   ConsumerPropsPipeline,
+  type ConsumerPropsPipelineSnapshot,
   type ConsumerPropsUpdateHooks,
 } from './consumer/props-pipeline';
 import { ConsumerRenderer } from './consumer/renderer';
@@ -141,11 +141,13 @@ export class ConsumerComponent<
    * @param options - Component configuration options
    * @param props - Initial props to pass to the component
    * @param trackInstance - Owning component registration callback used for clones
+   * @param propsSnapshot - Existing normalized pipeline state used by clones
    */
   constructor(
     options: ComponentOptions<P>,
     props?: ConsumerPropsInput<P, I>,
-    private trackInstance?: ConsumerInstanceTracker<P, X, I>
+    private trackInstance?: ConsumerInstanceTracker<P, X, I>,
+    propsSnapshot?: ConsumerPropsPipelineSnapshot<P>
   ) {
     this._uid = generateUID();
     this.options = this.normalizeOptions(options);
@@ -167,7 +169,8 @@ export class ConsumerComponent<
     this.propsPipeline = new ConsumerPropsPipeline(
       this.options,
       { ...props },
-      (nextProps) => this.createPropContext(nextProps)
+      (nextProps) => this.createPropContext(nextProps),
+      propsSnapshot
     );
 
     this.transport = new ConsumerTransport(
@@ -248,35 +251,55 @@ export class ConsumerComponent<
   ): Promise<void> {
     this.renderer.context = context ?? this.options.defaultContext;
 
-    this.checkEligibility();
-    this.assertRenderActive();
-    validateProps(this.propsPipeline.props, this.options.props);
+    this.propsPipeline.ensureSchemaValidated();
     this.assertRenderActive();
     this.options.validate?.({ props: this.propsPipeline.props });
     this.assertRenderActive();
-    const baseUrl = this.resolveUrl();
+    this.checkEligibility();
     this.assertRenderActive();
+
+    let baseUrl: string;
+    try {
+      baseUrl = this.resolveUrl();
+      this.assertRenderActive();
+      this.transport.syncTrustedDomainForUrl(baseUrl);
+    } catch (error) {
+      await this.destroy().catch(() => undefined);
+      throw error;
+    }
+
+    // Configuration/container guard failures remain retryable until rendering
+    // has begun and resources may need lifecycle cleanup.
     this.renderer.container = this.resolveContainer(container);
 
-    this.event.emit(EVENT.PRERENDER);
-    this.assertRenderActive();
-    invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onPrerender');
-    this.assertRenderActive();
-
-    await this.prerender(baseUrl);
-    this.assertRenderActive();
-
-    this.event.emit(EVENT.PRERENDERED);
-    this.assertRenderActive();
-    invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onPrerendered');
-    this.assertRenderActive();
-
-    this.event.emit(EVENT.RENDER);
-    this.assertRenderActive();
-    invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onRender');
-    this.assertRenderActive();
-
     try {
+      this.event.emit(EVENT.PRERENDER);
+      this.assertRenderActive();
+      invokePropCallback(
+        this.propsPipeline.props as Record<string, unknown>,
+        'onPrerender'
+      );
+      this.assertRenderActive();
+
+      await this.prerender(baseUrl);
+      this.assertRenderActive();
+
+      this.event.emit(EVENT.PRERENDERED);
+      this.assertRenderActive();
+      invokePropCallback(
+        this.propsPipeline.props as Record<string, unknown>,
+        'onPrerendered'
+      );
+      this.assertRenderActive();
+
+      this.event.emit(EVENT.RENDER);
+      this.assertRenderActive();
+      invokePropCallback(
+        this.propsPipeline.props as Record<string, unknown>,
+        'onRender'
+      );
+      this.assertRenderActive();
+
       this.assertRenderActive();
       await this.open(baseUrl);
       this.assertRenderActive();
@@ -286,6 +309,24 @@ export class ConsumerComponent<
         await this.renderer.swapPrerenderContentIfNeeded();
         this.assertRenderActive();
       }
+
+      this.rendered = true;
+
+      this.event.emit(EVENT.RENDERED);
+      this.assertRenderActive();
+      invokePropCallback(
+        this.propsPipeline.props as Record<string, unknown>,
+        'onRendered'
+      );
+      this.assertRenderActive();
+
+      this.event.emit(EVENT.DISPLAY);
+      this.assertRenderActive();
+      invokePropCallback(
+        this.propsPipeline.props as Record<string, unknown>,
+        'onDisplay'
+      );
+      this.assertRenderActive();
     } catch (err) {
       const renderWasCancelled = this.isRenderCancelled();
       await this.destroy().catch(() => undefined);
@@ -295,18 +336,6 @@ export class ConsumerComponent<
       }
       throw err;
     }
-
-    this.rendered = true;
-
-    this.event.emit(EVENT.RENDERED);
-    this.assertRenderActive();
-    invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onRendered');
-    this.assertRenderActive();
-
-    this.event.emit(EVENT.DISPLAY);
-    this.assertRenderActive();
-    invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onDisplay');
-    this.assertRenderActive();
   }
 
   /**
@@ -494,10 +523,10 @@ export class ConsumerComponent<
   clone(): ForgeFrameComponentInstance<P, X, I> {
     const cloned = new ConsumerComponent<P, X, I>(
       this.options,
-      this.propsPipeline.props as ConsumerPropsInput<P, I>,
-      this.trackInstance
+      undefined,
+      this.trackInstance,
+      this.propsPipeline.createSnapshot()
     );
-    cloned.propsPipeline.inputProps = { ...this.propsPipeline.inputProps };
     return this.trackInstance ? this.trackInstance(cloned) : cloned;
   }
 
@@ -514,6 +543,7 @@ export class ConsumerComponent<
   isEligible(): boolean {
     if (!this.options.eligible) return true;
 
+    this.propsPipeline.ensureSchemaValidated();
     const result = this.options.eligible({ props: this.propsPipeline.props });
     return result.eligible;
   }

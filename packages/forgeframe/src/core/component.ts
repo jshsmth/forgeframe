@@ -21,6 +21,7 @@ import type {
   InferPropsDefinition,
   InferPropsDefinitionInput,
 } from '../types/props';
+import type { StandardSchemaV1 } from '../props/schema';
 import { ConsumerComponent } from './consumer';
 import {
   clearIndexedInstances,
@@ -146,9 +147,26 @@ export function create<
   const D extends InferablePropsDefinition,
   X = unknown,
   I extends Record<string, unknown> = InferPropsDefinitionInput<D>,
+  ContextualSchemas extends Record<string, StandardSchemaV1> = {
+    [K in keyof D]: D[K] extends StandardSchemaV1
+      ? D[K]
+      : D[K] extends { schema: infer Schema extends StandardSchemaV1 }
+        ? Schema
+        : never;
+  },
 >(
-  options: InferredComponentOptions<D>
-): ForgeFrameComponent<InferPropsDefinition<D>, X, I>;
+  options: InferredComponentOptions<D, ContextualSchemas>
+): ForgeFrameComponent<
+  InferPropsDefinition<D>,
+  X,
+  I,
+  Record<PropertyKey, never> extends ConsumerPropsInput<
+    InferPropsDefinition<D>,
+    I
+  >
+    ? false
+    : true
+>;
 export function create<
   P extends Record<string, unknown> = Record<string, unknown>,
   X = unknown,
@@ -244,7 +262,7 @@ export function create<
     props?: ConsumerPropsInput<P, I>
   ): ForgeFrameComponentInstance<P, X, I> {
     return createTrackedInstance(props);
-  } as ForgeFrameComponent<P, X, I>;
+  } as unknown as ForgeFrameComponent<P, X, I>;
 
   Component.instances = instances;
 

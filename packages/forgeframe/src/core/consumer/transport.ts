@@ -97,12 +97,14 @@ export class ConsumerTransport<
   private buildTrustedDomains(): DomainMatcher | undefined {
     const domains: Array<string | RegExp> = [];
 
-    const hostOrigin = this.resolveUrlOrigin(this.resolveUrl());
-    if (hostOrigin) {
-      if (!this.options.domain) {
-        domains.push(hostOrigin);
+    if (typeof this.options.url === 'string') {
+      const hostOrigin = this.resolveUrlOrigin(this.options.url);
+      if (hostOrigin) {
+        if (!this.options.domain) {
+          domains.push(hostOrigin);
+        }
+        this.dynamicUrlTrustedOrigin = hostOrigin;
       }
-      this.dynamicUrlTrustedOrigin = hostOrigin;
     }
 
     if (this.options.domain) {
