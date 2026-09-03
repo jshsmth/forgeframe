@@ -57,5 +57,6 @@ export {
   UnionSchema,
   AnySchema,
   type Prop,
+  type InferObjectInputShape,
   type InferObjectShape,
 } from './prop';

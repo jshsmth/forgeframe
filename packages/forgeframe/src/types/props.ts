@@ -87,7 +87,7 @@ export interface PropDefinition<T = unknown, P = Record<string, unknown>> {
    *
    * @see https://standardschema.dev/
    */
-  schema?: StandardSchemaV1<unknown, T>;
+  schema?: StandardSchemaV1<unknown, T | undefined>;
 
   /** Whether the prop is required */
   required?: boolean;
@@ -155,12 +155,24 @@ export type PropsDefinition<P> = {
   [K in keyof P]?: PropDefinitionEntry<P[K], P>;
 };
 
+/** Whether a wrapped definition guarantees a normalized value. @internal */
+type WrappedPropDefinitionProducesValue<D> =
+  D extends { default: unknown } | { value: unknown }
+    ? true
+    : D extends { required: infer Required }
+      ? true extends Required
+        ? true
+        : false
+      : false;
+
 /** Infers the normalized value produced by a prop-definition entry. @internal */
 type InferPropDefinitionValue<D> =
   D extends StandardSchemaV1<unknown, infer Output>
     ? Output
     : D extends { schema: StandardSchemaV1<unknown, infer Output> }
-      ? Output
+      ? WrappedPropDefinitionProducesValue<D> extends true
+        ? Exclude<Output, undefined>
+        : Output
       : unknown;
 
 /** Infers the value accepted by a prop-definition entry. @internal */
@@ -175,9 +187,19 @@ type InferPropDefinitionInput<D> =
         : Input
       : unknown;
 
-/** Keys whose schemas can produce `undefined`. @internal */
+/** Whether a prop-definition entry can be absent after normalization. @internal */
+type IsOptionalPropDefinitionValue<D> =
+  D extends StandardSchemaV1<unknown, infer Output>
+    ? undefined extends Output
+      ? true
+      : false
+    : WrappedPropDefinitionProducesValue<D> extends true
+      ? false
+      : true;
+
+/** Keys whose definitions can be absent after normalization. @internal */
 type OptionalPropDefinitionKeys<D extends Record<string, unknown>> = {
-  [K in keyof D]-?: undefined extends InferPropDefinitionValue<D[K]>
+  [K in keyof D]-?: IsOptionalPropDefinitionValue<D[K]> extends true
     ? K
     : never;
 }[keyof D];

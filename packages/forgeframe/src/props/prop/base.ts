@@ -92,6 +92,9 @@ export function validateDateBound(date: Date, method: 'min' | 'max'): number {
 export type InferSchemaValue<S extends PropSchema<unknown, unknown>> =
   S extends PropSchema<infer Output, unknown> ? Output : never;
 
+export type InferSchemaInput<S extends PropSchema<unknown, unknown>> =
+  S extends PropSchema<unknown, infer Input> ? Input : never;
+
 export type InferUnionSchemaOutput<
   S extends readonly [
     PropSchema<unknown, unknown>,
@@ -99,10 +102,23 @@ export type InferUnionSchemaOutput<
   ],
 > = InferSchemaValue<S[number]>;
 
+export type InferUnionSchemaInput<
+  S extends readonly [
+    PropSchema<unknown, unknown>,
+    ...PropSchema<unknown, unknown>[],
+  ],
+> = InferSchemaInput<S[number]>;
+
 export type InferTupleShape<
   S extends readonly PropSchema<unknown, unknown>[],
 > = {
   -readonly [K in keyof S]: InferSchemaValue<S[K]>;
+};
+
+export type InferTupleInputShape<
+  S extends readonly PropSchema<unknown, unknown>[],
+> = {
+  -readonly [K in keyof S]: InferSchemaInput<S[K]>;
 };
 
 /**

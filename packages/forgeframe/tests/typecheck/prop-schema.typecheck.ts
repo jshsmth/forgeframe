@@ -1,11 +1,11 @@
 /**
  * Type-level assertions for ForgeFrame's built-in prop schema builders.
  *
- * Covers inference for union, record, date, and tuple schemas, plus
- * optional/default chaining on top of those inferred outputs.
+ * Covers output and input inference for primitive, object, tuple, array,
+ * record, and union schemas, including nested optional/default values.
  */
 import { prop } from '@/props/prop';
-import type { InferOutput } from '@/props/schema';
+import type { InferInput, InferOutput } from '@/props/schema';
 
 type IsEqual<A, B> = (<T>() => T extends A ? 1 : 2) extends <
   T,
@@ -30,6 +30,24 @@ const _defaultedRecordSchema = _recordSchema.default({});
 const _dateSchema = prop.date();
 const _tupleSchema = prop.tuple(prop.string(), prop.number());
 const _emptyTupleSchema = prop.tuple();
+const _nestedObjectSchema = prop.object().shape({
+  requiredField: prop.boolean(),
+  defaultedField: prop.string().default('default'),
+  optionalField: prop.number().optional(),
+});
+const _defaultedTupleSchema = prop.tuple(
+  prop.string().default('default'),
+  prop.number().optional()
+);
+const _defaultedArraySchema = prop.array().of(
+  prop.string().default('default')
+);
+const _defaultedValueRecordSchema = prop.record(prop.number().default(0));
+const _defaultedBranchUnionSchema = prop.union(
+  prop.string(),
+  prop.number().default(0)
+);
+const _anySchema = prop.any();
 
 export const assertUnionOutput: Assert<
   IsEqual<InferOutput<typeof _unionSchema>, string | number>
@@ -66,3 +84,35 @@ export const assertTupleOutput: Assert<
 export const assertEmptyTupleOutput: Assert<
   IsEqual<InferOutput<typeof _emptyTupleSchema>, []>
 > = true;
+
+const nestedObjectInput: InferInput<typeof _nestedObjectSchema> = {
+  requiredField: true,
+};
+const defaultedTupleInput: InferInput<typeof _defaultedTupleSchema> = [
+  undefined,
+  undefined,
+];
+const defaultedArrayInput: InferInput<typeof _defaultedArraySchema> = [
+  undefined,
+];
+const defaultedValueRecordInput: InferInput<
+  typeof _defaultedValueRecordSchema
+> = { first: undefined };
+const defaultedBranchUnionInput: InferInput<
+  typeof _defaultedBranchUnionSchema
+> = undefined;
+const anyInput: InferInput<typeof _anySchema> = null;
+void nestedObjectInput;
+void defaultedTupleInput;
+void defaultedArrayInput;
+void defaultedValueRecordInput;
+void defaultedBranchUnionInput;
+void anyInput;
+
+// @ts-expect-error object inputs retain fields without defaults
+const invalidNestedObjectInput: InferInput<typeof _nestedObjectSchema> = {};
+void invalidNestedObjectInput;
+
+// @ts-expect-error prop.any() input excludes undefined
+const invalidAnyInput: InferInput<typeof _anySchema> = undefined;
+void invalidAnyInput;

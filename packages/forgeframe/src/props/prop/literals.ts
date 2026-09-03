@@ -2,7 +2,10 @@ import type {
   StandardSchemaV1Issue,
   StandardSchemaV1Result,
 } from '../schema';
-import type { InferUnionSchemaOutput } from './base';
+import type {
+  InferUnionSchemaInput,
+  InferUnionSchemaOutput,
+} from './base';
 import {
   PropSchema,
   validateSchemaSync,
@@ -103,8 +106,11 @@ export class EnumSchema<T extends string | number> extends PropSchema<T> {
  * @public
  */
 export class UnionSchema<
-  S extends readonly [PropSchema<unknown>, ...PropSchema<unknown>[]],
-> extends PropSchema<InferUnionSchemaOutput<S>> {
+  S extends readonly [
+    PropSchema<unknown, unknown>,
+    ...PropSchema<unknown, unknown>[],
+  ],
+> extends PropSchema<InferUnionSchemaOutput<S>, InferUnionSchemaInput<S>> {
   /** @internal */
   private _schemas: S;
 

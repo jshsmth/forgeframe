@@ -116,7 +116,12 @@ void wrappedTransformedHostValue;
 
 const WrappedOptionalityComponent = create({
   tag: 'wrapped-optionality-component',
-  url: 'https://example.com/wrapped-optionality',
+  url: (props) => {
+    const optionalTransportValue: string | undefined = props.transportOnly;
+    const requiredOptionalSchemaValue: string = props.requiredOptionalSchema;
+    void optionalTransportValue;
+    return `https://example.com/wrapped-optionality/${requiredOptionalSchemaValue}`;
+  },
   props: {
     transportOnly: {
       schema: prop.string(),
@@ -143,11 +148,77 @@ void WrappedOptionalityComponent({
   requiredOptionalSchema: 'required',
 });
 
+if (WrappedOptionalityComponent.hostProps) {
+  const optionalTransportValue: string | undefined =
+    WrappedOptionalityComponent.hostProps.transportOnly;
+  const requiredOptionalSchemaValue: string =
+    WrappedOptionalityComponent.hostProps.requiredOptionalSchema;
+  const defaultedWrapperValue: string =
+    WrappedOptionalityComponent.hostProps.defaultedWrapper;
+  const computedWrapperValue: string =
+    WrappedOptionalityComponent.hostProps.computedWrapper;
+  void optionalTransportValue;
+  void requiredOptionalSchemaValue;
+  void defaultedWrapperValue;
+  void computedWrapperValue;
+}
+
 // @ts-expect-error wrapped required metadata overrides optional schema input
 void WrappedOptionalityComponent({});
 
 // @ts-expect-error wrapped required metadata rejects an explicit undefined value
 void WrappedOptionalityComponent({ requiredOptionalSchema: undefined });
+
+const AnyComponent = create({
+  tag: 'any-component',
+  url: 'https://example.com/any',
+  props: {
+    payload: prop.any(),
+    optionalPayload: prop.any().optional(),
+  },
+});
+
+void AnyComponent({ payload: null });
+
+// @ts-expect-error prop.any() remains required until explicitly made optional
+void AnyComponent({});
+
+// @ts-expect-error prop.any() does not accept undefined unless made optional
+void AnyComponent({ payload: undefined });
+
+const CompositeInputComponent = create({
+  tag: 'composite-input-component',
+  url: 'https://example.com/composite-input',
+  props: {
+    objectValue: prop.object().shape({
+      requiredField: prop.boolean(),
+      defaultedField: prop.string().default('default'),
+      optionalField: prop.number().optional(),
+    }),
+    tupleValue: prop.tuple(
+      prop.string().default('default'),
+      prop.number().optional()
+    ),
+    arrayValue: prop.array().of(prop.string().default('default')),
+    recordValue: prop.record(prop.number().default(0)),
+    unionValue: prop.union(prop.string(), prop.number().default(0)),
+  },
+});
+
+void CompositeInputComponent({
+  objectValue: { requiredField: true },
+  tupleValue: [undefined, undefined],
+  arrayValue: [undefined],
+  recordValue: { first: undefined },
+});
+
+void CompositeInputComponent({
+  // @ts-expect-error nested object fields without defaults remain required
+  objectValue: {},
+  tupleValue: [undefined, undefined],
+  arrayValue: [],
+  recordValue: {},
+});
 
 const ChildComponent = create({
   tag: 'typed-child-component',

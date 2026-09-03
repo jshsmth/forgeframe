@@ -430,7 +430,10 @@ export class FunctionSchema<
  *
  * @public
  */
-export class AnySchema extends PropSchema<unknown> {
+export class AnySchema extends PropSchema<
+  unknown,
+  NonNullable<unknown> | null
+> {
   constructor() {
     super();
     this._nullable = true;
