@@ -114,6 +114,41 @@ void transformedHostValue;
 void defaultedHostValue;
 void wrappedTransformedHostValue;
 
+const WrappedOptionalityComponent = create({
+  tag: 'wrapped-optionality-component',
+  url: 'https://example.com/wrapped-optionality',
+  props: {
+    transportOnly: {
+      schema: prop.string(),
+      sameDomain: true,
+    },
+    requiredOptionalSchema: {
+      schema: prop.string().optional(),
+      required: true,
+    },
+    defaultedWrapper: {
+      schema: prop.string(),
+      required: true,
+      default: 'fallback',
+    },
+    computedWrapper: {
+      schema: prop.string(),
+      required: true,
+      value: () => 'computed',
+    },
+  },
+});
+
+void WrappedOptionalityComponent({
+  requiredOptionalSchema: 'required',
+});
+
+// @ts-expect-error wrapped required metadata overrides optional schema input
+void WrappedOptionalityComponent({});
+
+// @ts-expect-error wrapped required metadata rejects an explicit undefined value
+void WrappedOptionalityComponent({ requiredOptionalSchema: undefined });
+
 const ChildComponent = create({
   tag: 'typed-child-component',
   url: 'https://example.com/child',
