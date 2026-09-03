@@ -159,10 +159,8 @@ export type PropsDefinition<P> = {
 type WrappedPropDefinitionProducesValue<D> =
   D extends { default: unknown } | { value: unknown }
     ? true
-    : D extends { required: infer Required }
-      ? true extends Required
-        ? true
-        : false
+    : D extends { required: true }
+      ? true
       : false;
 
 /** Infers the normalized value produced by a prop-definition entry. @internal */
@@ -180,10 +178,8 @@ type InferPropDefinitionInput<D> =
   D extends StandardSchemaV1<infer Input, unknown>
     ? Input
     : D extends { schema: StandardSchemaV1<infer Input, unknown> }
-      ? D extends { required: infer Required }
-        ? true extends Required
-          ? Exclude<Input, undefined>
-          : Input
+      ? D extends { required: true }
+        ? Exclude<Input, undefined>
         : Input
       : unknown;
 
@@ -230,10 +226,8 @@ type IsOptionalPropDefinitionInput<D> =
       : false
     : D extends { default: unknown } | { value: unknown }
       ? true
-      : D extends { required: infer Required }
-        ? true extends Required
-          ? false
-          : true
+      : D extends { required: true }
+        ? false
         : true;
 
 /** Keys whose definitions accept omission as input. @internal */

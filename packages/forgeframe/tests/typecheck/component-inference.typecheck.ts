@@ -114,18 +114,27 @@ void transformedHostValue;
 void defaultedHostValue;
 void wrappedTransformedHostValue;
 
+const dynamicRequired = true as boolean;
+
 const WrappedOptionalityComponent = create({
   tag: 'wrapped-optionality-component',
   url: (props) => {
     const optionalTransportValue: string | undefined = props.transportOnly;
+    const dynamicRequiredValue: string | undefined =
+      props.dynamicRequiredWrapper;
     const requiredOptionalSchemaValue: string = props.requiredOptionalSchema;
     void optionalTransportValue;
+    void dynamicRequiredValue;
     return `https://example.com/wrapped-optionality/${requiredOptionalSchemaValue}`;
   },
   props: {
     transportOnly: {
       schema: prop.string(),
       sameDomain: true,
+    },
+    dynamicRequiredWrapper: {
+      schema: prop.string(),
+      required: dynamicRequired,
     },
     requiredOptionalSchema: {
       schema: prop.string().optional(),
@@ -151,6 +160,8 @@ void WrappedOptionalityComponent({
 if (WrappedOptionalityComponent.hostProps) {
   const optionalTransportValue: string | undefined =
     WrappedOptionalityComponent.hostProps.transportOnly;
+  const dynamicRequiredValue: string | undefined =
+    WrappedOptionalityComponent.hostProps.dynamicRequiredWrapper;
   const requiredOptionalSchemaValue: string =
     WrappedOptionalityComponent.hostProps.requiredOptionalSchema;
   const defaultedWrapperValue: string =
@@ -158,6 +169,7 @@ if (WrappedOptionalityComponent.hostProps) {
   const computedWrapperValue: string =
     WrappedOptionalityComponent.hostProps.computedWrapper;
   void optionalTransportValue;
+  void dynamicRequiredValue;
   void requiredOptionalSchemaValue;
   void defaultedWrapperValue;
   void computedWrapperValue;
