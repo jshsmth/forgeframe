@@ -268,6 +268,22 @@ interface ConsumerNormalizationOptions {
   decorateKeys?: ReadonlySet<string>;
   fallbackKeys?: ReadonlySet<string>;
   deferCustomNormalization?: boolean;
+  onUserCallbackError?: (error: unknown) => never;
+}
+
+/** Invokes user normalization code while preserving its original thrown value. @internal */
+function invokeUserNormalizationCallback<T>(
+  callback: () => T,
+  onError: ConsumerNormalizationOptions['onUserCallbackError']
+): T {
+  try {
+    return callback();
+  } catch (error) {
+    if (onError) {
+      return onError(error);
+    }
+    throw error;
+  }
 }
 
 /** Normalizes props while tracking consumer-side schema state. @internal */
@@ -323,16 +339,25 @@ function normalizePropsInternal<
     ) {
       if (definition.value) {
         usedExplicitFallback = true;
-        value = definition.value({ ...context, props: callbackProps });
+        const computeValue = definition.value;
+        value = invokeUserNormalizationCallback(
+          () => computeValue({ ...context, props: callbackProps }),
+          options.onUserCallbackError
+        );
       } else if (definition.default !== undefined) {
         usedExplicitFallback = true;
+        const defaultValue = definition.default;
         value =
-          typeof definition.default === 'function'
-            ? (definition.default as (ctx: PropContext<P>) => unknown)({
-                ...context,
-                props: callbackProps,
-              })
-            : definition.default;
+          typeof defaultValue === 'function'
+            ? invokeUserNormalizationCallback(
+                () =>
+                  (defaultValue as (ctx: PropContext<P>) => unknown)({
+                    ...context,
+                    props: callbackProps,
+                  }),
+                options.onUserCallbackError
+              )
+            : defaultValue;
       } else if (definition.schema && isStandardSchema(definition.schema)) {
         // Check if schema provides a default by validating undefined.
         // Record successful validation so callers do not feed the output back
@@ -370,7 +395,11 @@ function normalizePropsInternal<
         options.schemaValidatedKeys.has(key) ||
         !definition.schema)
     ) {
-      value = definition.decorate({ value, props: callbackProps });
+      const decorate = definition.decorate;
+      value = invokeUserNormalizationCallback(
+        () => decorate({ value, props: callbackProps }),
+        options.onUserCallbackError
+      );
     }
 
     if (
@@ -390,10 +419,7 @@ function normalizePropsInternal<
         normalizedValueCanBeSchemaValidated = true;
       } else {
         const revalidationResult = definition.schema['~standard'].validate(value);
-        if (
-          (revalidationResult instanceof Promise || revalidationResult.issues) &&
-          definition.sendToHost !== false
-        ) {
+        if (revalidationResult instanceof Promise || revalidationResult.issues) {
           validateWithSchema(definition.schema, value, key);
         } else if (
           !(revalidationResult instanceof Promise) &&
@@ -405,10 +431,7 @@ function normalizePropsInternal<
           );
         }
 
-        if (
-          !normalizedValueCanBeSchemaValidated &&
-          definition.sendToHost !== false
-        ) {
+        if (!normalizedValueCanBeSchemaValidated) {
           throw new Error(
             `Prop "${key}" requires outputSchema because its schema cannot validate the normalized value unchanged`
           );

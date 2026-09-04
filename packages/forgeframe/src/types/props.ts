@@ -142,7 +142,7 @@ interface PropDefinitionOptions<
 type NormalizedOutputSchemaRequirement<Input, Output> = [Output] extends [Input]
   ? {
       /**
-       * Validation-only schema for normalized values sent to the host.
+       * Validation-only schema for normalized values used after input parsing.
        *
        * @remarks
        * ForgeFrame requires this schema when the input schema's output cannot
@@ -153,18 +153,14 @@ type NormalizedOutputSchemaRequirement<Input, Output> = [Output] extends [Input]
     }
   : {
       /**
-       * Validation-only schema for normalized values sent to the host.
+       * Validation-only schema for normalized values used after input parsing.
        *
        * @remarks
-       * This is required when the input schema changes the value's type. It
-       * must validate without changing the normalized value.
+       * This is required when the input schema changes the value's type,
+       * including for consumer-only props. It must validate without changing
+       * the normalized value.
        */
       outputSchema: StandardSchemaV1<Output, Output>;
-      sendToHost?: true;
-    } | {
-      /** Consumer-only transforms do not cross the host trust boundary. */
-      outputSchema?: StandardSchemaV1<Output, Output>;
-      sendToHost: false;
     };
 
 /**

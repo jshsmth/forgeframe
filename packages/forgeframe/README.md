@@ -486,10 +486,10 @@ can observe the normalized output. A default configured directly on the schema
 remains a schema-owned output.
 
 When an input schema changes the value's type, wrap it and provide an
-`outputSchema`. The input schema parses consumer values and fallbacks; the
-output schema independently checks the normalized value before it crosses the
-host boundary. Output schemas are validation-only and must not transform their
-input.
+`outputSchema`, including when `sendToHost` is `false`. The input schema parses
+consumer values and fallbacks; the output schema independently checks the
+normalized value before consumer routing callbacks or host trust boundaries
+use it. Output schemas are validation-only and must not transform their input.
 
 ```typescript
 import { z } from 'zod';

@@ -6,6 +6,11 @@ import {
 import type { PropContext } from '../../types/props';
 import type { NormalizedOptions } from './types';
 
+/** Marks a user callback failure so construction does not defer it as schema validation. */
+class UserNormalizationCallbackFailure {
+  constructor(public readonly thrownValue: unknown) {}
+}
+
 /** Internal marker used by framework drivers to restore an omitted prop. @internal */
 export const PROP_RESET = Symbol('forgeframe.prop-reset');
 
@@ -89,6 +94,7 @@ export interface ConsumerPropsPipelineSnapshot<P extends Record<string, unknown>
   props: P;
   inputProps: Record<string, unknown>;
   normalizationPending: boolean;
+  pendingNormalizationError: unknown;
   schemaValidated: boolean;
   schemaValidatedKeys: ReadonlySet<string>;
   revalidationSchemaKeys: ReadonlySet<string>;
@@ -124,6 +130,9 @@ export class ConsumerPropsPipeline<
   /** Whether custom normalization is waiting for valid schema outputs. */
   private normalizationPending = false;
 
+  /** Original schema failure retained until an explicit prop update succeeds. */
+  private pendingNormalizationError: unknown = undefined;
+
   /** Active in-flight update chain when host synchronization is occurring. */
   public pendingPropsUpdate: Promise<void> | null = null;
 
@@ -137,6 +146,7 @@ export class ConsumerPropsPipeline<
       this.inputProps = { ...snapshot.inputProps };
       this.props = { ...snapshot.props };
       this.normalizationPending = snapshot.normalizationPending;
+      this.pendingNormalizationError = snapshot.pendingNormalizationError;
       this.schemaValidated = snapshot.schemaValidated;
       this.schemaValidatedKeys = new Set(snapshot.schemaValidatedKeys);
       this.revalidationSchemaKeys = new Set(snapshot.revalidationSchemaKeys);
@@ -149,13 +159,23 @@ export class ConsumerPropsPipeline<
       this.options.props
     ) as Record<string, unknown>;
     try {
-      const normalizedState = this.normalizeInputSnapshot(this.inputProps);
+      const normalizedState = this.normalizeInputSnapshot(
+        this.inputProps,
+        (error) => {
+          throw new UserNormalizationCallbackFailure(error);
+        }
+      );
       this.props = normalizedState.props;
       this.schemaValidatedKeys = normalizedState.schemaValidatedKeys;
       this.revalidationSchemaKeys = normalizedState.revalidationSchemaKeys;
       this.outputValidationKeys = normalizedState.outputValidationKeys;
-    } catch {
+    } catch (error) {
+      if (error instanceof UserNormalizationCallbackFailure) {
+        throw error.thrownValue;
+      }
+
       this.normalizationPending = true;
+      this.pendingNormalizationError = error;
       this.schemaValidatedKeys = new Set<string>();
       this.revalidationSchemaKeys = new Set<string>();
       this.outputValidationKeys = new Set<string>();
@@ -180,6 +200,7 @@ export class ConsumerPropsPipeline<
       props: { ...this.props },
       inputProps: { ...this.inputProps },
       normalizationPending: this.normalizationPending,
+      pendingNormalizationError: this.pendingNormalizationError,
       schemaValidated: this.schemaValidated,
       schemaValidatedKeys: new Set(this.schemaValidatedKeys),
       revalidationSchemaKeys: new Set(this.revalidationSchemaKeys),
@@ -190,12 +211,7 @@ export class ConsumerPropsPipeline<
   /** Converts every current schema input to its normalized output exactly once. */
   ensureSchemaValidated(): void {
     if (this.normalizationPending) {
-      const normalizedState = this.normalizeInputSnapshot(this.inputProps);
-      this.props = normalizedState.props;
-      this.schemaValidatedKeys = normalizedState.schemaValidatedKeys;
-      this.revalidationSchemaKeys = normalizedState.revalidationSchemaKeys;
-      this.outputValidationKeys = normalizedState.outputValidationKeys;
-      this.normalizationPending = false;
+      throw this.pendingNormalizationError;
     }
 
     if (this.schemaValidated) {
@@ -355,7 +371,10 @@ export class ConsumerPropsPipeline<
     };
   }
 
-  private normalizeInputSnapshot(inputProps: Record<string, unknown>): {
+  private normalizeInputSnapshot(
+    inputProps: Record<string, unknown>,
+    onUserCallbackError?: (error: unknown) => never
+  ): {
     props: P;
     schemaValidatedKeys: Set<string>;
     revalidationSchemaKeys: Set<string>;
@@ -376,6 +395,7 @@ export class ConsumerPropsPipeline<
       {
         schemaValidatedKeys,
         outputValidationKeys,
+        onUserCallbackError,
       }
     );
 
@@ -431,6 +451,7 @@ export class ConsumerPropsPipeline<
       this.revalidationSchemaKeys = revalidationSchemaKeys;
       this.outputValidationKeys = outputValidationKeys;
       this.normalizationPending = false;
+      this.pendingNormalizationError = undefined;
 
       if (!hooks.isRendered()) {
         hooks.syncTrustedDomainForUrl(resolvedUrl);

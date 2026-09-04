@@ -642,6 +642,98 @@ describe('Component Instance', () => {
     expect(decorateAmount).not.toHaveBeenCalled();
   });
 
+  it('should propagate user normalization callback errors during construction', () => {
+    const captureThrownValue = (callback: () => void): unknown => {
+      try {
+        callback();
+      } catch (error) {
+        return error;
+      }
+      return undefined;
+    };
+
+    const valueError = new Error('value callback failed');
+    const computeValue = vi.fn(() => {
+      throw valueError;
+    });
+    const ValueFailureComponent = create({
+      tag: 'throwing-value-callback-component',
+      url: 'https://example.com/throwing-value',
+      props: {
+        label: { schema: z.string(), value: computeValue },
+      },
+    });
+
+    expect(captureThrownValue(() => ValueFailureComponent({}))).toBe(valueError);
+    expect(computeValue).toHaveBeenCalledTimes(1);
+    expect(ValueFailureComponent.instances).toHaveLength(0);
+
+    const defaultError = new Error('default callback failed');
+    const computeDefault = vi.fn(() => {
+      throw defaultError;
+    });
+    const DefaultFailureComponent = create({
+      tag: 'throwing-default-callback-component',
+      url: 'https://example.com/throwing-default',
+      props: {
+        label: { schema: z.string(), default: computeDefault },
+      },
+    });
+
+    expect(captureThrownValue(() => DefaultFailureComponent({}))).toBe(
+      defaultError
+    );
+    expect(computeDefault).toHaveBeenCalledTimes(1);
+    expect(DefaultFailureComponent.instances).toHaveLength(0);
+
+    const decorateError = new Error('decorate callback failed');
+    const decorate = vi.fn(() => {
+      throw decorateError;
+    });
+    const DecorateFailureComponent = create({
+      tag: 'throwing-decorate-callback-component',
+      url: 'https://example.com/throwing-decorate',
+      props: {
+        label: { schema: z.string(), required: true, decorate },
+      },
+    });
+
+    expect(
+      captureThrownValue(() => DecorateFailureComponent({ label: 'ready' }))
+    ).toBe(decorateError);
+    expect(decorate).toHaveBeenCalledTimes(1);
+    expect(DecorateFailureComponent.instances).toHaveLength(0);
+  });
+
+  it('should retain deferred schema errors without replaying callbacks', async () => {
+    const computeTargetUrl = vi
+      .fn<() => string>()
+      .mockReturnValueOnce('not-a-url')
+      .mockReturnValue('https://safe.example.com/widget');
+    const DeferredFailureComponent = create({
+      tag: 'stable-deferred-normalization-error-component',
+      url: 'https://example.com/deferred-normalization-error',
+      props: {
+        targetUrl: {
+          schema: z.string().url(),
+          value: computeTargetUrl,
+        },
+      },
+      eligible: () => ({ eligible: true }),
+    });
+    const instance = DeferredFailureComponent({});
+
+    expect(computeTargetUrl).toHaveBeenCalledTimes(1);
+    expect(() => instance.isEligible()).toThrow('Invalid URL');
+    expect(computeTargetUrl).toHaveBeenCalledTimes(1);
+
+    await expect(
+      instance.updateProps({ targetUrl: 'https://safe.example.com/widget' })
+    ).resolves.toBeUndefined();
+    expect(instance.isEligible()).toBe(true);
+    expect(computeTargetUrl).toHaveBeenCalledTimes(1);
+  });
+
   it('should recover deferred normalization after a valid prop update', async () => {
     const deriveLabel = vi.fn(
       ({ props }: { props: { amount?: number } }) =>
@@ -814,10 +906,7 @@ describe('Component Instance', () => {
     expect(decorate).toHaveBeenCalledTimes(1);
   });
 
-  it('should allow consumer-only transformed props without an output schema', () => {
-    const eligible = vi.fn(({ props }: { props: { amount: number } }) => ({
-      eligible: props.amount === 42,
-    }));
+  it('should require output validation for consumer-only transformed props', () => {
     const ConsumerOnlyTransformComponent = create({
       tag: 'consumer-only-transform-component',
       url: 'https://example.com/consumer-only-transform',
@@ -826,17 +915,60 @@ describe('Component Instance', () => {
           schema: z.string().transform(Number),
           required: true,
           sendToHost: false,
-        },
+        } as never,
       },
-      eligible,
+      eligible: () => ({ eligible: true }),
     });
 
     const instance = ConsumerOnlyTransformComponent({ amount: '42' });
 
-    expect(instance.isEligible()).toBe(true);
-    expect(eligible).toHaveBeenCalledWith({
-      props: expect.objectContaining({ amount: 42 }),
+    expect(() => instance.isEligible()).toThrow();
+  });
+
+  it('should revalidate mutable consumer-only transform outputs before URL use', async () => {
+    const safeOrigin = 'https://safe.example.com';
+    let decoratedTarget: { href: string } | undefined;
+    const resolveUrl = vi.fn(
+      (props: { target: { href: string }; label?: string }) => props.target.href
+    );
+    const ConsumerOnlyTargetComponent = create({
+      tag: 'consumer-only-mutable-transform-component',
+      url: resolveUrl,
+      props: {
+        target: {
+          schema: z.string().transform((href) => ({ href })),
+          outputSchema: z.object({
+            href: z.string().refine(
+              (href) => new URL(href).origin === safeOrigin,
+              'Unsafe consumer-only target'
+            ),
+          }),
+          required: true,
+          sendToHost: false,
+          decorate: ({ value }) => {
+            decoratedTarget = value;
+            return value;
+          },
+        },
+        label: z.string().optional(),
+      },
+      eligible: () => ({ eligible: true }),
     });
+    const instance = ConsumerOnlyTargetComponent({
+      target: `${safeOrigin}/widget`,
+    });
+
+    expect(instance.isEligible()).toBe(true);
+    resolveUrl.mockClear();
+    if (!decoratedTarget) {
+      throw new Error('Expected the target schema to produce an output');
+    }
+    decoratedTarget.href = 'https://attacker.example.com/widget';
+
+    await expect(instance.updateProps({ label: 'updated' })).rejects.toThrow(
+      'Unsafe consumer-only target'
+    );
+    expect(resolveUrl).not.toHaveBeenCalled();
   });
 
   it('should reject decorated values that violate the normalized output schema', () => {

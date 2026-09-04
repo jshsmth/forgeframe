@@ -94,7 +94,7 @@ describe('Component clone', () => {
     expect(cloned.isEligible()).toBe(true);
   });
 
-  it('should let pending clones retry corrected mutable inputs', () => {
+  it('should retain pending clone errors until an explicit correction', async () => {
     const target: { value: string | number } = { value: 'invalid' };
     const Component = create({
       tag: 'clone-pending-input',
@@ -115,7 +115,13 @@ describe('Component clone', () => {
     });
     const cloned = original.clone();
 
+    expect(() => original.isEligible()).toThrow();
+    expect(() => cloned.isEligible()).toThrow();
+
     target.value = 42;
+
+    await original.updateProps({ target: target as { value: number } });
+    await cloned.updateProps({ target: target as { value: number } });
 
     expect(original.isEligible()).toBe(true);
     expect(cloned.isEligible()).toBe(true);

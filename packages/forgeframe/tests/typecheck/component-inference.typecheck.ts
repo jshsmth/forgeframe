@@ -311,6 +311,15 @@ const missingOutputSchemaDefinition: SchemaPropDefinition<
 };
 void missingOutputSchemaDefinition;
 
+// @ts-expect-error consumer-only transforms still require output validation
+const missingConsumerOnlyOutputSchemaDefinition: SchemaPropDefinition<
+  typeof transformedFallbackSchema
+> = {
+  schema: transformedFallbackSchema,
+  sendToHost: false,
+};
+void missingConsumerOnlyOutputSchemaDefinition;
+
 const transformedFallbackDefinition = {
   schema: transformedFallbackSchema,
   outputSchema: z.number(),
