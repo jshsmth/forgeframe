@@ -58,6 +58,25 @@ function prevalidateProvidedSchemaInputs<P extends Record<string, unknown>>(
   return candidateKeys;
 }
 
+function validateNormalizedSchemaValues<P extends Record<string, unknown>>(
+  props: P,
+  definitions: NormalizedOptions<P>['props'],
+  schemaKeys: ReadonlySet<string>
+): void {
+  if (schemaKeys.size === 0) {
+    return;
+  }
+
+  validateConsumerProps(props, definitions, {
+    schemaKeys,
+    schemaInputProps: props,
+    validationKeys: schemaKeys,
+    preserveValidatedValues: true,
+    requireUnchangedSchemaOutput: true,
+    skipCustomValidation: true,
+  });
+}
+
 /** Cloneable consumer-props pipeline state. @internal */
 export interface ConsumerPropsPipelineSnapshot<P extends Record<string, unknown>> {
   props: P;
@@ -89,7 +108,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
   /** Defined raw schema inputs to recheck at each trust boundary. */
   private revalidationSchemaKeys: Set<string>;
 
-  /** Output-compatible fallback values that can be safely rechecked. */
+  /** Output-compatible normalized values that can be safely rechecked. */
   private fallbackSchemaKeys: Set<string>;
 
   /** Whether custom normalization is waiting for valid schema outputs. */
@@ -187,6 +206,16 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
     this.schemaValidatedKeys.clear();
   }
 
+  /** Rechecks current schema values without rerunning user validators. @internal */
+  revalidateSchemaValues(): void {
+    if (this.normalizationPending || !this.schemaValidated) {
+      this.ensureSchemaValidated();
+      return;
+    }
+
+    this.revalidateSchemaInputs();
+  }
+
   /**
    * Builds and validates the next props snapshot.
    */
@@ -215,15 +244,11 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
 
     if (this.normalizationPending) {
       const normalizedState = this.normalizeInputSnapshot(nextInputProps);
-      if (normalizedState.fallbackSchemaKeys.size > 0) {
-        validateConsumerProps(normalizedState.props, this.options.props, {
-          schemaKeys: normalizedState.fallbackSchemaKeys,
-          schemaInputProps: normalizedState.props,
-          validationKeys: normalizedState.fallbackSchemaKeys,
-          preserveValidatedValues: true,
-          skipCustomValidation: true,
-        });
-      }
+      validateNormalizedSchemaValues(
+        normalizedState.props,
+        this.options.props,
+        normalizedState.fallbackSchemaKeys
+      );
       validateConsumerProps(normalizedState.props, this.options.props, {
         schemaValidatedKeys: normalizedState.schemaValidatedKeys,
       });
@@ -297,6 +322,12 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
       skipCustomValidation: true,
     });
 
+    validateNormalizedSchemaValues(
+      nextProps,
+      this.options.props,
+      fallbackSchemaKeys
+    );
+
     validateConsumerProps(nextProps, this.options.props, {
       schemaKeys: this.schemaValidated ? changedSchemaKeys : undefined,
       schemaValidatedKeys,
@@ -353,15 +384,11 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
       });
     }
 
-    if (this.fallbackSchemaKeys.size > 0) {
-      validateConsumerProps(this.props, this.options.props, {
-        schemaKeys: this.fallbackSchemaKeys,
-        schemaInputProps: this.props,
-        validationKeys: this.fallbackSchemaKeys,
-        preserveValidatedValues: true,
-        skipCustomValidation: true,
-      });
-    }
+    validateNormalizedSchemaValues(
+      this.props,
+      this.options.props,
+      this.fallbackSchemaKeys
+    );
   }
 
   /**
@@ -411,6 +438,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
    */
   syncCurrentPropsToHost(hooks: ConsumerPropsSyncHooks<P>): Promise<void> {
     return this.queuePropsUpdate(async () => {
+      this.revalidateSchemaValues();
       if (hooks.shouldSendPropsToHost()) {
         await hooks.sendPropsUpdateToHost(this.props);
       }

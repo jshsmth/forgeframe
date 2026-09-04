@@ -125,9 +125,13 @@ type ContextualWrappedPropDefinition<
   S extends ContextualSchemaMap,
 > = Omit<
   PropDefinition<InferOutput<Schema>, ContextualOutputProps<S>>,
-  'schema'
+  'schema' | 'validate'
 > & {
   schema: Schema;
+  validate?: (opts: {
+    value: InferOutput<Schema> | undefined;
+    props: ContextualOutputProps<S>;
+  }) => void;
 };
 
 /** Contextual callback types inferred from each entry's schema. @internal */

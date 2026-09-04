@@ -255,7 +255,7 @@ const ContextualCallbacksComponent = create({
         return 1;
       },
       validate: ({ value, props }) => {
-        const amount: number = value;
+        const amount: number | undefined = value;
         const propAmount: number | undefined = props.amount;
         void amount;
         void propAmount;
@@ -269,6 +269,24 @@ const ContextualCallbacksComponent = create({
 });
 
 void ContextualCallbacksComponent({ amount: '1' });
+
+const OptionalWrappedValidatorComponent = create({
+  tag: 'optional-wrapped-validator-component',
+  url: 'https://example.com/optional-wrapped-validator',
+  props: {
+    label: {
+      schema: z.string(),
+      validate: ({ value }) => {
+        const optionalValue: string | undefined = value;
+        void optionalValue;
+        // @ts-expect-error omitted wrappers are validated with undefined
+        value.trim();
+      },
+    },
+  },
+});
+
+void OptionalWrappedValidatorComponent({});
 
 const RequiredTransformComponent = create({
   tag: 'required-transform-component',

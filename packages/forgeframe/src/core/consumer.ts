@@ -567,9 +567,13 @@ export class ConsumerComponent<
    * Resolves the host URL from static or function options.
    * @internal
    */
-  private resolveUrl(props: P = this.propsPipeline.props): string {
+  private resolveUrl(props?: P): string {
+    if (props === undefined) {
+      this.propsPipeline.revalidateSchemaValues();
+    }
+    const resolvedProps = props ?? this.propsPipeline.props;
     return typeof this.options.url === 'function'
-      ? this.options.url(props)
+      ? this.options.url(resolvedProps)
       : this.options.url;
   }
 
@@ -578,6 +582,7 @@ export class ConsumerComponent<
    * @internal
    */
   private resolveDimensions(): Dimensions {
+    this.propsPipeline.revalidateSchemaValues();
     return typeof this.options.dimensions === 'function'
       ? this.options.dimensions(this.propsPipeline.props)
       : this.options.dimensions;
@@ -721,6 +726,7 @@ export class ConsumerComponent<
    * @internal
    */
   private buildUrl(baseUrl: string = this.resolveUrl()): string {
+    this.propsPipeline.revalidateSchemaValues();
     const hostDomain = this.resolveUrlOrigin(baseUrl);
     const queryParams = propsToQueryParams(
       this.propsPipeline.props,
@@ -740,6 +746,7 @@ export class ConsumerComponent<
    * @internal
    */
   private buildBodyParams(baseUrl: string = this.resolveUrl()): URLSearchParams {
+    this.propsPipeline.revalidateSchemaValues();
     const hostDomain = this.resolveUrlOrigin(baseUrl);
     return propsToBodyParams(
       this.propsPipeline.props,
@@ -765,6 +772,7 @@ export class ConsumerComponent<
    * @internal
    */
   private buildWindowName(baseUrl: string = this.resolveUrl()): string {
+    this.propsPipeline.revalidateSchemaValues();
     return this.transport.buildWindowName({
       tag: this.options.tag,
       context: this.renderer.context,

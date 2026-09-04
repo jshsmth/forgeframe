@@ -24,7 +24,7 @@ import {
   isHost,
 } from '@/core/host';
 import * as hostSecurity from '@/core/host/security';
-import { CONTEXT, MESSAGE_NAME, VERSION } from '@/constants';
+import { CONTEXT, EVENT, MESSAGE_NAME, VERSION } from '@/constants';
 import { prop } from '@/props/prop';
 import type { ConsumerExports } from '@/communication/types';
 import { buildWindowName } from '@/window/name-payload';
@@ -973,6 +973,106 @@ describe('Component Instance', () => {
     sharedDefault.href = 'https://attacker.example.com/component';
 
     expect(() => instance.isEligible()).toThrow('Unsafe default target');
+  });
+
+  it('should recheck mutable output-compatible decorated values', async () => {
+    const safeOrigin = 'https://safe.example.com';
+    const decoratedTargets: Array<{ href: string }> = [];
+    const DecoratedPolicyComponent = create({
+      tag: 'mutable-decorated-policy-component',
+      url: (props) => props.target.href,
+      props: {
+        target: {
+          schema: z.object({
+            href: z.string().refine(
+              (value) => new URL(value).origin === safeOrigin,
+              'Unsafe decorated target'
+            ),
+          }),
+          required: true,
+          decorate: ({ value }) => {
+            const decoratedTarget = { ...value };
+            decoratedTargets.push(decoratedTarget);
+            return decoratedTarget;
+          },
+        },
+        label: z.string().optional(),
+      },
+      eligible: () => ({ eligible: true }),
+    });
+    const eligibilityInstance = DecoratedPolicyComponent({
+      target: { href: `${safeOrigin}/eligible` },
+    });
+
+    expect(eligibilityInstance.isEligible()).toBe(true);
+    decoratedTargets[0].href = 'https://attacker.example.com/eligible';
+    expect(() => eligibilityInstance.isEligible()).toThrow(
+      'Unsafe decorated target'
+    );
+
+    const updateInstance = DecoratedPolicyComponent({
+      target: { href: `${safeOrigin}/update` },
+    });
+    expect(updateInstance.isEligible()).toBe(true);
+    decoratedTargets[1].href = 'https://attacker.example.com/update';
+
+    await expect(
+      updateInstance.updateProps({ label: 'updated' })
+    ).rejects.toThrow('Unsafe decorated target');
+
+    const strippedFieldInstance = DecoratedPolicyComponent({
+      target: { href: `${safeOrigin}/stripped-field` },
+    });
+    expect(strippedFieldInstance.isEligible()).toBe(true);
+    (
+      decoratedTargets[2] as { href: string; elevated?: boolean }
+    ).elevated = true;
+
+    expect(() => strippedFieldInstance.isEligible()).toThrow(
+      'value no longer matches its normalized schema output'
+    );
+  });
+
+  it('should recheck decorated values mutated during render callbacks', async () => {
+    const safeOrigin = 'https://safe.example.com';
+    let decoratedTarget: { href: string } | undefined;
+    const DecoratedRenderComponent = create({
+      tag: 'render-mutated-decorated-policy-component',
+      url: (props) => props.target.href,
+      props: {
+        target: {
+          schema: z.object({
+            href: z.string().refine(
+              (value) => new URL(value).origin === safeOrigin,
+              'Unsafe decorated render target'
+            ),
+          }),
+          required: true,
+          decorate: ({ value }) => {
+            decoratedTarget = { ...value };
+            return decoratedTarget;
+          },
+        },
+      },
+      eligible: () => ({ eligible: true }),
+    });
+    const instance = DecoratedRenderComponent({
+      target: { href: `${safeOrigin}/render` },
+    });
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    instance.event.once(EVENT.PRERENDER, () => {
+      if (decoratedTarget) {
+        decoratedTarget.href = 'https://attacker.example.com/render';
+      }
+    });
+
+    await expect(instance.render(container)).rejects.toThrow(
+      'Unsafe decorated render target'
+    );
+    expect(container.querySelectorAll('iframe')).toHaveLength(0);
+    container.remove();
   });
 
   it('should call component validate on render and updateProps', async () => {

@@ -47,6 +47,83 @@ const compiledPropDefinitionsCache = new WeakMap<
 const hasOwn = (value: object, key: PropertyKey): boolean =>
   Object.prototype.hasOwnProperty.call(value, key);
 
+function schemaOutputMatchesInput(
+  input: unknown,
+  output: unknown,
+  seen = new WeakMap<object, object>()
+): boolean {
+  if (Object.is(input, output)) {
+    return true;
+  }
+
+  if (
+    typeof input !== 'object' ||
+    input === null ||
+    typeof output !== 'object' ||
+    output === null
+  ) {
+    return false;
+  }
+
+  if (input instanceof Date || output instanceof Date) {
+    return (
+      input instanceof Date &&
+      output instanceof Date &&
+      Object.is(input.getTime(), output.getTime())
+    );
+  }
+
+  if (input instanceof URL || output instanceof URL) {
+    return input instanceof URL && output instanceof URL && input.href === output.href;
+  }
+
+  const inputIsArray = Array.isArray(input);
+  if (inputIsArray !== Array.isArray(output)) {
+    return false;
+  }
+
+  const inputPrototype = Object.getPrototypeOf(input) as object | null;
+  if (inputPrototype !== Object.getPrototypeOf(output)) {
+    return false;
+  }
+
+  if (!inputIsArray && inputPrototype !== Object.prototype && inputPrototype !== null) {
+    return false;
+  }
+
+  const seenOutput = seen.get(input);
+  if (seenOutput) {
+    return seenOutput === output;
+  }
+  seen.set(input, output);
+
+  const inputKeys = Reflect.ownKeys(input);
+  const outputKeys = Reflect.ownKeys(output);
+  if (inputKeys.length !== outputKeys.length) {
+    return false;
+  }
+
+  for (const key of inputKeys) {
+    const inputDescriptor = Object.getOwnPropertyDescriptor(input, key);
+    const outputDescriptor = Object.getOwnPropertyDescriptor(output, key);
+    if (
+      !inputDescriptor ||
+      !outputDescriptor ||
+      !('value' in inputDescriptor) ||
+      !('value' in outputDescriptor) ||
+      !schemaOutputMatchesInput(
+        inputDescriptor.value,
+        outputDescriptor.value,
+        seen
+      )
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function getCompiledPropDefinitions<P extends Record<string, unknown>>(
   definitions: PropsDefinition<P>
 ): readonly CompiledPropDefinition<P>[] {
@@ -211,7 +288,7 @@ function normalizePropsInternal<P extends Record<string, unknown>>(
       options.deferCustomNormalization === true && hasOwn(definitions, key);
     let value: unknown;
     let usedFallback = false;
-    let fallbackCanBeSchemaValidated = false;
+    let normalizedValueCanBeSchemaValidated = false;
 
     const aliasKey = definition.alias;
     const hasValue = key in userProps;
@@ -268,11 +345,13 @@ function normalizePropsInternal<P extends Record<string, unknown>>(
       isStandardSchema(definition.schema)
     ) {
       const revalidationResult = definition.schema['~standard'].validate(value);
-      fallbackCanBeSchemaValidated =
+      normalizedValueCanBeSchemaValidated =
         !(revalidationResult instanceof Promise) &&
-        !revalidationResult.issues;
+        !revalidationResult.issues &&
+        schemaOutputMatchesInput(value, revalidationResult.value);
     }
 
+    let decorated = false;
     if (
       value !== undefined &&
       !shouldDeferCustomNormalization &&
@@ -285,12 +364,30 @@ function normalizePropsInternal<P extends Record<string, unknown>>(
         !definition.schema)
     ) {
       value = definition.decorate({ value, props: callbackProps });
+      decorated = true;
+    }
+
+    if (
+      decorated &&
+      !usedFallback &&
+      options.fallbackSchemaKeys &&
+      definition.schema &&
+      isStandardSchema(definition.schema)
+    ) {
+      // Decorated outputs are safe to recheck only when the schema accepts
+      // the decorated representation as an input. Preserve transform outputs
+      // that intentionally differ from their schema's accepted input type.
+      const revalidationResult = definition.schema['~standard'].validate(value);
+      normalizedValueCanBeSchemaValidated =
+        !(revalidationResult instanceof Promise) &&
+        !revalidationResult.issues &&
+        schemaOutputMatchesInput(value, revalidationResult.value);
     }
 
     (result as Record<string, unknown>)[key] = value;
     (callbackProps as Record<string, unknown>)[key] = value;
 
-    if (fallbackCanBeSchemaValidated) {
+    if (normalizedValueCanBeSchemaValidated) {
       options.fallbackSchemaKeys?.add(key);
     }
   }
@@ -321,6 +418,7 @@ interface ConsumerValidationOptions {
   schemaInputProps?: Readonly<Record<string, unknown>>;
   validationKeys?: ReadonlySet<string>;
   preserveValidatedValues?: boolean;
+  requireUnchangedSchemaOutput?: boolean;
   skipCustomValidation?: boolean;
 }
 
@@ -373,7 +471,16 @@ function validatePropsInternal<P extends Record<string, unknown>>(
         shouldValidateSchema &&
         (value !== undefined || isDirectSchema || hasSchemaInput)
       ) {
+        const schemaInput = value;
         value = validateWithSchema(definition.schema, value, key);
+        if (
+          options.requireUnchangedSchemaOutput &&
+          !schemaOutputMatchesInput(schemaInput, value)
+        ) {
+          throw new Error(
+            `Validation failed: ${key}: value no longer matches its normalized schema output`
+          );
+        }
         if (!options.preserveValidatedValues) {
           (props as Record<string, unknown>)[key] = value;
         }
