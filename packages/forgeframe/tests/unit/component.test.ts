@@ -1021,6 +1021,27 @@ describe('Component Instance', () => {
     );
   });
 
+  it('should reject undefined decorator results that violate the output schema', () => {
+    const OutputValidatedComponent = create({
+      tag: 'undefined-output-validated-decoration-component',
+      url: 'https://example.com/undefined-output-validated-decoration',
+      props: {
+        label: {
+          schema: z.string(),
+          outputSchema: z.string(),
+          required: true,
+          decorate: () => undefined as never,
+        },
+      },
+      eligible: () => ({ eligible: true }),
+    });
+    const instance = OutputValidatedComponent({ label: 'valid' });
+
+    expect(() => instance.isEligible()).toThrow(
+      'Invalid input: expected string, received undefined'
+    );
+  });
+
   it('should reject omitted required wrappers whose schema yields undefined', () => {
     const RequiredOptionalComponent = create({
       tag: 'required-optional-wrapper-component',

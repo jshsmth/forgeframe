@@ -547,7 +547,7 @@ describe('prop.object()', () => {
       nickname: prop.string().optional(),
     });
     expect(schema['~standard'].validate({ name: 'John' })).toEqual({
-      value: { name: 'John', nickname: undefined },
+      value: { name: 'John' },
     });
   });
 

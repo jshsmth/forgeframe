@@ -276,7 +276,12 @@ export class ObjectSchema<
       if (fieldResult.issues) {
         return { issues: prependIssuePath(fieldResult.issues, key) };
       }
-      result[key] = fieldResult.value;
+      if (
+        fieldResult.value !== undefined ||
+        Object.prototype.hasOwnProperty.call(obj, key)
+      ) {
+        defineDataProperty(result, key, fieldResult.value);
+      }
     }
 
     if (!this._strict) {

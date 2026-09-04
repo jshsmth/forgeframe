@@ -403,7 +403,6 @@ function normalizePropsInternal<
     }
 
     if (
-      value !== undefined &&
       definition.schema &&
       isStandardSchema(definition.schema) &&
       options.schemaValidatedKeys?.has(key)

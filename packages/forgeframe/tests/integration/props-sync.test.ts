@@ -118,6 +118,34 @@ describe('Props sync integration', () => {
     expect(onProps).toHaveBeenCalledWith({ title: 'Updated title' });
   });
 
+  it('should preserve omitted nested optional fields across bootstrap', async () => {
+    harness = createIframeIntegrationHarness();
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    const definitions = {
+      details: prop.object().shape({
+        note: prop.string().optional(),
+      }),
+    };
+    const NestedOptionalComponent = create({
+      tag: 'integration-nested-optional-props-component',
+      url: 'https://host.example.com/widget',
+      props: definitions,
+    });
+    const instance = NestedOptionalComponent({ details: {} });
+
+    const renderPromise = instance.render(container);
+    const { hostProps } = await harness.bootstrapIframeHost(
+      container,
+      definitions
+    );
+
+    await expect(renderPromise).resolves.toBeUndefined();
+    expect(hostProps.details).toEqual({});
+  });
+
   it('should preserve Date props through bootstrap and prop sync', async () => {
     harness = createIframeIntegrationHarness();
 
