@@ -97,6 +97,7 @@ export type {
   PropDefinition,
   PropDefinitionEntry,
   PropsDefinition,
+  HostPropsDefinition,
   InferPropsDefinition,
   InferPropsDefinitionInput,
   PropContext,

@@ -8,7 +8,7 @@
  */
 
 import type { HostProps } from '../../types/runtime';
-import type { PropsDefinition } from '../../types/props';
+import type { HostPropsDefinition } from '../../types/props';
 import type { DomainMatcher } from '../../types/utility';
 import type { WindowNamePayload } from '../../window/types';
 import {
@@ -37,14 +37,16 @@ function readInitialPayload<P>(): WindowNamePayload<P> | null {
 }
 
 export function initHost<P extends Record<string, unknown>>(
-  propDefinitions?: PropsDefinition<P>,
+  propDefinitions?: HostPropsDefinition<P>,
   allowedConsumerDomains?: DomainMatcher,
   options: { deferInit?: boolean } = {}
 ): HostComponent<P> | null {
   if (hostInstance) {
     try {
       hostInstance.applyHostConfiguration(
-        propDefinitions as PropsDefinition<Record<string, unknown>> | undefined,
+        propDefinitions as
+          | HostPropsDefinition<Record<string, unknown>>
+          | undefined,
         allowedConsumerDomains
       );
 

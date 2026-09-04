@@ -478,6 +478,42 @@ const SecureWidget = ForgeFrame.create({
 | `serialization` | Choose how object props are transferred: `JSON` (default), `BASE64`, or `DOTIFY` |
 | `queryParam` / `bodyParam` | Include the prop in the host page's initial HTTP request |
 | `alias` | Accept a backwards-compatible input name. Alias links through other defined props resolve transitively; an explicitly supplied canonical key wins at that level |
+| `outputSchema` | Validate the normalized value again at consumer and host trust boundaries without transforming it |
+
+Wrapped `default` and `value` fallbacks are schema inputs. ForgeFrame validates
+and transforms them before any decorator, validator, URL, or transport callback
+can observe the normalized output. A default configured directly on the schema
+remains a schema-owned output.
+
+When an input schema changes the value's type, wrap it and provide an
+`outputSchema`. The input schema parses consumer values and fallbacks; the
+output schema independently checks the normalized value before it crosses the
+host boundary. Output schemas are validation-only and must not transform their
+input.
+
+```typescript
+import { z } from 'zod';
+
+const AmountComponent = ForgeFrame.create({
+  tag: 'amount-component',
+  url: 'https://widgets.example.com/amount',
+  props: {
+    amount: {
+      schema: z.string().transform(Number),
+      outputSchema: z.number().finite(),
+      default: '1',
+    },
+  },
+});
+
+AmountComponent({ amount: '2' }); // Host receives the validated number 2
+```
+
+Direct schemas remain the concise form when the same schema can validate its
+normalized output unchanged. A type-changing transform must use the wrapped
+form above. A same-type but non-idempotent transform must also declare an
+`outputSchema`; otherwise the host rejects the changed value rather than
+silently trusting it.
 
 TypeScript consumers can model alias inputs separately from the canonical props received by the host:
 
@@ -490,7 +526,16 @@ type LegacyWidgetInput = {
   userEmail: string;
 };
 
-const Widget = ForgeFrame.create<WidgetProps, unknown, LegacyWidgetInput>({
+type WidgetSchemaInputs = {
+  email: string;
+};
+
+const Widget = ForgeFrame.create<
+  WidgetProps,
+  unknown,
+  LegacyWidgetInput,
+  WidgetSchemaInputs
+>({
   tag: 'legacy-widget',
   url: 'https://widgets.example.com/legacy',
   props: {
@@ -999,11 +1044,11 @@ ForgeFrame.VERSION                // Library version
 `PropDefinition` objects when transport, alias, and lifecycle options are needed.
 
 ```typescript
-interface ComponentOptions<P> {
+interface ComponentOptions<P, I = P, SchemaInputs = I> {
   tag: string;
   url: string | ((props: P) => string);
   dimensions?: { width?: number | string; height?: number | string } | ((props: P) => { width?: number | string; height?: number | string });
-  props?: PropsDefinition<P>;
+  props?: PropsDefinition<P, SchemaInputs>;
   defaultContext?: 'iframe' | 'popup';
   containerTemplate?: (ctx: TemplateContext<P>) => HTMLElement | null;
   prerenderTemplate?: (ctx: TemplateContext<P>) => HTMLElement | null;

@@ -371,6 +371,25 @@ describe('Props for Host', () => {
 
     expect(result.value).toBe('host:test');
   });
+
+  it('should validate host-decorated values against the output schema', () => {
+    const definitions: PropsDefinition<{ value: string }> = {
+      value: {
+        schema: prop.string(),
+        outputSchema: prop.string().url(),
+        hostDecorate: () => 'not-a-url',
+      },
+    };
+
+    expect(() =>
+      getPropsForHost(
+        { value: 'https://safe.example.com' },
+        definitions,
+        'https://host.com',
+        false
+      )
+    ).toThrow('Invalid URL');
+  });
 });
 
 describe('Props to Query Params', () => {

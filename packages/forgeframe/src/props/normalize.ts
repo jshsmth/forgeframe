@@ -124,8 +124,11 @@ function schemaOutputMatchesInput(
   return true;
 }
 
-function getCompiledPropDefinitions<P extends Record<string, unknown>>(
-  definitions: PropsDefinition<P>
+function getCompiledPropDefinitions<
+  P extends Record<string, unknown>,
+  I = P,
+>(
+  definitions: PropsDefinition<P, I>
 ): readonly CompiledPropDefinition<P>[] {
   const cacheKey = definitions as object;
   const cached = compiledPropDefinitionsCache.get(cacheKey) as
@@ -255,7 +258,7 @@ export function normalizeProps<P extends Record<string, unknown>>(
 
 interface ConsumerNormalizationOptions {
   schemaValidatedKeys: Set<string>;
-  fallbackSchemaKeys?: Set<string>;
+  outputValidationKeys?: Set<string>;
   decorateKeys?: ReadonlySet<string>;
   fallbackKeys?: ReadonlySet<string>;
   deferCustomNormalization?: boolean;
@@ -287,7 +290,7 @@ function normalizePropsInternal<P extends Record<string, unknown>>(
     const shouldDeferCustomNormalization =
       options.deferCustomNormalization === true && hasOwn(definitions, key);
     let value: unknown;
-    let usedFallback = false;
+    let usedExplicitFallback = false;
     let normalizedValueCanBeSchemaValidated = false;
 
     const aliasKey = definition.alias;
@@ -307,13 +310,10 @@ function normalizePropsInternal<P extends Record<string, unknown>>(
       (!options.fallbackKeys || options.fallbackKeys.has(key))
     ) {
       if (definition.value) {
-        usedFallback = true;
+        usedExplicitFallback = true;
         value = definition.value({ ...context, props: callbackProps });
-        if (value !== undefined && definition.schema) {
-          options.schemaValidatedKeys?.add(key);
-        }
       } else if (definition.default !== undefined) {
-        usedFallback = true;
+        usedExplicitFallback = true;
         value =
           typeof definition.default === 'function'
             ? (definition.default as (ctx: PropContext<P>) => unknown)({
@@ -321,11 +321,7 @@ function normalizePropsInternal<P extends Record<string, unknown>>(
                 props: callbackProps,
               })
             : definition.default;
-        if (value !== undefined && definition.schema) {
-          options.schemaValidatedKeys?.add(key);
-        }
       } else if (definition.schema && isStandardSchema(definition.schema)) {
-        usedFallback = true;
         // Check if schema provides a default by validating undefined.
         // Record successful validation so callers do not feed the output back
         // through a schema whose input and output types may differ.
@@ -340,18 +336,17 @@ function normalizePropsInternal<P extends Record<string, unknown>>(
     }
 
     if (
-      usedFallback &&
+      usedExplicitFallback &&
+      value !== undefined &&
       definition.schema &&
       isStandardSchema(definition.schema)
     ) {
-      const revalidationResult = definition.schema['~standard'].validate(value);
-      normalizedValueCanBeSchemaValidated =
-        !(revalidationResult instanceof Promise) &&
-        !revalidationResult.issues &&
-        schemaOutputMatchesInput(value, revalidationResult.value);
+      // Explicit defaults and computed values are schema inputs. Parse them
+      // before exposing the normalized output to decorators or callbacks.
+      value = validateWithSchema(definition.schema, value, key);
+      options.schemaValidatedKeys?.add(key);
     }
 
-    let decorated = false;
     if (
       value !== undefined &&
       !shouldDeferCustomNormalization &&
@@ -364,31 +359,56 @@ function normalizePropsInternal<P extends Record<string, unknown>>(
         !definition.schema)
     ) {
       value = definition.decorate({ value, props: callbackProps });
-      decorated = true;
     }
 
     if (
-      decorated &&
-      !usedFallback &&
-      options.fallbackSchemaKeys &&
+      value !== undefined &&
       definition.schema &&
-      isStandardSchema(definition.schema)
+      isStandardSchema(definition.schema) &&
+      options.schemaValidatedKeys?.has(key)
     ) {
-      // Decorated outputs are safe to recheck only when the schema accepts
-      // the decorated representation as an input. Preserve transform outputs
-      // that intentionally differ from their schema's accepted input type.
-      const revalidationResult = definition.schema['~standard'].validate(value);
-      normalizedValueCanBeSchemaValidated =
-        !(revalidationResult instanceof Promise) &&
-        !revalidationResult.issues &&
-        schemaOutputMatchesInput(value, revalidationResult.value);
+      const outputSchema = definition.outputSchema;
+      if (outputSchema && isStandardSchema(outputSchema)) {
+        const validatedOutput = validateWithSchema(outputSchema, value, key);
+        if (!schemaOutputMatchesInput(value, validatedOutput)) {
+          throw new Error(
+            `Validation failed: ${key}: outputSchema must not transform normalized values`
+          );
+        }
+        normalizedValueCanBeSchemaValidated = true;
+      } else {
+        const revalidationResult = definition.schema['~standard'].validate(value);
+        if (
+          (revalidationResult instanceof Promise || revalidationResult.issues) &&
+          definition.sendToHost !== false
+        ) {
+          validateWithSchema(definition.schema, value, key);
+        } else if (
+          !(revalidationResult instanceof Promise) &&
+          !revalidationResult.issues
+        ) {
+          normalizedValueCanBeSchemaValidated = schemaOutputMatchesInput(
+            value,
+            revalidationResult.value
+          );
+        }
+
+        if (
+          !normalizedValueCanBeSchemaValidated &&
+          definition.sendToHost !== false
+        ) {
+          throw new Error(
+            `Prop "${key}" requires outputSchema because its schema cannot validate the normalized value unchanged`
+          );
+        }
+      }
     }
 
     (result as Record<string, unknown>)[key] = value;
     (callbackProps as Record<string, unknown>)[key] = value;
 
     if (normalizedValueCanBeSchemaValidated) {
-      options.fallbackSchemaKeys?.add(key);
+      options.outputValidationKeys?.add(key);
     }
   }
 
@@ -419,6 +439,7 @@ interface ConsumerValidationOptions {
   validationKeys?: ReadonlySet<string>;
   preserveValidatedValues?: boolean;
   requireUnchangedSchemaOutput?: boolean;
+  validateNormalizedOutput?: boolean;
   skipCustomValidation?: boolean;
 }
 
@@ -431,9 +452,27 @@ export function validateConsumerProps<P extends Record<string, unknown>>(
   validatePropsInternal(props, definitions, options);
 }
 
-function validatePropsInternal<P extends Record<string, unknown>>(
+/** Validates already-normalized props at a consumer or host trust boundary. @internal */
+export function validateNormalizedProps<
+  P extends Record<string, unknown>,
+  I = P,
+>(
   props: P,
-  definitions: PropsDefinition<P>,
+  definitions: PropsDefinition<P, I>
+): void {
+  validatePropsInternal(props, definitions, {
+    preserveValidatedValues: true,
+    requireUnchangedSchemaOutput: true,
+    validateNormalizedOutput: true,
+  });
+}
+
+function validatePropsInternal<
+  P extends Record<string, unknown>,
+  I = P,
+>(
+  props: P,
+  definitions: PropsDefinition<P, I>,
   options: ConsumerValidationOptions
 ): void {
   const compiledDefinitions = getCompiledPropDefinitions(definitions);
@@ -466,13 +505,20 @@ function validatePropsInternal<P extends Record<string, unknown>>(
       throw new Error(`Prop "${key}" is required but was not provided`);
     }
 
-    if (definition.schema && isStandardSchema(definition.schema)) {
+    const validationSchema =
+      options.validateNormalizedOutput &&
+      definition.outputSchema &&
+      isStandardSchema(definition.outputSchema)
+        ? definition.outputSchema
+        : definition.schema;
+
+    if (validationSchema && isStandardSchema(validationSchema)) {
       if (
         shouldValidateSchema &&
         (value !== undefined || isDirectSchema || hasSchemaInput)
       ) {
         const schemaInput = value;
-        value = validateWithSchema(definition.schema, value, key);
+        value = validateWithSchema(validationSchema, value, key);
         if (
           options.requireUnchangedSchemaOutput &&
           !schemaOutputMatchesInput(schemaInput, value)
@@ -492,7 +538,7 @@ function validatePropsInternal<P extends Record<string, unknown>>(
     if (!options.skipCustomValidation) {
       for (const { key, definition } of compiledDefinitions) {
         if (
-          options.validationKeys?.has(key) &&
+          (!options.validationKeys || options.validationKeys.has(key)) &&
           definition.validate
         ) {
           definition.validate({
@@ -553,6 +599,16 @@ export function getPropsForHost<P extends Record<string, unknown>>(
     let finalValue = value;
     if (definition.hostDecorate && value !== undefined) {
       finalValue = definition.hostDecorate({ value, props }) as P[keyof P];
+
+      const outputSchema = definition.outputSchema ?? definition.schema;
+      if (outputSchema && isStandardSchema(outputSchema)) {
+        const validatedOutput = validateWithSchema(outputSchema, finalValue, key);
+        if (!schemaOutputMatchesInput(finalValue, validatedOutput)) {
+          throw new Error(
+            `Validation failed: ${key}: hostDecorate must preserve the normalized output contract`
+          );
+        }
+      }
     }
 
     (result as Record<string, unknown>)[key] = finalValue;

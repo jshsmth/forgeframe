@@ -3,7 +3,11 @@
  */
 
 import type { SerializationType } from '../constants';
-import type { StandardSchemaV1, InferOutput } from '../props/schema';
+import type {
+  StandardSchemaV1,
+  InferInput,
+  InferOutput,
+} from '../props/schema';
 import type { DomainMatcher } from './utility';
 
 /**
@@ -39,8 +43,9 @@ export interface PropContext<P> {
 /**
  * Definition for a single component prop.
  *
- * @typeParam T - The type of the prop value
+ * @typeParam Output - The normalized prop value exposed after validation
  * @typeParam P - The props type for the component
+ * @typeParam Input - The value accepted by the schema and explicit fallbacks
  *
  * @remarks
  * Prop definitions control how individual props are validated, serialized,
@@ -60,9 +65,13 @@ export interface PropContext<P> {
  * };
  * ```
  *
- * @public
+ * @internal
  */
-export interface PropDefinition<T = unknown, P = Record<string, unknown>> {
+interface PropDefinitionOptions<
+  Output = unknown,
+  P = Record<string, unknown>,
+  Input = Output,
+> {
   /**
    * Standard Schema validator for type checking and validation.
    *
@@ -87,14 +96,14 @@ export interface PropDefinition<T = unknown, P = Record<string, unknown>> {
    *
    * @see https://standardschema.dev/
    */
-  schema?: StandardSchemaV1<unknown, T>;
+  schema?: StandardSchemaV1<Input, Output>;
 
   /** Whether the prop is required */
   required?: boolean;
-  /** Default value or function returning default value */
-  default?: T | ((ctx: PropContext<P>) => T);
-  /** Function to compute the prop value */
-  value?: (ctx: PropContext<P>) => T;
+  /** Schema input used when the caller omits the prop */
+  default?: Input | ((ctx: PropContext<P>) => Input);
+  /** Function that computes a schema input when the caller omits the prop */
+  value?: (ctx: PropContext<P>) => Input;
 
   /** Whether to send this prop to the host window (default: true) */
   sendToHost?: boolean;
@@ -106,16 +115,16 @@ export interface PropDefinition<T = unknown, P = Record<string, unknown>> {
   /** Serialization strategy for cross-domain transfer */
   serialization?: SerializationType;
   /** Pass prop via URL query parameter */
-  queryParam?: boolean | string | ((opts: { value: T }) => string);
+  queryParam?: boolean | string | ((opts: { value: Output }) => string);
   /** Pass prop via POST body parameter */
-  bodyParam?: boolean | string | ((opts: { value: T }) => string);
+  bodyParam?: boolean | string | ((opts: { value: Output }) => string);
 
   /** Validate the prop value (throw to reject) */
-  validate?: (opts: { value: T; props: P }) => void;
+  validate?: (opts: { value: Output; props: P }) => void;
   /** Transform the prop value in consumer context */
-  decorate?: (opts: { value: T; props: P }) => T;
+  decorate?: (opts: { value: Output; props: P }) => Output;
   /** Transform the prop value in host context */
-  hostDecorate?: (opts: { value: T; props: P }) => T;
+  hostDecorate?: (opts: { value: Output; props: P }) => Output;
 
   /**
    * Alternative runtime input name for the prop.
@@ -129,6 +138,61 @@ export interface PropDefinition<T = unknown, P = Record<string, unknown>> {
   alias?: string;
 }
 
+/** Defines how an already-normalized value is checked at trust boundaries. @internal */
+type NormalizedOutputSchemaRequirement<Input, Output> = [Output] extends [Input]
+  ? {
+      /**
+       * Validation-only schema for normalized values sent to the host.
+       *
+       * @remarks
+       * ForgeFrame requires this schema when the input schema's output cannot
+       * be accepted by that same input schema. It must validate without
+       * changing the normalized value.
+       */
+      outputSchema?: StandardSchemaV1<Output, Output>;
+    }
+  : {
+      /**
+       * Validation-only schema for normalized values sent to the host.
+       *
+       * @remarks
+       * This is required when the input schema changes the value's type. It
+       * must validate without changing the normalized value.
+       */
+      outputSchema: StandardSchemaV1<Output, Output>;
+      sendToHost?: true;
+    } | {
+      /** Consumer-only transforms do not cross the host trust boundary. */
+      outputSchema?: StandardSchemaV1<Output, Output>;
+      sendToHost: false;
+    };
+
+/**
+ * Definition for a single component prop.
+ *
+ * @typeParam Output - The normalized prop value exposed after validation
+ * @typeParam P - The props type for the component
+ * @typeParam Input - The value accepted by the schema and explicit fallbacks
+ *
+ * @public
+ */
+export type PropDefinition<
+  Output = unknown,
+  P = Record<string, unknown>,
+  Input = Output,
+> = PropDefinitionOptions<Output, P, Input> &
+  NormalizedOutputSchemaRequirement<Input, Output>;
+
+/** A direct schema that can safely revalidate its normalized output. @internal */
+type DirectPropSchema<Input, Output> = [Output] extends [Input]
+  ? StandardSchemaV1<Input, Output>
+  : never;
+
+/** Applies `Omit` independently to each member of a union. @internal */
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
+  ? Omit<T, K>
+  : never;
+
 /**
  * A prop entry accepted by {@link PropsDefinition}.
  *
@@ -140,20 +204,40 @@ export interface PropDefinition<T = unknown, P = Record<string, unknown>> {
  * @public
  */
 export type PropDefinitionEntry<
-  T = unknown,
+  Output = unknown,
   P = Record<string, unknown>,
-> = PropDefinition<T, P> | StandardSchemaV1<unknown, T>;
+  Input = Output,
+> = PropDefinition<Output, P, Input> | DirectPropSchema<Input, Output>;
 
 /**
  * Map of prop names to their definitions.
  *
- * @typeParam P - The props type for the component
+ * @typeParam P - The normalized props type for the component
+ * @typeParam I - Canonical schema input types keyed like the normalized props
  *
  * @public
  */
-export type PropsDefinition<P> = {
-  [K in keyof P]?: PropDefinitionEntry<P[K], P>;
+export type PropsDefinition<P, I = P> = {
+  [K in keyof P]?: PropDefinitionEntry<
+    P[K],
+    P,
+    K extends keyof I ? I[K] : P[K]
+  >;
 };
+
+/**
+ * Prop definitions consumed by the host after values have been normalized.
+ *
+ * @remarks
+ * Host code only observes normalized outputs, so the consumer-side schema
+ * input types are intentionally erased.
+ *
+ * @public
+ */
+export type HostPropsDefinition<P> = PropsDefinition<
+  P,
+  { [K in keyof P]: unknown }
+>;
 
 /** Resolves the value returned by a wrapped `value` callback. @internal */
 type InferPropDefinitionValueResult<Value> =
@@ -330,7 +414,8 @@ export type InferSchemaOutput<S extends StandardSchemaV1> = InferOutput<S>;
  * const userSchema = z.object({ name: z.string(), age: z.number() });
  *
  * type UserPropDef = SchemaPropDefinition<typeof userSchema>;
- * // Equivalent to: PropDefinition<{ name: string; age: number }> with schema
+ * // Equivalent to a PropDefinition whose input and output are inferred
+ * // independently from userSchema.
  * ```
  *
  * @public
@@ -338,7 +423,10 @@ export type InferSchemaOutput<S extends StandardSchemaV1> = InferOutput<S>;
 export type SchemaPropDefinition<
   S extends StandardSchemaV1,
   P = Record<string, unknown>,
-> = Omit<PropDefinition<InferOutput<S>, P>, 'type'> & {
+> = DistributiveOmit<
+  PropDefinition<InferOutput<S>, P, InferInput<S>>,
+  'schema'
+> & {
   schema: S;
 };
 

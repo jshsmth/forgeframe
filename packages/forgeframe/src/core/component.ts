@@ -20,6 +20,7 @@ import type {
 import type {
   InferPropsDefinition,
   InferPropsDefinitionInput,
+  HostPropsDefinition,
 } from '../types/props';
 import type { StandardSchemaV1 } from '../props/schema';
 import { ConsumerComponent } from './consumer';
@@ -56,7 +57,9 @@ import {
  * @throws Error if url is missing
  * @internal
  */
-function validateComponentOptions<P>(options: ComponentOptions<P>): void {
+function validateComponentOptions<P, I, SchemaInputs>(
+  options: ComponentOptions<P, I, SchemaInputs>
+): void {
   if (!options.tag) {
     throw new Error('Component tag is required');
   }
@@ -121,6 +124,7 @@ function validateComponentOptions<P>(options: ComponentOptions<P>): void {
  * @typeParam P - The props type for the component
  * @typeParam X - The exports type that the host can expose
  * @typeParam I - An alternate consumer input shape, such as legacy alias keys
+ * @typeParam SchemaInputs - Canonical input types accepted by prop schemas
  * @param options - Component configuration options
  * @returns A component factory function
  *
@@ -171,17 +175,20 @@ export function create<
   P extends Record<string, unknown> = Record<string, unknown>,
   X = unknown,
   I extends Record<string, unknown> = P,
+  SchemaInputs extends Record<string, unknown> = I,
 >(
-  options: ComponentOptions<P>
+  options: ComponentOptions<P, I, SchemaInputs>
 ): ForgeFrameComponent<P, X, I>;
 export function create<
   P extends Record<string, unknown> = Record<string, unknown>,
   X = unknown,
   I extends Record<string, unknown> = P,
+  SchemaInputs extends Record<string, unknown> = I,
 >(
-  options: ComponentOptions<P>
+  options: ComponentOptions<P, I, SchemaInputs>
 ): ForgeFrameComponent<P, X, I> {
   validateComponentOptions(options);
+  const runtimeOptions = options as unknown as ComponentOptions<P, I>;
 
   const instances: ForgeFrameComponentInstance<P, X, I>[] = [];
   const componentTag = options.tag;
@@ -213,7 +220,7 @@ export function create<
     props?: ConsumerPropsInput<P, I>
   ): ConsumerComponent<P, X, I> {
     return trackInstance(
-      new ConsumerComponent<P, X, I>(options, props, trackInstance)
+      new ConsumerComponent<P, X, I>(runtimeOptions, props, trackInstance)
     );
   }
 
@@ -228,7 +235,10 @@ export function create<
 
     const activeHost = getHost<P>();
     if (activeHost?.hostProps.tag === options.tag) {
-      const configuredHost = initHost<P>(options.props, options.allowedConsumerDomains);
+      const configuredHost = initHost<P>(
+        runtimeOptions.props as HostPropsDefinition<P> | undefined,
+        options.allowedConsumerDomains
+      );
       componentHostProps = configuredHost?.hostProps;
       return componentHostProps;
     }
@@ -237,7 +247,10 @@ export function create<
       return undefined;
     }
 
-    const host = initHost<P>(options.props, options.allowedConsumerDomains);
+    const host = initHost<P>(
+      runtimeOptions.props as HostPropsDefinition<P> | undefined,
+      options.allowedConsumerDomains
+    );
     if (!host) {
       return undefined;
     }
@@ -285,7 +298,7 @@ export function create<
     return win === window;
   };
 
-  registerComponent(Component, options);
+  registerComponent(Component, runtimeOptions);
 
   return Component;
 }

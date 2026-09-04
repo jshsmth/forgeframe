@@ -72,7 +72,11 @@ describe('Component clone', () => {
       tag: 'clone-transformed-props',
       url: 'https://example.com/transformed-clone',
       props: {
-        amount: z.string().transform(Number),
+        amount: {
+          schema: z.string().transform(Number),
+          outputSchema: z.number(),
+          required: true,
+        },
       },
       eligible: () => ({ eligible: true }),
     });
@@ -96,9 +100,13 @@ describe('Component clone', () => {
       tag: 'clone-pending-input',
       url: 'https://example.com/pending-clone',
       props: {
-        target: z
-          .object({ value: z.number() })
-          .transform(({ value }) => value),
+        target: {
+          schema: z
+            .object({ value: z.number() })
+            .transform(({ value }) => value),
+          outputSchema: z.number(),
+          required: true,
+        },
       },
       eligible: () => ({ eligible: true }),
     });

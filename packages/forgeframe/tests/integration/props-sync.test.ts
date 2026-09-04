@@ -5,6 +5,7 @@
  * omitted optional keys from `window.hostProps`, and notifies subscribers once.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { create, prop } from '@/index';
 import type { PropsDefinition } from '@/types';
 import { createIframeIntegrationHarness, type IframeIntegrationHarness } from './helpers';
@@ -18,6 +19,14 @@ interface DateSyncProps {
   publishedAt: Date;
 }
 
+interface TransformedSyncProps {
+  amount: number;
+}
+
+interface TransformedSyncInput {
+  amount: string;
+}
+
 const SYNC_PROP_DEFINITIONS: PropsDefinition<SyncProps> = {
   title: { schema: prop.string(), required: true },
   optionalNote: { schema: prop.string().optional() },
@@ -25,6 +34,17 @@ const SYNC_PROP_DEFINITIONS: PropsDefinition<SyncProps> = {
 
 const DATE_SYNC_PROP_DEFINITIONS: PropsDefinition<DateSyncProps> = {
   publishedAt: { schema: prop.date(), required: true },
+};
+
+const TRANSFORMED_SYNC_PROP_DEFINITIONS: PropsDefinition<
+  TransformedSyncProps,
+  TransformedSyncInput
+> = {
+  amount: {
+    schema: z.string().transform(Number),
+    outputSchema: z.number(),
+    required: true,
+  },
 };
 
 describe('Props sync integration', () => {
@@ -121,5 +141,45 @@ describe('Props sync integration', () => {
     expect(onProps).toHaveBeenCalledTimes(1);
     expect(onProps.mock.calls[0][0].publishedAt).toBeInstanceOf(Date);
     expect(onProps.mock.calls[0][0].publishedAt.toISOString()).toBe(updatedDate.toISOString());
+  });
+
+  it('should deliver transformed props through bootstrap and prop sync', async () => {
+    harness = createIframeIntegrationHarness();
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    const TransformedSyncComponent = create<
+      TransformedSyncProps,
+      unknown,
+      TransformedSyncInput
+    >({
+      tag: 'integration-transformed-props-sync-component',
+      url: 'https://host.example.com/widget',
+      props: TRANSFORMED_SYNC_PROP_DEFINITIONS,
+    });
+
+    const instance = TransformedSyncComponent({ amount: '41' });
+
+    const renderPromise = instance.render(container);
+    const { hostProps } = await harness.bootstrapIframeHost<TransformedSyncProps>(
+      container,
+      TRANSFORMED_SYNC_PROP_DEFINITIONS
+    );
+
+    await expect(renderPromise).resolves.toBeUndefined();
+
+    expect(hostProps.amount).toBe(41);
+    expect(hostProps.consumer.props.amount).toBe(41);
+
+    const onProps = vi.fn();
+    hostProps.onProps(onProps);
+
+    await expect(instance.updateProps({ amount: '42' })).resolves.toBeUndefined();
+
+    expect(hostProps.amount).toBe(42);
+    expect(hostProps.consumer.props.amount).toBe(42);
+    expect(onProps).toHaveBeenCalledTimes(1);
+    expect(onProps).toHaveBeenCalledWith({ amount: 42 });
   });
 });

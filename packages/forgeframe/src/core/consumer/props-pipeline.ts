@@ -73,6 +73,7 @@ function validateNormalizedSchemaValues<P extends Record<string, unknown>>(
     validationKeys: schemaKeys,
     preserveValidatedValues: true,
     requireUnchangedSchemaOutput: true,
+    validateNormalizedOutput: true,
     skipCustomValidation: true,
   });
 }
@@ -85,7 +86,7 @@ export interface ConsumerPropsPipelineSnapshot<P extends Record<string, unknown>
   schemaValidated: boolean;
   schemaValidatedKeys: ReadonlySet<string>;
   revalidationSchemaKeys: ReadonlySet<string>;
-  fallbackSchemaKeys: ReadonlySet<string>;
+  outputValidationKeys: ReadonlySet<string>;
 }
 
 /**
@@ -108,8 +109,8 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
   /** Defined raw schema inputs to recheck at each trust boundary. */
   private revalidationSchemaKeys: Set<string>;
 
-  /** Output-compatible normalized values that can be safely rechecked. */
-  private fallbackSchemaKeys: Set<string>;
+  /** Normalized values that have a safe trust-boundary validation schema. */
+  private outputValidationKeys: Set<string>;
 
   /** Whether custom normalization is waiting for valid schema outputs. */
   private normalizationPending = false;
@@ -130,7 +131,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
       this.schemaValidated = snapshot.schemaValidated;
       this.schemaValidatedKeys = new Set(snapshot.schemaValidatedKeys);
       this.revalidationSchemaKeys = new Set(snapshot.revalidationSchemaKeys);
-      this.fallbackSchemaKeys = new Set(snapshot.fallbackSchemaKeys);
+      this.outputValidationKeys = new Set(snapshot.outputValidationKeys);
       return;
     }
 
@@ -143,12 +144,12 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
       this.props = normalizedState.props;
       this.schemaValidatedKeys = normalizedState.schemaValidatedKeys;
       this.revalidationSchemaKeys = normalizedState.revalidationSchemaKeys;
-      this.fallbackSchemaKeys = normalizedState.fallbackSchemaKeys;
+      this.outputValidationKeys = normalizedState.outputValidationKeys;
     } catch {
       this.normalizationPending = true;
       this.schemaValidatedKeys = new Set<string>();
       this.revalidationSchemaKeys = new Set<string>();
-      this.fallbackSchemaKeys = new Set<string>();
+      this.outputValidationKeys = new Set<string>();
       const initialProps = { ...this.inputProps } as P;
       this.props = normalizeConsumerProps(
         initialProps,
@@ -156,7 +157,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
         this.createPropContext(initialProps),
         {
           schemaValidatedKeys: this.schemaValidatedKeys,
-          fallbackSchemaKeys: this.fallbackSchemaKeys,
+          outputValidationKeys: this.outputValidationKeys,
           deferCustomNormalization: true,
         }
       );
@@ -173,7 +174,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
       schemaValidated: this.schemaValidated,
       schemaValidatedKeys: new Set(this.schemaValidatedKeys),
       revalidationSchemaKeys: new Set(this.revalidationSchemaKeys),
-      fallbackSchemaKeys: new Set(this.fallbackSchemaKeys),
+      outputValidationKeys: new Set(this.outputValidationKeys),
     };
   }
 
@@ -184,7 +185,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
       this.props = normalizedState.props;
       this.schemaValidatedKeys = normalizedState.schemaValidatedKeys;
       this.revalidationSchemaKeys = normalizedState.revalidationSchemaKeys;
-      this.fallbackSchemaKeys = normalizedState.fallbackSchemaKeys;
+      this.outputValidationKeys = normalizedState.outputValidationKeys;
       this.normalizationPending = false;
     }
 
@@ -223,7 +224,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
     nextInputProps: Record<string, unknown>;
     nextProps: P;
     revalidationSchemaKeys: Set<string>;
-    fallbackSchemaKeys: Set<string>;
+    outputValidationKeys: Set<string>;
   } {
     const materializedNewProps = materializePropAliases(
       newProps,
@@ -247,7 +248,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
       validateNormalizedSchemaValues(
         normalizedState.props,
         this.options.props,
-        normalizedState.fallbackSchemaKeys
+        normalizedState.outputValidationKeys
       );
       validateConsumerProps(normalizedState.props, this.options.props, {
         schemaValidatedKeys: normalizedState.schemaValidatedKeys,
@@ -257,17 +258,17 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
         nextInputProps,
         nextProps: normalizedState.props,
         revalidationSchemaKeys: normalizedState.revalidationSchemaKeys,
-        fallbackSchemaKeys: normalizedState.fallbackSchemaKeys,
+        outputValidationKeys: normalizedState.outputValidationKeys,
       };
     }
 
     const mergedProps = { ...this.props } as Record<string, unknown>;
     const schemaValidatedKeys = new Set(this.schemaValidatedKeys);
-    const fallbackSchemaKeys = new Set(this.fallbackSchemaKeys);
+    const outputValidationKeys = new Set(this.outputValidationKeys);
 
     for (const [key, value] of Object.entries(materializedNewProps)) {
       schemaValidatedKeys.delete(key);
-      fallbackSchemaKeys.delete(key);
+      outputValidationKeys.delete(key);
 
       if (value === PROP_RESET) {
         Reflect.deleteProperty(mergedProps, key);
@@ -300,7 +301,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
       propContext,
       {
         schemaValidatedKeys: normalizedSchemaKeys,
-        fallbackSchemaKeys,
+        outputValidationKeys,
         decorateKeys: changedSchemaKeys,
         fallbackKeys: changedSchemaKeys,
       }
@@ -325,7 +326,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
     validateNormalizedSchemaValues(
       nextProps,
       this.options.props,
-      fallbackSchemaKeys
+      outputValidationKeys
     );
 
     validateConsumerProps(nextProps, this.options.props, {
@@ -337,7 +338,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
       nextInputProps,
       nextProps,
       revalidationSchemaKeys,
-      fallbackSchemaKeys,
+      outputValidationKeys,
     };
   }
 
@@ -345,7 +346,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
     props: P;
     schemaValidatedKeys: Set<string>;
     revalidationSchemaKeys: Set<string>;
-    fallbackSchemaKeys: Set<string>;
+    outputValidationKeys: Set<string>;
   } {
     const initialProps = { ...inputProps } as P;
     const schemaValidatedKeys = prevalidateProvidedSchemaInputs(
@@ -354,14 +355,14 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
       this.options.props
     );
     const revalidationSchemaKeys = new Set(schemaValidatedKeys);
-    const fallbackSchemaKeys = new Set<string>();
+    const outputValidationKeys = new Set<string>();
     const props = normalizeConsumerProps(
       initialProps,
       this.options.props,
       this.createPropContext(initialProps),
       {
         schemaValidatedKeys,
-        fallbackSchemaKeys,
+        outputValidationKeys,
       }
     );
 
@@ -369,7 +370,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
       props,
       schemaValidatedKeys,
       revalidationSchemaKeys,
-      fallbackSchemaKeys,
+      outputValidationKeys,
     };
   }
 
@@ -387,7 +388,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
     validateNormalizedSchemaValues(
       this.props,
       this.options.props,
-      this.fallbackSchemaKeys
+      this.outputValidationKeys
     );
   }
 
@@ -403,7 +404,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
         nextInputProps,
         nextProps,
         revalidationSchemaKeys,
-        fallbackSchemaKeys,
+        outputValidationKeys,
       } =
         this.buildNextProps(newProps);
       const resolvedUrl = hooks.resolveUrl(nextProps);
@@ -415,7 +416,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
       this.schemaValidated = true;
       this.schemaValidatedKeys.clear();
       this.revalidationSchemaKeys = revalidationSchemaKeys;
-      this.fallbackSchemaKeys = fallbackSchemaKeys;
+      this.outputValidationKeys = outputValidationKeys;
       this.normalizationPending = false;
 
       if (!hooks.isRendered()) {

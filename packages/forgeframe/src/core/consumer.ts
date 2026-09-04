@@ -144,7 +144,7 @@ export class ConsumerComponent<
    * @param propsSnapshot - Existing normalized pipeline state used by clones
    */
   constructor(
-    options: ComponentOptions<P>,
+    options: ComponentOptions<P, I>,
     props?: ConsumerPropsInput<P, I>,
     private trackInstance?: ConsumerInstanceTracker<P, X, I>,
     propsSnapshot?: ConsumerPropsPipelineSnapshot<P>
@@ -522,7 +522,7 @@ export class ConsumerComponent<
    */
   clone(): ForgeFrameComponentInstance<P, X, I> {
     const cloned = new ConsumerComponent<P, X, I>(
-      this.options,
+      this.options as ComponentOptions<P, I>,
       undefined,
       this.trackInstance,
       this.propsPipeline.createSnapshot()
@@ -552,10 +552,12 @@ export class ConsumerComponent<
    * Normalizes component options with default values.
    * @internal
    */
-  private normalizeOptions(options: ComponentOptions<P>): NormalizedOptions<P> {
+  private normalizeOptions(options: ComponentOptions<P, I>): NormalizedOptions<P> {
     return {
       ...options,
-      props: options.props ?? (EMPTY_PROP_DEFINITIONS as PropsDefinition<P>),
+      props:
+        (options.props as PropsDefinition<P> | undefined) ??
+        (EMPTY_PROP_DEFINITIONS as PropsDefinition<P>),
       defaultContext: options.defaultContext ?? CONTEXT.IFRAME,
       dimensions: options.dimensions ?? { width: '100%', height: '100%' },
       timeout: options.timeout ?? 10000,

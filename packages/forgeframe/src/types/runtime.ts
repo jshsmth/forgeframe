@@ -3,7 +3,11 @@
  */
 
 import type { ContextType } from '../constants';
-import type { InferOutput, StandardSchemaV1 } from '../props/schema';
+import type {
+  InferInput,
+  InferOutput,
+  StandardSchemaV1,
+} from '../props/schema';
 import type { EventEmitterInterface } from './events';
 import type {
   InferPropsDefinition,
@@ -119,12 +123,21 @@ type ContextualOutputProps<S extends ContextualSchemaMap> = Partial<{
   [K in keyof S]: InferOutput<S[K]>;
 }>;
 
+/** Applies `Omit` independently to each member of a union. @internal */
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
+  ? Omit<T, K>
+  : never;
+
 /** A wrapped inferred definition whose callbacks receive normalized outputs. @internal */
 type ContextualWrappedPropDefinition<
   Schema extends StandardSchemaV1,
   S extends ContextualSchemaMap,
-> = Omit<
-  PropDefinition<InferOutput<Schema>, ContextualOutputProps<S>>,
+> = DistributiveOmit<
+  PropDefinition<
+    InferOutput<Schema>,
+    ContextualOutputProps<S>,
+    InferInput<Schema>
+  >,
   'schema' | 'validate'
 > & {
   schema: Schema;
@@ -134,10 +147,17 @@ type ContextualWrappedPropDefinition<
   }) => void;
 };
 
+/** A concise schema entry whose output can be checked by the same schema. @internal */
+type ContextualDirectSchema<Schema extends StandardSchemaV1> = [
+  InferOutput<Schema>,
+] extends [InferInput<Schema>]
+  ? Schema
+  : never;
+
 /** Contextual callback types inferred from each entry's schema. @internal */
 type ContextualPropsDefinition<S extends ContextualSchemaMap> = {
   [K in keyof S]?:
-    | S[K]
+    | ContextualDirectSchema<S[K]>
     | ContextualWrappedPropDefinition<S[K], S>;
 };
 
@@ -158,7 +178,9 @@ type ComponentFactoryArguments<P, I, RequireProps extends boolean> =
 /**
  * Configuration options for creating a component.
  *
- * @typeParam P - The props type for the component
+ * @typeParam P - The normalized props type for the component
+ * @typeParam I - The consumer-facing input shape accepted by the factory
+ * @typeParam SchemaInputs - Canonical schema input types keyed like `P`
  *
  * @remarks
  * These options are passed to `ForgeFrame.create()` to define a new component.
@@ -179,7 +201,11 @@ type ComponentFactoryArguments<P, I, RequireProps extends boolean> =
  *
  * @public
  */
-export interface ComponentOptions<P = Record<string, unknown>> {
+export interface ComponentOptions<
+  P = Record<string, unknown>,
+  I = P,
+  SchemaInputs = I,
+> {
   /**
    * Unique tag name for the component.
    *
@@ -197,7 +223,7 @@ export interface ComponentOptions<P = Record<string, unknown>> {
   /**
    * Prop definitions for type checking and serialization.
    */
-  props?: PropsDefinition<P>;
+  props?: PropsDefinition<P, SchemaInputs>;
 
   /**
    * Default dimensions for the component.

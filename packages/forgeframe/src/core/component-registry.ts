@@ -16,7 +16,7 @@ type InternalForgeFrameComponent<
   X = unknown,
   I = P,
 > = ForgeFrameComponent<P, X, I> & {
-  [INTERNAL_COMPONENT_OPTIONS]?: ComponentOptions<P>;
+  [INTERNAL_COMPONENT_OPTIONS]?: ComponentOptions<P, I>;
 };
 
 export function registerComponent<
@@ -25,7 +25,7 @@ export function registerComponent<
   I,
 >(
   component: ForgeFrameComponent<P, X, I>,
-  options: ComponentOptions<P>
+  options: ComponentOptions<P, I>
 ): void {
   (component as InternalForgeFrameComponent<P, X, I>)[INTERNAL_COMPONENT_OPTIONS] = options;
   componentRegistry.set(
@@ -56,7 +56,7 @@ export function getComponentOptions<
   P extends Record<string, unknown> = Record<string, unknown>,
   X = unknown,
   I = P,
->(component: ForgeFrameComponentReference): ComponentOptions<P> | undefined {
+>(component: ForgeFrameComponentReference): ComponentOptions<P, I> | undefined {
   return (component as unknown as InternalForgeFrameComponent<P, X, I>)[INTERNAL_COMPONENT_OPTIONS];
 }
 

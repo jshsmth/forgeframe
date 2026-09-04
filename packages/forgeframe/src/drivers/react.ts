@@ -116,15 +116,23 @@ export interface ReactComponentProps<_P = unknown> {
  *
  * @typeParam P - The component-specific props type from the ForgeFrame component
  * @typeParam I - An alternate consumer input shape, such as legacy alias keys
+ * @typeParam RequireProps - Whether the wrapped factory requires initial props
  *
  * @remarks
- * This type merges {@link ReactComponentProps} with the component's own props,
- * making all component props optional since they can have defaults.
+ * This type merges {@link ReactComponentProps} with the component's initial
+ * input shape. Components whose factories require props preserve those
+ * requirements, while optional factories continue to accept partial props.
  *
  * @internal
  */
-type FullReactComponentProps<P, I = P> = ReactComponentProps<P> &
-  ConsumerPropsUpdate<P, I>;
+type FullReactComponentProps<
+  P,
+  I = P,
+  RequireProps extends boolean = false,
+> = ReactComponentProps<P> &
+  (RequireProps extends true
+    ? ConsumerPropsInput<P, I>
+    : ConsumerPropsUpdate<P, I>);
 
 /**
  * Performs a shallow equality check for prop objects.
@@ -353,14 +361,17 @@ export function createReactComponent<
 >(
   Component: ForgeFrameComponent<P, X, I, RequireProps>,
   options: ReactDriverOptions<E>
-): ReactComponentType<FullReactComponentProps<P, I>, E> {
+): ReactComponentType<FullReactComponentProps<P, I, RequireProps>, E> {
   const { createElement, useRef, useEffect, useState, forwardRef } =
     options.React as unknown as ReactRuntime<E>;
   const createInstance = Component as unknown as (
     props: ConsumerPropsInput<P, I>
   ) => ForgeFrameComponentInstance<P, X, I>;
 
-  const ReactComponent = forwardRef<HTMLDivElement, FullReactComponentProps<P, I>>(
+  const ReactComponent = forwardRef<
+    HTMLDivElement,
+    FullReactComponentProps<P, I, RequireProps>
+  >(
     function ForgeFrameComponent(props, ref) {
       const {
         onRendered,
@@ -636,7 +647,7 @@ export function withReactComponent<E>(React: ReactLike<E>) {
     RequireProps extends boolean = false,
   >(
     Component: ForgeFrameComponent<P, X, I, RequireProps>
-  ): ReactComponentType<FullReactComponentProps<P, I>, E> {
+  ): ReactComponentType<FullReactComponentProps<P, I, RequireProps>, E> {
     return createReactComponent(Component, { React });
   };
 }

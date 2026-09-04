@@ -17,7 +17,7 @@ import type {
   HostProps,
   SiblingInfo,
 } from '../../types/runtime';
-import type { PropsDefinition } from '../../types/props';
+import type { HostPropsDefinition } from '../../types/props';
 import type { Dimensions, DomainMatcher } from '../../types/utility';
 
 export type VerifiedMessageSource = Parameters<MessageHandler>[1];
@@ -68,7 +68,7 @@ export interface HostTransportPropsHandler {
 }
 
 export interface HostHostConfiguration<P extends Record<string, unknown>> {
-  propDefinitions?: PropsDefinition<P>;
+  propDefinitions?: HostPropsDefinition<P>;
   allowedConsumerDomains?: DomainMatcher;
 }
 

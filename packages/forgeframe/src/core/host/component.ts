@@ -10,7 +10,7 @@
 
 import { EventEmitter } from '../../events/emitter';
 import type { HostProps } from '../../types/runtime';
-import type { PropsDefinition } from '../../types/props';
+import type { HostPropsDefinition } from '../../types/props';
 import type { DomainMatcher } from '../../types/utility';
 import type { WindowNamePayload } from '../../window/types';
 import { EMPTY_PROP_DEFINITIONS } from '../../props/definitions';
@@ -45,7 +45,8 @@ export class HostComponent<P extends Record<string, unknown>> {
 
   constructor(
     payload: WindowNamePayload<P>,
-    propDefinitions: PropsDefinition<P> = EMPTY_PROP_DEFINITIONS as PropsDefinition<P>,
+    propDefinitions: HostPropsDefinition<P> =
+      EMPTY_PROP_DEFINITIONS as HostPropsDefinition<P>,
     allowedConsumerDomains?: DomainMatcher,
     deferInit = false
   ) {
@@ -164,7 +165,7 @@ export class HostComponent<P extends Record<string, unknown>> {
   }
 
   applyHostConfiguration(
-    propDefinitions?: PropsDefinition<P>,
+    propDefinitions?: HostPropsDefinition<P>,
     allowedConsumerDomains?: DomainMatcher
   ): void {
     if (allowedConsumerDomains !== undefined) {

@@ -9,7 +9,11 @@ import { z } from 'zod';
 import {
   create,
   createReactComponent,
+  initHost,
   prop,
+  type ComponentOptions,
+  type HostPropsDefinition,
+  type SchemaPropDefinition,
   withReactComponent,
 } from '../../src';
 
@@ -89,7 +93,11 @@ const ExternalSchemaComponent = create({
   props: {
     zodValue: z.string(),
     valibotValue: v.string(),
-    transformedValue: z.string().transform(Number),
+    transformedValue: {
+      schema: z.string().transform(Number),
+      outputSchema: z.number(),
+      required: true,
+    },
     defaultedValue: z.string().default('fallback'),
     wrappedValue: {
       schema: z.number(),
@@ -98,6 +106,7 @@ const ExternalSchemaComponent = create({
     },
     wrappedTransformedValue: {
       schema: z.string().transform((value) => value.length),
+      outputSchema: z.number(),
     },
   },
 });
@@ -248,11 +257,12 @@ const ContextualCallbacksComponent = create({
   props: {
     amount: {
       schema: z.string().transform(Number),
+      outputSchema: z.number(),
       required: true,
       value: (context) => {
         const amount: number | undefined = context.props.amount;
         void amount;
-        return 1;
+        return '1';
       },
       validate: ({ value, props }) => {
         const amount: number | undefined = value;
@@ -269,6 +279,144 @@ const ContextualCallbacksComponent = create({
 });
 
 void ContextualCallbacksComponent({ amount: '1' });
+
+const transformedFallbackSchema = z.string().transform(Number);
+
+create({
+  tag: 'invalid-direct-transform-component',
+  url: 'https://example.com/invalid-direct-transform',
+  props: {
+    // @ts-expect-error type-changing schemas must be wrapped with outputSchema
+    amount: transformedFallbackSchema,
+  },
+});
+
+// @ts-expect-error transformed schemas require a normalized-output validator
+const missingOutputSchemaDefinition: SchemaPropDefinition<
+  typeof transformedFallbackSchema
+> = {
+  schema: transformedFallbackSchema,
+};
+void missingOutputSchemaDefinition;
+
+const transformedFallbackDefinition = {
+  schema: transformedFallbackSchema,
+  outputSchema: z.number(),
+  default: '1',
+  validate: ({ value }) => {
+    const amount: number = value;
+    void amount;
+  },
+} satisfies SchemaPropDefinition<typeof transformedFallbackSchema>;
+void transformedFallbackDefinition;
+
+const invalidOutputSchemaDefinition = {
+  schema: transformedFallbackSchema,
+  // @ts-expect-error outputSchema validates the normalized number output
+  outputSchema: z.string(),
+} satisfies SchemaPropDefinition<typeof transformedFallbackSchema>;
+void invalidOutputSchemaDefinition;
+
+const invalidTransformedFallbackDefinition = {
+  schema: transformedFallbackSchema,
+  outputSchema: z.number(),
+  // @ts-expect-error explicit defaults are schema inputs, not normalized outputs
+  default: 1,
+} satisfies SchemaPropDefinition<typeof transformedFallbackSchema>;
+void invalidTransformedFallbackDefinition;
+
+type ExplicitTransformProps = {
+  amount: number;
+};
+
+type ExplicitTransformInput = {
+  amount: string;
+};
+
+const ExplicitTransformComponent = create<
+  ExplicitTransformProps,
+  unknown,
+  ExplicitTransformInput
+>({
+  tag: 'explicit-transform-fallback-component',
+  url: 'https://example.com/explicit-transform-fallback',
+  props: {
+    amount: {
+      schema: transformedFallbackSchema,
+      outputSchema: z.number(),
+      default: '1',
+      validate: ({ value }) => {
+        const amount: number = value;
+        void amount;
+      },
+    },
+  },
+});
+
+void ExplicitTransformComponent({ amount: '2' });
+
+const hostTransformDefinitions = {
+  amount: {
+    schema: transformedFallbackSchema,
+    outputSchema: z.number(),
+    required: true,
+  },
+} satisfies HostPropsDefinition<ExplicitTransformProps>;
+
+const typedTransformHost = initHost<ExplicitTransformProps>(
+  hostTransformDefinitions
+);
+const hostTransformAmount: number | undefined =
+  typedTransformHost?.hostProps.amount;
+void hostTransformAmount;
+
+const invalidExplicitTransformOptions: ComponentOptions<
+  ExplicitTransformProps,
+  ExplicitTransformInput
+> = {
+  tag: 'invalid-explicit-transform-fallback-component',
+  url: 'https://example.com/invalid-explicit-transform-fallback',
+  props: {
+    amount: {
+      schema: transformedFallbackSchema,
+      outputSchema: z.number(),
+      // @ts-expect-error explicit fallback values use the configured input shape
+      default: 1,
+    },
+  },
+};
+void invalidExplicitTransformOptions;
+
+type LegacyTransformInput = {
+  legacyAmount: string;
+};
+
+type CanonicalTransformSchemaInputs = {
+  amount: string;
+};
+
+const AliasedTransformComponent = create<
+  ExplicitTransformProps,
+  unknown,
+  LegacyTransformInput,
+  CanonicalTransformSchemaInputs
+>({
+  tag: 'aliased-transform-component',
+  url: 'https://example.com/aliased-transform',
+  props: {
+    amount: {
+      schema: transformedFallbackSchema,
+      outputSchema: z.number(),
+      alias: 'legacyAmount',
+      required: true,
+    },
+  },
+});
+
+void AliasedTransformComponent({ legacyAmount: '2' });
+
+// @ts-expect-error the public factory accepts the alias-facing input shape
+void AliasedTransformComponent({ amount: '2' });
 
 const OptionalWrappedValidatorComponent = create({
   tag: 'optional-wrapped-validator-component',
@@ -299,6 +447,7 @@ const RequiredTransformComponent = create({
       schema: z.string().transform((value) =>
         value.length > 0 ? value : undefined
       ),
+      outputSchema: z.string().optional(),
       required: true,
     },
   },

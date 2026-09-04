@@ -10,7 +10,7 @@ import { createRequestMessage, serializeMessage } from '@/communication/protocol
 import { destroyAll, clearComponents } from '@/core/component';
 import { clearHostInstance } from '@/core/host';
 import { initHost } from '@/index';
-import type { HostProps, PropsDefinition } from '@/types';
+import type { HostProps, HostPropsDefinition } from '@/types';
 
 const DEFAULT_HOST_URL = 'https://host.example.com/widget';
 const GLOBAL_BINDINGS = ['window', 'document', 'self'] as const;
@@ -181,7 +181,7 @@ interface BaseIntegrationHarness {
   withHostGlobals: <T>(callback: () => T) => T;
   withHostGlobalsAsync: <T>(callback: () => Promise<T>) => Promise<T>;
   bootstrapHost: <P extends Record<string, unknown>>(
-    propDefinitions?: PropsDefinition<P>
+    propDefinitions?: HostPropsDefinition<P>
   ) => ReturnType<typeof initHost<P>>;
   getHostProps: <P extends Record<string, unknown>>() => HostProps<P>;
   getLastFormSubmission: () => FormSubmissionRecord | null;
@@ -193,11 +193,11 @@ export interface IframeIntegrationHarness extends BaseIntegrationHarness {
   waitForIframe: (container?: ParentNode) => Promise<HTMLIFrameElement>;
   attachHostToIframe: (iframe: HTMLIFrameElement) => void;
   bootstrapHost: <P extends Record<string, unknown>>(
-    propDefinitions?: PropsDefinition<P>
+    propDefinitions?: HostPropsDefinition<P>
   ) => ReturnType<typeof initHost<P>>;
   bootstrapIframeHost: <P extends Record<string, unknown>>(
     container: ParentNode,
-    propDefinitions?: PropsDefinition<P>
+    propDefinitions?: HostPropsDefinition<P>
   ) => Promise<{
     host: NonNullable<ReturnType<typeof initHost<P>>>;
     hostProps: HostProps<P>;
@@ -210,7 +210,7 @@ export interface PopupIntegrationHarness extends BaseIntegrationHarness {
   getLastPopupOpen: () => PopupOpenRecord | null;
   blockNextPopup: () => void;
   bootstrapPopupHost: <P extends Record<string, unknown>>(
-    propDefinitions?: PropsDefinition<P>
+    propDefinitions?: HostPropsDefinition<P>
   ) => Promise<{
     host: NonNullable<ReturnType<typeof initHost<P>>>;
     hostProps: HostProps<P>;
@@ -231,14 +231,14 @@ function createBaseIntegrationHarness(options?: {
   blockNextPopup: () => void;
   bootstrapIframeHost: <P extends Record<string, unknown>>(
     container: ParentNode,
-    propDefinitions?: PropsDefinition<P>
+    propDefinitions?: HostPropsDefinition<P>
   ) => Promise<{
     host: NonNullable<ReturnType<typeof initHost<P>>>;
     hostProps: HostProps<P>;
     iframe: HTMLIFrameElement;
   }>;
   bootstrapPopupHost: <P extends Record<string, unknown>>(
-    propDefinitions?: PropsDefinition<P>
+    propDefinitions?: HostPropsDefinition<P>
   ) => Promise<{
     host: NonNullable<ReturnType<typeof initHost<P>>>;
     hostProps: HostProps<P>;
@@ -473,7 +473,7 @@ function createBaseIntegrationHarness(options?: {
   };
 
   const bootstrapHost = <P extends Record<string, unknown>>(
-    propDefinitions?: PropsDefinition<P>
+    propDefinitions?: HostPropsDefinition<P>
   ): ReturnType<typeof initHost<P>> => {
     return withHostGlobals(() => initHost(propDefinitions));
   };
@@ -492,7 +492,7 @@ function createBaseIntegrationHarness(options?: {
 
   const bootstrapIframeHost = async <P extends Record<string, unknown>>(
     container: ParentNode,
-    propDefinitions?: PropsDefinition<P>
+    propDefinitions?: HostPropsDefinition<P>
   ): Promise<{
     host: NonNullable<ReturnType<typeof initHost<P>>>;
     hostProps: HostProps<P>;
@@ -514,7 +514,7 @@ function createBaseIntegrationHarness(options?: {
   };
 
   const bootstrapPopupHost = async <P extends Record<string, unknown>>(
-    propDefinitions?: PropsDefinition<P>
+    propDefinitions?: HostPropsDefinition<P>
   ): Promise<{
     host: NonNullable<ReturnType<typeof initHost<P>>>;
     hostProps: HostProps<P>;

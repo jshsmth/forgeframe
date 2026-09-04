@@ -10,14 +10,18 @@
 
 import { EVENT } from '../../constants';
 import { deserializeProps } from '../../props/serialize';
-import { isStandardSchema, validateProps } from '../../props';
+import { isStandardSchema } from '../../props';
+import { validateNormalizedProps } from '../../props/normalize';
 import { EMPTY_PROP_DEFINITIONS } from '../../props/definitions';
 import { getDomain } from '../../window/helpers';
 import { getRegisteredComponent } from '../component-registry';
 import { HOST_PROPS_BUILTIN_KEYS } from './builtin-keys';
 import type { SerializedProps } from '../../props/types';
 import type { ForgeFrameComponent, HostProps } from '../../types/runtime';
-import type { PropDefinition, PropsDefinition } from '../../types/props';
+import type {
+  HostPropsDefinition,
+  PropDefinition,
+} from '../../types/props';
 import type { HostComponentRef, WindowNamePayload } from '../../window/types';
 import type {
   HostPropsRuntimeOptions,
@@ -46,14 +50,18 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
   public propsHandlers: Set<(props: P) => void> = new Set();
 
   constructor(
-    private propDefinitions: PropsDefinition<P> = EMPTY_PROP_DEFINITIONS as PropsDefinition<P>,
+    private propDefinitions: HostPropsDefinition<P> =
+      EMPTY_PROP_DEFINITIONS as HostPropsDefinition<P>,
     private options: HostPropsRuntimeOptions
   ) {}
 
   initializeHostProps(payload: WindowNamePayload<P>): HostProps<P> {
     const deserializedProps = this.deserialize(payload.props);
 
-    validateProps(deserializedProps, this.getBootstrapValidationDefinitions());
+    validateNormalizedProps(
+      deserializedProps,
+      this.getBootstrapValidationDefinitions()
+    );
     this.consumerProps = deserializedProps;
 
     const hostConsumerProps = filterReservedHostPropKeys(deserializedProps);
@@ -105,9 +113,12 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
     }
   }
 
-  applyHostConfiguration(propDefinitions: PropsDefinition<P>): void {
+  applyHostConfiguration(propDefinitions: HostPropsDefinition<P>): void {
+    validateNormalizedProps(
+      this.consumerProps,
+      this.getBootstrapValidationDefinitions(propDefinitions)
+    );
     this.propDefinitions = propDefinitions;
-    validateProps(this.consumerProps, this.getBootstrapValidationDefinitions());
     Object.assign(this.hostProps, filterReservedHostPropKeys(this.consumerProps));
     this.hostProps.consumer.props = this.consumerProps;
   }
@@ -117,7 +128,7 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
       const previousProps = this.consumerProps;
       const nextProps = this.deserialize(serializedProps);
 
-      validateProps(nextProps, this.propDefinitions);
+      validateNormalizedProps(nextProps, this.propDefinitions);
       const nextHostProps = filterReservedHostPropKeys(nextProps);
 
       this.removeStaleHostProps(previousProps, nextHostProps);
@@ -167,20 +178,22 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
     );
   }
 
-  private getBootstrapValidationDefinitions(): PropsDefinition<P> {
+  private getBootstrapValidationDefinitions(
+    propDefinitions = this.propDefinitions
+  ): HostPropsDefinition<P> {
     if (
       !this.options.isConsumerDomainVerified() ||
       this.options.getConsumerDomain() !== getDomain()
     ) {
-      return this.propDefinitions;
+      return propDefinitions;
     }
 
     let hasDeferredSameDomainProp = false;
     const bootstrapDefinitions = {
-      ...this.propDefinitions,
-    } as PropsDefinition<P>;
+      ...propDefinitions,
+    } as HostPropsDefinition<P>;
 
-    for (const [key, definition] of Object.entries(this.propDefinitions)) {
+    for (const [key, definition] of Object.entries(propDefinitions)) {
       if (!definition || isStandardSchema(definition) || !definition.sameDomain) {
         continue;
       }
@@ -189,10 +202,10 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
       bootstrapDefinitions[key as keyof P] = {
         ...(definition as PropDefinition<unknown, P>),
         required: false,
-      } as PropsDefinition<P>[keyof P];
+      } as HostPropsDefinition<P>[keyof P];
     }
 
-    return hasDeferredSameDomainProp ? bootstrapDefinitions : this.propDefinitions;
+    return hasDeferredSameDomainProp ? bootstrapDefinitions : propDefinitions;
   }
 
   private buildNestedComponents(
