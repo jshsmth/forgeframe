@@ -55,7 +55,10 @@ type ConsumerInstanceTracker<
   P extends Record<string, unknown>,
   X,
   I extends Record<string, unknown>,
-> = (instance: ConsumerComponent<P, X, I>) => ConsumerComponent<P, X, I>;
+  SchemaInputs extends Record<string, unknown>,
+> = (
+  instance: ConsumerComponent<P, X, I, SchemaInputs>
+) => ConsumerComponent<P, X, I, SchemaInputs>;
 
 /**
  * Consumer-side component implementation.
@@ -67,6 +70,7 @@ type ConsumerInstanceTracker<
  * @typeParam P - The props type passed to the component
  * @typeParam X - The exports type that the host can expose to the consumer
  * @typeParam I - An alternate consumer input shape, such as legacy alias keys
+ * @typeParam SchemaInputs - Canonical values accepted by each prop schema
  *
  * @internal
  */
@@ -74,7 +78,8 @@ export class ConsumerComponent<
   P extends Record<string, unknown>,
   X = unknown,
   I extends Record<string, unknown> = P,
-> implements ForgeFrameComponentInstance<P, X, I>
+  SchemaInputs extends Record<string, unknown> = I,
+> implements ForgeFrameComponentInstance<P, X, I, SchemaInputs>
 {
   /** Event emitter for lifecycle events. */
   public event: EventEmitter;
@@ -100,19 +105,19 @@ export class ConsumerComponent<
   }
 
   /** @internal */
-  private options: NormalizedOptions<P>;
+  private options: NormalizedOptions<P, SchemaInputs>;
 
   /** @internal */
   private cleanup: CleanupManager;
 
   /** @internal */
-  private transport!: ConsumerTransport<P, X>;
+  private transport!: ConsumerTransport<P, X, SchemaInputs>;
 
   /** @internal */
-  private renderer!: ConsumerRenderer<P>;
+  private renderer!: ConsumerRenderer<P, SchemaInputs>;
 
   /** @internal */
-  private propsPipeline!: ConsumerPropsPipeline<P>;
+  private propsPipeline!: ConsumerPropsPipeline<P, SchemaInputs>;
 
   /** @internal */
   private rendered = false;
@@ -144,9 +149,9 @@ export class ConsumerComponent<
    * @param propsSnapshot - Existing normalized pipeline state used by clones
    */
   constructor(
-    options: ComponentOptions<P, I>,
-    props?: ConsumerPropsInput<P, I>,
-    private trackInstance?: ConsumerInstanceTracker<P, X, I>,
+    options: ComponentOptions<P, I, SchemaInputs>,
+    props?: ConsumerPropsInput<P, I, SchemaInputs>,
+    private trackInstance?: ConsumerInstanceTracker<P, X, I, SchemaInputs>,
     propsSnapshot?: ConsumerPropsPipelineSnapshot<P>
   ) {
     this._uid = generateUID();
@@ -447,7 +452,9 @@ export class ConsumerComponent<
    *
    * @param newProps - Partial props object to merge with existing props
    */
-  async updateProps(newProps: ConsumerPropsUpdate<P, I>): Promise<void> {
+  async updateProps(
+    newProps: ConsumerPropsUpdate<P, I, SchemaInputs>
+  ): Promise<void> {
     if (this.renderPromise && !this.rendered) {
       throw new Error('Cannot update props while the component is rendering');
     }
@@ -459,7 +466,7 @@ export class ConsumerComponent<
    * @internal
    */
   private async applyPropsUpdate(
-    newProps: ConsumerPropsUpdate<P, I>
+    newProps: ConsumerPropsUpdate<P, I, SchemaInputs>
   ): Promise<void> {
     const hooks: ConsumerPropsUpdateHooks<P> = {
       resolveUrl: (nextProps) => this.resolveUrl(nextProps),
@@ -520,9 +527,9 @@ export class ConsumerComponent<
    *
    * @returns A new unrendered component instance with identical configuration
    */
-  clone(): ForgeFrameComponentInstance<P, X, I> {
-    const cloned = new ConsumerComponent<P, X, I>(
-      this.options as ComponentOptions<P, I>,
+  clone(): ForgeFrameComponentInstance<P, X, I, SchemaInputs> {
+    const cloned = new ConsumerComponent<P, X, I, SchemaInputs>(
+      this.options,
       undefined,
       this.trackInstance,
       this.propsPipeline.createSnapshot()
@@ -552,12 +559,14 @@ export class ConsumerComponent<
    * Normalizes component options with default values.
    * @internal
    */
-  private normalizeOptions(options: ComponentOptions<P, I>): NormalizedOptions<P> {
+  private normalizeOptions(
+    options: ComponentOptions<P, I, SchemaInputs>
+  ): NormalizedOptions<P, SchemaInputs> {
     return {
       ...options,
       props:
-        (options.props as PropsDefinition<P> | undefined) ??
-        (EMPTY_PROP_DEFINITIONS as PropsDefinition<P>),
+        options.props ??
+        (EMPTY_PROP_DEFINITIONS as PropsDefinition<P, SchemaInputs>),
       defaultContext: options.defaultContext ?? CONTEXT.IFRAME,
       dimensions: options.dimensions ?? { width: '100%', height: '100%' },
       timeout: options.timeout ?? 10000,

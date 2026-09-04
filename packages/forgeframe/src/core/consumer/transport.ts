@@ -52,6 +52,7 @@ export interface ConsumerTransportHandlers<X> {
 export class ConsumerTransport<
   P extends Record<string, unknown>,
   X = unknown,
+  SchemaInputs = P,
 > {
   /** Messenger for host communication. */
   public messenger: Messenger;
@@ -79,7 +80,7 @@ export class ConsumerTransport<
 
   constructor(
     private uid: string,
-    private options: NormalizedOptions<P>,
+    private options: NormalizedOptions<P, SchemaInputs>,
     private resolveUrl: () => string,
     private resolveUrlOrigin: (url: string) => string | null
   ) {
@@ -196,7 +197,7 @@ export class ConsumerTransport<
    */
   async sendPropsUpdateToHost(
     nextProps: P,
-    propDefinitions: PropsDefinition<P>
+    propDefinitions: PropsDefinition<P, SchemaInputs>
   ): Promise<void> {
     if (!this.hostWindow || isWindowClosed(this.hostWindow)) {
       return;
@@ -236,7 +237,7 @@ export class ConsumerTransport<
     tag: string;
     context: ContextType;
     props: P;
-    propDefinitions: PropsDefinition<P>;
+    propDefinitions: PropsDefinition<P, SchemaInputs>;
     hostDomain?: string;
     children?: Record<string, HostComponentRef>;
     exports: ConsumerExports;

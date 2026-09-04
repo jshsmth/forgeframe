@@ -27,6 +27,14 @@ interface TransformedSyncInput {
   amount: string;
 }
 
+interface OptionalTransformOutputSyncProps {
+  amount: number | undefined;
+}
+
+interface OptionalTransformOutputSyncInput {
+  amount: string;
+}
+
 const SYNC_PROP_DEFINITIONS: PropsDefinition<SyncProps> = {
   title: { schema: prop.string(), required: true },
   optionalNote: { schema: prop.string().optional() },
@@ -43,6 +51,19 @@ const TRANSFORMED_SYNC_PROP_DEFINITIONS: PropsDefinition<
   amount: {
     schema: z.string().transform(Number),
     outputSchema: z.number(),
+    required: true,
+  },
+};
+
+const OPTIONAL_TRANSFORM_OUTPUT_SYNC_PROP_DEFINITIONS: PropsDefinition<
+  OptionalTransformOutputSyncProps,
+  OptionalTransformOutputSyncInput
+> = {
+  amount: {
+    schema: z.string().transform((value) =>
+      value === 'empty' ? undefined : Number(value)
+    ),
+    outputSchema: z.number().optional(),
     required: true,
   },
 };
@@ -181,5 +202,50 @@ describe('Props sync integration', () => {
     expect(hostProps.consumer.props.amount).toBe(42);
     expect(onProps).toHaveBeenCalledTimes(1);
     expect(onProps).toHaveBeenCalledWith({ amount: 42 });
+  });
+
+  it('should accept undefined normalized outputs for required inputs across bootstrap and prop sync', async () => {
+    harness = createIframeIntegrationHarness();
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    const OptionalTransformOutputSyncComponent = create<
+      OptionalTransformOutputSyncProps,
+      unknown,
+      OptionalTransformOutputSyncInput
+    >({
+      tag: 'integration-optional-transform-output-sync-component',
+      url: 'https://host.example.com/widget',
+      props: OPTIONAL_TRANSFORM_OUTPUT_SYNC_PROP_DEFINITIONS,
+    });
+
+    const instance = OptionalTransformOutputSyncComponent({ amount: 'empty' });
+
+    const renderPromise = instance.render(container);
+    const { hostProps } =
+      await harness.bootstrapIframeHost<OptionalTransformOutputSyncProps>(
+        container,
+        OPTIONAL_TRANSFORM_OUTPUT_SYNC_PROP_DEFINITIONS
+      );
+
+    await expect(renderPromise).resolves.toBeUndefined();
+
+    expect(hostProps.amount).toBeUndefined();
+    expect(hostProps.consumer.props.amount).toBeUndefined();
+
+    const onProps = vi.fn();
+    hostProps.onProps(onProps);
+
+    await expect(instance.updateProps({ amount: '42' })).resolves.toBeUndefined();
+    expect(hostProps.amount).toBe(42);
+
+    await expect(instance.updateProps({ amount: 'empty' })).resolves.toBeUndefined();
+
+    expect(hostProps.amount).toBeUndefined();
+    expect(hostProps.consumer.props.amount).toBeUndefined();
+    expect(onProps).toHaveBeenCalledTimes(2);
+    expect(onProps).toHaveBeenNthCalledWith(1, { amount: 42 });
+    expect(onProps).toHaveBeenNthCalledWith(2, {});
   });
 });

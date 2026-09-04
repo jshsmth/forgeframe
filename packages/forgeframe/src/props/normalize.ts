@@ -175,9 +175,12 @@ function getCompiledPropDefinitions<
  *
  * @internal
  */
-export function materializePropAliases<P extends Record<string, unknown>>(
+export function materializePropAliases<
+  P extends Record<string, unknown>,
+  I = P,
+>(
   props: Record<string, unknown>,
-  definitions: PropsDefinition<P>,
+  definitions: PropsDefinition<P, I>,
   resetValue?: unknown
 ): Partial<P> {
   const source = props as Record<string, unknown>;
@@ -248,9 +251,12 @@ export function materializePropAliases<P extends Record<string, unknown>>(
  *
  * @public
  */
-export function normalizeProps<P extends Record<string, unknown>>(
+export function normalizeProps<
+  P extends Record<string, unknown>,
+  I = P,
+>(
   userProps: Partial<P>,
-  definitions: PropsDefinition<P>,
+  definitions: PropsDefinition<P, I>,
   context: PropContext<P>
 ): P {
   return normalizePropsInternal(userProps, definitions, context, {});
@@ -265,18 +271,24 @@ interface ConsumerNormalizationOptions {
 }
 
 /** Normalizes props while tracking consumer-side schema state. @internal */
-export function normalizeConsumerProps<P extends Record<string, unknown>>(
+export function normalizeConsumerProps<
+  P extends Record<string, unknown>,
+  I = P,
+>(
   userProps: Partial<P>,
-  definitions: PropsDefinition<P>,
+  definitions: PropsDefinition<P, I>,
   context: PropContext<P>,
   options: ConsumerNormalizationOptions
 ): P {
   return normalizePropsInternal(userProps, definitions, context, options);
 }
 
-function normalizePropsInternal<P extends Record<string, unknown>>(
+function normalizePropsInternal<
+  P extends Record<string, unknown>,
+  I = P,
+>(
   userProps: Partial<P>,
-  definitions: PropsDefinition<P>,
+  definitions: PropsDefinition<P, I>,
   context: PropContext<P>,
   options: Partial<ConsumerNormalizationOptions>
 ): P {
@@ -425,9 +437,12 @@ function normalizePropsInternal<P extends Record<string, unknown>>(
  *
  * @public
  */
-export function validateProps<P extends Record<string, unknown>>(
+export function validateProps<
+  P extends Record<string, unknown>,
+  I = P,
+>(
   props: P,
-  definitions: PropsDefinition<P>
+  definitions: PropsDefinition<P, I>
 ): void {
   validatePropsInternal(props, definitions, {});
 }
@@ -444,9 +459,12 @@ interface ConsumerValidationOptions {
 }
 
 /** Validates consumer props while respecting prior schema normalization. @internal */
-export function validateConsumerProps<P extends Record<string, unknown>>(
+export function validateConsumerProps<
+  P extends Record<string, unknown>,
+  I = P,
+>(
   props: P,
-  definitions: PropsDefinition<P>,
+  definitions: PropsDefinition<P, I>,
   options: ConsumerValidationOptions
 ): void {
   validatePropsInternal(props, definitions, options);
@@ -495,27 +513,36 @@ function validatePropsInternal<
     let value: unknown = hasSchemaInput
       ? options.schemaInputProps?.[key]
       : props[propKey];
+    const normalizedOutputSchema =
+      options.validateNormalizedOutput &&
+      definition.outputSchema &&
+      isStandardSchema(definition.outputSchema)
+        ? definition.outputSchema
+        : undefined;
+    const validateMissingNormalizedOutput =
+      value === undefined &&
+      definition.required === true &&
+      normalizedOutputSchema !== undefined;
 
     if (
       definition.required &&
       value === undefined &&
+      !validateMissingNormalizedOutput &&
       !options.schemaValidatedKeys?.has(key) &&
       (!options.schemaKeys || options.schemaKeys.has(key))
     ) {
       throw new Error(`Prop "${key}" is required but was not provided`);
     }
 
-    const validationSchema =
-      options.validateNormalizedOutput &&
-      definition.outputSchema &&
-      isStandardSchema(definition.outputSchema)
-        ? definition.outputSchema
-        : definition.schema;
+    const validationSchema = normalizedOutputSchema ?? definition.schema;
 
     if (validationSchema && isStandardSchema(validationSchema)) {
       if (
         shouldValidateSchema &&
-        (value !== undefined || isDirectSchema || hasSchemaInput)
+        (value !== undefined ||
+          isDirectSchema ||
+          hasSchemaInput ||
+          validateMissingNormalizedOutput)
       ) {
         const schemaInput = value;
         value = validateWithSchema(validationSchema, value, key);
@@ -582,9 +609,12 @@ function validatePropsInternal<
  *
  * @public
  */
-export function getPropsForHost<P extends Record<string, unknown>>(
+export function getPropsForHost<
+  P extends Record<string, unknown>,
+  I = P,
+>(
   props: P,
-  definitions: PropsDefinition<P>,
+  definitions: PropsDefinition<P, I>,
   hostDomain: string,
   isSameDomain: boolean
 ): Partial<P> {
@@ -649,9 +679,12 @@ function shouldSendPropToHost<P extends Record<string, unknown>>(
  *
  * @public
  */
-export function propsToQueryParams<P extends Record<string, unknown>>(
+export function propsToQueryParams<
+  P extends Record<string, unknown>,
+  I = P,
+>(
   props: P,
-  definitions: PropsDefinition<P>,
+  definitions: PropsDefinition<P, I>,
   hostDomain: string,
   isSameDomain = false
 ): URLSearchParams {
@@ -694,9 +727,12 @@ export function propsToQueryParams<P extends Record<string, unknown>>(
  *
  * @public
  */
-export function propsToBodyParams<P extends Record<string, unknown>>(
+export function propsToBodyParams<
+  P extends Record<string, unknown>,
+  I = P,
+>(
   props: P,
-  definitions: PropsDefinition<P>,
+  definitions: PropsDefinition<P, I>,
   hostDomain: string,
   isSameDomain = false
 ): URLSearchParams {

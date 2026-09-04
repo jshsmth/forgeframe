@@ -31,10 +31,45 @@ type HasSamePropKeys<A, B> = [Exclude<keyof A, keyof B>] extends [never]
   : false;
 
 /**
+ * Canonical consumer inputs, falling back to normalized values for unspecified keys.
+ * @internal
+ */
+type CanonicalConsumerProps<P, SchemaInputs> = HasSamePropKeys<
+  P,
+  SchemaInputs
+> extends true
+  ? SchemaInputs
+  : Pick<SchemaInputs, Extract<keyof P, keyof SchemaInputs>> &
+      Pick<P, Exclude<keyof P, keyof SchemaInputs>>;
+
+/**
+ * Applies canonical schema value types to canonical keys repeated by an alternate shape.
+ * @internal
+ */
+type AlternateConsumerProps<Canonical, Alternate> = {
+  [K in keyof Alternate]: K extends keyof Canonical
+    ? Canonical[K]
+    : Alternate[K];
+};
+
+/**
+ * Combines canonical and alternate inputs with canonical schema values taking precedence.
+ * @internal
+ */
+type CombinedConsumerProps<A, B> = {
+  [K in keyof A | keyof B]: K extends keyof A
+    ? A[K]
+    : K extends keyof B
+      ? B[K]
+      : never;
+};
+
+/**
  * Props accepted when creating a component instance.
  *
  * @typeParam P - Canonical normalized props exposed to the host.
  * @typeParam I - An alternate consumer input shape, such as legacy aliases.
+ * @typeParam SchemaInputs - Canonical values accepted by each prop schema.
  *
  * @remarks
  * Supplying a distinct input shape permits initial props to use schema input
@@ -42,27 +77,61 @@ type HasSamePropKeys<A, B> = [Exclude<keyof A, keyof B>] extends [never]
  * shapes have the same keys, the input shape is authoritative because schema
  * transforms can produce outputs that are not valid inputs. Required-prop
  * validation remains owned by the component's runtime prop definitions when
- * aliases prevent TypeScript from inferring canonical requirements.
+ * aliases prevent TypeScript from inferring canonical requirements. Alternate
+ * shapes should declare alias keys explicitly; broad string index signatures
+ * are not treated as aliases because they cannot safely override canonical
+ * schema input types.
  * @public
  */
-export type ConsumerPropsInput<P, I = P> =
-  HasSamePropKeys<P, I> extends true
-    ? I
-    : | P
-      | I
-      | (Exclude<keyof I, keyof P> extends never ? never : Partial<P & I>);
+type ConsumerPropsInputForAlternate<P, I, SchemaInputs> =
+  string extends keyof I
+    ? CanonicalConsumerProps<P, SchemaInputs>
+    : HasSamePropKeys<
+          CanonicalConsumerProps<P, SchemaInputs>,
+          AlternateConsumerProps<CanonicalConsumerProps<P, SchemaInputs>, I>
+        > extends true
+      ? CanonicalConsumerProps<P, SchemaInputs>
+      : | CanonicalConsumerProps<P, SchemaInputs>
+        | AlternateConsumerProps<CanonicalConsumerProps<P, SchemaInputs>, I>
+        | (Exclude<
+              keyof I,
+              keyof CanonicalConsumerProps<P, SchemaInputs>
+            > extends never
+            ? never
+            : Partial<
+                CombinedConsumerProps<
+                  CanonicalConsumerProps<P, SchemaInputs>,
+                  AlternateConsumerProps<
+                    CanonicalConsumerProps<P, SchemaInputs>,
+                    I
+                  >
+                >
+              >);
+
+export type ConsumerPropsInput<P, I = P, SchemaInputs = I> = I extends unknown
+  ? ConsumerPropsInputForAlternate<P, I, SchemaInputs>
+  : never;
 
 /**
  * Partial props accepted by component updates.
  *
  * @typeParam P - Canonical normalized props exposed to the host.
  * @typeParam I - An alternate consumer input shape, such as legacy aliases.
+ * @typeParam SchemaInputs - Canonical values accepted by each prop schema.
  * @public
  */
-export type ConsumerPropsUpdate<P, I = P> =
-  HasSamePropKeys<P, I> extends true
-    ? Partial<I>
-    : Partial<P> | Partial<I> | Partial<P & I>;
+type ConsumerPropsUpdateForAlternate<P, I, SchemaInputs> = string extends keyof I
+  ? Partial<CanonicalConsumerProps<P, SchemaInputs>>
+  : Partial<
+      CombinedConsumerProps<
+        CanonicalConsumerProps<P, SchemaInputs>,
+        AlternateConsumerProps<CanonicalConsumerProps<P, SchemaInputs>, I>
+      >
+    >;
+
+export type ConsumerPropsUpdate<P, I = P, SchemaInputs = I> = I extends unknown
+  ? ConsumerPropsUpdateForAlternate<P, I, SchemaInputs>
+  : never;
 
 /**
  * Function that returns nested components for composition.
@@ -170,10 +239,15 @@ export type InferredComponentOptions<
 };
 
 /** Arguments accepted by a component factory based on required input keys. @internal */
-type ComponentFactoryArguments<P, I, RequireProps extends boolean> =
+type ComponentFactoryArguments<
+  P,
+  I,
+  RequireProps extends boolean,
+  SchemaInputs,
+> =
   RequireProps extends true
-    ? [props: ConsumerPropsInput<P, I>]
-    : [props?: ConsumerPropsInput<P, I>];
+    ? [props: ConsumerPropsInput<P, I, SchemaInputs>]
+    : [props?: ConsumerPropsInput<P, I, SchemaInputs>];
 
 /**
  * Configuration options for creating a component.
@@ -303,7 +377,7 @@ export interface ComponentOptions<
  * @typeParam P - The props type for the component
  * @typeParam X - The type of exports from the host
  * @typeParam I - An alternate consumer input shape, such as legacy aliases
- * @typeParam RequireProps - Whether the factory requires a props argument
+ * @typeParam SchemaInputs - Canonical values accepted by each prop schema
  *
  * @remarks
  * Component instances are created by calling the component factory function
@@ -323,6 +397,7 @@ export interface ForgeFrameComponentInstance<
   P = Record<string, unknown>,
   X = unknown,
   I = P,
+  SchemaInputs = I,
 > {
   /**
    * Unique instance identifier.
@@ -404,14 +479,14 @@ export interface ForgeFrameComponentInstance<
    * @param props - Partial props to merge with existing
    * @returns Promise that resolves when props are updated
    */
-  updateProps(props: ConsumerPropsUpdate<P, I>): Promise<void>;
+  updateProps(props: ConsumerPropsUpdate<P, I, SchemaInputs>): Promise<void>;
 
   /**
    * Create a copy of this instance with the same props.
    *
    * @returns New component instance
    */
-  clone(): ForgeFrameComponentInstance<P, X, I>;
+  clone(): ForgeFrameComponentInstance<P, X, I, SchemaInputs>;
 
   /**
    * Check if the component is eligible to render.
@@ -442,6 +517,8 @@ export interface ForgeFrameComponentInstance<
  * @typeParam P - The props type for the component
  * @typeParam X - The type of exports from the host
  * @typeParam I - An alternate consumer input shape, such as legacy aliases
+ * @typeParam RequireProps - Whether the factory requires a props argument
+ * @typeParam SchemaInputs - Canonical values accepted by each prop schema
  *
  * @remarks
  * This is the return type of `ForgeFrame.create()`. It can be called as a
@@ -467,6 +544,7 @@ export interface ForgeFrameComponent<
   X = unknown,
   I = P,
   RequireProps extends boolean = false,
+  SchemaInputs = I,
 > {
   /**
    * Create a new component instance with props.
@@ -474,7 +552,12 @@ export interface ForgeFrameComponent<
    * @param props - Props to pass to the component
    * @returns New component instance
    */
-  (...args: ComponentFactoryArguments<P, I, RequireProps>): ForgeFrameComponentInstance<P, X, I>;
+  (...args: ComponentFactoryArguments<P, I, RequireProps, SchemaInputs>): ForgeFrameComponentInstance<
+    P,
+    X,
+    I,
+    SchemaInputs
+  >;
 
   /**
    * Check if current window is a host instance of this component.
@@ -521,7 +604,7 @@ export interface ForgeFrameComponent<
   /**
    * All active instances of this component.
    */
-  instances: ForgeFrameComponentInstance<P, X, I>[];
+  instances: ForgeFrameComponentInstance<P, X, I, SchemaInputs>[];
 }
 
 /**

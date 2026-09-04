@@ -16,8 +16,11 @@ import type { NormalizedOptions } from './types';
  * Builds component references for nested host components.
  * @internal
  */
-export function buildNestedHostRefs<P extends Record<string, unknown>>(
-  options: Pick<NormalizedOptions<P>, 'children'>,
+export function buildNestedHostRefs<
+  P extends Record<string, unknown>,
+  SchemaInputs,
+>(
+  options: Pick<NormalizedOptions<P, SchemaInputs>, 'children'>,
   props: P
 ): Record<string, HostComponentRef> | undefined {
   if (!options.children) {

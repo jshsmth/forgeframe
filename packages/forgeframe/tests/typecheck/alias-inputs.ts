@@ -25,6 +25,32 @@ type MultiLegacyInput = {
 
 type CanonicalAliasInput = Pick<CanonicalProps, 'second'>;
 
+type TransformedCanonicalProps = {
+  amount: number;
+};
+
+type TransformedLegacyInput = {
+  legacyAmount: string;
+};
+
+type TransformedSchemaInputs = {
+  amount: string;
+};
+
+type TransformedLegacyInputUnion =
+  | { legacyAmount: string }
+  | { oldAmount: string };
+
+type MultiTypeCanonicalProps = {
+  amount: number;
+  enabled: boolean;
+};
+
+type MultiTypeSchemaInputs = {
+  amount: string;
+  enabled: boolean;
+};
+
 const Component = create<CanonicalProps, unknown, LegacyInput>({
   tag: 'typed-alias-inputs',
   url: 'https://example.com/widget',
@@ -41,6 +67,121 @@ const mixedUpdate: ConsumerPropsUpdate<CanonicalProps, LegacyInput> = {
   second: 'middle',
   legacy: 'updated',
 };
+
+const transformedCanonicalInput: ConsumerPropsInput<
+  TransformedCanonicalProps,
+  TransformedLegacyInput,
+  TransformedSchemaInputs
+> = { amount: '1' };
+const transformedAliasInput: ConsumerPropsInput<
+  TransformedCanonicalProps,
+  TransformedLegacyInput,
+  TransformedSchemaInputs
+> = { legacyAmount: '1' };
+const transformedCanonicalUpdate: ConsumerPropsUpdate<
+  TransformedCanonicalProps,
+  TransformedLegacyInput,
+  TransformedSchemaInputs
+> = { amount: '2' };
+void transformedCanonicalInput;
+void transformedAliasInput;
+void transformedCanonicalUpdate;
+
+const invalidTransformedCanonicalInput: ConsumerPropsInput<
+  TransformedCanonicalProps,
+  TransformedLegacyInput,
+  TransformedSchemaInputs
+> = {
+  // @ts-expect-error normalized outputs are not accepted as canonical schema inputs
+  amount: 1,
+};
+void invalidTransformedCanonicalInput;
+
+const invalidTransformedCanonicalUpdate: ConsumerPropsUpdate<
+  TransformedCanonicalProps,
+  TransformedLegacyInput,
+  TransformedSchemaInputs
+> = {
+  // @ts-expect-error normalized outputs are not accepted in canonical updates
+  amount: 2,
+};
+void invalidTransformedCanonicalUpdate;
+
+const firstUnionAliasUpdate: ConsumerPropsUpdate<
+  TransformedCanonicalProps,
+  TransformedLegacyInputUnion,
+  TransformedSchemaInputs
+> = { legacyAmount: '3' };
+const secondUnionAliasUpdate: ConsumerPropsUpdate<
+  TransformedCanonicalProps,
+  TransformedLegacyInputUnion,
+  TransformedSchemaInputs
+> = { oldAmount: '3' };
+const mixedUnionAliasInput: ConsumerPropsInput<
+  TransformedCanonicalProps,
+  TransformedLegacyInputUnion,
+  TransformedSchemaInputs
+> = { amount: '3', oldAmount: '3' };
+void firstUnionAliasUpdate;
+void secondUnionAliasUpdate;
+void mixedUnionAliasInput;
+
+const broadSchemaCanonicalInput: ConsumerPropsInput<
+  MultiTypeCanonicalProps,
+  TransformedLegacyInput,
+  Record<string, string>
+> = { amount: '3', enabled: 'true' };
+const broadSchemaCanonicalUpdate: ConsumerPropsUpdate<
+  MultiTypeCanonicalProps,
+  TransformedLegacyInput,
+  Record<string, string>
+> = { amount: '4' };
+void broadSchemaCanonicalInput;
+void broadSchemaCanonicalUpdate;
+
+const invalidBroadSchemaCanonicalInput: ConsumerPropsInput<
+  MultiTypeCanonicalProps,
+  TransformedLegacyInput,
+  Record<string, string>
+> = {
+  // @ts-expect-error a broad schema-input index still overrides normalized values
+  amount: 3,
+  enabled: 'true',
+};
+void invalidBroadSchemaCanonicalInput;
+
+const broadAlternateCanonicalInput: ConsumerPropsInput<
+  MultiTypeCanonicalProps,
+  Record<string, string>,
+  MultiTypeSchemaInputs
+> = { amount: '3', enabled: true };
+const broadAlternateCanonicalUpdate: ConsumerPropsUpdate<
+  MultiTypeCanonicalProps,
+  Record<string, string>,
+  MultiTypeSchemaInputs
+> = { enabled: true };
+void broadAlternateCanonicalInput;
+void broadAlternateCanonicalUpdate;
+
+const invalidBroadAlternateUpdate: ConsumerPropsUpdate<
+  MultiTypeCanonicalProps,
+  Record<string, string>,
+  MultiTypeSchemaInputs
+> = {
+  // @ts-expect-error broad alternate inputs cannot override canonical schema types
+  enabled: 'true',
+};
+void invalidBroadAlternateUpdate;
+
+const invalidBroadAlternateInput: ConsumerPropsInput<
+  MultiTypeCanonicalProps,
+  Record<string, string>,
+  MultiTypeSchemaInputs
+> = {
+  // @ts-expect-error broad alternate inputs do not admit unknown canonical keys
+  unsupported: 'value',
+};
+void invalidBroadAlternateInput;
 
 const instance = Component(aliasInput);
 void instance.updateProps(mixedUpdate);

@@ -12,6 +12,8 @@ import {
   initHost,
   prop,
   type ComponentOptions,
+  type ForgeFrameComponent,
+  type ForgeFrameComponentInstance,
   type HostPropsDefinition,
   type SchemaPropDefinition,
   withReactComponent,
@@ -54,6 +56,16 @@ interface ExplicitProps extends Record<string, unknown> {
 interface ExplicitExports {
   ready: boolean;
 }
+
+declare const ExplicitlyRequiredFactory: ForgeFrameComponent<
+  { label: string },
+  unknown,
+  { label: string },
+  true
+>;
+void ExplicitlyRequiredFactory({ label: 'ready' });
+// @ts-expect-error the existing fourth generic still makes the props argument required
+void ExplicitlyRequiredFactory();
 
 const ExplicitComponent = create<ExplicitProps, ExplicitExports>({
   tag: 'explicit-component',
@@ -413,10 +425,78 @@ const AliasedTransformComponent = create<
   },
 });
 
+const aliasedTransformInstance = AliasedTransformComponent({ amount: '2' });
+const explicitlyTypedAliasedTransformComponent: ForgeFrameComponent<
+  ExplicitTransformProps,
+  unknown,
+  LegacyTransformInput,
+  false,
+  CanonicalTransformSchemaInputs
+> = AliasedTransformComponent;
+const explicitlyTypedAliasedTransformInstance: ForgeFrameComponentInstance<
+  ExplicitTransformProps,
+  unknown,
+  LegacyTransformInput,
+  CanonicalTransformSchemaInputs
+> = aliasedTransformInstance;
 void AliasedTransformComponent({ legacyAmount: '2' });
+void explicitlyTypedAliasedTransformComponent({ amount: '2' });
+void explicitlyTypedAliasedTransformInstance.updateProps({ amount: '3' });
+void aliasedTransformInstance.updateProps({ amount: '3' });
+void aliasedTransformInstance.updateProps({ legacyAmount: '3' });
+void aliasedTransformInstance.clone().updateProps({ amount: '3' });
+void AliasedTransformComponent.instances[0]?.updateProps({ amount: '3' });
 
-// @ts-expect-error the public factory accepts the alias-facing input shape
-void AliasedTransformComponent({ amount: '2' });
+const AliasedTransformReactComponent = createReactComponent(
+  AliasedTransformComponent,
+  { React: {} as never }
+);
+void AliasedTransformReactComponent({ amount: '4' });
+void AliasedTransformReactComponent({ legacyAmount: '4' });
+
+const ExplicitGenericAliasedTransformReactComponent = createReactComponent<
+  ExplicitTransformProps,
+  unknown,
+  unknown,
+  LegacyTransformInput,
+  false,
+  CanonicalTransformSchemaInputs
+>(AliasedTransformComponent, { React: {} as never });
+void ExplicitGenericAliasedTransformReactComponent({ amount: '4' });
+
+const createBoundReactComponent = withReactComponent({} as never);
+const BoundAliasedTransformReactComponent = createBoundReactComponent(
+  AliasedTransformComponent
+);
+const ExplicitGenericBoundAliasedTransformReactComponent =
+  createBoundReactComponent<
+    ExplicitTransformProps,
+    unknown,
+    LegacyTransformInput,
+    false,
+    CanonicalTransformSchemaInputs
+  >(AliasedTransformComponent);
+void BoundAliasedTransformReactComponent({ amount: '4' });
+void BoundAliasedTransformReactComponent({ legacyAmount: '4' });
+void ExplicitGenericBoundAliasedTransformReactComponent({ amount: '4' });
+
+// @ts-expect-error normalized outputs are not necessarily valid schema inputs
+void AliasedTransformComponent({ amount: 2 });
+
+// @ts-expect-error updates must use a canonical or alias-facing schema input
+void aliasedTransformInstance.updateProps({ amount: 3 });
+
+// @ts-expect-error clones retain canonical schema input types
+void aliasedTransformInstance.clone().updateProps({ amount: 3 });
+
+// @ts-expect-error tracked instances retain canonical schema input types
+void AliasedTransformComponent.instances[0]?.updateProps({ amount: 3 });
+
+// @ts-expect-error React wrappers preserve canonical schema input types
+void AliasedTransformReactComponent({ amount: 4 });
+
+// @ts-expect-error curried React wrappers preserve canonical schema input types
+void BoundAliasedTransformReactComponent({ amount: 4 });
 
 const OptionalWrappedValidatorComponent = create({
   tag: 'optional-wrapped-validator-component',
@@ -454,6 +534,9 @@ const RequiredTransformComponent = create({
 });
 
 void RequiredTransformComponent({ transformedValue: 'input' });
+
+// @ts-expect-error requiredness applies to consumer input even when output may be undefined
+void RequiredTransformComponent({});
 
 if (RequiredTransformComponent.hostProps) {
   const transformedValue: string | undefined =

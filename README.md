@@ -544,10 +544,26 @@ const Widget = ForgeFrame.create<
 });
 
 Widget({ userEmail: 'user@example.com' });
+Widget({ email: 'user@example.com' });
 ```
+
+Factories, prop updates, and React wrappers accept either the canonical schema
+input shape or the configured alternate input shape. Normalized host props are
+not treated as consumer inputs when a schema transform changes their type.
 
 The alternate input type may also be a subset of the canonical props when one
 canonical key doubles as another prop's alias.
+
+`required: true` requires a consumer input, not a defined normalized output. If
+a valid input can transform to `undefined`, its `outputSchema` must explicitly
+accept `undefined`; the host then treats that as a valid normalized result.
+
+Prefer inferred component and React-wrapper types. If you explicitly annotate
+an aliased component whose schema inputs differ from its host props, supply the
+canonical schema-input type as the fifth `ForgeFrameComponent` generic, after
+the required-props flag (or the fourth `ForgeFrameComponentInstance` generic).
+React wrappers normally infer this; with explicit wrapper type arguments, it is
+the sixth generic.
 
 - Use `sameDomain` for values that should never be exposed during cross-origin bootstrap.
 - `DOTIFY` safely preserves nested object keys that contain separators such as `.`, `&`, or `=`.

@@ -285,6 +285,58 @@ describe('Host lifecycle behavior', () => {
     expect(host?.hostProps.consumer.props).toMatchObject({ amount: 42 });
   });
 
+  it('should let the output schema decide whether a required input may normalize to undefined', () => {
+    vi
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
+      .mockReturnValue(window);
+
+    const optionalOutputDefinitions = {
+      amount: {
+        schema: z.string().transform((value) =>
+          value === 'empty' ? undefined : Number(value)
+        ),
+        outputSchema: z.number().optional(),
+        required: true,
+      },
+    };
+
+    const optionalOutputHost = new HostComponent(
+      createPayload({ props: {} }),
+      optionalOutputDefinitions,
+      undefined,
+      true
+    );
+    expect(optionalOutputHost.hostProps.amount).toBeUndefined();
+    optionalOutputHost.destroy();
+
+    const unconfiguredHost = new HostComponent(
+      createPayload({ props: {} }),
+      {},
+      undefined,
+      true
+    );
+    expect(() =>
+      unconfiguredHost.applyHostConfiguration(optionalOutputDefinitions)
+    ).not.toThrow();
+    unconfiguredHost.destroy();
+
+    expect(
+      () =>
+        new HostComponent(
+          createPayload({ props: {} }),
+          {
+            amount: {
+              schema: z.string().transform(Number),
+              outputSchema: z.number(),
+              required: true,
+            },
+          },
+          undefined,
+          true
+        )
+    ).toThrow('Invalid input: expected number, received undefined');
+  });
+
   it('should reject normalized host props that fail their output schema', () => {
     vi
       .spyOn(hostSecurity, 'resolveConsumerWindow')

@@ -117,6 +117,7 @@ export interface ReactComponentProps<_P = unknown> {
  * @typeParam P - The component-specific props type from the ForgeFrame component
  * @typeParam I - An alternate consumer input shape, such as legacy alias keys
  * @typeParam RequireProps - Whether the wrapped factory requires initial props
+ * @typeParam SchemaInputs - Canonical values accepted by each prop schema
  *
  * @remarks
  * This type merges {@link ReactComponentProps} with the component's initial
@@ -129,10 +130,11 @@ type FullReactComponentProps<
   P,
   I = P,
   RequireProps extends boolean = false,
+  SchemaInputs = I,
 > = ReactComponentProps<P> &
   (RequireProps extends true
-    ? ConsumerPropsInput<P, I>
-    : ConsumerPropsUpdate<P, I>);
+    ? ConsumerPropsInput<P, I, SchemaInputs>
+    : ConsumerPropsUpdate<P, I, SchemaInputs>);
 
 /**
  * Performs a shallow equality check for prop objects.
@@ -189,9 +191,9 @@ function reportReactError(
 }
 
 /** A committed React prop snapshot waiting to be synchronized. @internal */
-interface ReactPropUpdate<I extends Record<string, unknown>> {
-  desired: Partial<I>;
-  payload: Partial<I>;
+interface ReactPropUpdate {
+  desired: Record<string, unknown>;
+  payload: Record<string, unknown>;
   retryOnFailure: boolean;
 }
 
@@ -200,12 +202,13 @@ interface ReactPropSyncState<
   P extends Record<string, unknown>,
   X,
   I extends Record<string, unknown>,
+  SchemaInputs extends Record<string, unknown>,
 > {
-  instance: ForgeFrameComponentInstance<P, X, I>;
-  comparableProps: Partial<I> | null;
+  instance: ForgeFrameComponentInstance<P, X, I, SchemaInputs>;
+  comparableProps: Record<string, unknown> | null;
   knownKeys: Set<string>;
-  queue: Array<ReactPropUpdate<I>>;
-  inFlightUpdate: ReactPropUpdate<I> | null;
+  queue: ReactPropUpdate[];
+  inFlightUpdate: ReactPropUpdate | null;
   renderReady: boolean;
   draining: boolean;
   active: boolean;
@@ -216,14 +219,17 @@ function deactivatePropSyncState<
   P extends Record<string, unknown>,
   X,
   I extends Record<string, unknown>,
->(state: ReactPropSyncState<P, X, I>): void {
+  SchemaInputs extends Record<string, unknown>,
+>(state: ReactPropSyncState<P, X, I, SchemaInputs>): void {
   state.active = false;
   state.queue.length = 0;
   state.inFlightUpdate = null;
 }
 
 /** Creates a shallow, stable snapshot of the component props for one React commit. @internal */
-function snapshotProps<P extends Record<string, unknown>>(props: Partial<P>): Partial<P> {
+function snapshotProps(
+  props: Record<string, unknown>
+): Record<string, unknown> {
   return { ...props };
 }
 
@@ -231,11 +237,11 @@ function snapshotProps<P extends Record<string, unknown>>(props: Partial<P>): Pa
  * Builds a self-contained update payload, resetting every previously observed missing key.
  * @internal
  */
-function buildPropUpdate<P extends Record<string, unknown>>(
-  desired: Partial<P>,
+function buildPropUpdate(
+  desired: Record<string, unknown>,
   knownKeys: Set<string>
-): ReactPropUpdate<P> {
-  const payload = snapshotProps(desired) as Record<string, unknown>;
+): ReactPropUpdate {
+  const payload = snapshotProps(desired);
 
   for (const key of Object.keys(desired)) {
     knownKeys.add(key);
@@ -249,7 +255,7 @@ function buildPropUpdate<P extends Record<string, unknown>>(
 
   return {
     desired,
-    payload: payload as Partial<P>,
+    payload,
     retryOnFailure: false,
   };
 }
@@ -318,6 +324,7 @@ export interface ReactComponentType<P, E = unknown> {
  * @typeParam E - The forwarded React element ref type
  * @typeParam I - An alternate consumer input shape, such as legacy alias keys
  * @typeParam RequireProps - Whether the wrapped factory requires props
+ * @typeParam SchemaInputs - Canonical values accepted by each prop schema
  *
  * @returns A React component that renders the ForgeFrame component
  *
@@ -358,19 +365,23 @@ export function createReactComponent<
   E = unknown,
   I extends Record<string, unknown> = P,
   RequireProps extends boolean = false,
+  SchemaInputs extends Record<string, unknown> = I,
 >(
-  Component: ForgeFrameComponent<P, X, I, RequireProps>,
+  Component: ForgeFrameComponent<P, X, I, RequireProps, SchemaInputs>,
   options: ReactDriverOptions<E>
-): ReactComponentType<FullReactComponentProps<P, I, RequireProps>, E> {
+): ReactComponentType<
+  FullReactComponentProps<P, I, RequireProps, SchemaInputs>,
+  E
+> {
   const { createElement, useRef, useEffect, useState, forwardRef } =
     options.React as unknown as ReactRuntime<E>;
   const createInstance = Component as unknown as (
-    props: ConsumerPropsInput<P, I>
-  ) => ForgeFrameComponentInstance<P, X, I>;
+    props: ConsumerPropsInput<P, I, SchemaInputs>
+  ) => ForgeFrameComponentInstance<P, X, I, SchemaInputs>;
 
   const ReactComponent = forwardRef<
     HTMLDivElement,
-    FullReactComponentProps<P, I, RequireProps>
+    FullReactComponentProps<P, I, RequireProps, SchemaInputs>
   >(
     function ForgeFrameComponent(props, ref) {
       const {
@@ -384,20 +395,26 @@ export function createReactComponent<
       } = props;
 
       const containerRef = useRef<HTMLDivElement>(null);
-      const instanceRef = useRef<ForgeFrameComponentInstance<P, X, I> | null>(null);
-      const propSyncRef = useRef<ReactPropSyncState<P, X, I> | null>(null);
+      const instanceRef = useRef<
+        ForgeFrameComponentInstance<P, X, I, SchemaInputs> | null
+      >(null);
+      const propSyncRef = useRef<
+        ReactPropSyncState<P, X, I, SchemaInputs> | null
+      >(null);
       const onRenderedRef = useRef<typeof onRendered>(onRendered);
       const onErrorRef = useRef<typeof onError>(onError);
       const onCloseRef = useRef<typeof onClose>(onClose);
       const [error, setError] = useState<Error | null>(null);
 
-      const isCurrentSyncState = (state: ReactPropSyncState<P, X, I>): boolean =>
+      const isCurrentSyncState = (
+        state: ReactPropSyncState<P, X, I, SchemaInputs>
+      ): boolean =>
         state.active &&
         instanceRef.current === state.instance &&
         propSyncRef.current === state;
 
       const drainPropUpdates = async (
-        state: ReactPropSyncState<P, X, I>
+        state: ReactPropSyncState<P, X, I, SchemaInputs>
       ): Promise<void> => {
         if (state.draining || !state.renderReady || !isCurrentSyncState(state)) {
           return;
@@ -416,7 +433,7 @@ export function createReactComponent<
 
             try {
               await state.instance.updateProps(
-                update.payload as ConsumerPropsUpdate<P, I>
+                update.payload as ConsumerPropsUpdate<P, I, SchemaInputs>
               );
             } catch (err) {
               if (!isCurrentSyncState(state)) {
@@ -462,9 +479,13 @@ export function createReactComponent<
 
         setError(null);
 
-        const initialProps = snapshotProps(componentProps as Partial<I>);
-        const instance = createInstance(initialProps as ConsumerPropsInput<P, I>);
-        const syncState: ReactPropSyncState<P, X, I> = {
+        const initialProps = snapshotProps(
+          componentProps as Record<string, unknown>
+        );
+        const instance = createInstance(
+          initialProps as ConsumerPropsInput<P, I, SchemaInputs>
+        );
+        const syncState: ReactPropSyncState<P, X, I, SchemaInputs> = {
           instance,
           comparableProps: initialProps,
           knownKeys: new Set(Object.keys(initialProps)),
@@ -529,7 +550,9 @@ export function createReactComponent<
         const syncState = propSyncRef.current;
         if (!syncState || !isCurrentSyncState(syncState)) return;
 
-        const nextProps = snapshotProps(componentProps as Partial<I>);
+        const nextProps = snapshotProps(
+          componentProps as Record<string, unknown>
+        );
         const pendingUpdate = syncState.queue.at(-1);
         const prevProps = pendingUpdate?.desired ?? syncState.comparableProps;
         const nextPropsRecord = nextProps as Record<string, unknown>;
@@ -634,6 +657,7 @@ export function withReactComponent<E>(React: ReactLike<E>) {
    * @typeParam X - The export type for data shared from the host component
    * @typeParam I - An alternate consumer input shape, such as legacy alias keys
    * @typeParam RequireProps - Whether the wrapped factory requires props
+   * @typeParam SchemaInputs - Canonical values accepted by each prop schema
    *
    * @param Component - The ForgeFrame component to wrap
    * @returns A React component that renders the ForgeFrame component
@@ -645,9 +669,13 @@ export function withReactComponent<E>(React: ReactLike<E>) {
     X = unknown,
     I extends Record<string, unknown> = P,
     RequireProps extends boolean = false,
+    SchemaInputs extends Record<string, unknown> = I,
   >(
-    Component: ForgeFrameComponent<P, X, I, RequireProps>
-  ): ReactComponentType<FullReactComponentProps<P, I, RequireProps>, E> {
+    Component: ForgeFrameComponent<P, X, I, RequireProps, SchemaInputs>
+  ): ReactComponentType<
+    FullReactComponentProps<P, I, RequireProps, SchemaInputs>,
+    E
+  > {
     return createReactComponent(Component, { React });
   };
 }

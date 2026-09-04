@@ -39,17 +39,20 @@ export interface ConsumerPropsSyncHooks<P extends Record<string, unknown>> {
   sendPropsUpdateToHost: (nextProps: P) => Promise<void>;
 }
 
-function prevalidateProvidedSchemaInputs<P extends Record<string, unknown>>(
+function prevalidateProvidedSchemaInputs<
+  P extends Record<string, unknown>,
+  SchemaInputs,
+>(
   inputProps: Record<string, unknown>,
   props: P,
-  definitions: NormalizedOptions<P>['props'],
+  definitions: NormalizedOptions<P, SchemaInputs>['props'],
   candidateKeys = new Set(
     Object.entries(inputProps)
       .filter(([, value]) => value !== undefined)
       .map(([key]) => key)
   )
 ): Set<string> {
-  validateConsumerProps(props, definitions, {
+  validateConsumerProps<P, SchemaInputs>(props, definitions, {
     schemaKeys: candidateKeys,
     schemaInputProps: inputProps,
     validationKeys: candidateKeys,
@@ -58,16 +61,19 @@ function prevalidateProvidedSchemaInputs<P extends Record<string, unknown>>(
   return candidateKeys;
 }
 
-function validateNormalizedSchemaValues<P extends Record<string, unknown>>(
+function validateNormalizedSchemaValues<
+  P extends Record<string, unknown>,
+  SchemaInputs,
+>(
   props: P,
-  definitions: NormalizedOptions<P>['props'],
+  definitions: NormalizedOptions<P, SchemaInputs>['props'],
   schemaKeys: ReadonlySet<string>
 ): void {
   if (schemaKeys.size === 0) {
     return;
   }
 
-  validateConsumerProps(props, definitions, {
+  validateConsumerProps<P, SchemaInputs>(props, definitions, {
     schemaKeys,
     schemaInputProps: props,
     validationKeys: schemaKeys,
@@ -93,7 +99,10 @@ export interface ConsumerPropsPipelineSnapshot<P extends Record<string, unknown>
  * Owns consumer prop normalization, validation, and update queueing.
  * @internal
  */
-export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
+export class ConsumerPropsPipeline<
+  P extends Record<string, unknown>,
+  SchemaInputs = P,
+> {
   /** Current normalized prop snapshot. */
   public props: P;
 
@@ -119,7 +128,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
   public pendingPropsUpdate: Promise<void> | null = null;
 
   constructor(
-    private options: NormalizedOptions<P>,
+    private options: NormalizedOptions<P, SchemaInputs>,
     initialInputProps: Record<string, unknown>,
     private createPropContext: (props: P) => PropContext<P>,
     snapshot?: ConsumerPropsPipelineSnapshot<P>
@@ -135,7 +144,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
       return;
     }
 
-    this.inputProps = materializePropAliases(
+    this.inputProps = materializePropAliases<P, SchemaInputs>(
       initialInputProps,
       this.options.props
     ) as Record<string, unknown>;
@@ -151,7 +160,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
       this.revalidationSchemaKeys = new Set<string>();
       this.outputValidationKeys = new Set<string>();
       const initialProps = { ...this.inputProps } as P;
-      this.props = normalizeConsumerProps(
+      this.props = normalizeConsumerProps<P, SchemaInputs>(
         initialProps,
         this.options.props,
         this.createPropContext(initialProps),
@@ -191,7 +200,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
 
     if (this.schemaValidated) {
       this.revalidateSchemaInputs();
-      validateConsumerProps(this.props, this.options.props, {
+      validateConsumerProps<P, SchemaInputs>(this.props, this.options.props, {
         schemaKeys: new Set<string>(),
       });
       return;
@@ -199,7 +208,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
 
     this.revalidateSchemaInputs();
     const validatedProps = { ...this.props };
-    validateConsumerProps(validatedProps, this.options.props, {
+    validateConsumerProps<P, SchemaInputs>(validatedProps, this.options.props, {
       schemaValidatedKeys: this.schemaValidatedKeys,
     });
     this.props = validatedProps;
@@ -226,7 +235,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
     revalidationSchemaKeys: Set<string>;
     outputValidationKeys: Set<string>;
   } {
-    const materializedNewProps = materializePropAliases(
+    const materializedNewProps = materializePropAliases<P, SchemaInputs>(
       newProps,
       this.options.props,
       PROP_RESET
@@ -250,9 +259,13 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
         this.options.props,
         normalizedState.outputValidationKeys
       );
-      validateConsumerProps(normalizedState.props, this.options.props, {
-        schemaValidatedKeys: normalizedState.schemaValidatedKeys,
-      });
+      validateConsumerProps<P, SchemaInputs>(
+        normalizedState.props,
+        this.options.props,
+        {
+          schemaValidatedKeys: normalizedState.schemaValidatedKeys,
+        }
+      );
       this.options.validate?.({ props: normalizedState.props });
       return {
         nextInputProps,
@@ -295,7 +308,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
 
     const propContext = this.createPropContext(mergedProps as P);
     const normalizedSchemaKeys = new Set(schemaValidatedKeys);
-    const nextProps = normalizeConsumerProps(
+    const nextProps = normalizeConsumerProps<P, SchemaInputs>(
       mergedProps as P,
       this.options.props,
       propContext,
@@ -315,7 +328,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
         hasOwnDefinedValue(nextInputProps, key)
       )
     );
-    validateConsumerProps(nextProps, this.options.props, {
+    validateConsumerProps<P, SchemaInputs>(nextProps, this.options.props, {
       schemaKeys: revalidationSchemaKeys,
       schemaInputProps: nextInputProps,
       validationKeys: revalidationSchemaKeys,
@@ -329,7 +342,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
       outputValidationKeys
     );
 
-    validateConsumerProps(nextProps, this.options.props, {
+    validateConsumerProps<P, SchemaInputs>(nextProps, this.options.props, {
       schemaKeys: this.schemaValidated ? changedSchemaKeys : undefined,
       schemaValidatedKeys,
     });
@@ -356,7 +369,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
     );
     const revalidationSchemaKeys = new Set(schemaValidatedKeys);
     const outputValidationKeys = new Set<string>();
-    const props = normalizeConsumerProps(
+    const props = normalizeConsumerProps<P, SchemaInputs>(
       initialProps,
       this.options.props,
       this.createPropContext(initialProps),
@@ -376,7 +389,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
 
   private revalidateSchemaInputs(): void {
     if (this.revalidationSchemaKeys.size > 0) {
-      validateConsumerProps(this.props, this.options.props, {
+      validateConsumerProps<P, SchemaInputs>(this.props, this.options.props, {
         schemaKeys: this.revalidationSchemaKeys,
         schemaInputProps: this.inputProps,
         validationKeys: this.revalidationSchemaKeys,

@@ -265,15 +265,18 @@ function isDotifyEncoded(
  *
  * @public
  */
-export function serializeProps<P extends Record<string, unknown>>(
+export function serializeProps<
+  P extends Record<string, unknown>,
+  I = P,
+>(
   props: P,
-  definitions: PropsDefinition<P>,
+  definitions: PropsDefinition<P, I>,
   bridge: FunctionBridge
 ): SerializedProps {
   const allDefs = {
     ...BUILTIN_PROP_DEFINITIONS,
     ...definitions,
-  } as PropsDefinition<P>;
+  } as PropsDefinition<P, I>;
 
   const result: SerializedProps = {};
 
