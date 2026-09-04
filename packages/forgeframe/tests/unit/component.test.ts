@@ -125,6 +125,35 @@ describe('Component Creation', () => {
     expect(DynamicComponent.instances).toEqual([]);
   });
 
+  it('should retry rendering after a transient function URL failure', async () => {
+    const transientError = new Error('Application state is not ready');
+    let ready = false;
+    const resolveUrl = vi.fn(() => {
+      if (!ready) {
+        throw transientError;
+      }
+      return 'https://example.com/component';
+    });
+    const DynamicComponent = create({
+      tag: 'retryable-dynamic-url-component',
+      url: resolveUrl,
+    });
+    const instance = DynamicComponent({});
+    const internal = getConsumerInternals(instance);
+    const container = document.createElement('div');
+
+    document.body.appendChild(container);
+    vi.spyOn(internal, 'waitForHost').mockResolvedValue(undefined);
+
+    await expect(instance.render(container)).rejects.toBe(transientError);
+    expect(DynamicComponent.instances).toContain(instance);
+
+    ready = true;
+
+    await expect(instance.render(container)).resolves.toBeUndefined();
+    expect(resolveUrl).toHaveBeenCalledTimes(2);
+  });
+
   it('should render and update components without custom props definitions', async () => {
     const MyComponent = create({
       tag: 'no-custom-props-component',

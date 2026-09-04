@@ -263,10 +263,10 @@ export class ConsumerComponent<
     this.checkEligibility();
     this.assertRenderActive();
 
-    let baseUrl: string;
+    const baseUrl = this.resolveUrl();
+    this.assertRenderActive();
+
     try {
-      baseUrl = this.resolveUrl();
-      this.assertRenderActive();
       this.transport.syncTrustedDomainForUrl(baseUrl);
     } catch (error) {
       await this.destroy().catch(() => undefined);
