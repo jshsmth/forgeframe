@@ -225,15 +225,15 @@ export type PropsDefinition<P, I = P> = {
  * Prop definitions consumed by the host after values have been normalized.
  *
  * @remarks
- * Host code only observes normalized outputs, so the consumer-side schema
- * input types are intentionally erased.
+ * Host code only observes normalized outputs, but retaining the schema input
+ * shape lets TypeScript require an `outputSchema` for type-changing schemas.
+ * Use the second type parameter when those inputs differ from `P`.
  *
+ * @typeParam P - The normalized props exposed to host code
+ * @typeParam I - The corresponding schema input types
  * @public
  */
-export type HostPropsDefinition<P> = PropsDefinition<
-  P,
-  { [K in keyof P]: unknown }
->;
+export type HostPropsDefinition<P, I = P> = PropsDefinition<P, I>;
 
 /** Resolves the value returned by a wrapped `value` callback. @internal */
 type InferPropDefinitionValueResult<Value> =

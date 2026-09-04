@@ -22,7 +22,10 @@ import {
 } from './security';
 import { HostTransport } from './transport';
 
-export class HostComponent<P extends Record<string, unknown>> {
+export class HostComponent<
+  P extends Record<string, unknown>,
+  SchemaInputs = P,
+> {
   public event: EventEmitter;
 
   private uid: string;
@@ -39,14 +42,14 @@ export class HostComponent<P extends Record<string, unknown>> {
 
   private transport!: HostTransport;
 
-  private propsRuntime!: HostPropsRuntime<P>;
+  private propsRuntime!: HostPropsRuntime<P, SchemaInputs>;
 
   private destroyed = false;
 
   constructor(
     payload: WindowNamePayload<P>,
-    propDefinitions: HostPropsDefinition<P> =
-      EMPTY_PROP_DEFINITIONS as HostPropsDefinition<P>,
+    propDefinitions: HostPropsDefinition<P, SchemaInputs> =
+      EMPTY_PROP_DEFINITIONS as HostPropsDefinition<P, SchemaInputs>,
     allowedConsumerDomains?: DomainMatcher,
     deferInit = false
   ) {
@@ -56,7 +59,7 @@ export class HostComponent<P extends Record<string, unknown>> {
     this.allowedConsumerDomains = allowedConsumerDomains;
 
     let transport: HostTransport | null = null;
-    let propsRuntime: HostPropsRuntime<P> | null = null;
+    let propsRuntime: HostPropsRuntime<P, SchemaInputs> | null = null;
 
     try {
       this.consumerWindow = resolveConsumerWindow();
@@ -165,7 +168,7 @@ export class HostComponent<P extends Record<string, unknown>> {
   }
 
   applyHostConfiguration(
-    propDefinitions?: HostPropsDefinition<P>,
+    propDefinitions?: HostPropsDefinition<P, SchemaInputs>,
     allowedConsumerDomains?: DomainMatcher
   ): void {
     if (allowedConsumerDomains !== undefined) {

@@ -67,8 +67,11 @@ export interface HostTransportPropsHandler {
   applySerializedProps(serializedProps: SerializedProps): { success: true };
 }
 
-export interface HostHostConfiguration<P extends Record<string, unknown>> {
-  propDefinitions?: HostPropsDefinition<P>;
+export interface HostHostConfiguration<
+  P extends Record<string, unknown>,
+  SchemaInputs = P,
+> {
+  propDefinitions?: HostPropsDefinition<P, SchemaInputs>;
   allowedConsumerDomains?: DomainMatcher;
 }
 

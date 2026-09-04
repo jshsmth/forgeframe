@@ -239,10 +239,10 @@ export function create<
       return componentHostProps;
     }
 
-    const activeHost = getHost<P>();
+    const activeHost = getHost<P, SchemaInputs>();
     if (activeHost?.hostProps.tag === options.tag) {
-      const configuredHost = initHost<P>(
-        runtimeOptions.props as HostPropsDefinition<P> | undefined,
+      const configuredHost = initHost<P, SchemaInputs>(
+        runtimeOptions.props as HostPropsDefinition<P, SchemaInputs> | undefined,
         options.allowedConsumerDomains
       );
       componentHostProps = configuredHost?.hostProps;
@@ -253,8 +253,8 @@ export function create<
       return undefined;
     }
 
-    const host = initHost<P>(
-      runtimeOptions.props as HostPropsDefinition<P> | undefined,
+    const host = initHost<P, SchemaInputs>(
+      runtimeOptions.props as HostPropsDefinition<P, SchemaInputs> | undefined,
       options.allowedConsumerDomains
     );
     if (!host) {

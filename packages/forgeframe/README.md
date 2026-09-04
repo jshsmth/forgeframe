@@ -657,6 +657,25 @@ Supported host boot patterns:
 - Call `initHost(propDefinitions)` or `initHost()` only for hosts that are intentionally embeddable by any consumer origin.
 - Define the host with `ForgeFrame.create(...)` and let component creation initialize the host runtime.
 
+When a shared definition uses a type-changing schema, carry both the normalized
+host props and schema-input shapes through `HostPropsDefinition` and `initHost`.
+This keeps the required normalized `outputSchema` visible to TypeScript:
+
+```typescript
+type AmountProps = { amount: number };
+type AmountInputs = { amount: string };
+
+const amountProps = {
+  amount: {
+    schema: z.string().transform(Number),
+    outputSchema: z.number(),
+    required: true,
+  },
+} satisfies HostPropsDefinition<AmountProps, AmountInputs>;
+
+initHost<AmountProps, AmountInputs>(amountProps, allowedConsumerDomains);
+```
+
 Use `initHost()` when:
 - You read `window.hostProps` directly.
 - Your host boot flow delays the first `window.hostProps` access (for example: lazy-loaded modules, async startup, or gated initialization).

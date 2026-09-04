@@ -150,6 +150,8 @@ export type ChildrenDefinition<P = Record<string, unknown>> = (props: {
   props: P;
 }) => Record<string, ForgeFrameComponentReference>;
 
+declare const forgeFrameComponentReferenceBrand: unique symbol;
+
 /**
  * Type-erased reference to a component definition used for composition.
  *
@@ -161,6 +163,8 @@ export type ChildrenDefinition<P = Record<string, unknown>> = (props: {
  * @public
  */
 export interface ForgeFrameComponentReference {
+  /** Identifies component factories created by ForgeFrame. @internal */
+  readonly [forgeFrameComponentReferenceBrand]: true;
   /** Check if the current window hosts this component. */
   isHost(): boolean;
   /** Check if the current window is embedded by this component. */
@@ -545,7 +549,7 @@ export interface ForgeFrameComponent<
   I = P,
   RequireProps extends boolean = false,
   SchemaInputs = I,
-> {
+> extends ForgeFrameComponentReference {
   /**
    * Create a new component instance with props.
    *

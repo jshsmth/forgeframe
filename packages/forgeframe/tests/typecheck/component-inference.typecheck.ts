@@ -382,9 +382,38 @@ const hostTransformDefinitions = {
     outputSchema: z.number(),
     required: true,
   },
-} satisfies HostPropsDefinition<ExplicitTransformProps>;
+} satisfies HostPropsDefinition<ExplicitTransformProps, ExplicitTransformInput>;
 
-const typedTransformHost = initHost<ExplicitTransformProps>(
+const invalidHostTransformDefinitions: HostPropsDefinition<ExplicitTransformProps> = {
+  amount: {
+    // @ts-expect-error host definitions need an output schema for type-changing inputs
+    schema: transformedFallbackSchema,
+    required: true,
+  },
+};
+void invalidHostTransformDefinitions;
+
+const missingHostOutputSchema: HostPropsDefinition<
+  ExplicitTransformProps,
+  ExplicitTransformInput
+> = {
+  // @ts-expect-error type-changing host definitions require outputSchema
+  amount: {
+    schema: transformedFallbackSchema,
+    required: true,
+  },
+};
+void missingHostOutputSchema;
+
+const outputCompatibleHostDefinitions = {
+  label: { schema: z.string(), required: true },
+} satisfies HostPropsDefinition<{ label: string }>;
+void outputCompatibleHostDefinitions;
+
+const typedTransformHost = initHost<
+  ExplicitTransformProps,
+  ExplicitTransformInput
+>(
   hostTransformDefinitions
 );
 const hostTransformAmount: number | undefined =
@@ -644,6 +673,21 @@ const ParentComponent = create({
     parentLabel: prop.string(),
   },
   children: () => ({ ChildComponent }),
+});
+
+const fakeComponentReference = {
+  isHost: () => false,
+  isEmbedded: () => false,
+  canRenderTo: async () => true,
+};
+
+create({
+  tag: 'invalid-structural-child-component',
+  url: 'https://example.com/invalid-structural-child',
+  // @ts-expect-error children must be real ForgeFrame component factories
+  children: () => ({
+    Fake: fakeComponentReference,
+  }),
 });
 
 void ParentComponent({ parentLabel: 'parent' });

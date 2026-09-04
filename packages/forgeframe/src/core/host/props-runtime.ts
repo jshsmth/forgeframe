@@ -42,7 +42,10 @@ function filterReservedHostPropKeys<P extends Record<string, unknown>>(props: P)
   return filteredProps as P;
 }
 
-export class HostPropsRuntime<P extends Record<string, unknown>> {
+export class HostPropsRuntime<
+  P extends Record<string, unknown>,
+  SchemaInputs = P,
+> {
   public hostProps!: HostProps<P>;
 
   public consumerProps!: P;
@@ -50,8 +53,8 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
   public propsHandlers: Set<(props: P) => void> = new Set();
 
   constructor(
-    private propDefinitions: HostPropsDefinition<P> =
-      EMPTY_PROP_DEFINITIONS as HostPropsDefinition<P>,
+    private propDefinitions: HostPropsDefinition<P, SchemaInputs> =
+      EMPTY_PROP_DEFINITIONS as HostPropsDefinition<P, SchemaInputs>,
     private options: HostPropsRuntimeOptions
   ) {}
 
@@ -113,7 +116,9 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
     }
   }
 
-  applyHostConfiguration(propDefinitions: HostPropsDefinition<P>): void {
+  applyHostConfiguration(
+    propDefinitions: HostPropsDefinition<P, SchemaInputs>
+  ): void {
     validateNormalizedProps(
       this.consumerProps,
       this.getBootstrapValidationDefinitions(propDefinitions)
@@ -180,7 +185,7 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
 
   private getBootstrapValidationDefinitions(
     propDefinitions = this.propDefinitions
-  ): HostPropsDefinition<P> {
+  ): HostPropsDefinition<P, SchemaInputs> {
     if (
       !this.options.isConsumerDomainVerified() ||
       this.options.getConsumerDomain() !== getDomain()
@@ -191,7 +196,7 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
     let hasDeferredSameDomainProp = false;
     const bootstrapDefinitions = {
       ...propDefinitions,
-    } as HostPropsDefinition<P>;
+    } as HostPropsDefinition<P, SchemaInputs>;
 
     for (const [key, definition] of Object.entries(propDefinitions)) {
       if (!definition || isStandardSchema(definition) || !definition.sameDomain) {
@@ -202,7 +207,7 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
       bootstrapDefinitions[key as keyof P] = {
         ...(definition as PropDefinition<unknown, P>),
         required: false,
-      } as HostPropsDefinition<P>[keyof P];
+      } as HostPropsDefinition<P, SchemaInputs>[keyof P];
     }
 
     return hasDeferredSameDomainProp ? bootstrapDefinitions : propDefinitions;
