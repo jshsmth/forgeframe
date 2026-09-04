@@ -1,5 +1,9 @@
 import type { StandardSchemaV1Result } from '../schema';
-import type { InferTupleShape } from './base';
+import type {
+  InferSchemaInput,
+  InferTupleInputShape,
+  InferTupleShape,
+} from './base';
 import {
   defineDataProperty,
   getValueKind,
@@ -16,13 +20,14 @@ import {
  * Without an item schema, the array shape is validated and item values are
  * returned as-is. Use {@link ArraySchema.of} to validate each element.
  *
- * @typeParam T - Array item type.
+ * @typeParam T - Normalized array item type.
+ * @typeParam I - Array item input type.
  *
  * @public
  */
-export class ArraySchema<T = unknown> extends PropSchema<T[]> {
+export class ArraySchema<T = unknown, I = T> extends PropSchema<T[], I[]> {
   /** @internal */
-  private _itemSchema?: PropSchema<T>;
+  private _itemSchema?: PropSchema<T, I>;
   /** @internal */
   private _minLength?: number;
   /** @internal */
@@ -61,8 +66,8 @@ export class ArraySchema<T = unknown> extends PropSchema<T[]> {
   }
 
   /** @internal */
-  protected _clone(): ArraySchema<T> {
-    const clone = this._copyBaseTo(new ArraySchema<T>());
+  protected _clone(): ArraySchema<T, I> {
+    const clone = this._copyBaseTo(new ArraySchema<T, I>());
     clone._itemSchema = this._itemSchema;
     clone._minLength = this._minLength;
     clone._maxLength = this._maxLength;
@@ -72,12 +77,13 @@ export class ArraySchema<T = unknown> extends PropSchema<T[]> {
   /**
    * Specifies the schema for array items.
    *
-   * @typeParam U - Item type.
+   * @typeParam U - Normalized item type.
+   * @typeParam J - Item input type.
    * @param schema - Schema used to validate each item.
    * @returns A cloned array schema with the supplied item schema.
    */
-  of<U>(schema: PropSchema<U>): ArraySchema<U> {
-    const clone = this._copyPresenceTo(new ArraySchema<U>());
+  of<U, J = U>(schema: PropSchema<U, J>): ArraySchema<U, J> {
+    const clone = this._copyPresenceTo(new ArraySchema<U, J>());
     clone._itemSchema = schema;
     clone._minLength = this._minLength;
     clone._maxLength = this._maxLength;
@@ -90,7 +96,7 @@ export class ArraySchema<T = unknown> extends PropSchema<T[]> {
    * @param length - Minimum number of items.
    * @returns A cloned array schema with the minimum length constraint.
    */
-  min(length: number): ArraySchema<T> {
+  min(length: number): ArraySchema<T, I> {
     const clone = this._clone();
     clone._minLength = length;
     return clone;
@@ -102,7 +108,7 @@ export class ArraySchema<T = unknown> extends PropSchema<T[]> {
    * @param length - Maximum number of items.
    * @returns A cloned array schema with the maximum length constraint.
    */
-  max(length: number): ArraySchema<T> {
+  max(length: number): ArraySchema<T, I> {
     const clone = this._clone();
     clone._maxLength = length;
     return clone;
@@ -113,7 +119,7 @@ export class ArraySchema<T = unknown> extends PropSchema<T[]> {
    *
    * @returns A cloned array schema with a minimum length of 1.
    */
-  nonempty(): ArraySchema<T> {
+  nonempty(): ArraySchema<T, I> {
     return this.min(1);
   }
 }
@@ -129,8 +135,8 @@ export class ArraySchema<T = unknown> extends PropSchema<T[]> {
  * @public
  */
 export class TupleSchema<
-  S extends readonly PropSchema<unknown>[] = [],
-> extends PropSchema<InferTupleShape<S>> {
+  S extends readonly PropSchema<unknown, unknown>[] = [],
+> extends PropSchema<InferTupleShape<S>, InferTupleInputShape<S>> {
   /** @internal */
   private _itemSchemas: S;
 
@@ -182,8 +188,38 @@ export class TupleSchema<
  *
  * @public
  */
-export type InferObjectShape<S extends Record<string, PropSchema<unknown>>> = {
-  [K in keyof S]: S[K] extends PropSchema<infer U> ? U : never;
+export type InferObjectShape<
+  S extends Record<string, PropSchema<unknown, unknown>>,
+> = {
+  [K in keyof S]: S[K] extends PropSchema<infer Output, unknown>
+    ? Output
+    : never;
+};
+
+/** Keys whose field schemas accept omission. @internal */
+type OptionalObjectInputKeys<
+  S extends Record<string, PropSchema<unknown, unknown>>,
+> = {
+  [K in keyof S]-?: undefined extends InferSchemaInput<S[K]> ? K : never;
+}[keyof S];
+
+/** Keys whose field schemas require an input value. @internal */
+type RequiredObjectInputKeys<
+  S extends Record<string, PropSchema<unknown, unknown>>,
+> = Exclude<keyof S, OptionalObjectInputKeys<S>>;
+
+/**
+ * Infers the accepted input object from an object shape definition.
+ *
+ * @typeParam S - Object shape definition.
+ * @public
+ */
+export type InferObjectInputShape<
+  S extends Record<string, PropSchema<unknown, unknown>>,
+> = {
+  [K in RequiredObjectInputKeys<S>]: InferSchemaInput<S[K]>;
+} & {
+  [K in OptionalObjectInputKeys<S>]?: InferSchemaInput<S[K]>;
 };
 
 /**
@@ -193,13 +229,17 @@ export type InferObjectShape<S extends Record<string, PropSchema<unknown>>> = {
  * By default, shaped object schemas preserve unknown keys. Use
  * {@link ObjectSchema.strict} to reject keys that are not in the configured shape.
  *
- * @typeParam T - Object type.
+ * @typeParam T - Normalized object type.
+ * @typeParam I - Object input type.
  *
  * @public
  */
-export class ObjectSchema<T extends object = Record<string, unknown>> extends PropSchema<T> {
+export class ObjectSchema<
+  T extends object = Record<string, unknown>,
+  I extends object = T,
+> extends PropSchema<T, I> {
   /** @internal */
-  private _shape?: Record<string, PropSchema<unknown>>;
+  private _shape?: Record<string, PropSchema<unknown, unknown>>;
   /** @internal */
   private _strict = false;
 
@@ -236,7 +276,12 @@ export class ObjectSchema<T extends object = Record<string, unknown>> extends Pr
       if (fieldResult.issues) {
         return { issues: prependIssuePath(fieldResult.issues, key) };
       }
-      result[key] = fieldResult.value;
+      if (
+        fieldResult.value !== undefined ||
+        Object.prototype.hasOwnProperty.call(obj, key)
+      ) {
+        defineDataProperty(result, key, fieldResult.value);
+      }
     }
 
     if (!this._strict) {
@@ -251,8 +296,8 @@ export class ObjectSchema<T extends object = Record<string, unknown>> extends Pr
   }
 
   /** @internal */
-  protected _clone(): ObjectSchema<T> {
-    const clone = this._copyBaseTo(new ObjectSchema<T>());
+  protected _clone(): ObjectSchema<T, I> {
+    const clone = this._copyBaseTo(new ObjectSchema<T, I>());
     clone._shape = this._shape;
     clone._strict = this._strict;
     return clone;
@@ -265,10 +310,12 @@ export class ObjectSchema<T extends object = Record<string, unknown>> extends Pr
    * @param shape - Object mapping field names to schemas.
    * @returns A cloned object schema whose output type is inferred from `shape`.
    */
-  shape<S extends Record<string, PropSchema<unknown>>>(
+  shape<S extends Record<string, PropSchema<unknown, unknown>>>(
     shape: S
-  ): ObjectSchema<InferObjectShape<S>> {
-    const clone = this._copyPresenceTo(new ObjectSchema<InferObjectShape<S>>());
+  ): ObjectSchema<InferObjectShape<S>, InferObjectInputShape<S>> {
+    const clone = this._copyPresenceTo(
+      new ObjectSchema<InferObjectShape<S>, InferObjectInputShape<S>>()
+    );
     clone._shape = shape;
     clone._strict = this._strict;
     return clone;
@@ -279,7 +326,7 @@ export class ObjectSchema<T extends object = Record<string, unknown>> extends Pr
    *
    * @returns A cloned object schema that rejects unknown keys.
    */
-  strict(): ObjectSchema<T> {
+  strict(): ObjectSchema<T, I> {
     const clone = this._clone();
     clone._strict = true;
     return clone;
@@ -293,15 +340,19 @@ export class ObjectSchema<T extends object = Record<string, unknown>> extends Pr
  * Record schemas accept plain objects and validate every enumerable string-keyed
  * value with the supplied value schema.
  *
- * @typeParam T - Record value type.
+ * @typeParam T - Normalized record value type.
+ * @typeParam I - Record value input type.
  *
  * @public
  */
-export class RecordSchema<T = unknown> extends PropSchema<Record<string, T>> {
+export class RecordSchema<T = unknown, I = T> extends PropSchema<
+  Record<string, T>,
+  Record<string, I>
+> {
   /** @internal */
-  private _valueSchema: PropSchema<T>;
+  private _valueSchema: PropSchema<T, I>;
 
-  constructor(schema: PropSchema<T>) {
+  constructor(schema: PropSchema<T, I>) {
     super();
     this._valueSchema = schema;
   }
@@ -327,7 +378,7 @@ export class RecordSchema<T = unknown> extends PropSchema<Record<string, T>> {
   }
 
   /** @internal */
-  protected _clone(): RecordSchema<T> {
+  protected _clone(): RecordSchema<T, I> {
     return this._copyBaseTo(new RecordSchema(this._valueSchema));
   }
 }

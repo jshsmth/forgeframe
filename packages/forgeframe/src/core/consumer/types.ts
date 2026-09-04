@@ -7,10 +7,13 @@ import type { ContextType } from '../../constants';
  * Normalized and validated component options.
  * @internal
  */
-export interface NormalizedOptions<P extends Record<string, unknown>> {
+export interface NormalizedOptions<
+  P extends Record<string, unknown>,
+  SchemaInputs = P,
+> {
   tag: string;
   url: string | ((props: P) => string);
-  props: PropsDefinition<P>;
+  props: PropsDefinition<P, SchemaInputs>;
   defaultContext: ContextType;
   dimensions: Dimensions | ((props: P) => Dimensions);
   timeout: number;

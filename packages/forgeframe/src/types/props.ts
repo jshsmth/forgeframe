@@ -3,7 +3,11 @@
  */
 
 import type { SerializationType } from '../constants';
-import type { StandardSchemaV1, InferOutput } from '../props/schema';
+import type {
+  StandardSchemaV1,
+  InferInput,
+  InferOutput,
+} from '../props/schema';
 import type { DomainMatcher } from './utility';
 
 /**
@@ -39,8 +43,9 @@ export interface PropContext<P> {
 /**
  * Definition for a single component prop.
  *
- * @typeParam T - The type of the prop value
+ * @typeParam Output - The normalized prop value exposed after validation
  * @typeParam P - The props type for the component
+ * @typeParam Input - The value accepted by the schema and explicit fallbacks
  *
  * @remarks
  * Prop definitions control how individual props are validated, serialized,
@@ -60,9 +65,13 @@ export interface PropContext<P> {
  * };
  * ```
  *
- * @public
+ * @internal
  */
-export interface PropDefinition<T = unknown, P = Record<string, unknown>> {
+interface PropDefinitionOptions<
+  Output = unknown,
+  P = Record<string, unknown>,
+  Input = Output,
+> {
   /**
    * Standard Schema validator for type checking and validation.
    *
@@ -87,14 +96,14 @@ export interface PropDefinition<T = unknown, P = Record<string, unknown>> {
    *
    * @see https://standardschema.dev/
    */
-  schema?: StandardSchemaV1<unknown, T>;
+  schema?: StandardSchemaV1<Input, Output>;
 
   /** Whether the prop is required */
   required?: boolean;
-  /** Default value or function returning default value */
-  default?: T | ((ctx: PropContext<P>) => T);
-  /** Function to compute the prop value */
-  value?: (ctx: PropContext<P>) => T;
+  /** Schema input used when the caller omits the prop */
+  default?: Input | ((ctx: PropContext<P>) => Input);
+  /** Function that computes a schema input when the caller omits the prop */
+  value?: (ctx: PropContext<P>) => Input;
 
   /** Whether to send this prop to the host window (default: true) */
   sendToHost?: boolean;
@@ -106,16 +115,16 @@ export interface PropDefinition<T = unknown, P = Record<string, unknown>> {
   /** Serialization strategy for cross-domain transfer */
   serialization?: SerializationType;
   /** Pass prop via URL query parameter */
-  queryParam?: boolean | string | ((opts: { value: T }) => string);
+  queryParam?: boolean | string | ((opts: { value: Output }) => string);
   /** Pass prop via POST body parameter */
-  bodyParam?: boolean | string | ((opts: { value: T }) => string);
+  bodyParam?: boolean | string | ((opts: { value: Output }) => string);
 
   /** Validate the prop value (throw to reject) */
-  validate?: (opts: { value: T; props: P }) => void;
+  validate?: (opts: { value: Output; props: P }) => void;
   /** Transform the prop value in consumer context */
-  decorate?: (opts: { value: T; props: P }) => T;
+  decorate?: (opts: { value: Output; props: P }) => Output;
   /** Transform the prop value in host context */
-  hostDecorate?: (opts: { value: T; props: P }) => T;
+  hostDecorate?: (opts: { value: Output; props: P }) => Output;
 
   /**
    * Alternative runtime input name for the prop.
@@ -129,15 +138,247 @@ export interface PropDefinition<T = unknown, P = Record<string, unknown>> {
   alias?: string;
 }
 
+/** Defines how an already-normalized value is checked at trust boundaries. @internal */
+type NormalizedOutputSchemaRequirement<Input, Output> = [Output] extends [Input]
+  ? {
+      /**
+       * Validation-only schema for normalized values used after input parsing.
+       *
+       * @remarks
+       * ForgeFrame requires this schema when the input schema's output cannot
+       * be accepted by that same input schema. It must validate without
+       * changing the normalized value.
+       */
+      outputSchema?: StandardSchemaV1<Output, Output>;
+    }
+  : {
+      /**
+       * Validation-only schema for normalized values used after input parsing.
+       *
+       * @remarks
+       * This is required when the input schema changes the value's type,
+       * including for consumer-only props. It must validate without changing
+       * the normalized value.
+       */
+      outputSchema: StandardSchemaV1<Output, Output>;
+    };
+
 /**
- * Map of prop names to their definitions.
+ * Definition for a single component prop.
  *
+ * @typeParam Output - The normalized prop value exposed after validation
  * @typeParam P - The props type for the component
+ * @typeParam Input - The value accepted by the schema and explicit fallbacks
  *
  * @public
  */
-export type PropsDefinition<P> = {
-  [K in keyof P]?: PropDefinition<P[K], P>;
+export type PropDefinition<
+  Output = unknown,
+  P = Record<string, unknown>,
+  Input = Output,
+> = PropDefinitionOptions<Output, P, Input> &
+  NormalizedOutputSchemaRequirement<Input, Output>;
+
+/** A direct schema that can safely revalidate its normalized output. @internal */
+type DirectPropSchema<Input, Output> = [Output] extends [Input]
+  ? StandardSchemaV1<Input, Output>
+  : never;
+
+/** Applies `Omit` independently to each member of a union. @internal */
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
+  ? Omit<T, K>
+  : never;
+
+/**
+ * A prop entry accepted by {@link PropsDefinition}.
+ *
+ * @remarks
+ * ForgeFrame accepts Standard Schema implementations directly for concise
+ * declarations. Use {@link PropDefinition} when transport, alias, or lifecycle
+ * options are also required.
+ *
+ * @public
+ */
+export type PropDefinitionEntry<
+  Output = unknown,
+  P = Record<string, unknown>,
+  Input = Output,
+> = PropDefinition<Output, P, Input> | DirectPropSchema<Input, Output>;
+
+/**
+ * Map of prop names to their definitions.
+ *
+ * @typeParam P - The normalized props type for the component
+ * @typeParam I - Canonical schema input types keyed like the normalized props
+ *
+ * @public
+ */
+export type PropsDefinition<P, I = P> = {
+  [K in keyof P]?: PropDefinitionEntry<
+    P[K],
+    P,
+    K extends keyof I ? I[K] : P[K]
+  >;
+};
+
+/**
+ * Prop definitions consumed by the host after values have been normalized.
+ *
+ * @remarks
+ * Host code only observes normalized outputs, but retaining the schema input
+ * shape lets TypeScript require an `outputSchema` for type-changing schemas.
+ * Use the second type parameter when those inputs differ from `P`.
+ *
+ * @typeParam P - The normalized props exposed to host code
+ * @typeParam I - The corresponding schema input types
+ * @public
+ */
+export type HostPropsDefinition<P, I = P> = PropsDefinition<P, I>;
+
+/** Resolves the value returned by a wrapped `value` callback. @internal */
+type InferPropDefinitionValueResult<Value> =
+  Value extends (...args: never[]) => infer Result ? Result : never;
+
+/** Resolves a wrapped literal or factory default. @internal */
+type InferPropDefinitionDefaultResult<Default> =
+  Default extends (...args: never[]) => infer Result ? Result : Default;
+
+/** Resolves the fallback used when a wrapped `value` callback is absent. @internal */
+type InferPropDefinitionDefault<D> =
+  D extends { default: infer Default }
+    ? InferPropDefinitionDefaultResult<Default>
+    : undefined;
+
+/** Resolves every value that wrapped metadata can produce for omission. @internal */
+type InferPropDefinitionMetadataValue<D> =
+  D extends { value: infer Value }
+    ? InferPropDefinitionValueResult<Exclude<Value, undefined>> |
+        (undefined extends Value ? InferPropDefinitionDefault<D> : never)
+    : InferPropDefinitionDefault<D>;
+
+/** Whether wrapped metadata guarantees a defined value for omission. @internal */
+type WrappedPropDefinitionMetadataProducesValue<D> =
+  [InferPropDefinitionMetadataValue<D>] extends [never]
+    ? false
+    : undefined extends InferPropDefinitionMetadataValue<D>
+      ? false
+      : true;
+
+/** Whether a wrapped schema accepts omission and guarantees a defined output. @internal */
+type WrappedPropDefinitionSchemaProducesValue<D> =
+  D extends { schema: StandardSchemaV1<infer Input, infer Output> }
+    ? undefined extends Input
+      ? undefined extends Output
+        ? false
+        : true
+      : false
+    : false;
+
+/** Whether omitting a wrapped prop is guaranteed to produce a defined value. @internal */
+type WrappedPropDefinitionOmissionProducesValue<D> =
+  WrappedPropDefinitionMetadataProducesValue<D> extends true
+    ? true
+    : WrappedPropDefinitionSchemaProducesValue<D>;
+
+/** Whether a wrapped definition guarantees a normalized property. @internal */
+type WrappedPropDefinitionProducesValue<D> =
+  D extends { required: true }
+    ? true
+    : WrappedPropDefinitionOmissionProducesValue<D>;
+
+/** Infers the normalized value produced by a prop-definition entry. @internal */
+type InferPropDefinitionValue<D> =
+  D extends StandardSchemaV1<unknown, infer Output>
+    ? Output
+    : D extends { schema: StandardSchemaV1<unknown, infer Output> }
+      ? Output
+      : unknown;
+
+/** Infers the value accepted by a prop-definition entry. @internal */
+type InferPropDefinitionInput<D> =
+  D extends StandardSchemaV1<infer Input, unknown>
+    ? Input
+    : D extends { schema: StandardSchemaV1<infer Input, unknown> }
+      ? D extends { required: true }
+        ? Exclude<Input, undefined>
+        : Input
+      : unknown;
+
+/** Whether a prop-definition entry can be absent after normalization. @internal */
+type IsOptionalPropDefinitionValue<D> =
+  D extends StandardSchemaV1<unknown, infer Output>
+    ? undefined extends Output
+      ? true
+      : false
+    : WrappedPropDefinitionProducesValue<D> extends true
+      ? false
+      : true;
+
+/** Keys whose definitions can be absent after normalization. @internal */
+type OptionalPropDefinitionKeys<D extends Record<string, unknown>> = {
+  [K in keyof D]-?: IsOptionalPropDefinitionValue<D[K]> extends true
+    ? K
+    : never;
+}[keyof D];
+
+/** Keys whose schemas always produce a value. @internal */
+type RequiredPropDefinitionKeys<D extends Record<string, unknown>> = Exclude<
+  keyof D,
+  OptionalPropDefinitionKeys<D>
+>;
+
+/**
+ * Infers normalized component props from direct or wrapped Standard Schemas.
+ *
+ * @typeParam D - A map of prop names to schema-backed definitions.
+ * @public
+ */
+export type InferPropsDefinition<D extends Record<string, unknown>> = {
+  [K in RequiredPropDefinitionKeys<D>]: InferPropDefinitionValue<D[K]>;
+} & {
+  [K in OptionalPropDefinitionKeys<D>]?: InferPropDefinitionValue<D[K]>;
+};
+
+/** Whether a prop-definition entry accepts omission as input. @internal */
+type IsOptionalPropDefinitionInput<D> =
+  D extends StandardSchemaV1<infer Input, unknown>
+    ? undefined extends Input
+      ? true
+      : false
+    : D extends { required: true }
+      ? WrappedPropDefinitionOmissionProducesValue<D> extends true
+        ? true
+        : false
+      : true;
+
+/** Keys whose definitions accept omission as input. @internal */
+type OptionalPropDefinitionInputKeys<D extends Record<string, unknown>> = {
+  [K in keyof D]-?: IsOptionalPropDefinitionInput<D[K]> extends true
+    ? K
+    : never;
+}[keyof D];
+
+/** Keys whose schemas require an input value. @internal */
+type RequiredPropDefinitionInputKeys<D extends Record<string, unknown>> = Exclude<
+  keyof D,
+  OptionalPropDefinitionInputKeys<D>
+>;
+
+/**
+ * Infers consumer input props from direct or wrapped Standard Schemas.
+ *
+ * @remarks
+ * Unlike {@link InferPropsDefinition}, this type uses each schema's accepted
+ * input. Direct schemas determine omission from that input, while wrapped
+ * definitions use their `required`, `default`, and `value` options.
+ *
+ * @typeParam D - A map of prop names to schema-backed definitions.
+ * @public
+ */
+export type InferPropsDefinitionInput<D extends Record<string, unknown>> = {
+  [K in RequiredPropDefinitionInputKeys<D>]: InferPropDefinitionInput<D[K]>;
+} & {
+  [K in OptionalPropDefinitionInputKeys<D>]?: InferPropDefinitionInput<D[K]>;
 };
 
 /**
@@ -169,7 +410,8 @@ export type InferSchemaOutput<S extends StandardSchemaV1> = InferOutput<S>;
  * const userSchema = z.object({ name: z.string(), age: z.number() });
  *
  * type UserPropDef = SchemaPropDefinition<typeof userSchema>;
- * // Equivalent to: PropDefinition<{ name: string; age: number }> with schema
+ * // Equivalent to a PropDefinition whose input and output are inferred
+ * // independently from userSchema.
  * ```
  *
  * @public
@@ -177,7 +419,10 @@ export type InferSchemaOutput<S extends StandardSchemaV1> = InferOutput<S>;
 export type SchemaPropDefinition<
   S extends StandardSchemaV1,
   P = Record<string, unknown>,
-> = Omit<PropDefinition<InferOutput<S>, P>, 'type'> & {
+> = DistributiveOmit<
+  PropDefinition<InferOutput<S>, P, InferInput<S>>,
+  'schema'
+> & {
   schema: S;
 };
 

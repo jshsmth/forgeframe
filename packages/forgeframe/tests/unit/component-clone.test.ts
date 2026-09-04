@@ -2,6 +2,7 @@
  * Clone regressions for component snapshots and lifecycle tracking.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import {
   clearComponents,
   create,
@@ -17,8 +18,12 @@ type CloneInternals = {
     tag: string;
   };
   propsPipeline: {
-    props: { token?: string };
-    inputProps: { token?: string };
+    props: { token?: string; amount?: number; target?: number };
+    inputProps: {
+      token?: string;
+      amount?: string;
+      target?: { value: string | number };
+    };
   };
   resolveUrl: () => string;
 };
@@ -60,6 +65,68 @@ describe('Component clone', () => {
       originalInternal.propsPipeline.inputProps
     );
     expect(tokenCounter).toBe(1);
+  });
+
+  it('should clone transformed props without validating outputs as inputs', () => {
+    const Component = create({
+      tag: 'clone-transformed-props',
+      url: 'https://example.com/transformed-clone',
+      props: {
+        amount: {
+          schema: z.string().transform(Number),
+          outputSchema: z.number(),
+          required: true,
+        },
+      },
+      eligible: () => ({ eligible: true }),
+    });
+    const original = Component({ amount: '42' });
+
+    expect(original.isEligible()).toBe(true);
+
+    const cloned = original.clone();
+    const originalInternal = getCloneInternals(original);
+    const clonedInternal = getCloneInternals(cloned);
+
+    expect(originalInternal.propsPipeline.props.amount).toBe(42);
+    expect(clonedInternal.propsPipeline.props.amount).toBe(42);
+    expect(clonedInternal.propsPipeline.inputProps.amount).toBe('42');
+    expect(cloned.isEligible()).toBe(true);
+  });
+
+  it('should retain pending clone errors until an explicit correction', async () => {
+    const target: { value: string | number } = { value: 'invalid' };
+    const Component = create({
+      tag: 'clone-pending-input',
+      url: 'https://example.com/pending-clone',
+      props: {
+        target: {
+          schema: z
+            .object({ value: z.number() })
+            .transform(({ value }) => value),
+          outputSchema: z.number(),
+          required: true,
+        },
+      },
+      eligible: () => ({ eligible: true }),
+    });
+    const original = Component({
+      target: target as { value: number },
+    });
+    const cloned = original.clone();
+
+    expect(() => original.isEligible()).toThrow();
+    expect(() => cloned.isEligible()).toThrow();
+
+    target.value = 42;
+
+    await original.updateProps({ target: target as { value: number } });
+    await cloned.updateProps({ target: target as { value: number } });
+
+    expect(original.isEligible()).toBe(true);
+    expect(cloned.isEligible()).toBe(true);
+    expect(getCloneInternals(original).propsPipeline.props.target).toBe(42);
+    expect(getCloneInternals(cloned).propsPipeline.props.target).toBe(42);
   });
 
   it('should preserve the source configuration when definition options change', () => {

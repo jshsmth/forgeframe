@@ -478,6 +478,42 @@ const SecureWidget = ForgeFrame.create({
 | `serialization` | Choose how object props are transferred: `JSON` (default), `BASE64`, or `DOTIFY` |
 | `queryParam` / `bodyParam` | Include the prop in the host page's initial HTTP request |
 | `alias` | Accept a backwards-compatible input name. Alias links through other defined props resolve transitively; an explicitly supplied canonical key wins at that level |
+| `outputSchema` | Validate the normalized value again at consumer and host trust boundaries without transforming it |
+
+Wrapped `default` and `value` fallbacks are schema inputs. ForgeFrame validates
+and transforms them before any decorator, validator, URL, or transport callback
+can observe the normalized output. A default configured directly on the schema
+remains a schema-owned output.
+
+When an input schema changes the value's type, wrap it and provide an
+`outputSchema`, including when `sendToHost` is `false`. The input schema parses
+consumer values and fallbacks; the output schema independently checks the
+normalized value before consumer routing callbacks or host trust boundaries
+use it. Output schemas are validation-only and must not transform their input.
+
+```typescript
+import { z } from 'zod';
+
+const AmountComponent = ForgeFrame.create({
+  tag: 'amount-component',
+  url: 'https://widgets.example.com/amount',
+  props: {
+    amount: {
+      schema: z.string().transform(Number),
+      outputSchema: z.number().finite(),
+      default: '1',
+    },
+  },
+});
+
+AmountComponent({ amount: '2' }); // Host receives the validated number 2
+```
+
+Direct schemas remain the concise form when the same schema can validate its
+normalized output unchanged. A type-changing transform must use the wrapped
+form above. A same-type but non-idempotent transform must also declare an
+`outputSchema`; otherwise the host rejects the changed value rather than
+silently trusting it.
 
 TypeScript consumers can model alias inputs separately from the canonical props received by the host:
 
@@ -490,7 +526,16 @@ type LegacyWidgetInput = {
   userEmail: string;
 };
 
-const Widget = ForgeFrame.create<WidgetProps, unknown, LegacyWidgetInput>({
+type WidgetSchemaInputs = {
+  email: string;
+};
+
+const Widget = ForgeFrame.create<
+  WidgetProps,
+  unknown,
+  LegacyWidgetInput,
+  WidgetSchemaInputs
+>({
   tag: 'legacy-widget',
   url: 'https://widgets.example.com/legacy',
   props: {
@@ -499,10 +544,26 @@ const Widget = ForgeFrame.create<WidgetProps, unknown, LegacyWidgetInput>({
 });
 
 Widget({ userEmail: 'user@example.com' });
+Widget({ email: 'user@example.com' });
 ```
+
+Factories, prop updates, and React wrappers accept either the canonical schema
+input shape or the configured alternate input shape. Normalized host props are
+not treated as consumer inputs when a schema transform changes their type.
 
 The alternate input type may also be a subset of the canonical props when one
 canonical key doubles as another prop's alias.
+
+`required: true` requires a consumer input, not a defined normalized output. If
+a valid input can transform to `undefined`, its `outputSchema` must explicitly
+accept `undefined`; the host then treats that as a valid normalized result.
+
+Prefer inferred component and React-wrapper types. If you explicitly annotate
+an aliased component whose schema inputs differ from its host props, supply the
+canonical schema-input type as the fifth `ForgeFrameComponent` generic, after
+the required-props flag (or the fourth `ForgeFrameComponentInstance` generic).
+React wrappers normally infer this; with explicit wrapper type arguments, it is
+the sixth generic.
 
 - Use `sameDomain` for values that should never be exposed during cross-origin bootstrap.
 - `DOTIFY` safely preserves nested object keys that contain separators such as `.`, `&`, or `=`.
@@ -595,6 +656,25 @@ Supported host boot patterns:
 - Call `initHost(propDefinitions, allowedConsumerDomains)` during host startup, then read `window.hostProps`.
 - Call `initHost(propDefinitions)` or `initHost()` only for hosts that are intentionally embeddable by any consumer origin.
 - Define the host with `ForgeFrame.create(...)` and let component creation initialize the host runtime.
+
+When a shared definition uses a type-changing schema, carry both the normalized
+host props and schema-input shapes through `HostPropsDefinition` and `initHost`.
+This keeps the required normalized `outputSchema` visible to TypeScript:
+
+```typescript
+type AmountProps = { amount: number };
+type AmountInputs = { amount: string };
+
+const amountProps = {
+  amount: {
+    schema: z.string().transform(Number),
+    outputSchema: z.number(),
+    required: true,
+  },
+} satisfies HostPropsDefinition<AmountProps, AmountInputs>;
+
+initHost<AmountProps, AmountInputs>(amountProps, allowedConsumerDomains);
+```
 
 Use `initHost()` when:
 - You read `window.hostProps` directly.
@@ -995,12 +1075,15 @@ ForgeFrame.VERSION                // Library version
 
 ### Component Options
 
+`props` accepts direct Standard Schemas for concise definitions or full
+`PropDefinition` objects when transport, alias, and lifecycle options are needed.
+
 ```typescript
-interface ComponentOptions<P> {
+interface ComponentOptions<P, I = P, SchemaInputs = I> {
   tag: string;
   url: string | ((props: P) => string);
   dimensions?: { width?: number | string; height?: number | string } | ((props: P) => { width?: number | string; height?: number | string });
-  props?: PropsDefinition<P>;
+  props?: PropsDefinition<P, SchemaInputs>;
   defaultContext?: 'iframe' | 'popup';
   containerTemplate?: (ctx: TemplateContext<P>) => HTMLElement | null;
   prerenderTemplate?: (ctx: TemplateContext<P>) => HTMLElement | null;
@@ -1011,7 +1094,7 @@ interface ComponentOptions<P> {
   attributes?: IframeAttributes | ((props: P) => IframeAttributes);
   style?: IframeStyles | ((props: P) => IframeStyles);
   timeout?: number;
-  children?: (opts: { props: P }) => Record<string, ForgeFrameComponent>;
+  children?: (opts: { props: P }) => Record<string, ForgeFrameComponentReference>;
 }
 ```
 

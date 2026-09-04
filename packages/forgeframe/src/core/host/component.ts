@@ -10,7 +10,7 @@
 
 import { EventEmitter } from '../../events/emitter';
 import type { HostProps } from '../../types/runtime';
-import type { PropsDefinition } from '../../types/props';
+import type { HostPropsDefinition } from '../../types/props';
 import type { DomainMatcher } from '../../types/utility';
 import type { WindowNamePayload } from '../../window/types';
 import { EMPTY_PROP_DEFINITIONS } from '../../props/definitions';
@@ -22,7 +22,10 @@ import {
 } from './security';
 import { HostTransport } from './transport';
 
-export class HostComponent<P extends Record<string, unknown>> {
+export class HostComponent<
+  P extends Record<string, unknown>,
+  SchemaInputs = P,
+> {
   public event: EventEmitter;
 
   private uid: string;
@@ -39,13 +42,14 @@ export class HostComponent<P extends Record<string, unknown>> {
 
   private transport!: HostTransport;
 
-  private propsRuntime!: HostPropsRuntime<P>;
+  private propsRuntime!: HostPropsRuntime<P, SchemaInputs>;
 
   private destroyed = false;
 
   constructor(
     payload: WindowNamePayload<P>,
-    propDefinitions: PropsDefinition<P> = EMPTY_PROP_DEFINITIONS as PropsDefinition<P>,
+    propDefinitions: HostPropsDefinition<P, SchemaInputs> =
+      EMPTY_PROP_DEFINITIONS as HostPropsDefinition<P, SchemaInputs>,
     allowedConsumerDomains?: DomainMatcher,
     deferInit = false
   ) {
@@ -55,7 +59,7 @@ export class HostComponent<P extends Record<string, unknown>> {
     this.allowedConsumerDomains = allowedConsumerDomains;
 
     let transport: HostTransport | null = null;
-    let propsRuntime: HostPropsRuntime<P> | null = null;
+    let propsRuntime: HostPropsRuntime<P, SchemaInputs> | null = null;
 
     try {
       this.consumerWindow = resolveConsumerWindow();
@@ -164,7 +168,7 @@ export class HostComponent<P extends Record<string, unknown>> {
   }
 
   applyHostConfiguration(
-    propDefinitions?: PropsDefinition<P>,
+    propDefinitions?: HostPropsDefinition<P, SchemaInputs>,
     allowedConsumerDomains?: DomainMatcher
   ): void {
     if (allowedConsumerDomains !== undefined) {

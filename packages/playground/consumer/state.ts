@@ -1,7 +1,10 @@
 /**
  * State management for ForgeFrame Playground
  */
-import ForgeFrame, { type ForgeFrameComponentInstance } from 'forgeframe';
+import type {
+  ForgeFrameComponent,
+  ForgeFrameComponentInstance,
+} from 'forgeframe';
 import type { RenderContext, IframeStyle, PlaygroundConfig, DynamicProps } from './types';
 import { DEFAULT_CONFIG } from './config';
 
@@ -15,7 +18,7 @@ export let modalBody: HTMLElement | null = null;
 export let currentPropValues: Record<string, unknown> = {};
 
 // Cache created components to avoid re-registration errors
-export const componentCache = new Map<string, ReturnType<typeof ForgeFrame.create<DynamicProps>>>();
+export const componentCache = new Map<string, ForgeFrameComponent<DynamicProps>>();
 
 // State setters
 export function setCurrentContext(context: RenderContext) {

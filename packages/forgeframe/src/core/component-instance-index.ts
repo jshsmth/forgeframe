@@ -22,9 +22,10 @@ export function indexComponentInstance<
   P extends Record<string, unknown>,
   X,
   I,
+  SchemaInputs,
 >(
   tag: string,
-  instance: ForgeFrameComponentInstance<P, X, I>
+  instance: ForgeFrameComponentInstance<P, X, I, SchemaInputs>
 ): void {
   const indexedInstance = instance as IndexedComponentInstance;
   const existing = componentInstanceIndexByUid.get(indexedInstance.uid);

@@ -430,15 +430,20 @@ export class FunctionSchema<
  *
  * @public
  */
-export class AnySchema extends PropSchema<unknown> {
+export class AnySchema extends PropSchema<
+  NonNullable<unknown> | null,
+  NonNullable<unknown> | null
+> {
   constructor() {
     super();
     this._nullable = true;
   }
 
   /** @internal */
-  protected _validate(value: unknown): StandardSchemaV1Result<unknown> {
-    return { value };
+  protected _validate(
+    value: unknown
+  ): StandardSchemaV1Result<NonNullable<unknown> | null> {
+    return { value: value as NonNullable<unknown> | null };
   }
 
   /** @internal */

@@ -265,15 +265,18 @@ function isDotifyEncoded(
  *
  * @public
  */
-export function serializeProps<P extends Record<string, unknown>>(
+export function serializeProps<
+  P extends Record<string, unknown>,
+  I = P,
+>(
   props: P,
-  definitions: PropsDefinition<P>,
+  definitions: PropsDefinition<P, I>,
   bridge: FunctionBridge
 ): SerializedProps {
   const allDefs = {
     ...BUILTIN_PROP_DEFINITIONS,
     ...definitions,
-  } as PropsDefinition<P>;
+  } as PropsDefinition<P, I>;
 
   const result: SerializedProps = {};
 
@@ -347,9 +350,12 @@ function serializeValue(
  *
  * @public
  */
-export function deserializeProps<P extends Record<string, unknown>>(
+export function deserializeProps<
+  P extends Record<string, unknown>,
+  I = P,
+>(
   serialized: SerializedProps,
-  definitions: PropsDefinition<P>,
+  definitions: PropsDefinition<P, I>,
   messenger: Messenger,
   bridge: FunctionBridge,
   consumerWin: Window,
@@ -358,7 +364,7 @@ export function deserializeProps<P extends Record<string, unknown>>(
   const allDefs = {
     ...BUILTIN_PROP_DEFINITIONS,
     ...definitions,
-  } as PropsDefinition<P>;
+  } as PropsDefinition<P, I>;
 
   const result = {} as P;
 

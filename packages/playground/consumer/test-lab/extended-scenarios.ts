@@ -18,6 +18,15 @@ interface ConfigurationExports {
   observed: Record<string, unknown>;
 }
 
+interface ConfigurationInput extends Record<string, unknown> {
+  scenario: string;
+  variant: string;
+  label: string;
+  tier?: string;
+  enabled: boolean;
+  count: number;
+}
+
 export async function runConfigurationScenario(
   sandbox: HTMLElement
 ): Promise<TestResult[]> {
@@ -30,7 +39,11 @@ export async function runConfigurationScenario(
 
   let containerTemplateCalls = 0;
   let prerenderTemplateCalls = 0;
-  const Component = ForgeFrame.create<ConfigurationProps, ConfigurationExports>({
+  const Component = ForgeFrame.create<
+    ConfigurationProps,
+    ConfigurationExports,
+    ConfigurationInput
+  >({
     tag: uniqueTag('configuration'),
     url: (props) => `${HOST_URL}?scenario=configuration&variant=${encodeURIComponent(props.variant)}`,
     dimensions: (props) => ({ width: props.variant === 'wide' ? 480 : 320, height: 320 }),
@@ -73,7 +86,6 @@ export async function runConfigurationScenario(
     scenario: 'configuration',
     variant: 'wide',
     label: '  configured  ',
-    tier: undefined as unknown as string,
     enabled: true,
     count: 2,
   });

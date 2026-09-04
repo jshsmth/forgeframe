@@ -93,7 +93,7 @@ export const prop = {
    * @param schemas - Positional item schemas.
    * @returns A new tuple schema.
    */
-  tuple: <S extends readonly PropSchema<unknown>[]>(
+  tuple: <S extends readonly PropSchema<unknown, unknown>[]>(
     ...schemas: S
   ): TupleSchema<S> => new TupleSchema(schemas),
 
@@ -109,11 +109,13 @@ export const prop = {
   /**
    * Creates a record schema for string-keyed objects.
    *
-   * @typeParam T - Record value type.
+   * @typeParam T - Normalized record value type.
+   * @typeParam I - Record value input type.
    * @param schema - Schema used to validate each record value.
    * @returns A new record schema.
    */
-  record: <T>(schema: PropSchema<T>): RecordSchema<T> => new RecordSchema(schema),
+  record: <T, I = T>(schema: PropSchema<T, I>): RecordSchema<T, I> =>
+    new RecordSchema(schema),
 
   /**
    * Creates a literal schema for exact value matching.
@@ -140,7 +142,12 @@ export const prop = {
    * @param schemas - One or more schemas to try in order.
    * @returns A new union schema.
    */
-  union: <S extends readonly [PropSchema<unknown>, ...PropSchema<unknown>[]]>(
+  union: <
+    S extends readonly [
+      PropSchema<unknown, unknown>,
+      ...PropSchema<unknown, unknown>[],
+    ],
+  >(
     ...schemas: S
   ): UnionSchema<S> => new UnionSchema(schemas),
 

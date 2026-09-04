@@ -27,6 +27,7 @@ export {
   ObjectSchema,
   RecordSchema,
   TupleSchema,
+  type InferObjectInputShape,
   type InferObjectShape,
 } from './prop/composite';
 

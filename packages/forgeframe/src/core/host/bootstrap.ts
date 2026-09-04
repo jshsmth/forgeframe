@@ -8,7 +8,7 @@
  */
 
 import type { HostProps } from '../../types/runtime';
-import type { PropsDefinition } from '../../types/props';
+import type { HostPropsDefinition } from '../../types/props';
 import type { DomainMatcher } from '../../types/utility';
 import type { WindowNamePayload } from '../../window/types';
 import {
@@ -18,7 +18,10 @@ import {
 import { HostComponent } from './component';
 import { CONSUMER_WINDOW_RESOLUTION_ERROR } from './security';
 
-let hostInstance: HostComponent<Record<string, unknown>> | null = null;
+let hostInstance: HostComponent<
+  Record<string, unknown>,
+  Record<string, unknown>
+> | null = null;
 let pendingInitialPayload: WindowNamePayload<Record<string, unknown>> | null = null;
 
 function readInitialPayload<P>(): WindowNamePayload<P> | null {
@@ -36,15 +39,23 @@ function readInitialPayload<P>(): WindowNamePayload<P> | null {
   return pendingInitialPayload as WindowNamePayload<P> | null;
 }
 
-export function initHost<P extends Record<string, unknown>>(
-  propDefinitions?: PropsDefinition<P>,
+export function initHost<
+  P extends Record<string, unknown>,
+  SchemaInputs = P,
+>(
+  propDefinitions?: HostPropsDefinition<P, SchemaInputs>,
   allowedConsumerDomains?: DomainMatcher,
   options: { deferInit?: boolean } = {}
-): HostComponent<P> | null {
+): HostComponent<P, SchemaInputs> | null {
   if (hostInstance) {
     try {
       hostInstance.applyHostConfiguration(
-        propDefinitions as PropsDefinition<Record<string, unknown>> | undefined,
+        propDefinitions as
+          | HostPropsDefinition<
+              Record<string, unknown>,
+              Record<string, unknown>
+            >
+          | undefined,
         allowedConsumerDomains
       );
 
@@ -60,7 +71,7 @@ export function initHost<P extends Record<string, unknown>>(
       hostInstance.flushInit();
     }
 
-    return hostInstance as HostComponent<P>;
+    return hostInstance as HostComponent<P, SchemaInputs>;
   }
 
   const payload = readInitialPayload<P>();
@@ -69,12 +80,12 @@ export function initHost<P extends Record<string, unknown>>(
   }
 
   try {
-    const nextHostInstance = new HostComponent(
+    const nextHostInstance = new HostComponent<P, SchemaInputs>(
       payload,
       propDefinitions,
       allowedConsumerDomains,
       options.deferInit ?? false
-    ) as HostComponent<Record<string, unknown>>;
+    ) as HostComponent<Record<string, unknown>, Record<string, unknown>>;
     hostInstance = nextHostInstance;
     pendingInitialPayload = null;
   } catch (error) {
@@ -88,11 +99,14 @@ export function initHost<P extends Record<string, unknown>>(
     throw error;
   }
 
-  return hostInstance as HostComponent<P>;
+  return hostInstance as HostComponent<P, SchemaInputs>;
 }
 
-export function getHost<P extends Record<string, unknown>>(): HostComponent<P> | null {
-  return hostInstance as HostComponent<P> | null;
+export function getHost<
+  P extends Record<string, unknown>,
+  SchemaInputs = P,
+>(): HostComponent<P, SchemaInputs> | null {
+  return hostInstance as HostComponent<P, SchemaInputs> | null;
 }
 
 export function clearHostInstance(): void {

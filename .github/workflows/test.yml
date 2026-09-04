@@ -42,8 +42,8 @@ jobs:
       - name: Build and validate published types
         run: npm run build && npm run typecheck:package
 
-      - name: Audit runtime dependencies
-        run: npm audit --omit=dev
+      - name: Audit dependency tree
+        run: npm audit
 
       - name: Validate package contents
         run: npm pack --dry-run -w forgeframe

@@ -75,6 +75,7 @@ export {
   UnionSchema,
   AnySchema,
   type Prop,
+  type InferObjectInputShape,
   type InferObjectShape,
 } from './props/prop';
 
@@ -85,6 +86,7 @@ export type {
   ConsumerPropsInput,
   ConsumerPropsUpdate,
   ForgeFrameComponent,
+  ForgeFrameComponentReference,
   ForgeFrameComponentInstance,
   HostProps,
   HostPropsBuiltins,
@@ -93,7 +95,11 @@ export type {
 
   // Props types
   PropDefinition,
+  PropDefinitionEntry,
   PropsDefinition,
+  HostPropsDefinition,
+  InferPropsDefinition,
+  InferPropsDefinitionInput,
   PropContext,
 
   // Standard Schema types

@@ -14,7 +14,15 @@ import type {
   ForgeFrameComponent,
   ForgeFrameComponentInstance,
   HostProps,
+  InferablePropsDefinition,
+  InferredComponentOptions,
 } from '../types/runtime';
+import type {
+  InferPropsDefinition,
+  InferPropsDefinitionInput,
+  HostPropsDefinition,
+} from '../types/props';
+import type { StandardSchemaV1 } from '../props/schema';
 import { ConsumerComponent } from './consumer';
 import {
   clearIndexedInstances,
@@ -49,7 +57,9 @@ import {
  * @throws Error if url is missing
  * @internal
  */
-function validateComponentOptions<P>(options: ComponentOptions<P>): void {
+function validateComponentOptions<P, I, SchemaInputs>(
+  options: ComponentOptions<P, I, SchemaInputs>
+): void {
   if (!options.tag) {
     throw new Error('Component tag is required');
   }
@@ -114,6 +124,7 @@ function validateComponentOptions<P>(options: ComponentOptions<P>): void {
  * @typeParam P - The props type for the component
  * @typeParam X - The exports type that the host can expose
  * @typeParam I - An alternate consumer input shape, such as legacy alias keys
+ * @typeParam SchemaInputs - Canonical input types accepted by prop schemas
  * @param options - Component configuration options
  * @returns A component factory function
  *
@@ -137,21 +148,57 @@ function validateComponentOptions<P>(options: ComponentOptions<P>): void {
  * @public
  */
 export function create<
+  const D extends InferablePropsDefinition,
+  X = unknown,
+  I extends Record<string, unknown> = InferPropsDefinitionInput<D>,
+  ContextualSchemas extends Record<string, StandardSchemaV1> = {
+    [K in keyof D]: D[K] extends StandardSchemaV1
+      ? D[K]
+      : D[K] extends { schema: infer Schema extends StandardSchemaV1 }
+        ? Schema
+        : never;
+  },
+>(
+  options: InferredComponentOptions<D, ContextualSchemas>
+): ForgeFrameComponent<
+  InferPropsDefinition<D>,
+  X,
+  I,
+  Record<PropertyKey, never> extends ConsumerPropsInput<
+    InferPropsDefinition<D>,
+    I,
+    InferPropsDefinitionInput<D>
+  >
+    ? false
+    : true,
+  InferPropsDefinitionInput<D>
+>;
+export function create<
   P extends Record<string, unknown> = Record<string, unknown>,
   X = unknown,
   I extends Record<string, unknown> = P,
+  SchemaInputs extends Record<string, unknown> = I,
 >(
-  options: ComponentOptions<P>
-): ForgeFrameComponent<P, X, I> {
+  options: ComponentOptions<P, I, SchemaInputs>
+): ForgeFrameComponent<P, X, I, false, SchemaInputs>;
+export function create<
+  P extends Record<string, unknown> = Record<string, unknown>,
+  X = unknown,
+  I extends Record<string, unknown> = P,
+  SchemaInputs extends Record<string, unknown> = I,
+>(
+  options: ComponentOptions<P, I, SchemaInputs>
+): ForgeFrameComponent<P, X, I, false, SchemaInputs> {
   validateComponentOptions(options);
+  const runtimeOptions = options;
 
-  const instances: ForgeFrameComponentInstance<P, X, I>[] = [];
+  const instances: ForgeFrameComponentInstance<P, X, I, SchemaInputs>[] = [];
   const componentTag = options.tag;
   let componentHostProps: HostProps<P> | undefined;
 
   function trackInstance(
-    instance: ConsumerComponent<P, X, I>
-  ): ConsumerComponent<P, X, I> {
+    instance: ConsumerComponent<P, X, I, SchemaInputs>
+  ): ConsumerComponent<P, X, I, SchemaInputs> {
     if (instance.isDestroyed()) {
       return instance;
     }
@@ -172,10 +219,14 @@ export function create<
   }
 
   function createTrackedInstance(
-    props?: ConsumerPropsInput<P, I>
-  ): ConsumerComponent<P, X, I> {
+    props?: ConsumerPropsInput<P, I, SchemaInputs>
+  ): ConsumerComponent<P, X, I, SchemaInputs> {
     return trackInstance(
-      new ConsumerComponent<P, X, I>(options, props, trackInstance)
+      new ConsumerComponent<P, X, I, SchemaInputs>(
+        runtimeOptions,
+        props,
+        trackInstance
+      )
     );
   }
 
@@ -188,9 +239,12 @@ export function create<
       return componentHostProps;
     }
 
-    const activeHost = getHost<P>();
+    const activeHost = getHost<P, SchemaInputs>();
     if (activeHost?.hostProps.tag === options.tag) {
-      const configuredHost = initHost<P>(options.props, options.allowedConsumerDomains);
+      const configuredHost = initHost<P, SchemaInputs>(
+        runtimeOptions.props as HostPropsDefinition<P, SchemaInputs> | undefined,
+        options.allowedConsumerDomains
+      );
       componentHostProps = configuredHost?.hostProps;
       return componentHostProps;
     }
@@ -199,7 +253,10 @@ export function create<
       return undefined;
     }
 
-    const host = initHost<P>(options.props, options.allowedConsumerDomains);
+    const host = initHost<P, SchemaInputs>(
+      runtimeOptions.props as HostPropsDefinition<P, SchemaInputs> | undefined,
+      options.allowedConsumerDomains
+    );
     if (!host) {
       return undefined;
     }
@@ -221,10 +278,10 @@ export function create<
    * @returns A new component instance
    */
   const Component = function (
-    props?: ConsumerPropsInput<P, I>
-  ): ForgeFrameComponentInstance<P, X, I> {
+    props?: ConsumerPropsInput<P, I, SchemaInputs>
+  ): ForgeFrameComponentInstance<P, X, I, SchemaInputs> {
     return createTrackedInstance(props);
-  } as ForgeFrameComponent<P, X, I>;
+  } as unknown as ForgeFrameComponent<P, X, I, false, SchemaInputs>;
 
   Component.instances = instances;
 
@@ -247,7 +304,7 @@ export function create<
     return win === window;
   };
 
-  registerComponent(Component, options);
+  registerComponent(Component, runtimeOptions);
 
   return Component;
 }
@@ -274,10 +331,11 @@ export function getComponent<
   P extends Record<string, unknown> = Record<string, unknown>,
   X = unknown,
   I = P,
+  SchemaInputs = I,
 >(
   tag: string
-): ForgeFrameComponent<P, X, I> | undefined {
-  return getRegisteredComponent<P, X, I>(tag);
+): ForgeFrameComponent<P, X, I, false, SchemaInputs> | undefined {
+  return getRegisteredComponent<P, X, I, SchemaInputs>(tag);
 }
 
 /**
@@ -331,8 +389,12 @@ export { getComponentOptions };
  *
  * @public
  */
-export async function destroy<P extends Record<string, unknown>, I = P>(
-  instance: ForgeFrameComponentInstance<P, unknown, I>
+export async function destroy<
+  P extends Record<string, unknown>,
+  I = P,
+  SchemaInputs = I,
+>(
+  instance: ForgeFrameComponentInstance<P, unknown, I, SchemaInputs>
 ): Promise<void> {
   await instance.close();
 }

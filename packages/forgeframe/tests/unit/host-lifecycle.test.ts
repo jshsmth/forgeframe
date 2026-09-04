@@ -4,6 +4,7 @@
  * Covers consumer control channels, props synchronization/subscriber behavior, and consumer window resolution rules.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import type { MessageHandler } from '@/communication/messenger';
 import { ConsumerComponent } from '@/core/consumer';
 import {
@@ -255,6 +256,188 @@ describe('Host lifecycle behavior', () => {
     expect(sendSpy).toHaveBeenCalled();
   });
 
+  it('should validate transformed consumer outputs with the host output schema', () => {
+    const definitions = {
+      amount: {
+        schema: z.string().transform(Number),
+        outputSchema: z.number(),
+        default: '41',
+        decorate: ({ value }: { value: number }) => value + 1,
+      },
+    };
+    const consumer = createConsumer(
+      {
+        url: '/widget',
+        props: definitions,
+      }
+    );
+
+    window.name = (
+      consumer as unknown as { buildWindowName: () => string }
+    ).buildWindowName();
+    vi
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
+      .mockReturnValue(window);
+
+    const host = initHost(definitions, undefined, { deferInit: true });
+
+    expect(host?.hostProps.amount).toBe(42);
+    expect(host?.hostProps.consumer.props).toMatchObject({ amount: 42 });
+  });
+
+  it('should let the output schema decide whether a required input may normalize to undefined', () => {
+    vi
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
+      .mockReturnValue(window);
+
+    const optionalOutputDefinitions = {
+      amount: {
+        schema: z.string().transform((value) =>
+          value === 'empty' ? undefined : Number(value)
+        ),
+        outputSchema: z.number().optional(),
+        required: true,
+      },
+    };
+
+    const optionalOutputHost = new HostComponent(
+      createPayload({ props: {} }),
+      optionalOutputDefinitions,
+      undefined,
+      true
+    );
+    expect(optionalOutputHost.hostProps.amount).toBeUndefined();
+    optionalOutputHost.destroy();
+
+    const unconfiguredHost = new HostComponent(
+      createPayload({ props: {} }),
+      {},
+      undefined,
+      true
+    );
+    expect(() =>
+      unconfiguredHost.applyHostConfiguration(optionalOutputDefinitions)
+    ).not.toThrow();
+    unconfiguredHost.destroy();
+
+    expect(
+      () =>
+        new HostComponent(
+          createPayload({ props: {} }),
+          {
+            amount: {
+              schema: z.string().transform(Number),
+              outputSchema: z.number(),
+              required: true,
+            },
+          },
+          undefined,
+          true
+        )
+    ).toThrow('Invalid input: expected number, received undefined');
+  });
+
+  it('should reject normalized host props that fail their output schema', () => {
+    vi
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
+      .mockReturnValue(window);
+
+    expect(
+      () =>
+        new HostComponent(
+          createPayload({ props: { amount: -1 } }),
+          {
+            amount: {
+              schema: z.string().transform(Number),
+              outputSchema: z.number().nonnegative(),
+            },
+          },
+          undefined,
+          true
+        )
+    ).toThrow('Too small: expected number to be >=0');
+  });
+
+  it('should reject output schemas that transform normalized host props', () => {
+    vi
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
+      .mockReturnValue(window);
+
+    expect(
+      () =>
+        new HostComponent(
+          createPayload({ props: { amount: 1 } }),
+          {
+            amount: {
+              schema: z.string().transform(Number),
+              outputSchema: z.number().transform((value) => value + 1),
+            },
+          },
+          undefined,
+          true
+        )
+    ).toThrow(
+      'Validation failed: amount: value no longer matches its normalized schema output'
+    );
+  });
+
+  it('should validate normalized props when host configuration arrives after bootstrap', () => {
+    vi
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
+      .mockReturnValue(window);
+
+    const host = new HostComponent(
+      createPayload({ props: { amount: 42 } }),
+      {},
+      undefined,
+      true
+    );
+
+    expect(() =>
+      host.applyHostConfiguration({
+        amount: {
+          schema: z.string().transform(Number),
+          outputSchema: z.number().int().positive(),
+        },
+      })
+    ).not.toThrow();
+    expect(host.hostProps.amount).toBe(42);
+  });
+
+  it('should preserve the previous host configuration when a replacement is invalid', () => {
+    vi
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
+      .mockReturnValue(window);
+
+    const host = new HostComponent(
+      createPayload({ props: { amount: 10 } }),
+      { amount: { schema: prop.number() } },
+      undefined,
+      true
+    );
+
+    expect(() =>
+      host.applyHostConfiguration({
+        amount: {
+          schema: z.string().transform(Number),
+          outputSchema: z.number().min(100),
+        },
+      })
+    ).toThrow('Too small: expected number to be >=100');
+
+    const propsHandler = (
+      (host as unknown as {
+        messenger: { handlers: Map<string, DirectHandler> };
+      }).messenger.handlers
+    ).get(MESSAGE_NAME.PROPS);
+
+    expect(propsHandler).toBeDefined();
+    expect(propsHandler!({ amount: 11 }, createMessageSource(window))).toEqual({
+      success: true,
+    });
+    expect(host.hostProps.amount).toBe(11);
+  });
+
   it('should clear the bootstrap window name but preserve same-page retry when host prop validation fails', () => {
     const payload = createPayload({
       props: { amount: 'not-a-number' },
@@ -483,6 +666,45 @@ describe('Host lifecycle behavior', () => {
     expect(typedHost.hostProps.amount).toBe(10);
     expect(typedHost.hostProps.consumer.props).toEqual({ amount: 10 });
     expect(consoleSpy).toHaveBeenCalledWith('Error deserializing props:', expect.any(Error));
+    typedHost.destroy();
+  });
+
+  it('should validate PROPS updates as normalized outputs and preserve prior state', () => {
+    vi
+      .spyOn(hostSecurity, 'resolveConsumerWindow')
+      .mockReturnValue(window);
+
+    const typedHost = new HostComponent(
+      createPayload({ props: { amount: 10 } }),
+      {
+        amount: {
+          schema: z.string().transform(Number),
+          outputSchema: z.number().int().nonnegative(),
+        },
+      },
+      undefined,
+      true
+    );
+    const propsHandler = (
+      (typedHost as unknown as {
+        messenger: { handlers: Map<string, DirectHandler> };
+      }).messenger.handlers
+    ).get(MESSAGE_NAME.PROPS);
+    const subscriber = vi.fn();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    typedHost.hostProps.onProps(subscriber);
+
+    expect(propsHandler).toBeDefined();
+    expect(() =>
+      propsHandler!({ amount: '42' }, createMessageSource(window))
+    ).toThrow('Invalid input: expected number, received string');
+    expect(typedHost.hostProps.amount).toBe(10);
+    expect(typedHost.hostProps.consumer.props).toEqual({ amount: 10 });
+    expect(subscriber).not.toHaveBeenCalled();
+    expect(consoleSpy).toHaveBeenCalledWith(
+      'Error deserializing props:',
+      expect.any(Error)
+    );
     typedHost.destroy();
   });
 

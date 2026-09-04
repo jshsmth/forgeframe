@@ -25,7 +25,6 @@ import { CleanupManager } from '../utils/cleanup';
 import { createDeferred, type Deferred } from '../utils/promise';
 import { registerWindow, unregisterWindow } from '../window/proxy';
 import {
-  validateProps,
   propsToQueryParams,
   propsToBodyParams,
   isStandardSchema,
@@ -39,6 +38,7 @@ import {
 import { buildNestedHostRefs } from './consumer/child-refs';
 import {
   ConsumerPropsPipeline,
+  type ConsumerPropsPipelineSnapshot,
   type ConsumerPropsUpdateHooks,
 } from './consumer/props-pipeline';
 import { ConsumerRenderer } from './consumer/renderer';
@@ -55,7 +55,10 @@ type ConsumerInstanceTracker<
   P extends Record<string, unknown>,
   X,
   I extends Record<string, unknown>,
-> = (instance: ConsumerComponent<P, X, I>) => ConsumerComponent<P, X, I>;
+  SchemaInputs extends Record<string, unknown>,
+> = (
+  instance: ConsumerComponent<P, X, I, SchemaInputs>
+) => ConsumerComponent<P, X, I, SchemaInputs>;
 
 /**
  * Consumer-side component implementation.
@@ -67,6 +70,7 @@ type ConsumerInstanceTracker<
  * @typeParam P - The props type passed to the component
  * @typeParam X - The exports type that the host can expose to the consumer
  * @typeParam I - An alternate consumer input shape, such as legacy alias keys
+ * @typeParam SchemaInputs - Canonical values accepted by each prop schema
  *
  * @internal
  */
@@ -74,7 +78,8 @@ export class ConsumerComponent<
   P extends Record<string, unknown>,
   X = unknown,
   I extends Record<string, unknown> = P,
-> implements ForgeFrameComponentInstance<P, X, I>
+  SchemaInputs extends Record<string, unknown> = I,
+> implements ForgeFrameComponentInstance<P, X, I, SchemaInputs>
 {
   /** Event emitter for lifecycle events. */
   public event: EventEmitter;
@@ -100,19 +105,19 @@ export class ConsumerComponent<
   }
 
   /** @internal */
-  private options: NormalizedOptions<P>;
+  private options: NormalizedOptions<P, SchemaInputs>;
 
   /** @internal */
   private cleanup: CleanupManager;
 
   /** @internal */
-  private transport!: ConsumerTransport<P, X>;
+  private transport!: ConsumerTransport<P, X, SchemaInputs>;
 
   /** @internal */
-  private renderer!: ConsumerRenderer<P>;
+  private renderer!: ConsumerRenderer<P, SchemaInputs>;
 
   /** @internal */
-  private propsPipeline!: ConsumerPropsPipeline<P>;
+  private propsPipeline!: ConsumerPropsPipeline<P, SchemaInputs>;
 
   /** @internal */
   private rendered = false;
@@ -141,11 +146,13 @@ export class ConsumerComponent<
    * @param options - Component configuration options
    * @param props - Initial props to pass to the component
    * @param trackInstance - Owning component registration callback used for clones
+   * @param propsSnapshot - Existing normalized pipeline state used by clones
    */
   constructor(
-    options: ComponentOptions<P>,
-    props?: ConsumerPropsInput<P, I>,
-    private trackInstance?: ConsumerInstanceTracker<P, X, I>
+    options: ComponentOptions<P, I, SchemaInputs>,
+    props?: ConsumerPropsInput<P, I, SchemaInputs>,
+    private trackInstance?: ConsumerInstanceTracker<P, X, I, SchemaInputs>,
+    propsSnapshot?: ConsumerPropsPipelineSnapshot<P>
   ) {
     this._uid = generateUID();
     this.options = this.normalizeOptions(options);
@@ -167,7 +174,8 @@ export class ConsumerComponent<
     this.propsPipeline = new ConsumerPropsPipeline(
       this.options,
       { ...props },
-      (nextProps) => this.createPropContext(nextProps)
+      (nextProps) => this.createPropContext(nextProps),
+      propsSnapshot
     );
 
     this.transport = new ConsumerTransport(
@@ -248,35 +256,55 @@ export class ConsumerComponent<
   ): Promise<void> {
     this.renderer.context = context ?? this.options.defaultContext;
 
-    this.checkEligibility();
-    this.assertRenderActive();
-    validateProps(this.propsPipeline.props, this.options.props);
+    this.propsPipeline.ensureSchemaValidated();
     this.assertRenderActive();
     this.options.validate?.({ props: this.propsPipeline.props });
     this.assertRenderActive();
+    this.checkEligibility();
+    this.assertRenderActive();
+
     const baseUrl = this.resolveUrl();
-    this.assertRenderActive();
-    this.renderer.container = this.resolveContainer(container);
-
-    this.event.emit(EVENT.PRERENDER);
-    this.assertRenderActive();
-    invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onPrerender');
-    this.assertRenderActive();
-
-    await this.prerender(baseUrl);
-    this.assertRenderActive();
-
-    this.event.emit(EVENT.PRERENDERED);
-    this.assertRenderActive();
-    invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onPrerendered');
-    this.assertRenderActive();
-
-    this.event.emit(EVENT.RENDER);
-    this.assertRenderActive();
-    invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onRender');
     this.assertRenderActive();
 
     try {
+      this.transport.syncTrustedDomainForUrl(baseUrl);
+    } catch (error) {
+      await this.destroy().catch(() => undefined);
+      throw error;
+    }
+
+    // Configuration/container guard failures remain retryable until rendering
+    // has begun and resources may need lifecycle cleanup.
+    this.renderer.container = this.resolveContainer(container);
+
+    try {
+      this.event.emit(EVENT.PRERENDER);
+      this.assertRenderActive();
+      invokePropCallback(
+        this.propsPipeline.props as Record<string, unknown>,
+        'onPrerender'
+      );
+      this.assertRenderActive();
+
+      await this.prerender(baseUrl);
+      this.assertRenderActive();
+
+      this.event.emit(EVENT.PRERENDERED);
+      this.assertRenderActive();
+      invokePropCallback(
+        this.propsPipeline.props as Record<string, unknown>,
+        'onPrerendered'
+      );
+      this.assertRenderActive();
+
+      this.event.emit(EVENT.RENDER);
+      this.assertRenderActive();
+      invokePropCallback(
+        this.propsPipeline.props as Record<string, unknown>,
+        'onRender'
+      );
+      this.assertRenderActive();
+
       this.assertRenderActive();
       await this.open(baseUrl);
       this.assertRenderActive();
@@ -286,6 +314,24 @@ export class ConsumerComponent<
         await this.renderer.swapPrerenderContentIfNeeded();
         this.assertRenderActive();
       }
+
+      this.rendered = true;
+
+      this.event.emit(EVENT.RENDERED);
+      this.assertRenderActive();
+      invokePropCallback(
+        this.propsPipeline.props as Record<string, unknown>,
+        'onRendered'
+      );
+      this.assertRenderActive();
+
+      this.event.emit(EVENT.DISPLAY);
+      this.assertRenderActive();
+      invokePropCallback(
+        this.propsPipeline.props as Record<string, unknown>,
+        'onDisplay'
+      );
+      this.assertRenderActive();
     } catch (err) {
       const renderWasCancelled = this.isRenderCancelled();
       await this.destroy().catch(() => undefined);
@@ -295,18 +341,6 @@ export class ConsumerComponent<
       }
       throw err;
     }
-
-    this.rendered = true;
-
-    this.event.emit(EVENT.RENDERED);
-    this.assertRenderActive();
-    invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onRendered');
-    this.assertRenderActive();
-
-    this.event.emit(EVENT.DISPLAY);
-    this.assertRenderActive();
-    invokePropCallback(this.propsPipeline.props as Record<string, unknown>, 'onDisplay');
-    this.assertRenderActive();
   }
 
   /**
@@ -418,7 +452,9 @@ export class ConsumerComponent<
    *
    * @param newProps - Partial props object to merge with existing props
    */
-  async updateProps(newProps: ConsumerPropsUpdate<P, I>): Promise<void> {
+  async updateProps(
+    newProps: ConsumerPropsUpdate<P, I, SchemaInputs>
+  ): Promise<void> {
     if (this.renderPromise && !this.rendered) {
       throw new Error('Cannot update props while the component is rendering');
     }
@@ -430,7 +466,7 @@ export class ConsumerComponent<
    * @internal
    */
   private async applyPropsUpdate(
-    newProps: ConsumerPropsUpdate<P, I>
+    newProps: ConsumerPropsUpdate<P, I, SchemaInputs>
   ): Promise<void> {
     const hooks: ConsumerPropsUpdateHooks<P> = {
       resolveUrl: (nextProps) => this.resolveUrl(nextProps),
@@ -491,13 +527,13 @@ export class ConsumerComponent<
    *
    * @returns A new unrendered component instance with identical configuration
    */
-  clone(): ForgeFrameComponentInstance<P, X, I> {
-    const cloned = new ConsumerComponent<P, X, I>(
+  clone(): ForgeFrameComponentInstance<P, X, I, SchemaInputs> {
+    const cloned = new ConsumerComponent<P, X, I, SchemaInputs>(
       this.options,
-      this.propsPipeline.props,
-      this.trackInstance
+      undefined,
+      this.trackInstance,
+      this.propsPipeline.createSnapshot()
     );
-    cloned.propsPipeline.inputProps = { ...this.propsPipeline.inputProps };
     return this.trackInstance ? this.trackInstance(cloned) : cloned;
   }
 
@@ -514,6 +550,7 @@ export class ConsumerComponent<
   isEligible(): boolean {
     if (!this.options.eligible) return true;
 
+    this.propsPipeline.ensureSchemaValidated();
     const result = this.options.eligible({ props: this.propsPipeline.props });
     return result.eligible;
   }
@@ -522,10 +559,14 @@ export class ConsumerComponent<
    * Normalizes component options with default values.
    * @internal
    */
-  private normalizeOptions(options: ComponentOptions<P>): NormalizedOptions<P> {
+  private normalizeOptions(
+    options: ComponentOptions<P, I, SchemaInputs>
+  ): NormalizedOptions<P, SchemaInputs> {
     return {
       ...options,
-      props: options.props ?? (EMPTY_PROP_DEFINITIONS as PropsDefinition<P>),
+      props:
+        options.props ??
+        (EMPTY_PROP_DEFINITIONS as PropsDefinition<P, SchemaInputs>),
       defaultContext: options.defaultContext ?? CONTEXT.IFRAME,
       dimensions: options.dimensions ?? { width: '100%', height: '100%' },
       timeout: options.timeout ?? 10000,
@@ -537,9 +578,13 @@ export class ConsumerComponent<
    * Resolves the host URL from static or function options.
    * @internal
    */
-  private resolveUrl(props: P = this.propsPipeline.props): string {
+  private resolveUrl(props?: P): string {
+    if (props === undefined) {
+      this.propsPipeline.revalidateSchemaValues();
+    }
+    const resolvedProps = props ?? this.propsPipeline.props;
     return typeof this.options.url === 'function'
-      ? this.options.url(props)
+      ? this.options.url(resolvedProps)
       : this.options.url;
   }
 
@@ -548,6 +593,7 @@ export class ConsumerComponent<
    * @internal
    */
   private resolveDimensions(): Dimensions {
+    this.propsPipeline.revalidateSchemaValues();
     return typeof this.options.dimensions === 'function'
       ? this.options.dimensions(this.propsPipeline.props)
       : this.options.dimensions;
@@ -691,6 +737,7 @@ export class ConsumerComponent<
    * @internal
    */
   private buildUrl(baseUrl: string = this.resolveUrl()): string {
+    this.propsPipeline.revalidateSchemaValues();
     const hostDomain = this.resolveUrlOrigin(baseUrl);
     const queryParams = propsToQueryParams(
       this.propsPipeline.props,
@@ -710,6 +757,7 @@ export class ConsumerComponent<
    * @internal
    */
   private buildBodyParams(baseUrl: string = this.resolveUrl()): URLSearchParams {
+    this.propsPipeline.revalidateSchemaValues();
     const hostDomain = this.resolveUrlOrigin(baseUrl);
     return propsToBodyParams(
       this.propsPipeline.props,
@@ -735,6 +783,7 @@ export class ConsumerComponent<
    * @internal
    */
   private buildWindowName(baseUrl: string = this.resolveUrl()): string {
+    this.propsPipeline.revalidateSchemaValues();
     return this.transport.buildWindowName({
       tag: this.options.tag,
       context: this.renderer.context,

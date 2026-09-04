@@ -4,6 +4,7 @@
  * Covers component registration, instance lifecycle, dynamic option materialization, and host detection/eligibility behavior.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import { z } from 'zod';
 import {
   create,
   clearComponents,
@@ -23,7 +24,7 @@ import {
   isHost,
 } from '@/core/host';
 import * as hostSecurity from '@/core/host/security';
-import { CONTEXT, MESSAGE_NAME, VERSION } from '@/constants';
+import { CONTEXT, EVENT, MESSAGE_NAME, VERSION } from '@/constants';
 import { prop } from '@/props/prop';
 import type { ConsumerExports } from '@/communication/types';
 import { buildWindowName } from '@/window/name-payload';
@@ -111,13 +112,46 @@ describe('Component Creation', () => {
     ).toThrow('is not allowed by the configured domain policy');
   });
 
-  it('should validate function URLs when an instance resolves them', () => {
+  it('should validate function URLs before rendering them', async () => {
     const DynamicComponent = create({
       tag: 'dynamic-unsafe-url-component',
       url: () => 'javascript:alert(1)',
     });
+    const instance = DynamicComponent({});
 
-    expect(() => DynamicComponent({})).toThrow('Only http: and https: are supported');
+    await expect(instance.render(document.createElement('div'))).rejects.toThrow(
+      'Only http: and https: are supported'
+    );
+    expect(DynamicComponent.instances).toEqual([]);
+  });
+
+  it('should retry rendering after a transient function URL failure', async () => {
+    const transientError = new Error('Application state is not ready');
+    let ready = false;
+    const resolveUrl = vi.fn(() => {
+      if (!ready) {
+        throw transientError;
+      }
+      return 'https://example.com/component';
+    });
+    const DynamicComponent = create({
+      tag: 'retryable-dynamic-url-component',
+      url: resolveUrl,
+    });
+    const instance = DynamicComponent({});
+    const internal = getConsumerInternals(instance);
+    const container = document.createElement('div');
+
+    document.body.appendChild(container);
+    vi.spyOn(internal, 'waitForHost').mockResolvedValue(undefined);
+
+    await expect(instance.render(container)).rejects.toBe(transientError);
+    expect(DynamicComponent.instances).toContain(instance);
+
+    ready = true;
+
+    await expect(instance.render(container)).resolves.toBeUndefined();
+    expect(resolveUrl).toHaveBeenCalledTimes(2);
   });
 
   it('should render and update components without custom props definitions', async () => {
@@ -542,6 +576,873 @@ describe('Component Instance', () => {
 
     expect(eligibleInstance.isEligible()).toBe(true);
     expect(ineligibleInstance.isEligible()).toBe(false);
+  });
+
+  it('should validate schema inputs before invoking output-typed callbacks', () => {
+    const resolveUrl = vi.fn(
+      (props: { amount: number }) =>
+        `https://example.com/amount/${props.amount.toFixed(0)}`
+    );
+    const eligible = vi.fn(({ props }: { props: { amount: number } }) => ({
+      eligible: props.amount === 42,
+    }));
+    const TransformedComponent = create({
+      tag: 'transformed-callback-component',
+      url: resolveUrl,
+      props: {
+        amount: {
+          schema: z.string().transform(Number),
+          outputSchema: z.number(),
+          required: true,
+        },
+      },
+      eligible,
+    });
+
+    const instance = TransformedComponent({ amount: '42' });
+
+    expect(resolveUrl).not.toHaveBeenCalled();
+    expect(instance.isEligible()).toBe(true);
+    expect(eligible).toHaveBeenCalledWith({ props: expect.objectContaining({ amount: 42 }) });
+    expect(getConsumerInternals(instance).resolveUrl()).toBe(
+      'https://example.com/amount/42'
+    );
+  });
+
+  it('should preserve render-time errors for invalid schema inputs', async () => {
+    const InvalidTransformComponent = create({
+      tag: 'invalid-transform-timing-component',
+      url: 'https://example.com/invalid-transform',
+      props: {
+        amount: {
+          schema: z.string().transform(Number),
+          outputSchema: z.number(),
+          required: true,
+        },
+      },
+    });
+
+    let instance: ReturnType<typeof InvalidTransformComponent> | undefined;
+    expect(() => {
+      instance = InvalidTransformComponent({
+        amount: 42 as unknown as string,
+      });
+    }).not.toThrow();
+
+    await expect(
+      instance?.render(document.createElement('div'))
+    ).rejects.toThrow();
+  });
+
+  it('should not expose invalid raw inputs to output-typed callbacks', () => {
+    const deriveLabel = vi.fn(
+      ({ props }: { props: { amount?: number } }) =>
+        props.amount?.toFixed(0) ?? 'missing'
+    );
+    const decorateAmount = vi.fn(({ value }: { value: number }) => value + 1);
+    const InvalidCallbackComponent = create({
+      tag: 'invalid-output-callback-component',
+      url: 'https://example.com/invalid-output-callback',
+      props: {
+        label: {
+          schema: z.string(),
+          value: deriveLabel,
+        },
+        amount: {
+          schema: z.string().transform(Number),
+          outputSchema: z.number(),
+          decorate: decorateAmount,
+        },
+      },
+      eligible: () => ({ eligible: true }),
+    });
+
+    let instance: ReturnType<typeof InvalidCallbackComponent> | undefined;
+    expect(() => {
+      instance = InvalidCallbackComponent({
+        amount: 42 as unknown as string,
+      });
+    }).not.toThrow();
+
+    expect(deriveLabel).not.toHaveBeenCalled();
+    expect(decorateAmount).not.toHaveBeenCalled();
+    expect(() => instance?.isEligible()).toThrow();
+    expect(deriveLabel).not.toHaveBeenCalled();
+    expect(decorateAmount).not.toHaveBeenCalled();
+  });
+
+  it('should propagate user normalization callback errors during construction', () => {
+    const captureThrownValue = (callback: () => void): unknown => {
+      try {
+        callback();
+      } catch (error) {
+        return error;
+      }
+      return undefined;
+    };
+
+    const valueError = new Error('value callback failed');
+    const computeValue = vi.fn(() => {
+      throw valueError;
+    });
+    const ValueFailureComponent = create({
+      tag: 'throwing-value-callback-component',
+      url: 'https://example.com/throwing-value',
+      props: {
+        label: { schema: z.string(), value: computeValue },
+      },
+    });
+
+    expect(captureThrownValue(() => ValueFailureComponent({}))).toBe(valueError);
+    expect(computeValue).toHaveBeenCalledTimes(1);
+    expect(ValueFailureComponent.instances).toHaveLength(0);
+
+    const defaultError = new Error('default callback failed');
+    const computeDefault = vi.fn(() => {
+      throw defaultError;
+    });
+    const DefaultFailureComponent = create({
+      tag: 'throwing-default-callback-component',
+      url: 'https://example.com/throwing-default',
+      props: {
+        label: { schema: z.string(), default: computeDefault },
+      },
+    });
+
+    expect(captureThrownValue(() => DefaultFailureComponent({}))).toBe(
+      defaultError
+    );
+    expect(computeDefault).toHaveBeenCalledTimes(1);
+    expect(DefaultFailureComponent.instances).toHaveLength(0);
+
+    const decorateError = new Error('decorate callback failed');
+    const decorate = vi.fn(() => {
+      throw decorateError;
+    });
+    const DecorateFailureComponent = create({
+      tag: 'throwing-decorate-callback-component',
+      url: 'https://example.com/throwing-decorate',
+      props: {
+        label: { schema: z.string(), required: true, decorate },
+      },
+    });
+
+    expect(
+      captureThrownValue(() => DecorateFailureComponent({ label: 'ready' }))
+    ).toBe(decorateError);
+    expect(decorate).toHaveBeenCalledTimes(1);
+    expect(DecorateFailureComponent.instances).toHaveLength(0);
+  });
+
+  it('should retain deferred schema errors without replaying callbacks', async () => {
+    const computeTargetUrl = vi
+      .fn<() => string>()
+      .mockReturnValueOnce('not-a-url')
+      .mockReturnValue('https://safe.example.com/widget');
+    const DeferredFailureComponent = create({
+      tag: 'stable-deferred-normalization-error-component',
+      url: 'https://example.com/deferred-normalization-error',
+      props: {
+        targetUrl: {
+          schema: z.string().url(),
+          value: computeTargetUrl,
+        },
+      },
+      eligible: () => ({ eligible: true }),
+    });
+    const instance = DeferredFailureComponent({});
+
+    expect(computeTargetUrl).toHaveBeenCalledTimes(1);
+    expect(() => instance.isEligible()).toThrow('Invalid URL');
+    expect(computeTargetUrl).toHaveBeenCalledTimes(1);
+
+    await expect(
+      instance.updateProps({ targetUrl: 'https://safe.example.com/widget' })
+    ).resolves.toBeUndefined();
+    expect(instance.isEligible()).toBe(true);
+    expect(computeTargetUrl).toHaveBeenCalledTimes(1);
+  });
+
+  it('should recover deferred normalization after a valid prop update', async () => {
+    const deriveLabel = vi.fn(
+      ({ props }: { props: { amount?: number } }) =>
+        props.amount?.toFixed(0) ?? 'missing'
+    );
+    const RecoverableComponent = create({
+      tag: 'recoverable-invalid-input-component',
+      url: 'https://example.com/recoverable-invalid-input',
+      props: {
+        amount: {
+          schema: z.string().transform(Number),
+          outputSchema: z.number(),
+          required: true,
+        },
+        label: {
+          schema: z.string(),
+          value: deriveLabel,
+        },
+      },
+      eligible: () => ({ eligible: true }),
+    });
+    const instance = RecoverableComponent({
+      amount: 42 as unknown as string,
+    });
+
+    await expect(instance.updateProps({ amount: '7' })).resolves.toBeUndefined();
+    expect(instance.isEligible()).toBe(true);
+    expect(getConsumerInternals(instance).propsPipeline.props).toMatchObject({
+      amount: 7,
+      label: '7',
+    });
+    expect(deriveLabel).toHaveBeenCalledTimes(1);
+  });
+
+  it('should normalize direct schema defaults exactly once before callbacks', () => {
+    const eligible = vi.fn(({ props }: { props: { amount: number } }) => ({
+      eligible: props.amount === 42,
+    }));
+    const DefaultedTransformComponent = create({
+      tag: 'defaulted-transform-callback-component',
+      url: 'https://example.com/defaulted-transform',
+      props: {
+        amount: {
+          schema: z.string().transform(Number).default(42),
+          outputSchema: z.number(),
+          required: true,
+        },
+      },
+      eligible,
+    });
+
+    const instance = DefaultedTransformComponent({});
+
+    expect(instance.isEligible()).toBe(true);
+    expect(eligible).toHaveBeenCalledWith({ props: expect.objectContaining({ amount: 42 }) });
+  });
+
+  it('should reject invalid explicit defaults before output callbacks', async () => {
+    const decorate = vi.fn(({ value }: { value: string }) => value);
+    const validate = vi.fn();
+    const componentValidate = vi.fn();
+    const eligible = vi.fn(() => ({ eligible: true }));
+    const resolveUrl = vi.fn(
+      (props: { targetUrl?: string }) =>
+        props.targetUrl ?? 'https://safe.example.com/fallback'
+    );
+    const InvalidDefaultComponent = create({
+      tag: 'invalid-explicit-default-component',
+      url: resolveUrl,
+      props: {
+        targetUrl: {
+          schema: z.string().url(),
+          default: 'not-a-url',
+          decorate,
+          validate,
+          queryParam: true,
+          bodyParam: true,
+        },
+      },
+      validate: componentValidate,
+      eligible,
+    });
+
+    const instance = InvalidDefaultComponent({});
+
+    expect(decorate).not.toHaveBeenCalled();
+    expect(validate).not.toHaveBeenCalled();
+    expect(componentValidate).not.toHaveBeenCalled();
+    expect(eligible).not.toHaveBeenCalled();
+    expect(resolveUrl).not.toHaveBeenCalled();
+    expect(() => instance.isEligible()).toThrow('Invalid URL');
+    expect(decorate).not.toHaveBeenCalled();
+    expect(validate).not.toHaveBeenCalled();
+    expect(componentValidate).not.toHaveBeenCalled();
+    expect(eligible).not.toHaveBeenCalled();
+    expect(resolveUrl).not.toHaveBeenCalled();
+
+    const container = document.createElement('div');
+    await expect(instance.render(container)).rejects.toThrow('Invalid URL');
+    expect(container.childElementCount).toBe(0);
+
+    const updateInstance = InvalidDefaultComponent({
+      targetUrl: 'https://safe.example.com/component',
+    });
+    expect(updateInstance.isEligible()).toBe(true);
+    await expect(
+      updateInstance.updateProps({ targetUrl: undefined })
+    ).rejects.toThrow('Invalid URL');
+    expect(
+      getConsumerInternals(updateInstance).propsPipeline.props.targetUrl
+    ).toBe('https://safe.example.com/component');
+  });
+
+  it('should reject invalid computed values before output callbacks', () => {
+    const decorate = vi.fn(({ value }: { value: string }) => value);
+    const validate = vi.fn();
+    const InvalidComputedComponent = create({
+      tag: 'invalid-computed-fallback-component',
+      url: 'https://safe.example.com/component',
+      props: {
+        targetUrl: {
+          schema: z.string().url(),
+          value: () => 'not-a-url',
+          decorate,
+          validate,
+        },
+      },
+      eligible: () => ({ eligible: true }),
+    });
+
+    const instance = InvalidComputedComponent({});
+
+    expect(decorate).not.toHaveBeenCalled();
+    expect(validate).not.toHaveBeenCalled();
+    expect(() => instance.isEligible()).toThrow('Invalid URL');
+    expect(decorate).not.toHaveBeenCalled();
+    expect(validate).not.toHaveBeenCalled();
+  });
+
+  it('should parse explicit fallback inputs before output callbacks', async () => {
+    const computeValue = vi.fn(() => '41');
+    const decorate = vi.fn(({ value }: { value: number }) => value + 1);
+    const TransformFallbackComponent = create({
+      tag: 'transformed-explicit-fallback-component',
+      url: 'https://example.com/transformed-fallback',
+      props: {
+        amount: {
+          schema: z.string().transform(Number),
+          outputSchema: z.number(),
+          value: computeValue,
+          decorate,
+        },
+        label: z.string().optional(),
+      },
+      eligible: () => ({ eligible: true }),
+    });
+    const instance = TransformFallbackComponent({});
+    const internals = getConsumerInternals(instance);
+
+    expect(instance.isEligible()).toBe(true);
+    expect(internals.propsPipeline.props.amount).toBe(42);
+    expect(decorate).toHaveBeenCalledWith({
+      value: 41,
+      props: expect.any(Object),
+    });
+
+    await instance.updateProps({ label: 'updated' });
+    expect(internals.propsPipeline.props.amount).toBe(42);
+    expect(computeValue).toHaveBeenCalledTimes(1);
+    expect(decorate).toHaveBeenCalledTimes(1);
+  });
+
+  it('should require output validation for consumer-only transformed props', () => {
+    const ConsumerOnlyTransformComponent = create({
+      tag: 'consumer-only-transform-component',
+      url: 'https://example.com/consumer-only-transform',
+      props: {
+        amount: {
+          schema: z.string().transform(Number),
+          required: true,
+          sendToHost: false,
+        } as never,
+      },
+      eligible: () => ({ eligible: true }),
+    });
+
+    const instance = ConsumerOnlyTransformComponent({ amount: '42' });
+
+    expect(() => instance.isEligible()).toThrow();
+  });
+
+  it('should revalidate mutable consumer-only transform outputs before URL use', async () => {
+    const safeOrigin = 'https://safe.example.com';
+    let decoratedTarget: { href: string } | undefined;
+    const resolveUrl = vi.fn(
+      (props: { target: { href: string }; label?: string }) => props.target.href
+    );
+    const ConsumerOnlyTargetComponent = create({
+      tag: 'consumer-only-mutable-transform-component',
+      url: resolveUrl,
+      props: {
+        target: {
+          schema: z.string().transform((href) => ({ href })),
+          outputSchema: z.object({
+            href: z.string().refine(
+              (href) => new URL(href).origin === safeOrigin,
+              'Unsafe consumer-only target'
+            ),
+          }),
+          required: true,
+          sendToHost: false,
+          decorate: ({ value }) => {
+            decoratedTarget = value;
+            return value;
+          },
+        },
+        label: z.string().optional(),
+      },
+      eligible: () => ({ eligible: true }),
+    });
+    const instance = ConsumerOnlyTargetComponent({
+      target: `${safeOrigin}/widget`,
+    });
+
+    expect(instance.isEligible()).toBe(true);
+    resolveUrl.mockClear();
+    if (!decoratedTarget) {
+      throw new Error('Expected the target schema to produce an output');
+    }
+    decoratedTarget.href = 'https://attacker.example.com/widget';
+
+    await expect(instance.updateProps({ label: 'updated' })).rejects.toThrow(
+      'Unsafe consumer-only target'
+    );
+    expect(resolveUrl).not.toHaveBeenCalled();
+  });
+
+  it('should reject decorated values that violate the normalized output schema', () => {
+    const OutputValidatedComponent = create({
+      tag: 'output-validated-decoration-component',
+      url: 'https://example.com/output-validated-decoration',
+      props: {
+        amount: {
+          schema: z.string().transform(Number),
+          outputSchema: z.number().nonnegative(),
+          default: '1',
+          decorate: () => -1,
+        },
+      },
+      eligible: () => ({ eligible: true }),
+    });
+    const instance = OutputValidatedComponent({});
+
+    expect(() => instance.isEligible()).toThrow(
+      'Too small: expected number to be >=0'
+    );
+  });
+
+  it('should reject undefined decorator results that violate the output schema', () => {
+    const OutputValidatedComponent = create({
+      tag: 'undefined-output-validated-decoration-component',
+      url: 'https://example.com/undefined-output-validated-decoration',
+      props: {
+        label: {
+          schema: z.string(),
+          outputSchema: z.string(),
+          required: true,
+          decorate: () => undefined as never,
+        },
+      },
+      eligible: () => ({ eligible: true }),
+    });
+    const instance = OutputValidatedComponent({ label: 'valid' });
+
+    expect(() => instance.isEligible()).toThrow(
+      'Invalid input: expected string, received undefined'
+    );
+  });
+
+  it('should reject omitted required wrappers whose schema yields undefined', () => {
+    const RequiredOptionalComponent = create({
+      tag: 'required-optional-wrapper-component',
+      url: 'https://example.com/required-optional-wrapper',
+      props: {
+        label: {
+          schema: z.string().optional(),
+          required: true,
+        },
+      },
+      eligible: () => ({ eligible: true }),
+    });
+    const instance = RequiredOptionalComponent({
+      label: undefined as unknown as string,
+    });
+    expect(() => instance.isEligible()).toThrow(
+      'Prop "label" is required but was not provided'
+    );
+  });
+
+  it('should pass normalized schema outputs to prop decorators exactly once', async () => {
+    const decorate = vi.fn(({ value }: { value: number }) => value + 1);
+    const DecoratedTransformComponent = create({
+      tag: 'decorated-transform-component',
+      url: 'https://example.com/decorated-transform',
+      props: {
+        amount: {
+          schema: z.string().transform(Number),
+          outputSchema: z.number(),
+          required: true,
+          decorate,
+        },
+        label: z.string().optional(),
+      },
+      eligible: () => ({ eligible: true }),
+    });
+
+    const instance = DecoratedTransformComponent({ amount: '41' });
+
+    expect(decorate).toHaveBeenCalledWith({
+      value: 41,
+      props: expect.any(Object),
+    });
+    expect(instance.isEligible()).toBe(true);
+    expect(getConsumerInternals(instance).propsPipeline.props.amount).toBe(42);
+
+    await instance.updateProps({ label: 'updated' });
+    expect(getConsumerInternals(instance).propsPipeline.props.amount).toBe(42);
+    expect(decorate).toHaveBeenCalledTimes(1);
+  });
+
+  it('should normalize every explicit input before contextual callbacks', () => {
+    const ContextualComponent = create({
+      tag: 'contextual-normalized-inputs-component',
+      url: 'https://example.com/contextual-normalized-inputs',
+      props: {
+        derived: {
+          schema: z.string(),
+          value: ({ props }) => props.amount?.toFixed(0) ?? 'missing',
+          decorate: ({ value, props }) =>
+            `${props.amount?.toFixed(0)}:${value}`,
+        },
+        amount: {
+          schema: z.string().transform(Number),
+          outputSchema: z.number(),
+          required: true,
+        },
+      },
+      eligible: () => ({ eligible: true }),
+    });
+    const instance = ContextualComponent({ amount: '42' });
+
+    expect(instance.isEligible()).toBe(true);
+    expect(getConsumerInternals(instance).propsPipeline.props).toMatchObject({
+      amount: 42,
+      derived: '42:42',
+    });
+  });
+
+  it('should pass schema defaults to output decorators before callbacks', () => {
+    const SchemaDefaultComponent = create({
+      tag: 'decorated-schema-default-component',
+      url: (props) => props.targetUrl,
+      props: {
+        attackerUrl: z.string(),
+        targetUrl: {
+          schema: z.string().url().default('https://safe.example.com'),
+          decorate: ({ value }) => `${value}/path`,
+        },
+      },
+      eligible: () => ({ eligible: true }),
+    });
+    const instance = SchemaDefaultComponent({ attackerUrl: 'not-a-url' });
+
+    expect(instance.isEligible()).toBe(true);
+    expect(getConsumerInternals(instance).propsPipeline.props.targetUrl).toBe(
+      'https://safe.example.com/path'
+    );
+  });
+
+  it('should revalidate output-compatible decorated defaults', () => {
+    const SchemaDefaultComponent = create({
+      tag: 'invalid-decorated-schema-default-component',
+      url: (props) => props.targetUrl,
+      props: {
+        attackerUrl: z.string(),
+        targetUrl: {
+          schema: z.string().url().default('https://safe.example.com'),
+          decorate: ({ props }) => props.attackerUrl,
+        },
+      },
+      eligible: () => ({ eligible: true }),
+    });
+    const instance = SchemaDefaultComponent({ attackerUrl: 'not-a-url' });
+
+    expect(() => instance.isEligible()).toThrow('Invalid URL');
+  });
+
+  it('should not feed transformed outputs back through their input schema on updates', async () => {
+    const TransformComponent = create({
+      tag: 'stable-transformed-update-component',
+      url: 'https://example.com/transformed-update',
+      props: {
+        amount: {
+          schema: z.string().transform((value) => `${value}!`),
+          outputSchema: z.string(),
+          required: true,
+        },
+        label: z.string().optional(),
+      },
+      eligible: () => ({ eligible: true }),
+    });
+    const instance = TransformComponent({ amount: 'initial' });
+    const internals = getConsumerInternals(instance);
+
+    expect(instance.isEligible()).toBe(true);
+    expect(internals.propsPipeline.props.amount).toBe('initial!');
+
+    await instance.updateProps({ label: 'updated' });
+    expect(internals.propsPipeline.props.amount).toBe('initial!');
+
+    await instance.updateProps({ amount: 'next' });
+    expect(internals.propsPipeline.props.amount).toBe('next!');
+  });
+
+  it('should preserve undefined transform outputs during unrelated updates', async () => {
+    const OptionalOutputComponent = create({
+      tag: 'optional-transform-output-component',
+      url: 'https://example.com/optional-transform-output',
+      props: {
+        amount: {
+          schema: z.string().transform((value) =>
+            value === 'empty' ? undefined : Number(value)
+          ),
+          outputSchema: z.number().optional(),
+          default: '7',
+        },
+        label: z.string().optional(),
+      },
+      eligible: () => ({ eligible: true }),
+    });
+    const instance = OptionalOutputComponent({ amount: 'empty' });
+    const internals = getConsumerInternals(instance);
+
+    expect(instance.isEligible()).toBe(true);
+    expect(internals.propsPipeline.props.amount).toBeUndefined();
+
+    await instance.updateProps({ label: 'updated' });
+    expect(internals.propsPipeline.props.amount).toBeUndefined();
+  });
+
+  it('should not re-check requiredness against transformed outputs', async () => {
+    const RequiredOptionalOutputComponent = create({
+      tag: 'required-optional-transform-output-component',
+      url: 'https://example.com/required-optional-transform-output',
+      props: {
+        amount: {
+          schema: z.string().transform((value) =>
+            value === 'empty' ? undefined : Number(value)
+          ),
+          outputSchema: z.number().optional(),
+          required: true,
+        },
+        label: z.string().optional(),
+      },
+      eligible: () => ({ eligible: true }),
+    });
+    const instance = RequiredOptionalOutputComponent({ amount: 'empty' });
+    const internals = getConsumerInternals(instance);
+
+    expect(instance.isEligible()).toBe(true);
+    expect(internals.propsPipeline.props.amount).toBeUndefined();
+
+    await expect(
+      instance.updateProps({ label: 'updated' })
+    ).resolves.toBeUndefined();
+    expect(internals.propsPipeline.props.amount).toBeUndefined();
+  });
+
+  it('should revalidate retained mutable schema inputs before rendering', async () => {
+    const safeOrigin = 'https://safe.example.com';
+    const target = new URL(`${safeOrigin}/component`);
+    const MutableUrlComponent = create({
+      tag: 'mutable-url-schema-component',
+      url: (props) => props.target.href,
+      domain: safeOrigin,
+      props: {
+        target: z
+          .instanceof(URL)
+          .refine((value) => value.origin === safeOrigin, 'Unsafe URL origin'),
+      },
+      eligible: () => ({ eligible: true }),
+    });
+    const instance = MutableUrlComponent({ target });
+
+    expect(instance.isEligible()).toBe(true);
+    target.href = 'https://attacker.example.com/component';
+
+    await expect(instance.render(document.createElement('div'))).rejects.toThrow(
+      'Unsafe URL origin'
+    );
+  });
+
+  it('should rerun custom validation for retained mutable inputs', async () => {
+    const safeOrigin = 'https://safe.example.com';
+    const target = new URL(`${safeOrigin}/component`);
+    const MutableUrlComponent = create({
+      tag: 'mutable-url-custom-validation-component',
+      url: (props) => props.target.href,
+      props: {
+        target: {
+          schema: z.instanceof(URL),
+          validate: ({ value }) => {
+            if (value.origin !== safeOrigin) {
+              throw new Error('Unsafe custom URL origin');
+            }
+          },
+        },
+      },
+      eligible: () => ({ eligible: true }),
+    });
+    const instance = MutableUrlComponent({ target });
+
+    expect(instance.isEligible()).toBe(true);
+    target.href = 'https://attacker.example.com/component';
+
+    await expect(instance.render(document.createElement('div'))).rejects.toThrow(
+      'Unsafe custom URL origin'
+    );
+  });
+
+  it('should recheck time-varying schema policies at trust boundaries', () => {
+    const allowedOrigins = new Set(['https://safe.example.com']);
+    const PolicyComponent = create({
+      tag: 'time-varying-schema-policy-component',
+      url: (props) => props.targetUrl,
+      props: {
+        targetUrl: z.string().refine(
+          (value) => allowedOrigins.has(new URL(value).origin),
+          'URL origin is no longer allowed'
+        ),
+      },
+      eligible: () => ({ eligible: true }),
+    });
+    const instance = PolicyComponent({
+      targetUrl: 'https://safe.example.com/component',
+    });
+
+    expect(instance.isEligible()).toBe(true);
+    allowedOrigins.clear();
+
+    expect(() => instance.isEligible()).toThrow(
+      'URL origin is no longer allowed'
+    );
+  });
+
+  it('should recheck mutable output-compatible defaults', () => {
+    const safeOrigin = 'https://safe.example.com';
+    const sharedDefault = { href: `${safeOrigin}/component` };
+    const DefaultPolicyComponent = create({
+      tag: 'mutable-default-policy-component',
+      url: (props) => props.target.href,
+      props: {
+        target: {
+          schema: z.object({
+            href: z.string().refine(
+              (value) => new URL(value).origin === safeOrigin,
+              'Unsafe default target'
+            ),
+          }),
+          default: sharedDefault,
+        },
+      },
+      eligible: () => ({ eligible: true }),
+    });
+    const instance = DefaultPolicyComponent({});
+    const normalizedDefault = getConsumerInternals(instance).propsPipeline.props
+      .target as { href: string };
+    normalizedDefault.href = 'https://attacker.example.com/component';
+
+    expect(() => instance.isEligible()).toThrow('Unsafe default target');
+  });
+
+  it('should recheck mutable output-compatible decorated values', async () => {
+    const safeOrigin = 'https://safe.example.com';
+    const decoratedTargets: Array<{ href: string }> = [];
+    const DecoratedPolicyComponent = create({
+      tag: 'mutable-decorated-policy-component',
+      url: (props) => props.target.href,
+      props: {
+        target: {
+          schema: z.object({
+            href: z.string().refine(
+              (value) => new URL(value).origin === safeOrigin,
+              'Unsafe decorated target'
+            ),
+          }),
+          required: true,
+          decorate: ({ value }) => {
+            const decoratedTarget = { ...value };
+            decoratedTargets.push(decoratedTarget);
+            return decoratedTarget;
+          },
+        },
+        label: z.string().optional(),
+      },
+      eligible: () => ({ eligible: true }),
+    });
+    const eligibilityInstance = DecoratedPolicyComponent({
+      target: { href: `${safeOrigin}/eligible` },
+    });
+
+    expect(eligibilityInstance.isEligible()).toBe(true);
+    decoratedTargets[0].href = 'https://attacker.example.com/eligible';
+    expect(() => eligibilityInstance.isEligible()).toThrow(
+      'Unsafe decorated target'
+    );
+
+    const updateInstance = DecoratedPolicyComponent({
+      target: { href: `${safeOrigin}/update` },
+    });
+    expect(updateInstance.isEligible()).toBe(true);
+    decoratedTargets[1].href = 'https://attacker.example.com/update';
+
+    await expect(
+      updateInstance.updateProps({ label: 'updated' })
+    ).rejects.toThrow('Unsafe decorated target');
+
+    const strippedFieldInstance = DecoratedPolicyComponent({
+      target: { href: `${safeOrigin}/stripped-field` },
+    });
+    expect(strippedFieldInstance.isEligible()).toBe(true);
+    (
+      decoratedTargets[2] as { href: string; elevated?: boolean }
+    ).elevated = true;
+
+    expect(() => strippedFieldInstance.isEligible()).toThrow(
+      'value no longer matches its normalized schema output'
+    );
+  });
+
+  it('should recheck decorated values mutated during render callbacks', async () => {
+    const safeOrigin = 'https://safe.example.com';
+    let decoratedTarget: { href: string } | undefined;
+    const DecoratedRenderComponent = create({
+      tag: 'render-mutated-decorated-policy-component',
+      url: (props) => props.target.href,
+      props: {
+        target: {
+          schema: z.object({
+            href: z.string().refine(
+              (value) => new URL(value).origin === safeOrigin,
+              'Unsafe decorated render target'
+            ),
+          }),
+          required: true,
+          decorate: ({ value }) => {
+            decoratedTarget = { ...value };
+            return decoratedTarget;
+          },
+        },
+      },
+      eligible: () => ({ eligible: true }),
+    });
+    const instance = DecoratedRenderComponent({
+      target: { href: `${safeOrigin}/render` },
+    });
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    instance.event.once(EVENT.PRERENDER, () => {
+      if (decoratedTarget) {
+        decoratedTarget.href = 'https://attacker.example.com/render';
+      }
+    });
+
+    await expect(instance.render(container)).rejects.toThrow(
+      'Unsafe decorated render target'
+    );
+    expect(container.querySelectorAll('iframe')).toHaveLength(0);
+    container.remove();
   });
 
   it('should call component validate on render and updateProps', async () => {

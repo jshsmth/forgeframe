@@ -17,7 +17,7 @@ import type {
   HostProps,
   SiblingInfo,
 } from '../../types/runtime';
-import type { PropsDefinition } from '../../types/props';
+import type { HostPropsDefinition } from '../../types/props';
 import type { Dimensions, DomainMatcher } from '../../types/utility';
 
 export type VerifiedMessageSource = Parameters<MessageHandler>[1];
@@ -67,11 +67,17 @@ export interface HostTransportPropsHandler {
   applySerializedProps(serializedProps: SerializedProps): { success: true };
 }
 
-export interface HostHostConfiguration<P extends Record<string, unknown>> {
-  propDefinitions?: PropsDefinition<P>;
+export interface HostHostConfiguration<
+  P extends Record<string, unknown>,
+  SchemaInputs = P,
+> {
+  propDefinitions?: HostPropsDefinition<P, SchemaInputs>;
   allowedConsumerDomains?: DomainMatcher;
 }
 
-export interface WindowWithHostProps<P extends Record<string, unknown>> extends Window {
+export type WindowWithHostProps<P extends Record<string, unknown>> = Omit<
+  Window,
+  'hostProps'
+> & {
   hostProps?: HostProps<P>;
-}
+};

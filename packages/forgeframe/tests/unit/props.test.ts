@@ -78,6 +78,40 @@ describe('Props Normalization', () => {
     expect(result.computed).toBe('uid:test-uid');
   });
 
+  it('should treat explicit undefined as missing for wrapped defaults', () => {
+    const definitions: PropsDefinition<{ label: string }> = {
+      label: {
+        schema: prop.string(),
+        default: 'fallback',
+      },
+    };
+
+    const result = normalizeProps(
+      { label: undefined } as unknown as { label: string },
+      definitions,
+      createContext()
+    );
+
+    expect(result.label).toBe('fallback');
+  });
+
+  it('should treat explicit undefined as missing for wrapped computed values', () => {
+    const definitions: PropsDefinition<{ label: string }> = {
+      label: {
+        schema: prop.string(),
+        value: () => 'computed',
+      },
+    };
+
+    const result = normalizeProps(
+      { label: undefined } as unknown as { label: string },
+      definitions,
+      createContext()
+    );
+
+    expect(result.label).toBe('computed');
+  });
+
   it('should handle prop aliases', () => {
     const definitions: PropsDefinition<{ email: string }> = {
       email: {
@@ -233,6 +267,24 @@ describe('Props Validation', () => {
       validateProps({ optional: undefined } as { optional?: string }, definitions)
     ).not.toThrow();
   });
+
+  it('should call wrapped custom validators for omitted optional props', () => {
+    const validate = vi.fn();
+    const definitions: PropsDefinition<{ optional?: string }> = {
+      optional: {
+        schema: prop.string(),
+        validate,
+      },
+    };
+
+    validateProps({ optional: undefined }, definitions);
+
+    expect(validate).toHaveBeenCalledWith({
+      value: undefined,
+      props: { optional: undefined },
+    });
+  });
+
 });
 
 describe('Props for Host', () => {
@@ -318,6 +370,25 @@ describe('Props for Host', () => {
     );
 
     expect(result.value).toBe('host:test');
+  });
+
+  it('should validate host-decorated values against the output schema', () => {
+    const definitions: PropsDefinition<{ value: string }> = {
+      value: {
+        schema: prop.string(),
+        outputSchema: prop.string().url(),
+        hostDecorate: () => 'not-a-url',
+      },
+    };
+
+    expect(() =>
+      getPropsForHost(
+        { value: 'https://safe.example.com' },
+        definitions,
+        'https://host.com',
+        false
+      )
+    ).toThrow('Invalid URL');
   });
 });
 

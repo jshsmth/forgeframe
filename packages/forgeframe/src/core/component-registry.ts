@@ -1,6 +1,7 @@
 import type {
   ComponentOptions,
   ForgeFrameComponent,
+  ForgeFrameComponentReference,
 } from '../types/runtime';
 
 const componentRegistry = new Map<
@@ -14,19 +15,21 @@ type InternalForgeFrameComponent<
   P extends Record<string, unknown> = Record<string, unknown>,
   X = unknown,
   I = P,
-> = ForgeFrameComponent<P, X, I> & {
-  [INTERNAL_COMPONENT_OPTIONS]?: ComponentOptions<P>;
+  SchemaInputs = I,
+> = ForgeFrameComponent<P, X, I, false, SchemaInputs> & {
+  [INTERNAL_COMPONENT_OPTIONS]?: ComponentOptions<P, I, SchemaInputs>;
 };
 
 export function registerComponent<
   P extends Record<string, unknown>,
   X,
   I,
+  SchemaInputs,
 >(
-  component: ForgeFrameComponent<P, X, I>,
-  options: ComponentOptions<P>
+  component: ForgeFrameComponent<P, X, I, false, SchemaInputs>,
+  options: ComponentOptions<P, I, SchemaInputs>
 ): void {
-  (component as InternalForgeFrameComponent<P, X, I>)[INTERNAL_COMPONENT_OPTIONS] = options;
+  (component as InternalForgeFrameComponent<P, X, I, SchemaInputs>)[INTERNAL_COMPONENT_OPTIONS] = options;
   componentRegistry.set(
     options.tag,
     component as ForgeFrameComponent<Record<string, unknown>>
@@ -41,8 +44,11 @@ export function getRegisteredComponent<
   P extends Record<string, unknown> = Record<string, unknown>,
   X = unknown,
   I = P,
->(tag: string): ForgeFrameComponent<P, X, I> | undefined {
-  return componentRegistry.get(tag) as ForgeFrameComponent<P, X, I> | undefined;
+  SchemaInputs = I,
+>(tag: string): ForgeFrameComponent<P, X, I, false, SchemaInputs> | undefined {
+  return componentRegistry.get(tag) as
+    | ForgeFrameComponent<P, X, I, false, SchemaInputs>
+    | undefined;
 }
 
 export function getRegisteredComponentEntries(): Array<
@@ -55,8 +61,18 @@ export function getComponentOptions<
   P extends Record<string, unknown> = Record<string, unknown>,
   X = unknown,
   I = P,
->(component: ForgeFrameComponent<P, X, I>): ComponentOptions<P> | undefined {
-  return (component as InternalForgeFrameComponent<P, X, I>)[INTERNAL_COMPONENT_OPTIONS];
+  SchemaInputs = I,
+>(
+  component: ForgeFrameComponentReference
+): ComponentOptions<P, I, SchemaInputs> | undefined {
+  return (
+    component as unknown as InternalForgeFrameComponent<
+      P,
+      X,
+      I,
+      SchemaInputs
+    >
+  )[INTERNAL_COMPONENT_OPTIONS];
 }
 
 export function getRegisteredComponentTags(): string[] {

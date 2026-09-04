@@ -47,8 +47,88 @@ const compiledPropDefinitionsCache = new WeakMap<
 const hasOwn = (value: object, key: PropertyKey): boolean =>
   Object.prototype.hasOwnProperty.call(value, key);
 
-function getCompiledPropDefinitions<P extends Record<string, unknown>>(
-  definitions: PropsDefinition<P>
+function schemaOutputMatchesInput(
+  input: unknown,
+  output: unknown,
+  seen = new WeakMap<object, object>()
+): boolean {
+  if (Object.is(input, output)) {
+    return true;
+  }
+
+  if (
+    typeof input !== 'object' ||
+    input === null ||
+    typeof output !== 'object' ||
+    output === null
+  ) {
+    return false;
+  }
+
+  if (input instanceof Date || output instanceof Date) {
+    return (
+      input instanceof Date &&
+      output instanceof Date &&
+      Object.is(input.getTime(), output.getTime())
+    );
+  }
+
+  if (input instanceof URL || output instanceof URL) {
+    return input instanceof URL && output instanceof URL && input.href === output.href;
+  }
+
+  const inputIsArray = Array.isArray(input);
+  if (inputIsArray !== Array.isArray(output)) {
+    return false;
+  }
+
+  const inputPrototype = Object.getPrototypeOf(input) as object | null;
+  if (inputPrototype !== Object.getPrototypeOf(output)) {
+    return false;
+  }
+
+  if (!inputIsArray && inputPrototype !== Object.prototype && inputPrototype !== null) {
+    return false;
+  }
+
+  const seenOutput = seen.get(input);
+  if (seenOutput) {
+    return seenOutput === output;
+  }
+  seen.set(input, output);
+
+  const inputKeys = Reflect.ownKeys(input);
+  const outputKeys = Reflect.ownKeys(output);
+  if (inputKeys.length !== outputKeys.length) {
+    return false;
+  }
+
+  for (const key of inputKeys) {
+    const inputDescriptor = Object.getOwnPropertyDescriptor(input, key);
+    const outputDescriptor = Object.getOwnPropertyDescriptor(output, key);
+    if (
+      !inputDescriptor ||
+      !outputDescriptor ||
+      !('value' in inputDescriptor) ||
+      !('value' in outputDescriptor) ||
+      !schemaOutputMatchesInput(
+        inputDescriptor.value,
+        outputDescriptor.value,
+        seen
+      )
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function getCompiledPropDefinitions<
+  P extends Record<string, unknown>,
+  I = P,
+>(
+  definitions: PropsDefinition<P, I>
 ): readonly CompiledPropDefinition<P>[] {
   const cacheKey = definitions as object;
   const cached = compiledPropDefinitionsCache.get(cacheKey) as
@@ -95,9 +175,12 @@ function getCompiledPropDefinitions<P extends Record<string, unknown>>(
  *
  * @internal
  */
-export function materializePropAliases<P extends Record<string, unknown>>(
+export function materializePropAliases<
+  P extends Record<string, unknown>,
+  I = P,
+>(
   props: Record<string, unknown>,
-  definitions: PropsDefinition<P>,
+  definitions: PropsDefinition<P, I>,
   resetValue?: unknown
 ): Partial<P> {
   const source = props as Record<string, unknown>;
@@ -168,16 +251,75 @@ export function materializePropAliases<P extends Record<string, unknown>>(
  *
  * @public
  */
-export function normalizeProps<P extends Record<string, unknown>>(
+export function normalizeProps<
+  P extends Record<string, unknown>,
+  I = P,
+>(
   userProps: Partial<P>,
-  definitions: PropsDefinition<P>,
+  definitions: PropsDefinition<P, I>,
   context: PropContext<P>
 ): P {
-  const result = {} as P;
+  return normalizePropsInternal(userProps, definitions, context, {});
+}
 
-  for (const { key, definition } of getCompiledPropDefinitions(definitions)) {
+interface ConsumerNormalizationOptions {
+  schemaValidatedKeys: Set<string>;
+  outputValidationKeys?: Set<string>;
+  decorateKeys?: ReadonlySet<string>;
+  fallbackKeys?: ReadonlySet<string>;
+  deferCustomNormalization?: boolean;
+  onUserCallbackError?: (error: unknown) => never;
+}
+
+/** Invokes user normalization code while preserving its original thrown value. @internal */
+function invokeUserNormalizationCallback<T>(
+  callback: () => T,
+  onError: ConsumerNormalizationOptions['onUserCallbackError']
+): T {
+  try {
+    return callback();
+  } catch (error) {
+    if (onError) {
+      return onError(error);
+    }
+    throw error;
+  }
+}
+
+/** Normalizes props while tracking consumer-side schema state. @internal */
+export function normalizeConsumerProps<
+  P extends Record<string, unknown>,
+  I = P,
+>(
+  userProps: Partial<P>,
+  definitions: PropsDefinition<P, I>,
+  context: PropContext<P>,
+  options: ConsumerNormalizationOptions
+): P {
+  return normalizePropsInternal(userProps, definitions, context, options);
+}
+
+function normalizePropsInternal<
+  P extends Record<string, unknown>,
+  I = P,
+>(
+  userProps: Partial<P>,
+  definitions: PropsDefinition<P, I>,
+  context: PropContext<P>,
+  options: Partial<ConsumerNormalizationOptions>
+): P {
+  const result = {} as P;
+  const callbackProps = options.schemaValidatedKeys
+    ? ({ ...userProps } as P)
+    : result;
+
+  for (const { key, isDirectSchema, definition } of getCompiledPropDefinitions(definitions)) {
     const propKey = key as keyof P;
+    const shouldDeferCustomNormalization =
+      options.deferCustomNormalization === true && hasOwn(definitions, key);
     let value: unknown;
+    let usedExplicitFallback = false;
+    let normalizedValueCanBeSchemaValidated = false;
 
     const aliasKey = definition.alias;
     const hasValue = key in userProps;
@@ -187,27 +329,121 @@ export function normalizeProps<P extends Record<string, unknown>>(
       value = userProps[propKey];
     } else if (hasAliasValue) {
       value = userProps[aliasKey as keyof P];
-    } else if (definition.value) {
-      value = definition.value(context);
-    } else if (definition.default !== undefined) {
-      value =
-        typeof definition.default === 'function'
-          ? (definition.default as (ctx: PropContext<P>) => unknown)(context)
-          : definition.default;
-    } else if (definition.schema && isStandardSchema(definition.schema)) {
-      // Check if schema provides a default by validating undefined
-      // This allows prop.string().default('value') to work in normalizeProps
-      const schemaResult = definition.schema['~standard'].validate(undefined);
-      if (!(schemaResult instanceof Promise) && !schemaResult.issues) {
-        value = schemaResult.value;
+    }
+
+    if (
+      value === undefined &&
+      !shouldDeferCustomNormalization &&
+      !options.schemaValidatedKeys?.has(key) &&
+      (!options.fallbackKeys || options.fallbackKeys.has(key))
+    ) {
+      if (definition.value) {
+        usedExplicitFallback = true;
+        const computeValue = definition.value;
+        value = invokeUserNormalizationCallback(
+          () => computeValue({ ...context, props: callbackProps }),
+          options.onUserCallbackError
+        );
+      } else if (definition.default !== undefined) {
+        usedExplicitFallback = true;
+        const defaultValue = definition.default;
+        value =
+          typeof defaultValue === 'function'
+            ? invokeUserNormalizationCallback(
+                () =>
+                  (defaultValue as (ctx: PropContext<P>) => unknown)({
+                    ...context,
+                    props: callbackProps,
+                  }),
+                options.onUserCallbackError
+              )
+            : defaultValue;
+      } else if (definition.schema && isStandardSchema(definition.schema)) {
+        // Check if schema provides a default by validating undefined.
+        // Record successful validation so callers do not feed the output back
+        // through a schema whose input and output types may differ.
+        const schemaResult = definition.schema['~standard'].validate(undefined);
+        if (!(schemaResult instanceof Promise) && !schemaResult.issues) {
+          value = schemaResult.value;
+          if (value !== undefined || isDirectSchema || !definition.required) {
+            options.schemaValidatedKeys?.add(key);
+          }
+        }
       }
     }
 
-    if (value !== undefined && definition.decorate) {
-      value = definition.decorate({ value, props: result as P });
+    if (
+      usedExplicitFallback &&
+      value !== undefined &&
+      definition.schema &&
+      isStandardSchema(definition.schema)
+    ) {
+      // Explicit defaults and computed values are schema inputs. Parse them
+      // before exposing the normalized output to decorators or callbacks.
+      value = validateWithSchema(definition.schema, value, key);
+      options.schemaValidatedKeys?.add(key);
+    }
+
+    if (
+      value !== undefined &&
+      !shouldDeferCustomNormalization &&
+      definition.decorate &&
+      (!options.decorateKeys || options.decorateKeys.has(key)) &&
+      // Consumer schema inputs are decorated after validation so decorators
+      // consistently receive the schema's normalized output type.
+      (!options.schemaValidatedKeys ||
+        options.schemaValidatedKeys.has(key) ||
+        !definition.schema)
+    ) {
+      const decorate = definition.decorate;
+      value = invokeUserNormalizationCallback(
+        () => decorate({ value, props: callbackProps }),
+        options.onUserCallbackError
+      );
+    }
+
+    if (
+      definition.schema &&
+      isStandardSchema(definition.schema) &&
+      options.schemaValidatedKeys?.has(key)
+    ) {
+      const outputSchema = definition.outputSchema;
+      if (outputSchema && isStandardSchema(outputSchema)) {
+        const validatedOutput = validateWithSchema(outputSchema, value, key);
+        if (!schemaOutputMatchesInput(value, validatedOutput)) {
+          throw new Error(
+            `Validation failed: ${key}: outputSchema must not transform normalized values`
+          );
+        }
+        normalizedValueCanBeSchemaValidated = true;
+      } else {
+        const revalidationResult = definition.schema['~standard'].validate(value);
+        if (revalidationResult instanceof Promise || revalidationResult.issues) {
+          validateWithSchema(definition.schema, value, key);
+        } else if (
+          !(revalidationResult instanceof Promise) &&
+          !revalidationResult.issues
+        ) {
+          normalizedValueCanBeSchemaValidated = schemaOutputMatchesInput(
+            value,
+            revalidationResult.value
+          );
+        }
+
+        if (!normalizedValueCanBeSchemaValidated) {
+          throw new Error(
+            `Prop "${key}" requires outputSchema because its schema cannot validate the normalized value unchanged`
+          );
+        }
+      }
     }
 
     (result as Record<string, unknown>)[key] = value;
+    (callbackProps as Record<string, unknown>)[key] = value;
+
+    if (normalizedValueCanBeSchemaValidated) {
+      options.outputValidationKeys?.add(key);
+    }
   }
 
   return result;
@@ -223,30 +459,158 @@ export function normalizeProps<P extends Record<string, unknown>>(
  *
  * @public
  */
-export function validateProps<P extends Record<string, unknown>>(
+export function validateProps<
+  P extends Record<string, unknown>,
+  I = P,
+>(
   props: P,
-  definitions: PropsDefinition<P>
+  definitions: PropsDefinition<P, I>
 ): void {
-  for (const { key, isDirectSchema, definition } of getCompiledPropDefinitions(definitions)) {
-    const propKey = key as keyof P;
-    let value: unknown = props[propKey];
+  validatePropsInternal(props, definitions, {});
+}
 
-    if (definition.required && value === undefined) {
+interface ConsumerValidationOptions {
+  schemaKeys?: ReadonlySet<string>;
+  schemaValidatedKeys?: ReadonlySet<string>;
+  schemaInputProps?: Readonly<Record<string, unknown>>;
+  validationKeys?: ReadonlySet<string>;
+  preserveValidatedValues?: boolean;
+  requireUnchangedSchemaOutput?: boolean;
+  validateNormalizedOutput?: boolean;
+  skipCustomValidation?: boolean;
+}
+
+/** Validates consumer props while respecting prior schema normalization. @internal */
+export function validateConsumerProps<
+  P extends Record<string, unknown>,
+  I = P,
+>(
+  props: P,
+  definitions: PropsDefinition<P, I>,
+  options: ConsumerValidationOptions
+): void {
+  validatePropsInternal(props, definitions, options);
+}
+
+/** Validates already-normalized props at a consumer or host trust boundary. @internal */
+export function validateNormalizedProps<
+  P extends Record<string, unknown>,
+  I = P,
+>(
+  props: P,
+  definitions: PropsDefinition<P, I>
+): void {
+  validatePropsInternal(props, definitions, {
+    preserveValidatedValues: true,
+    requireUnchangedSchemaOutput: true,
+    validateNormalizedOutput: true,
+  });
+}
+
+function validatePropsInternal<
+  P extends Record<string, unknown>,
+  I = P,
+>(
+  props: P,
+  definitions: PropsDefinition<P, I>,
+  options: ConsumerValidationOptions
+): void {
+  const compiledDefinitions = getCompiledPropDefinitions(definitions);
+
+  // Convert every selected schema input before any output-typed callback runs.
+  // This keeps callback behavior independent of prop-definition order.
+  for (const { key, isDirectSchema, definition } of compiledDefinitions) {
+    if (options.validationKeys && !options.validationKeys.has(key)) {
+      continue;
+    }
+
+    const propKey = key as keyof P;
+    const shouldValidateSchema =
+      (!options.schemaKeys || options.schemaKeys.has(key)) &&
+      !options.schemaValidatedKeys?.has(key);
+    const hasSchemaInput =
+      shouldValidateSchema &&
+      options.schemaInputProps !== undefined &&
+      hasOwn(options.schemaInputProps, key);
+    let value: unknown = hasSchemaInput
+      ? options.schemaInputProps?.[key]
+      : props[propKey];
+    const normalizedOutputSchema =
+      options.validateNormalizedOutput &&
+      definition.outputSchema &&
+      isStandardSchema(definition.outputSchema)
+        ? definition.outputSchema
+        : undefined;
+    const validateMissingNormalizedOutput =
+      value === undefined &&
+      definition.required === true &&
+      normalizedOutputSchema !== undefined;
+
+    if (
+      definition.required &&
+      value === undefined &&
+      !validateMissingNormalizedOutput &&
+      !options.schemaValidatedKeys?.has(key) &&
+      (!options.schemaKeys || options.schemaKeys.has(key))
+    ) {
       throw new Error(`Prop "${key}" is required but was not provided`);
     }
 
-    // Validate using schema (handles type checking, defaults, and optional)
-    if (definition.schema && isStandardSchema(definition.schema)) {
-      // Direct schemas handle undefined via .optional() and .default()
-      if (value !== undefined || isDirectSchema) {
-        value = validateWithSchema(definition.schema, value, key);
-        (props as Record<string, unknown>)[key] = value;
+    const validationSchema = normalizedOutputSchema ?? definition.schema;
+
+    if (validationSchema && isStandardSchema(validationSchema)) {
+      if (
+        shouldValidateSchema &&
+        (value !== undefined ||
+          isDirectSchema ||
+          hasSchemaInput ||
+          validateMissingNormalizedOutput)
+      ) {
+        const schemaInput = value;
+        value = validateWithSchema(validationSchema, value, key);
+        if (
+          options.requireUnchangedSchemaOutput &&
+          !schemaOutputMatchesInput(schemaInput, value)
+        ) {
+          throw new Error(
+            `Validation failed: ${key}: value no longer matches its normalized schema output`
+          );
+        }
+        if (!options.preserveValidatedValues) {
+          (props as Record<string, unknown>)[key] = value;
+        }
       }
-    } else if (value === undefined) {
+    }
+  }
+
+  if (options.preserveValidatedValues) {
+    if (!options.skipCustomValidation) {
+      for (const { key, definition } of compiledDefinitions) {
+        if (
+          (!options.validationKeys || options.validationKeys.has(key)) &&
+          definition.validate
+        ) {
+          definition.validate({
+            value: (props as Record<string, unknown>)[key],
+            props,
+          });
+        }
+      }
+    }
+    return;
+  }
+
+  if (options.skipCustomValidation) {
+    return;
+  }
+
+  for (const { key, definition } of compiledDefinitions) {
+    if (options.validationKeys && !options.validationKeys.has(key)) {
       continue;
     }
 
     if (definition.validate) {
+      const value = (props as Record<string, unknown>)[key];
       definition.validate({ value, props });
     }
   }
@@ -267,9 +631,12 @@ export function validateProps<P extends Record<string, unknown>>(
  *
  * @public
  */
-export function getPropsForHost<P extends Record<string, unknown>>(
+export function getPropsForHost<
+  P extends Record<string, unknown>,
+  I = P,
+>(
   props: P,
-  definitions: PropsDefinition<P>,
+  definitions: PropsDefinition<P, I>,
   hostDomain: string,
   isSameDomain: boolean
 ): Partial<P> {
@@ -284,6 +651,16 @@ export function getPropsForHost<P extends Record<string, unknown>>(
     let finalValue = value;
     if (definition.hostDecorate && value !== undefined) {
       finalValue = definition.hostDecorate({ value, props }) as P[keyof P];
+
+      const outputSchema = definition.outputSchema ?? definition.schema;
+      if (outputSchema && isStandardSchema(outputSchema)) {
+        const validatedOutput = validateWithSchema(outputSchema, finalValue, key);
+        if (!schemaOutputMatchesInput(finalValue, validatedOutput)) {
+          throw new Error(
+            `Validation failed: ${key}: hostDecorate must preserve the normalized output contract`
+          );
+        }
+      }
     }
 
     (result as Record<string, unknown>)[key] = finalValue;
@@ -324,9 +701,12 @@ function shouldSendPropToHost<P extends Record<string, unknown>>(
  *
  * @public
  */
-export function propsToQueryParams<P extends Record<string, unknown>>(
+export function propsToQueryParams<
+  P extends Record<string, unknown>,
+  I = P,
+>(
   props: P,
-  definitions: PropsDefinition<P>,
+  definitions: PropsDefinition<P, I>,
   hostDomain: string,
   isSameDomain = false
 ): URLSearchParams {
@@ -369,9 +749,12 @@ export function propsToQueryParams<P extends Record<string, unknown>>(
  *
  * @public
  */
-export function propsToBodyParams<P extends Record<string, unknown>>(
+export function propsToBodyParams<
+  P extends Record<string, unknown>,
+  I = P,
+>(
   props: P,
-  definitions: PropsDefinition<P>,
+  definitions: PropsDefinition<P, I>,
   hostDomain: string,
   isSameDomain = false
 ): URLSearchParams {
