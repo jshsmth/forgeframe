@@ -1,5 +1,9 @@
-import type { Dimensions, IframeAttributes, IframeStyles } from '../types/utility';
-import { normalizeDimensionToCSS } from '../utils/dimension';
+import type {
+	Dimensions,
+	IframeAttributes,
+	IframeStyles,
+} from "../types/utility";
+import { normalizeDimensionToCSS } from "../utils/dimension";
 
 /**
  * Configuration options for creating an iframe.
@@ -7,35 +11,35 @@ import { normalizeDimensionToCSS } from '../utils/dimension';
  * @public
  */
 export interface IframeOptions {
-  /**
-   * The URL to load in the iframe.
-   */
-  url: string;
+	/**
+	 * The URL to load in the iframe.
+	 */
+	url: string;
 
-  /**
-   * The name attribute for the iframe, used for targeting.
-   */
-  name: string;
+	/**
+	 * The name attribute for the iframe, used for targeting.
+	 */
+	name: string;
 
-  /**
-   * The parent HTML element that will contain the iframe.
-   */
-  container: HTMLElement;
+	/**
+	 * The parent HTML element that will contain the iframe.
+	 */
+	container: HTMLElement;
 
-  /**
-   * The width and height dimensions for the iframe.
-   */
-  dimensions: Dimensions;
+	/**
+	 * The width and height dimensions for the iframe.
+	 */
+	dimensions: Dimensions;
 
-  /**
-   * Optional additional HTML attributes to set on the iframe element.
-   */
-  attributes?: IframeAttributes;
+	/**
+	 * Optional additional HTML attributes to set on the iframe element.
+	 */
+	attributes?: IframeAttributes;
 
-  /**
-   * Optional CSS styles to apply to the iframe element.
-   */
-  style?: IframeStyles;
+	/**
+	 * Optional CSS styles to apply to the iframe element.
+	 */
+	style?: IframeStyles;
 }
 
 /**
@@ -44,35 +48,35 @@ export interface IframeOptions {
  * @internal
  */
 interface IframeElementOptions {
-  /**
-   * The name attribute for the iframe, used for targeting.
-   */
-  name: string;
+	/**
+	 * The name attribute for the iframe, used for targeting.
+	 */
+	name: string;
 
-  /**
-   * The width and height dimensions for the iframe.
-   */
-  dimensions: Dimensions;
+	/**
+	 * The width and height dimensions for the iframe.
+	 */
+	dimensions: Dimensions;
 
-  /**
-   * Optional additional HTML attributes to set on the iframe element.
-   */
-  attributes?: IframeAttributes;
+	/**
+	 * Optional additional HTML attributes to set on the iframe element.
+	 */
+	attributes?: IframeAttributes;
 
-  /**
-   * Optional CSS styles to apply to the iframe element.
-   */
-  style?: IframeStyles;
+	/**
+	 * Optional CSS styles to apply to the iframe element.
+	 */
+	style?: IframeStyles;
 }
 
-const RESERVED_IFRAME_ATTRIBUTES = new Set(['name', 'src', 'srcdoc']);
+const RESERVED_IFRAME_ATTRIBUTES = new Set(["name", "src", "srcdoc"]);
 
 function assertSafeIframeAttributes(attributes: IframeAttributes): void {
-  for (const key of Object.keys(attributes)) {
-    if (RESERVED_IFRAME_ATTRIBUTES.has(key.toLowerCase())) {
-      throw new Error(`Iframe attribute "${key}" is managed by ForgeFrame`);
-    }
-  }
+	for (const key of Object.keys(attributes)) {
+		if (RESERVED_IFRAME_ATTRIBUTES.has(key.toLowerCase())) {
+			throw new Error(`Iframe attribute "${key}" is managed by ForgeFrame`);
+		}
+	}
 }
 
 /**
@@ -81,23 +85,23 @@ function assertSafeIframeAttributes(attributes: IframeAttributes): void {
  * @internal
  */
 export function createIframeElement(
-  options: IframeElementOptions
+	options: IframeElementOptions,
 ): HTMLIFrameElement {
-  const { name, dimensions, attributes = {}, style = {} } = options;
-  assertSafeIframeAttributes(attributes);
-  const iframe = document.createElement('iframe');
+	const { name, dimensions, attributes = {}, style = {} } = options;
+	assertSafeIframeAttributes(attributes);
+	const iframe = document.createElement("iframe");
 
-  iframe.name = name;
-  iframe.setAttribute('frameborder', '0');
-  iframe.setAttribute('allowtransparency', 'true');
-  iframe.setAttribute('scrolling', 'auto');
+	iframe.name = name;
+	iframe.setAttribute("frameborder", "0");
+	iframe.setAttribute("allowtransparency", "true");
+	iframe.setAttribute("scrolling", "auto");
 
-  applyDimensions(iframe, dimensions);
-  applyAttributes(iframe, attributes);
-  applyStyles(iframe, style);
-  applyDefaultSandbox(iframe, attributes);
+	applyDimensions(iframe, dimensions);
+	applyAttributes(iframe, attributes);
+	applyStyles(iframe, style);
+	applyDefaultSandbox(iframe, attributes);
 
-  return iframe;
+	return iframe;
 }
 
 /**
@@ -131,14 +135,21 @@ export function createIframeElement(
  * @public
  */
 export function createIframe(options: IframeOptions): HTMLIFrameElement {
-  const { url, name, container, dimensions, attributes = {}, style = {} } = options;
-  const iframe = createIframeElement({ name, dimensions, attributes, style });
+	const {
+		url,
+		name,
+		container,
+		dimensions,
+		attributes = {},
+		style = {},
+	} = options;
+	const iframe = createIframeElement({ name, dimensions, attributes, style });
 
-  // Add to container first (some browsers need this before setting src)
-  container.appendChild(iframe);
-  iframe.src = url;
+	// Add to container first (some browsers need this before setting src)
+	container.appendChild(iframe);
+	iframe.src = url;
 
-  return iframe;
+	return iframe;
 }
 
 /**
@@ -167,24 +178,24 @@ export function createIframe(options: IframeOptions): HTMLIFrameElement {
  * @public
  */
 export function createPrerenderIframe(
-  container: HTMLElement,
-  dimensions: Dimensions
+	container: HTMLElement,
+	dimensions: Dimensions,
 ): HTMLIFrameElement {
-  const iframe = document.createElement('iframe');
+	const iframe = document.createElement("iframe");
 
-  iframe.name = '__forgeframe_prerender__';
-  iframe.setAttribute('frameborder', '0');
-  iframe.setAttribute('allowtransparency', 'true');
-  iframe.setAttribute('scrolling', 'no');
+	iframe.name = "__forgeframe_prerender__";
+	iframe.setAttribute("frameborder", "0");
+	iframe.setAttribute("allowtransparency", "true");
+	iframe.setAttribute("scrolling", "no");
 
-  applyDimensions(iframe, dimensions);
+	applyDimensions(iframe, dimensions);
 
-  // Prerender iframe doesn't need to load external content
-  iframe.srcdoc = '<!DOCTYPE html><html><head></head><body></body></html>';
+	// Prerender iframe doesn't need to load external content
+	iframe.srcdoc = "<!DOCTYPE html><html><head></head><body></body></html>";
 
-  container.appendChild(iframe);
+	container.appendChild(iframe);
 
-  return iframe;
+	return iframe;
 }
 
 /**
@@ -208,12 +219,12 @@ export function createPrerenderIframe(
  * @public
  */
 export function destroyIframe(iframe: HTMLIFrameElement): void {
-  try {
-    iframe.src = 'about:blank';
-    iframe.parentNode?.removeChild(iframe);
-  } catch {
-    // Cleanup errors are expected for cross-origin iframes
-  }
+	try {
+		iframe.src = "about:blank";
+		iframe.parentNode?.removeChild(iframe);
+	} catch {
+		// Cleanup errors are expected for cross-origin iframes
+	}
 }
 
 /**
@@ -231,10 +242,10 @@ export function destroyIframe(iframe: HTMLIFrameElement): void {
  * @public
  */
 export function resizeIframe(
-  iframe: HTMLIFrameElement,
-  dimensions: Dimensions
+	iframe: HTMLIFrameElement,
+	dimensions: Dimensions,
 ): void {
-  applyDimensions(iframe, dimensions);
+	applyDimensions(iframe, dimensions);
 }
 
 /**
@@ -257,8 +268,8 @@ export function resizeIframe(
  * @public
  */
 export function showIframe(iframe: HTMLIFrameElement): void {
-  iframe.style.display = '';
-  iframe.style.visibility = 'visible';
+	iframe.style.display = "";
+	iframe.style.visibility = "visible";
 }
 
 /**
@@ -281,8 +292,8 @@ export function showIframe(iframe: HTMLIFrameElement): void {
  * @public
  */
 export function hideIframe(iframe: HTMLIFrameElement): void {
-  iframe.style.display = 'none';
-  iframe.style.visibility = 'hidden';
+	iframe.style.display = "none";
+	iframe.style.visibility = "hidden";
 }
 
 /**
@@ -306,12 +317,12 @@ export function hideIframe(iframe: HTMLIFrameElement): void {
  * @public
  */
 export function focusIframe(iframe: HTMLIFrameElement): void {
-  try {
-    iframe.focus();
-    iframe.contentWindow?.focus();
-  } catch {
-    // Cross-origin focus might fail
-  }
+	try {
+		iframe.focus();
+		iframe.contentWindow?.focus();
+	} catch {
+		// Cross-origin focus might fail
+	}
 }
 
 /**
@@ -327,15 +338,15 @@ export function focusIframe(iframe: HTMLIFrameElement): void {
  * @internal
  */
 function applyDimensions(
-  iframe: HTMLIFrameElement,
-  dimensions: Dimensions
+	iframe: HTMLIFrameElement,
+	dimensions: Dimensions,
 ): void {
-  if (dimensions.width !== undefined) {
-    iframe.style.width = normalizeDimensionToCSS(dimensions.width);
-  }
-  if (dimensions.height !== undefined) {
-    iframe.style.height = normalizeDimensionToCSS(dimensions.height);
-  }
+	if (dimensions.width !== undefined) {
+		iframe.style.width = normalizeDimensionToCSS(dimensions.width);
+	}
+	if (dimensions.height !== undefined) {
+		iframe.style.height = normalizeDimensionToCSS(dimensions.height);
+	}
 }
 
 /**
@@ -351,20 +362,17 @@ function applyDimensions(
  *
  * @internal
  */
-function applyStyles(
-  iframe: HTMLIFrameElement,
-  style: IframeStyles
-): void {
-  for (const [key, value] of Object.entries(style)) {
-    if (value === undefined) continue;
+function applyStyles(iframe: HTMLIFrameElement, style: IframeStyles): void {
+	for (const [key, value] of Object.entries(style)) {
+		if (value === undefined) continue;
 
-    // Convert camelCase to kebab-case for CSS properties
-    const cssValue = typeof value === 'number' ? `${value}px` : value;
-    iframe.style.setProperty(
-      key.replace(/([A-Z])/g, '-$1').toLowerCase(),
-      cssValue
-    );
-  }
+		// Convert camelCase to kebab-case for CSS properties
+		const cssValue = typeof value === "number" ? `${value}px` : value;
+		iframe.style.setProperty(
+			key.replace(/([A-Z])/g, "-$1").toLowerCase(),
+			cssValue,
+		);
+	}
 }
 
 /**
@@ -373,21 +381,21 @@ function applyStyles(
  * @internal
  */
 function applyAttributes(
-  iframe: HTMLIFrameElement,
-  attributes: IframeAttributes
+	iframe: HTMLIFrameElement,
+	attributes: IframeAttributes,
 ): void {
-  for (const [key, value] of Object.entries(attributes)) {
-    if (value === undefined) continue;
+	for (const [key, value] of Object.entries(attributes)) {
+		if (value === undefined) continue;
 
-    if (typeof value === 'boolean') {
-      if (value) {
-        iframe.setAttribute(key, '');
-      }
-      continue;
-    }
+		if (typeof value === "boolean") {
+			if (value) {
+				iframe.setAttribute(key, "");
+			}
+			continue;
+		}
 
-    iframe.setAttribute(key, value);
-  }
+		iframe.setAttribute(key, value);
+	}
 }
 
 /**
@@ -396,15 +404,15 @@ function applyAttributes(
  * @internal
  */
 function applyDefaultSandbox(
-  iframe: HTMLIFrameElement,
-  attributes: IframeAttributes
+	iframe: HTMLIFrameElement,
+	attributes: IframeAttributes,
 ): void {
-  if (attributes.sandbox !== undefined) {
-    return;
-  }
+	if (attributes.sandbox !== undefined) {
+		return;
+	}
 
-  iframe.setAttribute(
-    'sandbox',
-    'allow-scripts allow-same-origin allow-forms allow-popups'
-  );
+	iframe.setAttribute(
+		"sandbox",
+		"allow-scripts allow-same-origin allow-forms allow-popups",
+	);
 }

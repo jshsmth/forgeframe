@@ -2,26 +2,26 @@
  * Shared public component runtime types.
  */
 
-import type { ContextType } from '../constants';
+import type { ContextType } from "../constants";
 import type {
-  InferInput,
-  InferOutput,
-  StandardSchemaV1,
-} from '../props/schema';
-import type { EventEmitterInterface } from './events';
+	InferInput,
+	InferOutput,
+	StandardSchemaV1,
+} from "../props/schema";
+import type { EventEmitterInterface } from "./events";
 import type {
-  InferPropsDefinition,
-  PropDefinition,
-  PropsDefinition,
-} from './props';
-import type { ContainerTemplate, PrerenderTemplate } from './templates';
+	InferPropsDefinition,
+	PropDefinition,
+	PropsDefinition,
+} from "./props";
+import type { ContainerTemplate, PrerenderTemplate } from "./templates";
 import type {
-  Dimensions,
-  DomainMatcher,
-  EligibilityResult,
-  IframeAttributes,
-  IframeStyles,
-} from './utility';
+	Dimensions,
+	DomainMatcher,
+	EligibilityResult,
+	IframeAttributes,
+	IframeStyles,
+} from "./utility";
 
 /**
  * A value received across the component boundary.
@@ -37,42 +37,40 @@ import type {
  * @public
  */
 export type RemoteValue<T> = T extends (...args: never[]) => Promise<unknown>
-  ? T
-  : T extends (...args: infer Args) => infer Result
-    ? (...args: Args) => Promise<Awaited<Result>>
-  : T extends Date
-    ? T
-    : T extends object
-      ? { [K in keyof T]: RemoteValue<T[K]> }
-      : T;
+	? T
+	: T extends (...args: infer Args) => infer Result
+		? (...args: Args) => Promise<Awaited<Result>>
+		: T extends Date
+			? T
+			: T extends object
+				? { [K in keyof T]: RemoteValue<T[K]> }
+				: T;
 
 /** Whether two prop shapes expose the same set of keys. @internal */
 type HasSamePropKeys<A, B> = [Exclude<keyof A, keyof B>] extends [never]
-  ? [Exclude<keyof B, keyof A>] extends [never]
-    ? true
-    : false
-  : false;
+	? [Exclude<keyof B, keyof A>] extends [never]
+		? true
+		: false
+	: false;
 
 /**
  * Canonical consumer inputs, falling back to normalized values for unspecified keys.
  * @internal
  */
-type CanonicalConsumerProps<P, SchemaInputs> = HasSamePropKeys<
-  P,
-  SchemaInputs
-> extends true
-  ? SchemaInputs
-  : Pick<SchemaInputs, Extract<keyof P, keyof SchemaInputs>> &
-      Pick<P, Exclude<keyof P, keyof SchemaInputs>>;
+type CanonicalConsumerProps<P, SchemaInputs> =
+	HasSamePropKeys<P, SchemaInputs> extends true
+		? SchemaInputs
+		: Pick<SchemaInputs, Extract<keyof P, keyof SchemaInputs>> &
+				Pick<P, Exclude<keyof P, keyof SchemaInputs>>;
 
 /**
  * Applies canonical schema value types to canonical keys repeated by an alternate shape.
  * @internal
  */
 type AlternateConsumerProps<Canonical, Alternate> = {
-  [K in keyof Alternate]: K extends keyof Canonical
-    ? Canonical[K]
-    : Alternate[K];
+	[K in keyof Alternate]: K extends keyof Canonical
+		? Canonical[K]
+		: Alternate[K];
 };
 
 /**
@@ -80,11 +78,11 @@ type AlternateConsumerProps<Canonical, Alternate> = {
  * @internal
  */
 type CombinedConsumerProps<A, B> = {
-  [K in keyof A | keyof B]: K extends keyof A
-    ? A[K]
-    : K extends keyof B
-      ? B[K]
-      : never;
+	[K in keyof A | keyof B]: K extends keyof A
+		? A[K]
+		: K extends keyof B
+			? B[K]
+			: never;
 };
 
 /**
@@ -106,34 +104,34 @@ type CombinedConsumerProps<A, B> = {
  * schema input types.
  * @public
  */
-type ConsumerPropsInputForAlternate<P, I, SchemaInputs> =
-  string extends keyof I
-    ? CanonicalConsumerProps<P, SchemaInputs>
-    : HasSamePropKeys<
-          CanonicalConsumerProps<P, SchemaInputs>,
-          AlternateConsumerProps<CanonicalConsumerProps<P, SchemaInputs>, I>
-        > extends true
-      ? CanonicalConsumerProps<P, SchemaInputs>
-      : | CanonicalConsumerProps<P, SchemaInputs>
-        | AlternateConsumerProps<CanonicalConsumerProps<P, SchemaInputs>, I>
-        | (Exclude<
-              keyof I,
-              keyof CanonicalConsumerProps<P, SchemaInputs>
-            > extends never
-            ? never
-            : Partial<
-                CombinedConsumerProps<
-                  CanonicalConsumerProps<P, SchemaInputs>,
-                  AlternateConsumerProps<
-                    CanonicalConsumerProps<P, SchemaInputs>,
-                    I
-                  >
-                >
-              >);
+type ConsumerPropsInputForAlternate<P, I, SchemaInputs> = string extends keyof I
+	? CanonicalConsumerProps<P, SchemaInputs>
+	: HasSamePropKeys<
+				CanonicalConsumerProps<P, SchemaInputs>,
+				AlternateConsumerProps<CanonicalConsumerProps<P, SchemaInputs>, I>
+			> extends true
+		? CanonicalConsumerProps<P, SchemaInputs>
+		:
+				| CanonicalConsumerProps<P, SchemaInputs>
+				| AlternateConsumerProps<CanonicalConsumerProps<P, SchemaInputs>, I>
+				| (Exclude<
+						keyof I,
+						keyof CanonicalConsumerProps<P, SchemaInputs>
+				  > extends never
+						? never
+						: Partial<
+								CombinedConsumerProps<
+									CanonicalConsumerProps<P, SchemaInputs>,
+									AlternateConsumerProps<
+										CanonicalConsumerProps<P, SchemaInputs>,
+										I
+									>
+								>
+							>);
 
 export type ConsumerPropsInput<P, I = P, SchemaInputs = I> = I extends unknown
-  ? ConsumerPropsInputForAlternate<P, I, SchemaInputs>
-  : never;
+	? ConsumerPropsInputForAlternate<P, I, SchemaInputs>
+	: never;
 
 /**
  * Partial props accepted by component updates.
@@ -143,18 +141,19 @@ export type ConsumerPropsInput<P, I = P, SchemaInputs = I> = I extends unknown
  * @typeParam SchemaInputs - Canonical values accepted by each prop schema.
  * @public
  */
-type ConsumerPropsUpdateForAlternate<P, I, SchemaInputs> = string extends keyof I
-  ? Partial<CanonicalConsumerProps<P, SchemaInputs>>
-  : Partial<
-      CombinedConsumerProps<
-        CanonicalConsumerProps<P, SchemaInputs>,
-        AlternateConsumerProps<CanonicalConsumerProps<P, SchemaInputs>, I>
-      >
-    >;
+type ConsumerPropsUpdateForAlternate<P, I, SchemaInputs> =
+	string extends keyof I
+		? Partial<CanonicalConsumerProps<P, SchemaInputs>>
+		: Partial<
+				CombinedConsumerProps<
+					CanonicalConsumerProps<P, SchemaInputs>,
+					AlternateConsumerProps<CanonicalConsumerProps<P, SchemaInputs>, I>
+				>
+			>;
 
 export type ConsumerPropsUpdate<P, I = P, SchemaInputs = I> = I extends unknown
-  ? ConsumerPropsUpdateForAlternate<P, I, SchemaInputs>
-  : never;
+	? ConsumerPropsUpdateForAlternate<P, I, SchemaInputs>
+	: never;
 
 /**
  * Function that returns nested components for composition.
@@ -170,7 +169,7 @@ export type ConsumerPropsUpdate<P, I = P, SchemaInputs = I> = I extends unknown
  * @public
  */
 export type ChildrenDefinition<P = Record<string, unknown>> = (props: {
-  props: P;
+	props: P;
 }) => Record<string, ForgeFrameComponentReference>;
 
 declare const forgeFrameComponentReferenceBrand: unique symbol;
@@ -186,95 +185,94 @@ declare const forgeFrameComponentReferenceBrand: unique symbol;
  * @public
  */
 export interface ForgeFrameComponentReference {
-  /** Identifies component factories created by ForgeFrame. @internal */
-  readonly [forgeFrameComponentReferenceBrand]: true;
-  /** Check if the current window hosts this component. */
-  isHost(): boolean;
-  /** Check if the current window is embedded by this component. */
-  isEmbedded(): boolean;
-  /** Check whether the component can render to the target window. */
-  canRenderTo(win: Window): Promise<boolean>;
+	/** Identifies component factories created by ForgeFrame. @internal */
+	readonly [forgeFrameComponentReferenceBrand]: true;
+	/** Check if the current window hosts this component. */
+	isHost(): boolean;
+	/** Check if the current window is embedded by this component. */
+	isEmbedded(): boolean;
+	/** Check whether the component can render to the target window. */
+	canRenderTo(win: Window): Promise<boolean>;
 }
 
 /** A schema-backed definition map from which `create()` can infer props. @internal */
 export type InferablePropsDefinition = Record<
-  string,
-  | StandardSchemaV1<unknown, unknown>
-  | { schema: StandardSchemaV1<unknown, unknown> }
+	string,
+	| StandardSchemaV1<unknown, unknown>
+	| { schema: StandardSchemaV1<unknown, unknown> }
 >;
 
 type ContextualSchemaMap = Record<string, StandardSchemaV1>;
 
 /** Extracts each entry's schema for contextual callback inference. @internal */
 type InferContextualSchemas<D extends InferablePropsDefinition> = {
-  [K in keyof D]: D[K] extends StandardSchemaV1
-    ? D[K]
-    : D[K] extends { schema: infer Schema extends StandardSchemaV1 }
-      ? Schema
-      : never;
+	[K in keyof D]: D[K] extends StandardSchemaV1
+		? D[K]
+		: D[K] extends { schema: infer Schema extends StandardSchemaV1 }
+			? Schema
+			: never;
 };
 
 /** Normalized values visible to validation and transport callbacks. @internal */
 type ContextualOutputProps<S extends ContextualSchemaMap> = Partial<{
-  [K in keyof S]: InferOutput<S[K]>;
+	[K in keyof S]: InferOutput<S[K]>;
 }>;
 
 /** Applies `Omit` independently to each member of a union. @internal */
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
-  ? Omit<T, K>
-  : never;
+	? Omit<T, K>
+	: never;
 
 /** A wrapped inferred definition whose callbacks receive normalized outputs. @internal */
 type ContextualWrappedPropDefinition<
-  Schema extends StandardSchemaV1,
-  S extends ContextualSchemaMap,
+	Schema extends StandardSchemaV1,
+	S extends ContextualSchemaMap,
 > = DistributiveOmit<
-  PropDefinition<
-    InferOutput<Schema>,
-    ContextualOutputProps<S>,
-    InferInput<Schema>
-  >,
-  'schema' | 'validate'
+	PropDefinition<
+		InferOutput<Schema>,
+		ContextualOutputProps<S>,
+		InferInput<Schema>
+	>,
+	"schema" | "validate"
 > & {
-  schema: Schema;
-  validate?: (opts: {
-    value: InferOutput<Schema> | undefined;
-    props: ContextualOutputProps<S>;
-  }) => void;
+	schema: Schema;
+	validate?: (opts: {
+		value: InferOutput<Schema> | undefined;
+		props: ContextualOutputProps<S>;
+	}) => void;
 };
 
 /** A concise schema entry whose output can be checked by the same schema. @internal */
 type ContextualDirectSchema<Schema extends StandardSchemaV1> = [
-  InferOutput<Schema>,
+	InferOutput<Schema>,
 ] extends [InferInput<Schema>]
-  ? Schema
-  : never;
+	? Schema
+	: never;
 
 /** Contextual callback types inferred from each entry's schema. @internal */
 type ContextualPropsDefinition<S extends ContextualSchemaMap> = {
-  [K in keyof S]?:
-    | ContextualDirectSchema<S[K]>
-    | ContextualWrappedPropDefinition<S[K], S>;
+	[K in keyof S]?:
+		| ContextualDirectSchema<S[K]>
+		| ContextualWrappedPropDefinition<S[K], S>;
 };
 
 /** Component options whose prop values are inferred from their schemas. @internal */
 export type InferredComponentOptions<
-  D extends InferablePropsDefinition,
-  ContextualSchemas extends ContextualSchemaMap = InferContextualSchemas<D>,
-> = Omit<ComponentOptions<InferPropsDefinition<D>>, 'props'> & {
-  props: D & ContextualPropsDefinition<ContextualSchemas>;
+	D extends InferablePropsDefinition,
+	ContextualSchemas extends ContextualSchemaMap = InferContextualSchemas<D>,
+> = Omit<ComponentOptions<InferPropsDefinition<D>>, "props"> & {
+	props: D & ContextualPropsDefinition<ContextualSchemas>;
 };
 
 /** Arguments accepted by a component factory based on required input keys. @internal */
 type ComponentFactoryArguments<
-  P,
-  I,
-  RequireProps extends boolean,
-  SchemaInputs,
-> =
-  RequireProps extends true
-    ? [props: ConsumerPropsInput<P, I, SchemaInputs>]
-    : [props?: ConsumerPropsInput<P, I, SchemaInputs>];
+	P,
+	I,
+	RequireProps extends boolean,
+	SchemaInputs,
+> = RequireProps extends true
+	? [props: ConsumerPropsInput<P, I, SchemaInputs>]
+	: [props?: ConsumerPropsInput<P, I, SchemaInputs>];
 
 /**
  * Configuration options for creating a component.
@@ -303,99 +301,99 @@ type ComponentFactoryArguments<
  * @public
  */
 export interface ComponentOptions<
-  P = Record<string, unknown>,
-  I = P,
-  SchemaInputs = I,
+	P = Record<string, unknown>,
+	I = P,
+	SchemaInputs = I,
 > {
-  /**
-   * Unique tag name for the component.
-   *
-   * @remarks
-   * Must start with a lowercase letter and contain only lowercase letters,
-   * numbers, and hyphens.
-   */
-  tag: string;
+	/**
+	 * Unique tag name for the component.
+	 *
+	 * @remarks
+	 * Must start with a lowercase letter and contain only lowercase letters,
+	 * numbers, and hyphens.
+	 */
+	tag: string;
 
-  /**
-   * URL of the host component page, or function that returns URL based on props.
-   */
-  url: string | ((props: P) => string);
+	/**
+	 * URL of the host component page, or function that returns URL based on props.
+	 */
+	url: string | ((props: P) => string);
 
-  /**
-   * Prop definitions for type checking and serialization.
-   */
-  props?: PropsDefinition<P, SchemaInputs>;
+	/**
+	 * Prop definitions for type checking and serialization.
+	 */
+	props?: PropsDefinition<P, SchemaInputs>;
 
-  /**
-   * Default dimensions for the component.
-   */
-  dimensions?: Dimensions | ((props: P) => Dimensions);
+	/**
+	 * Default dimensions for the component.
+	 */
+	dimensions?: Dimensions | ((props: P) => Dimensions);
 
-  /**
-   * Default rendering context (iframe or popup).
-   * @defaultValue 'iframe'
-   */
-  defaultContext?: ContextType;
+	/**
+	 * Default rendering context (iframe or popup).
+	 * @defaultValue 'iframe'
+	 */
+	defaultContext?: ContextType;
 
-  /**
-   * Allowed host domains for security validation.
-   */
-  domain?: DomainMatcher;
+	/**
+	 * Allowed host domains for security validation.
+	 */
+	domain?: DomainMatcher;
 
-  /**
-   * Restrict which consumer domains can embed this component.
-   */
-  allowedConsumerDomains?: DomainMatcher;
+	/**
+	 * Restrict which consumer domains can embed this component.
+	 */
+	allowedConsumerDomains?: DomainMatcher;
 
-  /**
-   * Custom container template function.
-   */
-  containerTemplate?: ContainerTemplate<P>;
+	/**
+	 * Custom container template function.
+	 */
+	containerTemplate?: ContainerTemplate<P>;
 
-  /**
-   * Custom prerender (loading state) template function.
-   */
-  prerenderTemplate?: PrerenderTemplate<P>;
+	/**
+	 * Custom prerender (loading state) template function.
+	 */
+	prerenderTemplate?: PrerenderTemplate<P>;
 
-  /**
-   * Function to check if component is eligible to render.
-   */
-  eligible?: (opts: { props: P }) => EligibilityResult;
+	/**
+	 * Function to check if component is eligible to render.
+	 */
+	eligible?: (opts: { props: P }) => EligibilityResult;
 
-  /**
-   * Function to validate props before rendering.
-   */
-  validate?: (opts: { props: P }) => void;
+	/**
+	 * Function to validate props before rendering.
+	 */
+	validate?: (opts: { props: P }) => void;
 
-  /**
-   * Additional HTML attributes for the iframe/popup.
-   */
-  attributes?: IframeAttributes | ((props: P) => IframeAttributes);
+	/**
+	 * Additional HTML attributes for the iframe/popup.
+	 */
+	attributes?: IframeAttributes | ((props: P) => IframeAttributes);
 
-  /**
-   * CSS styles to apply to the iframe element.
-   *
-   * @example
-   * ```typescript
-   * style: {
-   *   border: 'none',
-   *   borderRadius: '8px',
-   *   boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-   * }
-   * ```
-   */
-  style?: IframeStyles | ((props: P) => IframeStyles);
+	/**
+	 * CSS styles to apply to the iframe element.
+	 *
+	 * @example
+	 * ```typescript
+	 * style: {
+	 *   border: 'none',
+	 *   borderRadius: '8px',
+	 *   boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+	 * }
+	 * ```
+	 */
+	style?: IframeStyles | ((props: P) => IframeStyles);
 
-  /**
-   * Timeout in milliseconds for host initialization.
-   * @defaultValue 10000
-   */
-  timeout?: number;
+	/**
+	 * Timeout in milliseconds for host initialization.
+	 * @defaultValue 10000
+	 */
+	timeout?: number;
 
-  /**
-   * Nested components that can be rendered within this component.
-   */
-  children?: ChildrenDefinition<P>;
+	/**
+	 * Nested components that can be rendered within this component.
+	 */
+	children?: ChildrenDefinition<P>;
 }
 
 /**
@@ -421,121 +419,118 @@ export interface ComponentOptions<
  * @public
  */
 export interface ForgeFrameComponentInstance<
-  P = Record<string, unknown>,
-  X = unknown,
-  I = P,
-  SchemaInputs = I,
+	P = Record<string, unknown>,
+	X = unknown,
+	I = P,
+	SchemaInputs = I,
 > {
-  /**
-   * Unique instance identifier.
-   */
-  readonly uid: string;
+	/**
+	 * Unique instance identifier.
+	 */
+	readonly uid: string;
 
-  /**
-   * Render the component into a container.
-   *
-   * @param container - CSS selector or element to render into
-   * @param context - Override the default context (iframe/popup)
-   * @returns Promise that resolves when rendering is complete
-   */
-  render(
-    container: string | HTMLElement,
-    context?: ContextType
-  ): Promise<void>;
+	/**
+	 * Render the component into a container.
+	 *
+	 * @param container - CSS selector or element to render into
+	 * @param context - Override the default context (iframe/popup)
+	 * @returns Promise that resolves when rendering is complete
+	 */
+	render(container: string | HTMLElement, context?: ContextType): Promise<void>;
 
-  /**
-   * Render into a container using the current window.
-   *
-   * @remarks
-   * Passing a window other than the current `window` throws because
-   * cross-window rendering is not currently implemented.
-   *
-   * @param win - Target window
-   * @param container - CSS selector or element to render into
-   * @param context - Override the default context
-   * @returns Promise that resolves when rendering is complete
-   */
-  renderTo(
-    win: Window,
-    container: string | HTMLElement,
-    context?: ContextType
-  ): Promise<void>;
+	/**
+	 * Render into a container using the current window.
+	 *
+	 * @remarks
+	 * Passing a window other than the current `window` throws because
+	 * cross-window rendering is not currently implemented.
+	 *
+	 * @param win - Target window
+	 * @param container - CSS selector or element to render into
+	 * @param context - Override the default context
+	 * @returns Promise that resolves when rendering is complete
+	 */
+	renderTo(
+		win: Window,
+		container: string | HTMLElement,
+		context?: ContextType,
+	): Promise<void>;
 
-  /**
-   * Close and destroy the component.
-   *
-   * @returns Promise that resolves when closed
-   */
-  close(): Promise<void>;
+	/**
+	 * Close and destroy the component.
+	 *
+	 * @returns Promise that resolves when closed
+	 */
+	close(): Promise<void>;
 
-  /**
-   * Focus the component window.
-   *
-   * @returns Promise that resolves when focused
-   */
-  focus(): Promise<void>;
+	/**
+	 * Focus the component window.
+	 *
+	 * @returns Promise that resolves when focused
+	 */
+	focus(): Promise<void>;
 
-  /**
-   * Resize the component to new dimensions.
-   *
-   * @param dimensions - New dimensions
-   * @returns Promise that resolves when resized
-   */
-  resize(dimensions: Dimensions): Promise<void>;
+	/**
+	 * Resize the component to new dimensions.
+	 *
+	 * @param dimensions - New dimensions
+	 * @returns Promise that resolves when resized
+	 */
+	resize(dimensions: Dimensions): Promise<void>;
 
-  /**
-   * Show the component (if hidden).
-   *
-   * @returns Promise that resolves when shown
-   */
-  show(): Promise<void>;
+	/**
+	 * Show the component (if hidden).
+	 *
+	 * @returns Promise that resolves when shown
+	 */
+	show(): Promise<void>;
 
-  /**
-   * Hide the component.
-   *
-   * @returns Promise that resolves when hidden
-   */
-  hide(): Promise<void>;
+	/**
+	 * Hide the component.
+	 *
+	 * @returns Promise that resolves when hidden
+	 */
+	hide(): Promise<void>;
 
-  /**
-   * Update the component's props.
-   *
-   * @remarks
-   * Props are normalized and validated before being sent to the host.
-   *
-   * @param props - Partial props to merge with existing
-   * @returns Promise that resolves when props are updated
-   */
-  updateProps(props: ConsumerPropsUpdate<P, I, SchemaInputs>): Promise<void>;
+	/**
+	 * Update the component's props.
+	 *
+	 * @remarks
+	 * Props are normalized and validated before being sent to the host.
+	 *
+	 * @param props - Partial props to merge with existing
+	 * @returns Promise that resolves when props are updated
+	 */
+	updateProps(props: ConsumerPropsUpdate<P, I, SchemaInputs>): Promise<void>;
 
-  /**
-   * Create a copy of this instance with the same props.
-   *
-   * @returns New component instance
-   */
-  clone(): ForgeFrameComponentInstance<P, X, I, SchemaInputs>;
+	/**
+	 * Create a copy of this instance with the same props.
+	 *
+	 * @returns New component instance
+	 */
+	clone(): ForgeFrameComponentInstance<P, X, I, SchemaInputs>;
 
-  /**
-   * Check if the component is eligible to render.
-   *
-   * @returns Whether the component can render
-   */
-  isEligible(): boolean;
+	/**
+	 * Check if the component is eligible to render.
+	 *
+	 * @returns Whether the component can render
+	 */
+	isEligible(): boolean;
 
-  /**
-   * Event emitter for subscribing to lifecycle events.
-   */
-  event: EventEmitterInterface;
+	/**
+	 * Event emitter for subscribing to lifecycle events.
+	 */
+	event: EventEmitterInterface;
 
-  /**
-   * Mutable state object for the component.
-   */
-  state: Record<string, unknown>;
+	/**
+	 * Mutable state object for the component.
+	 */
+	state: Record<string, unknown>;
 
-  /**
-   * Data exported from the host component via `hostProps.export()`.
-   */
-  exports?: RemoteValue<X>;
+	/**
+	 * Data exported from the host component via `hostProps.export()`.
+	 */
+	exports?: RemoteValue<X>;
 }
 
 /**
@@ -567,71 +562,68 @@ export interface ForgeFrameComponentInstance<
  * @public
  */
 export interface ForgeFrameComponent<
-  P = Record<string, unknown>,
-  X = unknown,
-  I = P,
-  RequireProps extends boolean = false,
-  SchemaInputs = I,
+	P = Record<string, unknown>,
+	X = unknown,
+	I = P,
+	RequireProps extends boolean = false,
+	SchemaInputs = I,
 > extends ForgeFrameComponentReference {
-  /**
-   * Create a new component instance with props.
-   *
-   * @param props - Props to pass to the component
-   * @returns New component instance
-   */
-  (...args: ComponentFactoryArguments<P, I, RequireProps, SchemaInputs>): ForgeFrameComponentInstance<
-    P,
-    X,
-    I,
-    SchemaInputs
-  >;
+	/**
+	 * Create a new component instance with props.
+	 *
+	 * @param props - Props to pass to the component
+	 * @returns New component instance
+	 */
+	(
+		...args: ComponentFactoryArguments<P, I, RequireProps, SchemaInputs>
+	): ForgeFrameComponentInstance<P, X, I, SchemaInputs>;
 
-  /**
-   * Check if current window is a host instance of this component.
-   *
-   * @remarks
-   * A "host" is the embedded iframe or popup window that receives props
-   * from the consumer (the embedding app).
-   *
-   * @returns True if in host context
-   */
-  isHost(): boolean;
+	/**
+	 * Check if current window is a host instance of this component.
+	 *
+	 * @remarks
+	 * A "host" is the embedded iframe or popup window that receives props
+	 * from the consumer (the embedding app).
+	 *
+	 * @returns True if in host context
+	 */
+	isHost(): boolean;
 
-  /**
-   * Check if current window is embedded by this component.
-   *
-   * @remarks
-   * This is an alias for {@link isHost} that uses more intuitive terminology.
-   *
-   * @returns True if in embedded context
-   */
-  isEmbedded(): boolean;
+	/**
+	 * Check if current window is embedded by this component.
+	 *
+	 * @remarks
+	 * This is an alias for {@link isHost} that uses more intuitive terminology.
+	 *
+	 * @returns True if in embedded context
+	 */
+	isEmbedded(): boolean;
 
-  /**
-   * Get hostProps if in host context.
-   *
-   * @remarks
-   * Only available when `isHost()` returns true. Contains all props passed
-   * from the consumer plus built-in control methods.
-   */
-  hostProps?: HostProps<P>;
+	/**
+	 * Get hostProps if in host context.
+	 *
+	 * @remarks
+	 * Only available when `isHost()` returns true. Contains all props passed
+	 * from the consumer plus built-in control methods.
+	 */
+	hostProps?: HostProps<P>;
 
-  /**
-   * Check if we can render to a target window.
-   *
-   * @remarks
-   * Returns `true` only when `win` is the current `window`. Cross-window
-   * rendering targets are not currently supported.
-   *
-   * @param win - Target window to check
-   * @returns Promise resolving to whether rendering is allowed
-   */
-  canRenderTo(win: Window): Promise<boolean>;
+	/**
+	 * Check if we can render to a target window.
+	 *
+	 * @remarks
+	 * Returns `true` only when `win` is the current `window`. Cross-window
+	 * rendering targets are not currently supported.
+	 *
+	 * @param win - Target window to check
+	 * @returns Promise resolving to whether rendering is allowed
+	 */
+	canRenderTo(win: Window): Promise<boolean>;
 
-  /**
-   * All active instances of this component.
-   */
-  instances: ForgeFrameComponentInstance<P, X, I, SchemaInputs>[];
+	/**
+	 * All active instances of this component.
+	 */
+	instances: ForgeFrameComponentInstance<P, X, I, SchemaInputs>[];
 }
 
 /**
@@ -645,18 +637,18 @@ export interface ForgeFrameComponent<
  * @public
  */
 export interface ConsumerNamespace<P = Record<string, unknown>> {
-  /**
-   * Access consumer's props.
-   */
-  props: RemoteValue<P>;
+	/**
+	 * Access consumer's props.
+	 */
+	props: RemoteValue<P>;
 
-  /**
-   * Export data/methods from consumer context.
-   *
-   * @param data - Data to export
-   * @returns Promise that resolves when export is complete
-   */
-  export: <T>(data: T) => Promise<void>;
+	/**
+	 * Export data/methods from consumer context.
+	 *
+	 * @param data - Data to export
+	 * @returns Promise that resolves when export is complete
+	 */
+	export: <T>(data: T) => Promise<void>;
 }
 
 /**
@@ -665,12 +657,12 @@ export interface ConsumerNamespace<P = Record<string, unknown>> {
  * @public
  */
 export interface SiblingInfo {
-  /** Unique instance ID */
-  uid: string;
-  /** Component tag name */
-  tag: string;
-  /** Exports from sibling (if any) */
-  exports?: unknown;
+	/** Unique instance ID */
+	uid: string;
+	/** Component tag name */
+	tag: string;
+	/** Exports from sibling (if any) */
+	exports?: unknown;
 }
 
 /**
@@ -679,12 +671,12 @@ export interface SiblingInfo {
  * @public
  */
 export interface GetPeerInstancesOptions {
-  /**
-   * If true, include peers from all registered component tags in the current
-   * consumer context.
-   * @defaultValue false
-   */
-  anyConsumer?: boolean;
+	/**
+	 * If true, include peers from all registered component tags in the current
+	 * consumer context.
+	 * @defaultValue false
+	 */
+	anyConsumer?: boolean;
 }
 
 /**
@@ -699,107 +691,109 @@ export interface GetPeerInstancesOptions {
  * @public
  */
 export interface HostPropsBuiltins<P = Record<string, unknown>> {
-  /** Unique instance ID */
-  uid: string;
+	/** Unique instance ID */
+	uid: string;
 
-  /** Component tag name */
-  tag: string;
+	/** Component tag name */
+	tag: string;
 
-  /**
-   * Close the component.
-   *
-   * @returns Promise that resolves when closed
-   */
-  close: () => Promise<void>;
+	/**
+	 * Close the component.
+	 *
+	 * @returns Promise that resolves when closed
+	 */
+	close: () => Promise<void>;
 
-  /**
-   * Focus the component window.
-   *
-   * @returns Promise that resolves when focused
-   */
-  focus: () => Promise<void>;
+	/**
+	 * Focus the component window.
+	 *
+	 * @returns Promise that resolves when focused
+	 */
+	focus: () => Promise<void>;
 
-  /**
-   * Resize the component.
-   *
-   * @param dimensions - New dimensions
-   * @returns Promise that resolves when resized
-   */
-  resize: (dimensions: Dimensions) => Promise<void>;
+	/**
+	 * Resize the component.
+	 *
+	 * @param dimensions - New dimensions
+	 * @returns Promise that resolves when resized
+	 */
+	resize: (dimensions: Dimensions) => Promise<void>;
 
-  /**
-   * Show the component (if hidden).
-   *
-   * @returns Promise that resolves when shown
-   */
-  show: () => Promise<void>;
+	/**
+	 * Show the component (if hidden).
+	 *
+	 * @returns Promise that resolves when shown
+	 */
+	show: () => Promise<void>;
 
-  /**
-   * Hide the component.
-   *
-   * @returns Promise that resolves when hidden
-   */
-  hide: () => Promise<void>;
+	/**
+	 * Hide the component.
+	 *
+	 * @returns Promise that resolves when hidden
+	 */
+	hide: () => Promise<void>;
 
-  /**
-   * Subscribe to prop updates from consumer.
-   *
-   * @param handler - Function called when props change
-   * @returns Object with cancel function to unsubscribe
-   */
-  onProps: (handler: (props: RemoteValue<P>) => void) => { cancel: () => void };
+	/**
+	 * Subscribe to prop updates from consumer.
+	 *
+	 * @param handler - Function called when props change
+	 * @returns Object with cancel function to unsubscribe
+	 */
+	onProps: (handler: (props: RemoteValue<P>) => void) => { cancel: () => void };
 
-  /**
-   * Report an error to the consumer.
-   *
-   * @param err - Error to report
-   * @returns Promise that resolves when error is sent
-   */
-  onError: (err: Error) => Promise<void>;
+	/**
+	 * Report an error to the consumer.
+	 *
+	 * @param err - Error to report
+	 * @returns Promise that resolves when error is sent
+	 */
+	onError: (err: Error) => Promise<void>;
 
-  /**
-   * Get a reference to the consumer window.
-   *
-   * @returns Consumer window object
-   */
-  getConsumer: () => Window;
+	/**
+	 * Get a reference to the consumer window.
+	 *
+	 * @returns Consumer window object
+	 */
+	getConsumer: () => Window;
 
-  /**
-   * Get the consumer window's domain.
-   *
-   * @returns Consumer domain string
-   */
-  getConsumerDomain: () => string;
+	/**
+	 * Get the consumer window's domain.
+	 *
+	 * @returns Consumer domain string
+	 */
+	getConsumerDomain: () => string;
 
-  /**
-   * Export data/methods to the consumer.
-   *
-   * @param exports - Data to export
-   * @returns Promise that resolves when export is complete
-   */
-  export: <X>(exports: X) => Promise<void>;
+	/**
+	 * Export data/methods to the consumer.
+	 *
+	 * @param exports - Data to export
+	 * @returns Promise that resolves when export is complete
+	 */
+	export: <X>(exports: X) => Promise<void>;
 
-  /**
-   * Consumer namespace for bidirectional communication.
-   */
-  consumer: ConsumerNamespace<P>;
+	/**
+	 * Consumer namespace for bidirectional communication.
+	 */
+	consumer: ConsumerNamespace<P>;
 
-  /**
-   * Get peer component instances (other ForgeFrame components from the same consumer).
-   *
-   * @remarks
-   * Peer instances are other ForgeFrame component instances that share the same
-   * consumer window. This enables communication between multiple embedded components.
-   *
-   * @param options - Options for peer discovery
-   * @returns Promise resolving to array of peer info
-   */
-  getPeerInstances: (options?: GetPeerInstancesOptions) => Promise<SiblingInfo[]>;
+	/**
+	 * Get peer component instances (other ForgeFrame components from the same consumer).
+	 *
+	 * @remarks
+	 * Peer instances are other ForgeFrame component instances that share the same
+	 * consumer window. This enables communication between multiple embedded components.
+	 *
+	 * @param options - Options for peer discovery
+	 * @returns Promise resolving to array of peer info
+	 */
+	getPeerInstances: (
+		options?: GetPeerInstancesOptions,
+	) => Promise<SiblingInfo[]>;
 
-  /**
-   * Nested components available for rendering.
-   */
-  children?: Record<string, ForgeFrameComponent>;
+	/**
+	 * Nested components available for rendering.
+	 */
+	children?: Record<string, ForgeFrameComponent>;
 }
 
 /**
@@ -842,4 +836,5 @@ export interface HostPropsBuiltins<P = Record<string, unknown>> {
  *
  * @public
  */
-export type HostProps<P = Record<string, unknown>> = RemoteValue<P> & HostPropsBuiltins<P>;
+export type HostProps<P = Record<string, unknown>> = RemoteValue<P> &
+	HostPropsBuiltins<P>;

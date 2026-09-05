@@ -9,35 +9,30 @@
  * libraries.
  */
 
+export { PropSchema } from "./prop/base";
 export {
-  PropSchema,
-} from './prop/base';
+	ArraySchema,
+	type InferObjectInputShape,
+	type InferObjectShape,
+	ObjectSchema,
+	RecordSchema,
+	TupleSchema,
+} from "./prop/composite";
+export {
+	type Prop,
+	prop,
+} from "./prop/factory";
 
 export {
-  AnySchema,
-  BooleanSchema,
-  DateSchema,
-  FunctionSchema,
-  NumberSchema,
-  StringSchema,
-} from './prop/primitives';
-
+	EnumSchema,
+	LiteralSchema,
+	UnionSchema,
+} from "./prop/literals";
 export {
-  ArraySchema,
-  ObjectSchema,
-  RecordSchema,
-  TupleSchema,
-  type InferObjectInputShape,
-  type InferObjectShape,
-} from './prop/composite';
-
-export {
-  EnumSchema,
-  LiteralSchema,
-  UnionSchema,
-} from './prop/literals';
-
-export {
-  prop,
-  type Prop,
-} from './prop/factory';
+	AnySchema,
+	BooleanSchema,
+	DateSchema,
+	FunctionSchema,
+	NumberSchema,
+	StringSchema,
+} from "./prop/primitives";

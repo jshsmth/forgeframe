@@ -2,8 +2,8 @@
  * Shared public render template types.
  */
 
-import type { ContextType } from '../constants';
-import type { Dimensions } from './utility';
+import type { ContextType } from "../constants";
+import type { Dimensions } from "./utility";
 
 /**
  * Context object passed to container and prerender template functions.
@@ -13,28 +13,28 @@ import type { Dimensions } from './utility';
  * @public
  */
 export interface TemplateContext<P = Record<string, unknown>> {
-  /** Unique instance identifier */
-  uid: string;
-  /** Component tag name */
-  tag: string;
-  /** Rendering context (iframe or popup) */
-  context: ContextType;
-  /** Component dimensions */
-  dimensions: Dimensions;
-  /** Current props */
-  props: P;
-  /** Document object for creating elements */
-  doc: Document;
-  /** Container element */
-  container: HTMLElement;
-  /** The iframe element (null for popup context) */
-  frame: HTMLIFrameElement | null;
-  /** The prerender/loading element (from prerenderTemplate) */
-  prerenderFrame: HTMLElement | null;
-  /** Close the component */
-  close: () => Promise<void>;
-  /** Focus the component */
-  focus: () => Promise<void>;
+	/** Unique instance identifier */
+	uid: string;
+	/** Component tag name */
+	tag: string;
+	/** Rendering context (iframe or popup) */
+	context: ContextType;
+	/** Component dimensions */
+	dimensions: Dimensions;
+	/** Current props */
+	props: P;
+	/** Document object for creating elements */
+	doc: Document;
+	/** Container element */
+	container: HTMLElement;
+	/** The iframe element (null for popup context) */
+	frame: HTMLIFrameElement | null;
+	/** The prerender/loading element (from prerenderTemplate) */
+	prerenderFrame: HTMLElement | null;
+	/** Close the component */
+	close: () => Promise<void>;
+	/** Focus the component */
+	focus: () => Promise<void>;
 }
 
 /**
@@ -48,7 +48,7 @@ export interface TemplateContext<P = Record<string, unknown>> {
  * @public
  */
 export type ContainerTemplate<P = Record<string, unknown>> = (
-  ctx: TemplateContext<P>
+	ctx: TemplateContext<P>,
 ) => HTMLElement | null;
 
 /**
@@ -62,5 +62,5 @@ export type ContainerTemplate<P = Record<string, unknown>> = (
  * @public
  */
 export type PrerenderTemplate<P = Record<string, unknown>> = (
-  ctx: TemplateContext<P>
+	ctx: TemplateContext<P>,
 ) => HTMLElement | null;

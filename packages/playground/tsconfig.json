@@ -1,31 +1,31 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "useDefineForClassFields": true,
-    "module": "ESNext",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["vite/client"],
-    "skipLibCheck": true,
+	"compilerOptions": {
+		"target": "ES2022",
+		"useDefineForClassFields": true,
+		"module": "ESNext",
+		"lib": ["ES2022", "DOM", "DOM.Iterable"],
+		"types": ["vite/client"],
+		"skipLibCheck": true,
 
-    /* Bundler mode */
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "verbatimModuleSyntax": true,
-    "moduleDetection": "force",
-    "noEmit": true,
+		/* Bundler mode */
+		"moduleResolution": "bundler",
+		"allowImportingTsExtensions": true,
+		"verbatimModuleSyntax": true,
+		"moduleDetection": "force",
+		"noEmit": true,
+		"rootDir": "..",
 
-    /* Typecheck the live workspace source, matching the Vite aliases. */
-    "baseUrl": ".",
-    "paths": {
-      "forgeframe": ["../forgeframe/src/index.ts"]
-    },
+		/* Typecheck the live workspace source, matching the Vite aliases. */
+		"paths": {
+			"forgeframe": ["../forgeframe/src/index.ts"]
+		},
 
-    /* Linting */
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true
-  },
-  "include": ["consumer", "host"]
+		/* Linting */
+		"strict": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"noFallthroughCasesInSwitch": true,
+		"noUncheckedSideEffectImports": true
+	},
+	"include": ["consumer", "host"]
 }

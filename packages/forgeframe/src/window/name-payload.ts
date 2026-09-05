@@ -1,18 +1,23 @@
-import type { ConsumerExports } from '../communication/types';
-import type { SerializedProps } from '../props/types';
-import type { HostComponentRef, WindowNamePayload } from './types';
-import type { ContextType } from '../constants';
-import { CONTEXT, PROTOCOL_VERSION, WINDOW_NAME_PREFIX, VERSION } from '../constants';
+import type { ConsumerExports } from "../communication/types";
+import type { ContextType } from "../constants";
+import {
+	CONTEXT,
+	PROTOCOL_VERSION,
+	VERSION,
+	WINDOW_NAME_PREFIX,
+} from "../constants";
+import type { SerializedProps } from "../props/types";
+import type { HostComponentRef, WindowNamePayload } from "./types";
 
 const REQUIRED_CONSUMER_EXPORT_KEYS = [
-  'init',
-  'close',
-  'resize',
-  'show',
-  'hide',
-  'onError',
-  'updateProps',
-  'export',
+	"init",
+	"close",
+	"resize",
+	"show",
+	"hide",
+	"onError",
+	"updateProps",
+	"export",
 ] as const;
 
 /**
@@ -53,8 +58,8 @@ const MAX_PAYLOAD_SIZE = 32 * 1024;
  * @public
  */
 export function buildWindowName<P>(payload: WindowNamePayload<P>): string {
-  const encoded = encodePayload(payload);
-  return `${WINDOW_NAME_PREFIX}${encoded}`;
+	const encoded = encodePayload(payload);
+	return `${WINDOW_NAME_PREFIX}${encoded}`;
 }
 
 /**
@@ -81,129 +86,138 @@ export function buildWindowName<P>(payload: WindowNamePayload<P>): string {
  *
  * @public
  */
-export function parseWindowName<P>(
-  name: string
-): WindowNamePayload<P> | null {
-  if (!name || !name.startsWith(WINDOW_NAME_PREFIX)) {
-    return null;
-  }
+export function parseWindowName<P>(name: string): WindowNamePayload<P> | null {
+	// biome-ignore lint/complexity/useOptionalChain: Keep rejecting all falsy runtime inputs before invoking string methods.
+	if (!name || !name.startsWith(WINDOW_NAME_PREFIX)) {
+		return null;
+	}
 
-  const encoded = name.slice(WINDOW_NAME_PREFIX.length);
-  return decodePayload<P>(encoded);
+	const encoded = name.slice(WINDOW_NAME_PREFIX.length);
+	return decodePayload<P>(encoded);
 }
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+	return typeof value === "object" && value !== null;
 }
 
 function isValidSerializedProps(value: unknown): value is SerializedProps {
-  return isObjectRecord(value);
+	return isObjectRecord(value);
 }
 
 function isValidConsumerExports(value: unknown): value is ConsumerExports {
-  return (
-    isObjectRecord(value) &&
-    REQUIRED_CONSUMER_EXPORT_KEYS.every(
-      (key) => typeof value[key] === 'string' && value[key].length > 0
-    )
-  );
+	return (
+		isObjectRecord(value) &&
+		REQUIRED_CONSUMER_EXPORT_KEYS.every(
+			(key) => typeof value[key] === "string" && value[key].length > 0,
+		)
+	);
 }
 
 function isValidHostComponentRef(value: unknown): value is HostComponentRef {
-  if (!isObjectRecord(value)) {
-    return false;
-  }
+	if (!isObjectRecord(value)) {
+		return false;
+	}
 
-  if (typeof value.tag !== 'string' || value.tag.length === 0) {
-    return false;
-  }
+	if (typeof value.tag !== "string" || value.tag.length === 0) {
+		return false;
+	}
 
-  if (typeof value.url !== 'string' || value.url.length === 0) {
-    return false;
-  }
+	if (typeof value.url !== "string" || value.url.length === 0) {
+		return false;
+	}
 
-  if (value.props !== undefined && !isObjectRecord(value.props)) {
-    return false;
-  }
+	if (value.props !== undefined && !isObjectRecord(value.props)) {
+		return false;
+	}
 
-  if (
-    value.defaultContext !== undefined &&
-    value.defaultContext !== CONTEXT.IFRAME &&
-    value.defaultContext !== CONTEXT.POPUP
-  ) {
-    return false;
-  }
+	if (
+		value.defaultContext !== undefined &&
+		value.defaultContext !== CONTEXT.IFRAME &&
+		value.defaultContext !== CONTEXT.POPUP
+	) {
+		return false;
+	}
 
-  if (value.dimensions !== undefined) {
-    if (!isObjectRecord(value.dimensions)) {
-      return false;
-    }
+	if (value.dimensions !== undefined) {
+		if (!isObjectRecord(value.dimensions)) {
+			return false;
+		}
 
-    const { width, height } = value.dimensions;
-    if (
-      (width !== undefined && typeof width !== 'string' && typeof width !== 'number') ||
-      (height !== undefined && typeof height !== 'string' && typeof height !== 'number')
-    ) {
-      return false;
-    }
-  }
+		const { width, height } = value.dimensions;
+		if (
+			(width !== undefined &&
+				typeof width !== "string" &&
+				typeof width !== "number") ||
+			(height !== undefined &&
+				typeof height !== "string" &&
+				typeof height !== "number")
+		) {
+			return false;
+		}
+	}
 
-  return true;
+	return true;
 }
 
 function isValidChildrenMap(
-  value: unknown
+	value: unknown,
 ): value is Record<string, HostComponentRef> {
-  if (!isObjectRecord(value)) {
-    return false;
-  }
+	if (!isObjectRecord(value)) {
+		return false;
+	}
 
-  return Object.values(value).every((child) => isValidHostComponentRef(child));
+	return Object.values(value).every((child) => isValidHostComponentRef(child));
 }
 
 function isValidWindowNamePayload<P>(
-  value: unknown
+	value: unknown,
 ): value is WindowNamePayload<P> {
-  if (!isObjectRecord(value)) {
-    return false;
-  }
+	if (!isObjectRecord(value)) {
+		return false;
+	}
 
-  if (typeof value.uid !== 'string' || value.uid.length === 0) {
-    return false;
-  }
+	if (typeof value.uid !== "string" || value.uid.length === 0) {
+		return false;
+	}
 
-  if (typeof value.tag !== 'string' || value.tag.length === 0) {
-    return false;
-  }
+	if (typeof value.tag !== "string" || value.tag.length === 0) {
+		return false;
+	}
 
-  if (typeof value.version !== 'string' || value.version.length === 0) {
-    return false;
-  }
+	if (typeof value.version !== "string" || value.version.length === 0) {
+		return false;
+	}
 
-  if (
-    value.protocolVersion !== undefined &&
-    value.protocolVersion !== PROTOCOL_VERSION
-  ) {
-    return false;
-  }
+	if (
+		value.protocolVersion !== undefined &&
+		value.protocolVersion !== PROTOCOL_VERSION
+	) {
+		return false;
+	}
 
-  if (value.context !== CONTEXT.IFRAME && value.context !== CONTEXT.POPUP) {
-    return false;
-  }
+	if (value.context !== CONTEXT.IFRAME && value.context !== CONTEXT.POPUP) {
+		return false;
+	}
 
-  if (typeof value.consumerDomain !== 'string' || value.consumerDomain.length === 0) {
-    return false;
-  }
+	if (
+		typeof value.consumerDomain !== "string" ||
+		value.consumerDomain.length === 0
+	) {
+		return false;
+	}
 
-  if (!isValidSerializedProps(value.props) || !isValidConsumerExports(value.exports)) {
-    return false;
-  }
+	if (
+		!isValidSerializedProps(value.props) ||
+		!isValidConsumerExports(value.exports)
+	) {
+		return false;
+	}
 
-  if (value.children !== undefined && !isValidChildrenMap(value.children)) {
-    return false;
-  }
+	if (value.children !== undefined && !isValidChildrenMap(value.children)) {
+		return false;
+	}
 
-  return true;
+	return true;
 }
 
 /**
@@ -227,11 +241,11 @@ function isValidWindowNamePayload<P>(
  * @public
  */
 export function isForgeFrameWindow(win: Window = window): boolean {
-  try {
-    return win.name.startsWith(WINDOW_NAME_PREFIX);
-  } catch {
-    return false;
-  }
+	try {
+		return win.name.startsWith(WINDOW_NAME_PREFIX);
+	} catch {
+		return false;
+	}
 }
 
 /**
@@ -254,12 +268,9 @@ export function isForgeFrameWindow(win: Window = window): boolean {
  *
  * @public
  */
-export function isHostOfComponent(
-  tag: string,
-  win: Window = window
-): boolean {
-  const payload = parseWindowName(win.name);
-  return payload?.tag === tag;
+export function isHostOfComponent(tag: string, win: Window = window): boolean {
+	const payload = parseWindowName(win.name);
+	return payload?.tag === tag;
 }
 
 /**
@@ -280,26 +291,26 @@ export function isHostOfComponent(
  * @internal
  */
 function encodePayload<P>(payload: WindowNamePayload<P>): string {
-  try {
-    const json = JSON.stringify(payload);
-    const encoded = btoa(encodeURIComponent(json));
+	try {
+		const json = JSON.stringify(payload);
+		const encoded = btoa(encodeURIComponent(json));
 
-    // Base64 output is ASCII-only, so code-unit length matches byte length.
-    const byteSize = encoded.length;
-    if (byteSize > MAX_PAYLOAD_SIZE) {
-      throw new Error(
-        `Payload size (${Math.round(byteSize / 1024)}KB) exceeds maximum allowed size (${MAX_PAYLOAD_SIZE / 1024}KB). ` +
-        `Consider reducing the amount of data passed via props.`
-      );
-    }
+		// Base64 output is ASCII-only, so code-unit length matches byte length.
+		const byteSize = encoded.length;
+		if (byteSize > MAX_PAYLOAD_SIZE) {
+			throw new Error(
+				`Payload size (${Math.round(byteSize / 1024)}KB) exceeds maximum allowed size (${MAX_PAYLOAD_SIZE / 1024}KB). ` +
+					`Consider reducing the amount of data passed via props.`,
+			);
+		}
 
-    return encoded;
-  } catch (err) {
-    if (err instanceof Error && err.message.includes('Payload size')) {
-      throw err;
-    }
-    throw new Error(`Failed to encode payload: ${err}`);
-  }
+		return encoded;
+	} catch (err) {
+		if (err instanceof Error && err.message.includes("Payload size")) {
+			throw err;
+		}
+		throw new Error(`Failed to encode payload: ${err}`);
+	}
 }
 
 /**
@@ -316,17 +327,17 @@ function encodePayload<P>(payload: WindowNamePayload<P>): string {
  * @internal
  */
 function decodePayload<P>(encoded: string): WindowNamePayload<P> | null {
-  if (encoded.length > MAX_PAYLOAD_SIZE) {
-    return null;
-  }
+	if (encoded.length > MAX_PAYLOAD_SIZE) {
+		return null;
+	}
 
-  try {
-    const json = decodeURIComponent(atob(encoded));
-    const parsed = JSON.parse(json) as unknown;
-    return isValidWindowNamePayload<P>(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
+	try {
+		const json = decodeURIComponent(atob(encoded));
+		const parsed = JSON.parse(json) as unknown;
+		return isValidWindowNamePayload<P>(parsed) ? parsed : null;
+	} catch {
+		return null;
+	}
 }
 
 /**
@@ -364,25 +375,25 @@ function decodePayload<P>(encoded: string): WindowNamePayload<P> | null {
  * @public
  */
 export function createWindowPayload<P>(options: {
-  uid: string;
-  tag: string;
-  context: ContextType;
-  consumerDomain: string;
-  props: SerializedProps;
-  exports: ConsumerExports;
-  children?: Record<string, HostComponentRef>;
+	uid: string;
+	tag: string;
+	context: ContextType;
+	consumerDomain: string;
+	props: SerializedProps;
+	exports: ConsumerExports;
+	children?: Record<string, HostComponentRef>;
 }): WindowNamePayload<P> {
-  return {
-    uid: options.uid,
-    tag: options.tag,
-    version: VERSION,
-    protocolVersion: PROTOCOL_VERSION,
-    context: options.context,
-    consumerDomain: options.consumerDomain,
-    props: options.props,
-    exports: options.exports,
-    children: options.children,
-  };
+	return {
+		uid: options.uid,
+		tag: options.tag,
+		version: VERSION,
+		protocolVersion: PROTOCOL_VERSION,
+		context: options.context,
+		consumerDomain: options.consumerDomain,
+		props: options.props,
+		exports: options.exports,
+		children: options.children,
+	};
 }
 
 /**
@@ -406,14 +417,14 @@ export function createWindowPayload<P>(options: {
  * @public
  */
 export function updateWindowName<P>(
-  win: Window,
-  payload: WindowNamePayload<P>
+	win: Window,
+	payload: WindowNamePayload<P>,
 ): void {
-  try {
-    win.name = buildWindowName(payload);
-  } catch {
-    // Cross-origin errors are silently ignored
-  }
+	try {
+		win.name = buildWindowName(payload);
+	} catch {
+		// Cross-origin errors are silently ignored
+	}
 }
 
 /**
@@ -440,9 +451,9 @@ export function updateWindowName<P>(
  * @public
  */
 export function getInitialPayload<P>(
-  win: Window = window
+	win: Window = window,
 ): WindowNamePayload<P> | null {
-  return parseWindowName(win.name);
+	return parseWindowName(win.name);
 }
 
 /**
@@ -459,23 +470,23 @@ export function getInitialPayload<P>(
  * @internal
  */
 export function consumeInitialPayload<P>(
-  win: Window = window
+	win: Window = window,
 ): WindowNamePayload<P> | null {
-  let name: string;
-  try {
-    name = win.name;
-  } catch {
-    return null;
-  }
+	let name: string;
+	try {
+		name = win.name;
+	} catch {
+		return null;
+	}
 
-  const payload = parseWindowName<P>(name);
-  if (!payload) {
-    return null;
-  }
+	const payload = parseWindowName<P>(name);
+	if (!payload) {
+		return null;
+	}
 
-  clearInitialPayload(win, name);
+	clearInitialPayload(win, name);
 
-  return payload;
+	return payload;
 }
 
 /**
@@ -491,20 +502,20 @@ export function consumeInitialPayload<P>(
  * @internal
  */
 export function clearInitialPayload(
-  win: Window = window,
-  expectedName?: string
+	win: Window = window,
+	expectedName?: string,
 ): void {
-  try {
-    if (expectedName !== undefined) {
-      if (win.name !== expectedName) {
-        return;
-      }
-    } else if (!getInitialPayload(win)) {
-      return;
-    }
+	try {
+		if (expectedName !== undefined) {
+			if (win.name !== expectedName) {
+				return;
+			}
+		} else if (!getInitialPayload(win)) {
+			return;
+		}
 
-    win.name = '';
-  } catch {
-    // Clearing can fail for unusual window objects; host initialization can still succeed.
-  }
+		win.name = "";
+	} catch {
+		// Clearing can fail for unusual window objects; host initialization can still succeed.
+	}
 }

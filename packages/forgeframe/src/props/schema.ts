@@ -36,7 +36,7 @@
  * @public
  */
 export interface StandardSchemaV1<Input = unknown, Output = Input> {
-  readonly '~standard': StandardSchemaV1Props<Input, Output>;
+	readonly "~standard": StandardSchemaV1Props<Input, Output>;
 }
 
 /**
@@ -48,16 +48,16 @@ export interface StandardSchemaV1<Input = unknown, Output = Input> {
  * @public
  */
 export interface StandardSchemaV1Props<Input = unknown, Output = Input> {
-  /** The version of the Standard Schema specification (always 1) */
-  readonly version: 1;
-  /** The name of the schema library (e.g., "zod", "valibot", "arktype") */
-  readonly vendor: string;
-  /** Optional type metadata for input and output types */
-  readonly types?: StandardSchemaV1Types<Input, Output> | undefined;
-  /** Validates an unknown value and returns a result */
-  readonly validate: (
-    value: unknown
-  ) => StandardSchemaV1Result<Output> | Promise<StandardSchemaV1Result<Output>>;
+	/** The version of the Standard Schema specification (always 1) */
+	readonly version: 1;
+	/** The name of the schema library (e.g., "zod", "valibot", "arktype") */
+	readonly vendor: string;
+	/** Optional type metadata for input and output types */
+	readonly types?: StandardSchemaV1Types<Input, Output> | undefined;
+	/** Validates an unknown value and returns a result */
+	readonly validate: (
+		value: unknown,
+	) => StandardSchemaV1Result<Output> | Promise<StandardSchemaV1Result<Output>>;
 }
 
 /**
@@ -73,10 +73,10 @@ export interface StandardSchemaV1Props<Input = unknown, Output = Input> {
  * @public
  */
 export interface StandardSchemaV1Types<Input = unknown, Output = Input> {
-  /** The input type (for type inference only) */
-  readonly input: Input;
-  /** The output type (for type inference only) */
-  readonly output: Output;
+	/** The input type (for type inference only) */
+	readonly input: Input;
+	/** The output type (for type inference only) */
+	readonly output: Output;
 }
 
 /**
@@ -87,8 +87,8 @@ export interface StandardSchemaV1Types<Input = unknown, Output = Input> {
  * @public
  */
 export type StandardSchemaV1Result<Output> =
-  | StandardSchemaV1SuccessResult<Output>
-  | StandardSchemaV1FailureResult;
+	| StandardSchemaV1SuccessResult<Output>
+	| StandardSchemaV1FailureResult;
 
 /**
  * A successful validation result containing the validated/transformed value.
@@ -98,10 +98,10 @@ export type StandardSchemaV1Result<Output> =
  * @public
  */
 export interface StandardSchemaV1SuccessResult<Output> {
-  /** The validated and potentially transformed value */
-  readonly value: Output;
-  /** Undefined on success */
-  readonly issues?: undefined;
+	/** The validated and potentially transformed value */
+	readonly value: Output;
+	/** Undefined on success */
+	readonly issues?: undefined;
 }
 
 /**
@@ -110,10 +110,10 @@ export interface StandardSchemaV1SuccessResult<Output> {
  * @public
  */
 export interface StandardSchemaV1FailureResult {
-  /** Array of validation issues */
-  readonly issues: ReadonlyArray<StandardSchemaV1Issue>;
-  /** Undefined on failure */
-  readonly value?: undefined;
+	/** Array of validation issues */
+	readonly issues: ReadonlyArray<StandardSchemaV1Issue>;
+	/** Undefined on failure */
+	readonly value?: undefined;
 }
 
 /**
@@ -122,14 +122,14 @@ export interface StandardSchemaV1FailureResult {
  * @public
  */
 export interface StandardSchemaV1Issue {
-  /** Human-readable error message */
-  readonly message: string;
-  /** Path to the invalid value (for nested objects/arrays) */
-  readonly path?: ReadonlyArray<PropertyKey | StandardSchemaV1PathSegment>;
-  /** Optional machine-readable error code */
-  readonly code?: string | undefined;
-  /** The input value that caused this issue */
-  readonly input?: unknown;
+	/** Human-readable error message */
+	readonly message: string;
+	/** Path to the invalid value (for nested objects/arrays) */
+	readonly path?: ReadonlyArray<PropertyKey | StandardSchemaV1PathSegment>;
+	/** Optional machine-readable error code */
+	readonly code?: string | undefined;
+	/** The input value that caused this issue */
+	readonly input?: unknown;
 }
 
 /**
@@ -138,10 +138,10 @@ export interface StandardSchemaV1Issue {
  * @public
  */
 export interface StandardSchemaV1PathSegment {
-  /** The property key in an object path segment */
-  readonly key?: PropertyKey | undefined;
-  /** The numeric index in an array path segment */
-  readonly index?: number | undefined;
+	/** The property key in an object path segment */
+	readonly key?: PropertyKey | undefined;
+	/** The numeric index in an array path segment */
+	readonly index?: number | undefined;
 }
 
 // ============================================================================
@@ -163,7 +163,7 @@ export interface StandardSchemaV1PathSegment {
  * @public
  */
 export type InferInput<Schema extends StandardSchemaV1> =
-  Schema extends StandardSchemaV1<infer I, unknown> ? I : never;
+	Schema extends StandardSchemaV1<infer I, unknown> ? I : never;
 
 /**
  * Infers the output type from a Standard Schema.
@@ -180,7 +180,7 @@ export type InferInput<Schema extends StandardSchemaV1> =
  * @public
  */
 export type InferOutput<Schema extends StandardSchemaV1> =
-  Schema extends StandardSchemaV1<unknown, infer O> ? O : never;
+	Schema extends StandardSchemaV1<unknown, infer O> ? O : never;
 
 // ============================================================================
 // Validation Utilities
@@ -205,16 +205,16 @@ export type InferOutput<Schema extends StandardSchemaV1> =
  * @public
  */
 export function isStandardSchema(value: unknown): value is StandardSchemaV1 {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    '~standard' in value &&
-    typeof (value as StandardSchemaV1)['~standard'] === 'object' &&
-    (value as StandardSchemaV1)['~standard'] !== null &&
-    (value as StandardSchemaV1)['~standard'].version === 1 &&
-    typeof (value as StandardSchemaV1)['~standard'].vendor === 'string' &&
-    typeof (value as StandardSchemaV1)['~standard'].validate === 'function'
-  );
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"~standard" in value &&
+		typeof (value as StandardSchemaV1)["~standard"] === "object" &&
+		(value as StandardSchemaV1)["~standard"] !== null &&
+		(value as StandardSchemaV1)["~standard"].version === 1 &&
+		typeof (value as StandardSchemaV1)["~standard"].vendor === "string" &&
+		typeof (value as StandardSchemaV1)["~standard"].validate === "function"
+	);
 }
 
 /**
@@ -243,29 +243,29 @@ export function isStandardSchema(value: unknown): value is StandardSchemaV1 {
  * @internal
  */
 export function validateWithSchema<T>(
-  schema: StandardSchemaV1<unknown, T>,
-  value: unknown,
-  propName: string
+	schema: StandardSchemaV1<unknown, T>,
+	value: unknown,
+	propName: string,
 ): T {
-  const result = schema['~standard'].validate(value);
+	const result = schema["~standard"].validate(value);
 
-  if (result instanceof Promise) {
-    throw new Error(
-      `Prop "${propName}" uses an async schema. ForgeFrame only supports synchronous ` +
-        `schema validation. Please use a synchronous schema or remove async operations ` +
-        `(like database lookups) from your schema definition.`
-    );
-  }
+	if (result instanceof Promise) {
+		throw new Error(
+			`Prop "${propName}" uses an async schema. ForgeFrame only supports synchronous ` +
+				`schema validation. Please use a synchronous schema or remove async operations ` +
+				`(like database lookups) from your schema definition.`,
+		);
+	}
 
-  if (result.issues) {
-    const messages = result.issues.map((issue) => {
-      const path = formatIssuePath(issue.path, propName);
-      return `${path}: ${issue.message}`;
-    });
-    throw new Error(`Validation failed: ${messages.join('; ')}`);
-  }
+	if (result.issues) {
+		const messages = result.issues.map((issue) => {
+			const path = formatIssuePath(issue.path, propName);
+			return `${path}: ${issue.message}`;
+		});
+		throw new Error(`Validation failed: ${messages.join("; ")}`);
+	}
 
-  return result.value;
+	return result.value;
 }
 
 /**
@@ -278,24 +278,24 @@ export function validateWithSchema<T>(
  * @internal
  */
 function formatIssuePath(
-  path: ReadonlyArray<PropertyKey | StandardSchemaV1PathSegment> | undefined,
-  propName: string
+	path: ReadonlyArray<PropertyKey | StandardSchemaV1PathSegment> | undefined,
+	propName: string,
 ): string {
-  if (!path || path.length === 0) {
-    return propName;
-  }
+	if (!path || path.length === 0) {
+		return propName;
+	}
 
-  const segments = path.map((segment) => {
-    if (typeof segment === 'object' && segment !== null) {
-      if ('key' in segment && segment.key !== undefined) {
-        return String(segment.key);
-      }
-      if ('index' in segment && typeof segment.index === 'number') {
-        return String(segment.index);
-      }
-    }
-    return String(segment);
-  });
+	const segments = path.map((segment) => {
+		if (typeof segment === "object" && segment !== null) {
+			if ("key" in segment && segment.key !== undefined) {
+				return String(segment.key);
+			}
+			if ("index" in segment && typeof segment.index === "number") {
+				return String(segment.index);
+			}
+		}
+		return String(segment);
+	});
 
-  return `${propName}.${segments.join('.')}`;
+	return `${propName}.${segments.join(".")}`;
 }

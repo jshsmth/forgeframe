@@ -1,8 +1,8 @@
-import type { DomainMatcher } from '../types/utility';
+import type { DomainMatcher } from "../types/utility";
 import {
-  compileWildcardDomainPattern,
-  testDomainRegExpStateless,
-} from '../utils/domain-pattern';
+	compileWildcardDomainPattern,
+	testDomainRegExpStateless,
+} from "../utils/domain-pattern";
 
 /**
  * Gets the domain (origin) of the specified window.
@@ -26,11 +26,11 @@ import {
  * @public
  */
 export function getDomain(win: Window = window): string {
-  try {
-    return win.location.origin;
-  } catch {
-    return '';
-  }
+	try {
+		return win.location.origin;
+	} catch {
+		return "";
+	}
 }
 
 /**
@@ -55,11 +55,11 @@ export function getDomain(win: Window = window): string {
  * @public
  */
 export function isSameDomain(win: Window, reference: Window = window): boolean {
-  try {
-    return win.location.origin === reference.location.origin;
-  } catch {
-    return false;
-  }
+	try {
+		return win.location.origin === reference.location.origin;
+	} catch {
+		return false;
+	}
 }
 
 /**
@@ -98,28 +98,25 @@ export function isSameDomain(win: Window, reference: Window = window): boolean {
  *
  * @public
  */
-export function matchDomain(
-  pattern: DomainMatcher,
-  domain: string
-): boolean {
-  if (typeof pattern === 'string') {
-    if (pattern === '*') return true;
-    const wildcardPattern = compileWildcardDomainPattern(pattern);
-    if (wildcardPattern) {
-      return testDomainRegExpStateless(wildcardPattern, domain);
-    }
-    return pattern === domain;
-  }
+export function matchDomain(pattern: DomainMatcher, domain: string): boolean {
+	if (typeof pattern === "string") {
+		if (pattern === "*") return true;
+		const wildcardPattern = compileWildcardDomainPattern(pattern);
+		if (wildcardPattern) {
+			return testDomainRegExpStateless(wildcardPattern, domain);
+		}
+		return pattern === domain;
+	}
 
-  if (pattern instanceof RegExp) {
-    return testDomainRegExpStateless(pattern, domain);
-  }
+	if (pattern instanceof RegExp) {
+		return testDomainRegExpStateless(pattern, domain);
+	}
 
-  if (Array.isArray(pattern)) {
-    return pattern.some((p) => matchDomain(p, domain));
-  }
+	if (Array.isArray(pattern)) {
+		return pattern.some((p) => matchDomain(p, domain));
+	}
 
-  return false;
+	return false;
 }
 
 /**
@@ -144,13 +141,13 @@ export function matchDomain(
  * @public
  */
 export function isWindowClosed(win: Window | null): boolean {
-  if (!win) return true;
+	if (!win) return true;
 
-  try {
-    return win.closed;
-  } catch {
-    return true;
-  }
+	try {
+		return win.closed;
+	} catch {
+		return true;
+	}
 }
 
 /**
@@ -175,11 +172,11 @@ export function isWindowClosed(win: Window | null): boolean {
  * @public
  */
 export function getOpener(win: Window = window): Window | null {
-  try {
-    return win.opener;
-  } catch {
-    return null;
-  }
+	try {
+		return win.opener;
+	} catch {
+		return null;
+	}
 }
 
 /**
@@ -204,15 +201,15 @@ export function getOpener(win: Window = window): Window | null {
  * @public
  */
 export function getConsumer(win: Window = window): Window | null {
-  try {
-    const parent = win.parent;
-    if (parent && parent !== win) {
-      return parent;
-    }
-    return null;
-  } catch {
-    return null;
-  }
+	try {
+		const parent = win.parent;
+		if (parent && parent !== win) {
+			return parent;
+		}
+		return null;
+	} catch {
+		return null;
+	}
 }
 
 /**
@@ -236,11 +233,11 @@ export function getConsumer(win: Window = window): Window | null {
  * @public
  */
 export function getTop(win: Window = window): Window | null {
-  try {
-    return win.top;
-  } catch {
-    return null;
-  }
+	try {
+		return win.top;
+	} catch {
+		return null;
+	}
 }
 
 /**
@@ -265,11 +262,11 @@ export function getTop(win: Window = window): Window | null {
  * @public
  */
 export function isIframe(win: Window = window): boolean {
-  try {
-    return win.parent !== win;
-  } catch {
-    return true;
-  }
+	try {
+		return win.parent !== win;
+	} catch {
+		return true;
+	}
 }
 
 /**
@@ -292,11 +289,11 @@ export function isIframe(win: Window = window): boolean {
  * @public
  */
 export function isPopup(win: Window = window): boolean {
-  try {
-    return win.opener !== null && win.opener !== undefined;
-  } catch {
-    return false;
-  }
+	try {
+		return win.opener !== null && win.opener !== undefined;
+	} catch {
+		return false;
+	}
 }
 
 /**
@@ -322,17 +319,17 @@ export function isPopup(win: Window = window): boolean {
  * @public
  */
 export function getAncestor(
-  win: Window = window,
-  distance: number
+	win: Window = window,
+	distance: number,
 ): Window | null {
-  let current: Window | null = win;
+	let current: Window | null = win;
 
-  for (let i = 0; i < distance; i++) {
-    current = getConsumer(current);
-    if (!current) return null;
-  }
+	for (let i = 0; i < distance; i++) {
+		current = getConsumer(current);
+		if (!current) return null;
+	}
 
-  return current;
+	return current;
 }
 
 /**
@@ -359,26 +356,23 @@ export function getAncestor(
  *
  * @public
  */
-export function getDistanceToConsumer(
-  host: Window,
-  consumer: Window
-): number {
-  let current: Window | null = host;
-  let distance = 0;
+export function getDistanceToConsumer(host: Window, consumer: Window): number {
+	let current: Window | null = host;
+	let distance = 0;
 
-  while (current) {
-    if (current === consumer) {
-      return distance;
-    }
-    current = getConsumer(current);
-    distance++;
+	while (current) {
+		if (current === consumer) {
+			return distance;
+		}
+		current = getConsumer(current);
+		distance++;
 
-    if (distance > 100) {
-      break;
-    }
-  }
+		if (distance > 100) {
+			break;
+		}
+	}
 
-  return -1;
+	return -1;
 }
 
 /**
@@ -399,11 +393,11 @@ export function getDistanceToConsumer(
  * @public
  */
 export function focusWindow(win: Window): void {
-  try {
-    win.focus();
-  } catch {
-    // May fail cross-origin
-  }
+	try {
+		win.focus();
+	} catch {
+		// May fail cross-origin
+	}
 }
 
 /**
@@ -426,11 +420,11 @@ export function focusWindow(win: Window): void {
  * @public
  */
 export function closeWindow(win: Window): void {
-  try {
-    win.close();
-  } catch {
-    // May fail cross-origin
-  }
+	try {
+		win.close();
+	} catch {
+		// May fail cross-origin
+	}
 }
 
 /**
@@ -456,15 +450,15 @@ export function closeWindow(win: Window): void {
  * @public
  */
 export function getFrames(win: Window = window): Window[] {
-  const frames: Window[] = [];
+	const frames: Window[] = [];
 
-  try {
-    for (let i = 0; i < win.frames.length; i++) {
-      frames.push(win.frames[i] as Window);
-    }
-  } catch {
-    // Cross-origin errors result in returning an empty array
-  }
+	try {
+		for (let i = 0; i < win.frames.length; i++) {
+			frames.push(win.frames[i] as Window);
+		}
+	} catch {
+		// Cross-origin errors result in returning an empty array
+	}
 
-  return frames;
+	return frames;
 }

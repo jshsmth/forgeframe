@@ -1,65 +1,70 @@
-import type { ReactElement } from 'react';
+import type { ReactElement } from "react";
 import {
-  create,
-  createReactComponent,
-  prop,
-  withReactComponent,
-} from '../../src';
+	create,
+	createReactComponent,
+	prop,
+	withReactComponent,
+} from "../../src";
 
-declare const React: typeof import('react');
+declare const React: typeof import("react");
 
 interface Props extends Record<string, unknown> {
-  label: string;
+	label: string;
 }
 
 const Component = create<Props>({
-  tag: 'react-typecheck',
-  url: 'https://example.com',
-  props: {
-    label: { schema: prop.string() },
-  },
+	tag: "react-typecheck",
+	url: "https://example.com",
+	props: {
+		label: { schema: prop.string() },
+	},
 });
 
 const ReactComponent = createReactComponent<Props, unknown, ReactElement>(
-  Component,
-  { React }
+	Component,
+	{ React },
 );
 
 const element: ReactElement = <ReactComponent label="ready" />;
 void element;
 
 const InferredRequiredComponent = create({
-  tag: 'inferred-required-react-typecheck',
-  url: 'https://example.com/inferred-required',
-  props: {
-    label: prop.string(),
-  },
+	tag: "inferred-required-react-typecheck",
+	url: "https://example.com/inferred-required",
+	props: {
+		label: prop.string(),
+	},
 });
 const InferredRequiredReact = createReactComponent(InferredRequiredComponent, {
-  React,
+	React,
 });
 const InferredRequiredReactWithDriver = withReactComponent(React)(
-  InferredRequiredComponent
+	InferredRequiredComponent,
 );
 
 const inferredRequiredElement: ReactElement = (
-  <InferredRequiredReact label="ready" />
+	<InferredRequiredReact label="ready" />
 );
 const inferredRequiredDriverElement: ReactElement = (
-  <InferredRequiredReactWithDriver label="ready" />
+	<InferredRequiredReactWithDriver label="ready" />
 );
 const containerRef = React.createRef<HTMLDivElement>();
 const elementWithRef: ReactElement = (
-  <InferredRequiredReact label="ready" ref={containerRef} />
+	<InferredRequiredReact label="ready" ref={containerRef} />
 );
 const driverElementWithRef: ReactElement = (
-  <InferredRequiredReactWithDriver label="ready" ref={(container) => {
-    const div: HTMLDivElement | null = container;
-    void div;
-  }} />
+	<InferredRequiredReactWithDriver
+		label="ready"
+		ref={(container) => {
+			const div: HTMLDivElement | null = container;
+			void div;
+		}}
+	/>
 );
-// @ts-expect-error wrappers forward an HTML div container, not an SVG element
-const invalidRefElement = <InferredRequiredReact label="ready" ref={React.createRef<SVGSVGElement>()} />;
+const invalidRefElement = (
+	// @ts-expect-error wrappers forward an HTML div container, not an SVG element
+	<InferredRequiredReact label="ready" ref={React.createRef<SVGSVGElement>()} />
+);
 void elementWithRef;
 void driverElementWithRef;
 void invalidRefElement;
@@ -74,14 +79,14 @@ void missingRequiredElement;
 void missingRequiredDriverElement;
 
 const InferredOptionalComponent = create({
-  tag: 'inferred-optional-react-typecheck',
-  url: 'https://example.com/inferred-optional',
-  props: {
-    label: prop.string().optional(),
-  },
+	tag: "inferred-optional-react-typecheck",
+	url: "https://example.com/inferred-optional",
+	props: {
+		label: prop.string().optional(),
+	},
 });
 const InferredOptionalReact = createReactComponent(InferredOptionalComponent, {
-  React,
+	React,
 });
 const optionalElement: ReactElement = <InferredOptionalReact />;
 void optionalElement;

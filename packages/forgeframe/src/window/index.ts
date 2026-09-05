@@ -10,29 +10,29 @@
  */
 
 export {
-  getDomain,
-  isSameDomain,
-  matchDomain,
-  isWindowClosed,
-  getOpener,
-  getConsumer,
-  getTop,
-  isIframe,
-  isPopup,
-  getAncestor,
-  getDistanceToConsumer,
-  focusWindow,
-  closeWindow,
-  getFrames,
-} from './helpers';
+	closeWindow,
+	focusWindow,
+	getAncestor,
+	getConsumer,
+	getDistanceToConsumer,
+	getDomain,
+	getFrames,
+	getOpener,
+	getTop,
+	isIframe,
+	isPopup,
+	isSameDomain,
+	isWindowClosed,
+	matchDomain,
+} from "./helpers";
 
 export {
-  buildWindowName,
-  parseWindowName,
-  isForgeFrameWindow,
-  isHostOfComponent,
-  createWindowPayload,
-  updateWindowName,
-  getInitialPayload,
-  consumeInitialPayload,
-} from './name-payload';
+	buildWindowName,
+	consumeInitialPayload,
+	createWindowPayload,
+	getInitialPayload,
+	isForgeFrameWindow,
+	isHostOfComponent,
+	parseWindowName,
+	updateWindowName,
+} from "./name-payload";

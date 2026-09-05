@@ -1,42 +1,41 @@
 {
-  "name": "forgeframe-monorepo",
-  "private": true,
-  "type": "module",
-  "workspaces": [
-    "packages/*"
-  ],
-  "scripts": {
-    "clean": "npm run clean -w forgeframe && npm run clean -w @forgeframe/playground",
-    "dev": "npm run dev -w @forgeframe/playground",
-    "dev:consumer": "npm run dev:consumer -w @forgeframe/playground",
-    "dev:host": "npm run dev:host -w @forgeframe/playground",
-    "build": "npm run build -w forgeframe",
-    "build:playground": "npm run build -w @forgeframe/playground",
-    "typecheck": "npm run typecheck -w forgeframe && npm run typecheck -w @forgeframe/playground",
-    "lint": "eslint packages/",
-    "lint:fix": "eslint packages/ --fix",
-    "test": "npm run test -w forgeframe",
-    "test:run": "npm run test:run -w forgeframe",
-    "test:coverage": "npm run test:coverage -w forgeframe",
-    "typecheck:package": "tsc --noEmit --skipLibCheck false --module NodeNext --moduleResolution NodeNext --target ES2022 packages/forgeframe/dist/index.d.ts",
-    "release:check": "npm run lint && npm run typecheck && npm run test:coverage && npm run build && npm run typecheck:package && npm run build:playground && npm audit && npm pack --dry-run -w forgeframe",
-    "release": "npm publish -w forgeframe",
-    "version:patch": "npm version patch -w forgeframe --no-git-tag-version",
-    "version:minor": "npm version minor -w forgeframe --no-git-tag-version",
-    "version:major": "npm version major -w forgeframe --no-git-tag-version"
-  },
-  "devDependencies": {
-    "@eslint/js": "^9.39.5",
-    "@vitest/coverage-v8": "^4.1.11",
-    "concurrently": "^9.2.4",
-    "eslint": "^9.39.5",
-    "globals": "^17.12.0",
-    "jiti": "^2.7.0",
-    "jsdom": "^27.4.0",
-    "typescript": "~5.9.3",
-    "typescript-eslint": "^8.69.0",
-    "vite": "^7.3.6",
-    "vite-plugin-mkcert": "^1.17.12",
-    "vitest": "^4.1.11"
-  }
+	"name": "forgeframe-monorepo",
+	"private": true,
+	"type": "module",
+	"workspaces": [
+		"packages/*"
+	],
+	"scripts": {
+		"clean": "npm run clean -w forgeframe && npm run clean -w @forgeframe/playground",
+		"dev": "npm run dev -w @forgeframe/playground",
+		"dev:consumer": "npm run dev:consumer -w @forgeframe/playground",
+		"dev:host": "npm run dev:host -w @forgeframe/playground",
+		"build": "npm run build -w forgeframe",
+		"build:playground": "npm run build -w @forgeframe/playground",
+		"typecheck": "npm run typecheck -w forgeframe && npm run typecheck -w @forgeframe/playground",
+		"lint": "biome check .",
+		"lint:fix": "biome check --write .",
+		"test": "npm run test -w forgeframe",
+		"test:run": "npm run test:run -w forgeframe",
+		"test:coverage": "npm run test:coverage -w forgeframe",
+		"typecheck:package": "tsc --ignoreConfig --noEmit --skipLibCheck false --module NodeNext --moduleResolution NodeNext --target ES2022 packages/forgeframe/dist/index.d.ts",
+		"release:check": "npm run lint && npm run typecheck && npm run test:coverage && npm run build && npm run typecheck:package && npm run build:playground && npm audit && npm pack --dry-run -w forgeframe",
+		"release": "npm publish -w forgeframe",
+		"version:patch": "npm version patch -w forgeframe --no-git-tag-version",
+		"version:minor": "npm version minor -w forgeframe --no-git-tag-version",
+		"version:major": "npm version major -w forgeframe --no-git-tag-version",
+		"format": "biome format --write .",
+		"format:check": "biome format .",
+		"check:ci": "biome ci ."
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.5.12",
+		"@vitest/coverage-v8": "^4.1.11",
+		"concurrently": "^9.2.4",
+		"jsdom": "^27.4.0",
+		"typescript": "7.0.2",
+		"vite": "^7.3.6",
+		"vite-plugin-mkcert": "^1.17.12",
+		"vitest": "^4.1.11"
+	}
 }

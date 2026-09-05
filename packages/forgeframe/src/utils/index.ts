@@ -31,11 +31,14 @@
  * @packageDocumentation
  */
 
-export { generateUID, generateShortUID } from './uid';
-export { CleanupManager } from './cleanup';
+export { CleanupManager } from "./cleanup";
 export {
-  createDeferred,
-  promiseTimeout,
-  type Deferred,
-} from './promise';
-export { normalizeDimensionToCSS, normalizeDimensionToNumber } from './dimension';
+	normalizeDimensionToCSS,
+	normalizeDimensionToNumber,
+} from "./dimension";
+export {
+	createDeferred,
+	type Deferred,
+	promiseTimeout,
+} from "./promise";
+export { generateShortUID, generateUID } from "./uid";

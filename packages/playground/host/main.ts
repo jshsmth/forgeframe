@@ -4,16 +4,16 @@
  * This demonstrates how to use ForgeFrame from the host (embedded) side.
  * The host receives props from the consumer via window.hostProps.
  */
-import { create, initHost, isHost, prop, type HostProps } from "forgeframe";
+import { create, type HostProps, initHost, isHost, prop } from "forgeframe";
 
-const NESTED_CHILD_TAG = 'playground-browser-nested-child';
+const NESTED_CHILD_TAG = "playground-browser-nested-child";
 const hostOrigin = window.location.origin;
 
 create({
-  tag: NESTED_CHILD_TAG,
-  url: `${hostOrigin}/?scenario=nested-child`,
-  dimensions: { width: '100%', height: 240 },
-  props: { scenario: prop.string().optional() },
+	tag: NESTED_CHILD_TAG,
+	url: `${hostOrigin}/?scenario=nested-child`,
+	dimensions: { width: "100%", height: 240 },
+	props: { scenario: prop.string().optional() },
 });
 
 /**
@@ -21,19 +21,22 @@ create({
  * These are the props passed from the consumer component.
  */
 interface MyProps extends Record<string, unknown> {
-  name: string;
-  count: number;
-  onGreet: (message: string) => void;
-  onClose: () => void;
-  scenario?: string;
-  onCalculate?: (left: number, right: number) => number | Promise<number>;
-  onObservedProps?: (props: Record<string, unknown>) => void | Promise<void>;
-  label?: string;
-  status?: string;
-  sessionId?: string;
-  amount?: number;
-  onApproved?: (receipt: { transactionId: string; amount: number }) => void | Promise<void>;
-  onAction?: (message: string) => void | Promise<void>;
+	name: string;
+	count: number;
+	onGreet: (message: string) => void;
+	onClose: () => void;
+	scenario?: string;
+	onCalculate?: (left: number, right: number) => number | Promise<number>;
+	onObservedProps?: (props: Record<string, unknown>) => void | Promise<void>;
+	label?: string;
+	status?: string;
+	sessionId?: string;
+	amount?: number;
+	onApproved?: (receipt: {
+		transactionId: string;
+		amount: number;
+	}) => void | Promise<void>;
+	onAction?: (message: string) => void | Promise<void>;
 }
 
 /**
@@ -44,9 +47,9 @@ interface MyProps extends Record<string, unknown> {
  * - Context info (uid, tag, getConsumerDomain, etc.)
  */
 declare global {
-  interface Window {
-    hostProps?: HostProps<MyProps>;
-  }
+	interface Window {
+		hostProps?: HostProps<MyProps>;
+	}
 }
 
 const app = document.getElementById("app")!;
@@ -55,41 +58,56 @@ const app = document.getElementById("app")!;
  * Render when embedded via ForgeFrame
  */
 function renderEmbedded() {
-  // window.hostProps is provided by ForgeFrame and contains:
-  // - All props passed from consumer (name, count, onGreet, etc.)
-  // - Built-in methods (close, resize, focus, show, hide, export, etc.)
-  // - Context info (uid, tag, getConsumerDomain, etc.)
-  const hostProps = window.hostProps!;
+	// window.hostProps is provided by ForgeFrame and contains:
+	// - All props passed from consumer (name, count, onGreet, etc.)
+	// - Built-in methods (close, resize, focus, show, hide, export, etc.)
+	// - Context info (uid, tag, getConsumerDomain, etc.)
+	const hostProps = window.hostProps!;
 
-  // Built-in hostProps keys to exclude from "Received Props"
-  const builtInKeys = new Set([
-    'uid', 'tag', 'close', 'focus', 'resize', 'show', 'hide',
-    'onProps', 'onError', 'getConsumer', 'getConsumerDomain', 'export',
-    'consumer', 'getPeerInstances', 'children'
-  ]);
+	// Built-in hostProps keys to exclude from "Received Props"
+	const builtInKeys = new Set([
+		"uid",
+		"tag",
+		"close",
+		"focus",
+		"resize",
+		"show",
+		"hide",
+		"onProps",
+		"onError",
+		"getConsumer",
+		"getConsumerDomain",
+		"export",
+		"consumer",
+		"getPeerInstances",
+		"children",
+	]);
 
-  const getUserProps = () => {
-    const userProps: Record<string, unknown> = {};
-    const propsRecord = hostProps as unknown as Record<string, unknown>;
-    for (const key of Object.keys(propsRecord)) {
-      if (!builtInKeys.has(key) && typeof propsRecord[key] !== 'function') {
-        userProps[key] = propsRecord[key];
-      }
-    }
-    return userProps;
-  };
+	const getUserProps = () => {
+		const userProps: Record<string, unknown> = {};
+		const propsRecord = hostProps as unknown as Record<string, unknown>;
+		for (const key of Object.keys(propsRecord)) {
+			if (!builtInKeys.has(key) && typeof propsRecord[key] !== "function") {
+				userProps[key] = propsRecord[key];
+			}
+		}
+		return userProps;
+	};
 
-  const renderPropsGrid = () => {
-    const userProps = getUserProps();
-    return Object.entries(userProps)
-      .map(([key, value]) => `
+	const renderPropsGrid = () => {
+		const userProps = getUserProps();
+		return Object.entries(userProps)
+			.map(
+				([key, value]) => `
         <dt>${key}</dt>
         <dd id="prop-${key}">${value}</dd>
-      `).join('');
-  };
+      `,
+			)
+			.join("");
+	};
 
-  const render = () => {
-    app.innerHTML = `
+	const render = () => {
+		app.innerHTML = `
       <div class="header">
         <h2><span>Host</span> Component</h2>
         <span class="badge">${hostProps.tag}</span>
@@ -181,273 +199,274 @@ function renderEmbedded() {
       <p class="status" id="status">Ready</p>
     `;
 
-    bindEventHandlers();
-  };
+		bindEventHandlers();
+	};
 
-  const setStatus = (msg: string) => {
-    const el = document.getElementById("status");
-    if (el) el.textContent = msg;
-  };
+	const setStatus = (msg: string) => {
+		const el = document.getElementById("status");
+		if (el) el.textContent = msg;
+	};
 
-  const bindEventHandlers = () => {
-    // Call consumer function prop
-    document.getElementById("btn-greet")?.addEventListener("click", () => {
-      // hostProps.name and hostProps.count are always current (updated by ForgeFrame)
-      const message = `Hello! Name: ${hostProps.name}, Count: ${hostProps.count}`;
-      hostProps.onGreet(message);
-      setStatus("Sent greeting to consumer");
-    });
+	const bindEventHandlers = () => {
+		// Call consumer function prop
+		document.getElementById("btn-greet")?.addEventListener("click", () => {
+			// hostProps.name and hostProps.count are always current (updated by ForgeFrame)
+			const message = `Hello! Name: ${hostProps.name}, Count: ${hostProps.count}`;
+			hostProps.onGreet(message);
+			setStatus("Sent greeting to consumer");
+		});
 
-    // Export data to consumer
-    document
-      .getElementById("btn-export")
-      ?.addEventListener("click", async () => {
-        await hostProps.export({
-          exportedAt: new Date().toISOString(),
-          data: { name: hostProps.name, count: hostProps.count },
-        });
-        setStatus("Exported data to consumer");
-      });
+		// Export data to consumer
+		document
+			.getElementById("btn-export")
+			?.addEventListener("click", async () => {
+				await hostProps.export({
+					exportedAt: new Date().toISOString(),
+					data: { name: hostProps.name, count: hostProps.count },
+				});
+				setStatus("Exported data to consumer");
+			});
 
-    // Report error to consumer
-    document.getElementById("btn-error")?.addEventListener("click", () => {
-      hostProps.onError(new Error("Test error from host"));
-      setStatus("Reported error to consumer");
-    });
+		// Report error to consumer
+		document.getElementById("btn-error")?.addEventListener("click", () => {
+			hostProps.onError(new Error("Test error from host"));
+			setStatus("Reported error to consumer");
+		});
 
-    // Request close (calls consumer's onClose callback)
-    document.getElementById("btn-close")?.addEventListener("click", () => {
-      hostProps.onClose();
-    });
+		// Request close (calls consumer's onClose callback)
+		document.getElementById("btn-close")?.addEventListener("click", () => {
+			hostProps.onClose();
+		});
 
-    // Resize the iframe
-    document
-      .getElementById("btn-resize-grow")
-      ?.addEventListener("click", async () => {
-        await hostProps.resize({ height: 500 });
-        setStatus("Resized to 500px");
-      });
+		// Resize the iframe
+		document
+			.getElementById("btn-resize-grow")
+			?.addEventListener("click", async () => {
+				await hostProps.resize({ height: 500 });
+				setStatus("Resized to 500px");
+			});
 
-    document
-      .getElementById("btn-resize-shrink")
-      ?.addEventListener("click", async () => {
-        await hostProps.resize({ height: 300 });
-        setStatus("Resized to 300px");
-      });
+		document
+			.getElementById("btn-resize-shrink")
+			?.addEventListener("click", async () => {
+				await hostProps.resize({ height: 300 });
+				setStatus("Resized to 300px");
+			});
 
-    // Focus the iframe
-    document
-      .getElementById("btn-focus")
-      ?.addEventListener("click", async () => {
-        await hostProps.focus();
-        setStatus("Focused");
-      });
+		// Focus the iframe
+		document
+			.getElementById("btn-focus")
+			?.addEventListener("click", async () => {
+				await hostProps.focus();
+				setStatus("Focused");
+			});
 
-    // Hide the iframe
-    document.getElementById("btn-hide")?.addEventListener("click", async () => {
-      await hostProps.hide();
-      setStatus("Hidden (use consumer Show button)");
-    });
-  };
+		// Hide the iframe
+		document.getElementById("btn-hide")?.addEventListener("click", async () => {
+			await hostProps.hide();
+			setStatus("Hidden (use consumer Show button)");
+		});
+	};
 
-  // Initial render
-  render();
+	// Initial render
+	render();
 
-  // Listen for prop updates from consumer
-  hostProps.onProps((newProps) => {
-    console.log("[Host] Props updated:", newProps);
-    // Update UI with new values - handle any prop dynamically
-    for (const [key, value] of Object.entries(newProps)) {
-      const el = document.getElementById(`prop-${key}`);
-      if (el) {
-        el.textContent = String(value);
-      }
-    }
-    setStatus("Props updated");
-    if (hostProps.scenario === 'props') {
-      void hostProps.onObservedProps?.(newProps as Record<string, unknown>);
-    }
-  });
+	// Listen for prop updates from consumer
+	hostProps.onProps((newProps) => {
+		console.log("[Host] Props updated:", newProps);
+		// Update UI with new values - handle any prop dynamically
+		for (const [key, value] of Object.entries(newProps)) {
+			const el = document.getElementById(`prop-${key}`);
+			if (el) {
+				el.textContent = String(value);
+			}
+		}
+		setStatus("Props updated");
+		if (hostProps.scenario === "props") {
+			void hostProps.onObservedProps?.(newProps as Record<string, unknown>);
+		}
+	});
 
-  const exportInitialData = async () => {
-    if (hostProps.scenario === 'configuration') {
-      await hostProps.export({ observed: getUserProps() });
-      return;
-    }
+	const exportInitialData = async () => {
+		if (hostProps.scenario === "configuration") {
+			await hostProps.export({ observed: getUserProps() });
+			return;
+		}
 
-    if (hostProps.scenario === 'instances') {
-      const peers = await hostProps.getPeerInstances();
-      await hostProps.export({
-        instanceLabel: hostProps.label,
-        peerUids: peers.map((peer) => peer.uid),
-        peerCount: peers.length,
-      });
-      return;
-    }
+		if (hostProps.scenario === "instances") {
+			const peers = await hostProps.getPeerInstances();
+			await hostProps.export({
+				instanceLabel: hostProps.label,
+				peerUids: peers.map((peer) => peer.uid),
+				peerCount: peers.length,
+			});
+			return;
+		}
 
-    if (hostProps.scenario === 'host-controls') {
-      await hostProps.export({
-        runControls: async () => {
-          await hostProps.resize({ width: 460, height: 350 });
-          await hostProps.focus();
-          await hostProps.hide();
-          await new Promise((resolve) => setTimeout(resolve, 120));
-          await hostProps.show();
-          return {
-            consumerDomain: hostProps.getConsumerDomain(),
-            parentMatched: hostProps.getConsumer() === window.parent,
-          };
-        },
-        requestClose: async () => {
-          setTimeout(() => void hostProps.close(), 60);
-          return true;
-        },
-      });
-      return;
-    }
+		if (hostProps.scenario === "host-controls") {
+			await hostProps.export({
+				runControls: async () => {
+					await hostProps.resize({ width: 460, height: 350 });
+					await hostProps.focus();
+					await hostProps.hide();
+					await new Promise((resolve) => setTimeout(resolve, 120));
+					await hostProps.show();
+					return {
+						consumerDomain: hostProps.getConsumerDomain(),
+						parentMatched: hostProps.getConsumer() === window.parent,
+					};
+				},
+				requestClose: async () => {
+					setTimeout(() => void hostProps.close(), 60);
+					return true;
+				},
+			});
+			return;
+		}
 
-    if (hostProps.scenario === 'transport') {
-      await hostProps.export({ observed: getUserProps() });
-      return;
-    }
+		if (hostProps.scenario === "transport") {
+			await hostProps.export({ observed: getUserProps() });
+			return;
+		}
 
-    if (hostProps.scenario === 'reliability') {
-      await hostProps.export({
-        ready: true,
-        readState: () => ({
-          label: hostProps.label ?? '',
-          uid: hostProps.uid,
-        }),
-      });
-      return;
-    }
+		if (hostProps.scenario === "reliability") {
+			await hostProps.export({
+				ready: true,
+				readState: () => ({
+					label: hostProps.label ?? "",
+					uid: hostProps.uid,
+				}),
+			});
+			return;
+		}
 
-    if (hostProps.scenario === 'common-actions') {
-      await hostProps.export({
-        ready: true,
-        getSnapshot: () => ({
-          label: hostProps.label ?? '',
-          count: hostProps.count ?? 0,
-        }),
-        addToCount: (amount: number) => (hostProps.count ?? 0) + amount,
-        notifyConsumer: async (message: string) => {
-          await hostProps.onAction?.(message);
-          return true;
-        },
-      });
-      return;
-    }
+		if (hostProps.scenario === "common-actions") {
+			await hostProps.export({
+				ready: true,
+				getSnapshot: () => ({
+					label: hostProps.label ?? "",
+					count: hostProps.count ?? 0,
+				}),
+				addToCount: (amount: number) => (hostProps.count ?? 0) + amount,
+				notifyConsumer: async (message: string) => {
+					await hostProps.onAction?.(message);
+					return true;
+				},
+			});
+			return;
+		}
 
-    if (hostProps.scenario === 'popup') {
-      await hostProps.export({
-        popupReady: true,
-        hasOpener: window.opener !== null,
-        consumerDomain: hostProps.getConsumerDomain(),
-      });
-      return;
-    }
+		if (hostProps.scenario === "popup") {
+			await hostProps.export({
+				popupReady: true,
+				hasOpener: window.opener !== null,
+				consumerDomain: hostProps.getConsumerDomain(),
+			});
+			return;
+		}
 
-    if (hostProps.scenario === 'checkout-e2e') {
-      await hostProps.export({
-        checkoutReady: true,
-        submitPayment: async (token: string) => {
-          const receipt = {
-            transactionId: 'txn-browser-e2e',
-            amount: hostProps.amount ?? 0,
-          };
-          await hostProps.onApproved?.(receipt);
-          return {
-            ...receipt,
-            status: hostProps.status,
-            tokenAccepted: token === 'tok_browser_success',
-            sessionId: hostProps.sessionId,
-          };
-        },
-      });
-      return;
-    }
+		if (hostProps.scenario === "checkout-e2e") {
+			await hostProps.export({
+				checkoutReady: true,
+				submitPayment: async (token: string) => {
+					const receipt = {
+						transactionId: "txn-browser-e2e",
+						amount: hostProps.amount ?? 0,
+					};
+					await hostProps.onApproved?.(receipt);
+					return {
+						...receipt,
+						status: hostProps.status,
+						tokenAccepted: token === "tok_browser_success",
+						sessionId: hostProps.sessionId,
+					};
+				},
+			});
+			return;
+		}
 
-    if (hostProps.scenario === 'bridge' && hostProps.onCalculate) {
-      const callbackResult = await hostProps.onCalculate(19, 23);
-      await hostProps.export({
-        ready: true,
-        callbackResult,
-        multiply: (left: number, right: number) => left * right,
-        exportedAt: new Date(),
-      });
-      return;
-    }
+		if (hostProps.scenario === "bridge" && hostProps.onCalculate) {
+			const callbackResult = await hostProps.onCalculate(19, 23);
+			await hostProps.export({
+				ready: true,
+				callbackResult,
+				multiply: (left: number, right: number) => left * right,
+				exportedAt: new Date(),
+			});
+			return;
+		}
 
-    if (hostProps.scenario === 'nested-parent') {
-      const ChildComponent = hostProps.children?.Child;
-      if (!ChildComponent) {
-        throw new Error('Nested child was not resolved from the host registry');
-      }
+		if (hostProps.scenario === "nested-parent") {
+			const ChildComponent = hostProps.children?.Child;
+			if (!ChildComponent) {
+				throw new Error("Nested child was not resolved from the host registry");
+			}
 
-      const nestedMount = document.createElement('div');
-      nestedMount.id = 'nested-child-container';
-      Object.assign(nestedMount.style, {
-        marginTop: '12px',
-        border: '1px solid #e8e8e8',
-        borderRadius: '8px',
-        overflow: 'hidden',
-      });
-      app.appendChild(nestedMount);
+			const nestedMount = document.createElement("div");
+			nestedMount.id = "nested-child-container";
+			Object.assign(nestedMount.style, {
+				marginTop: "12px",
+				border: "1px solid #e8e8e8",
+				borderRadius: "8px",
+				overflow: "hidden",
+			});
+			app.appendChild(nestedMount);
 
-      const childInstance = ChildComponent({ scenario: 'nested-child' });
-      await childInstance.render(nestedMount);
-      await waitFor(() => childInstance.exports !== undefined);
-      await hostProps.export({
-        nestedReady: true,
-        childTag: NESTED_CHILD_TAG,
-        childExportReady: Boolean(
-          (childInstance.exports as { nestedChildReady?: boolean } | undefined)
-            ?.nestedChildReady
-        ),
-      });
-      return;
-    }
+			const childInstance = ChildComponent({ scenario: "nested-child" });
+			await childInstance.render(nestedMount);
+			await waitFor(() => childInstance.exports !== undefined);
+			await hostProps.export({
+				nestedReady: true,
+				childTag: NESTED_CHILD_TAG,
+				childExportReady: Boolean(
+					(childInstance.exports as { nestedChildReady?: boolean } | undefined)
+						?.nestedChildReady,
+				),
+			});
+			return;
+		}
 
-    if (hostProps.scenario === 'nested-child') {
-      await hostProps.export({ nestedChildReady: true });
-      return;
-    }
+		if (hostProps.scenario === "nested-child") {
+			await hostProps.export({ nestedChildReady: true });
+			return;
+		}
 
-    if (hostProps.scenario === 'errors') {
-      await hostProps.export({
-        explode: () => {
-          throw new Error('Expected host function failure');
-        },
-      });
-      await hostProps.onError(new Error('Expected host-reported error'));
-      return;
-    }
+		if (hostProps.scenario === "errors") {
+			await hostProps.export({
+				explode: () => {
+					throw new Error("Expected host function failure");
+				},
+			});
+			await hostProps.onError(new Error("Expected host-reported error"));
+			return;
+		}
 
-    await hostProps.export({ ready: true, timestamp: Date.now() });
-  };
+		await hostProps.export({ ready: true, timestamp: Date.now() });
+	};
 
-  void exportInitialData().catch((error: unknown) => {
-    const hostError = error instanceof Error ? error : new Error(String(error));
-    console.error('[Host] Initial export failed:', hostError);
-    void hostProps.onError(hostError);
-  });
+	void exportInitialData().catch((error: unknown) => {
+		const hostError = error instanceof Error ? error : new Error(String(error));
+		console.error("[Host] Initial export failed:", hostError);
+		void hostProps.onError(hostError);
+	});
 }
 
 async function waitFor(read: () => boolean, timeoutMs = 4000): Promise<void> {
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
-    if (read()) return;
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-  throw new Error(`Timed out after ${timeoutMs}ms`);
+	const startedAt = Date.now();
+	while (Date.now() - startedAt < timeoutMs) {
+		if (read()) return;
+		await new Promise((resolve) => setTimeout(resolve, 20));
+	}
+	throw new Error(`Timed out after ${timeoutMs}ms`);
 }
 
 /**
  * Render when opened directly (not embedded)
  */
 function renderStandalone() {
-  const consumerUrl = import.meta.env.VITE_CONSUMER_URL || 'https://localhost:5173';
-  app.innerHTML = `
+	const consumerUrl =
+		import.meta.env.VITE_CONSUMER_URL || "https://localhost:5173";
+	app.innerHTML = `
     <div class="not-embedded">
       <h2>Host Component</h2>
       <p>This page is designed to be embedded via ForgeFrame.</p>
@@ -458,25 +477,26 @@ function renderStandalone() {
 }
 
 const requestedInitDelay = Number(
-  new URLSearchParams(window.location.search).get('initDelay') ?? 0
+	new URLSearchParams(window.location.search).get("initDelay") ?? 0,
 );
-const initDelay = Number.isFinite(requestedInitDelay) && requestedInitDelay > 0
-  ? Math.min(requestedInitDelay, 2000)
-  : 0;
+const initDelay =
+	Number.isFinite(requestedInitDelay) && requestedInitDelay > 0
+		? Math.min(requestedInitDelay, 2000)
+		: 0;
 
 const initializeHostPage = () => {
-  // Explicitly initialize the host runtime before reading window.hostProps.
-  initHost();
+	// Explicitly initialize the host runtime before reading window.hostProps.
+	initHost();
 
-  if (isHost()) {
-    renderEmbedded();
-  } else {
-    renderStandalone();
-  }
+	if (isHost()) {
+		renderEmbedded();
+	} else {
+		renderStandalone();
+	}
 };
 
 if (initDelay > 0) {
-  window.setTimeout(initializeHostPage, initDelay);
+	window.setTimeout(initializeHostPage, initDelay);
 } else {
-  initializeHostPage();
+	initializeHostPage();
 }

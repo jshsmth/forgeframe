@@ -35,10 +35,10 @@ export type DomainMatcher = DomainPattern | DomainPattern[];
  * @public
  */
 export interface Dimensions {
-  /** Width of the component (e.g., '100%', 400, '500px') */
-  width?: string | number;
-  /** Height of the component (e.g., '100%', 300, '400px') */
-  height?: string | number;
+	/** Width of the component (e.g., '100%', 400, '500px') */
+	width?: string | number;
+	/** Height of the component (e.g., '100%', 300, '400px') */
+	height?: string | number;
 }
 
 /**
@@ -50,20 +50,20 @@ export interface Dimensions {
  * @public
  */
 export interface IframeAttributes {
-  /** Title attribute for accessibility */
-  title?: string;
-  /** Permissions policy (e.g., 'camera; microphone') */
-  allow?: string;
-  /** Allow fullscreen mode */
-  allowFullscreen?: boolean;
-  /** Loading strategy */
-  loading?: 'lazy' | 'eager';
-  /** Referrer policy */
-  referrerPolicy?: ReferrerPolicy;
-  /** Sandbox restrictions */
-  sandbox?: string;
-  /** Additional custom attributes */
-  [key: string]: string | boolean | undefined;
+	/** Title attribute for accessibility */
+	title?: string;
+	/** Permissions policy (e.g., 'camera; microphone') */
+	allow?: string;
+	/** Allow fullscreen mode */
+	allowFullscreen?: boolean;
+	/** Loading strategy */
+	loading?: "lazy" | "eager";
+	/** Referrer policy */
+	referrerPolicy?: ReferrerPolicy;
+	/** Sandbox restrictions */
+	sandbox?: string;
+	/** Additional custom attributes */
+	[key: string]: string | boolean | undefined;
 }
 
 /**
@@ -85,8 +85,8 @@ export interface IframeAttributes {
  * @public
  */
 export interface IframeStyles {
-  /** CSS properties to apply to the iframe */
-  [key: string]: string | number | undefined;
+	/** CSS properties to apply to the iframe */
+	[key: string]: string | number | undefined;
 }
 
 /**
@@ -95,8 +95,8 @@ export interface IframeStyles {
  * @public
  */
 export interface EligibilityResult {
-  /** Whether the component is eligible to render */
-  eligible: boolean;
-  /** Reason for ineligibility (if not eligible) */
-  reason?: string;
+	/** Whether the component is eligible to render */
+	eligible: boolean;
+	/** Reason for ineligibility (if not eligible) */
+	reason?: string;
 }

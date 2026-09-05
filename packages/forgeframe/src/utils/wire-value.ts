@@ -3,16 +3,16 @@
  */
 
 interface DateWireValue {
-  __forgeframe_wire_type__: 'date';
-  __forgeframe_wire_value__: string | null;
+	__forgeframe_wire_type__: "date";
+	__forgeframe_wire_value__: string | null;
 }
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+	return typeof value === "object" && value !== null;
 }
 
 function hasOwnKey(value: Record<string, unknown>, key: string): boolean {
-  return Object.prototype.hasOwnProperty.call(value, key);
+	return Object.hasOwn(value, key);
 }
 
 /**
@@ -20,10 +20,10 @@ function hasOwnKey(value: Record<string, unknown>, key: string): boolean {
  * @internal
  */
 export function encodeDateWireValue(value: Date): DateWireValue {
-  return {
-    __forgeframe_wire_type__: 'date',
-    __forgeframe_wire_value__: value.toJSON(),
-  };
+	return {
+		__forgeframe_wire_type__: "date",
+		__forgeframe_wire_value__: value.toJSON(),
+	};
 }
 
 /**
@@ -31,22 +31,25 @@ export function encodeDateWireValue(value: Date): DateWireValue {
  * @internal
  */
 export function isDateWireValue(value: unknown): value is DateWireValue {
-  if (!isObjectRecord(value) || Object.getPrototypeOf(value) !== Object.prototype) {
-    return false;
-  }
+	if (
+		!isObjectRecord(value) ||
+		Object.getPrototypeOf(value) !== Object.prototype
+	) {
+		return false;
+	}
 
-  const ownKeys = Reflect.ownKeys(value);
-  if (ownKeys.length !== 2) {
-    return false;
-  }
+	const ownKeys = Reflect.ownKeys(value);
+	if (ownKeys.length !== 2) {
+		return false;
+	}
 
-  return (
-    hasOwnKey(value, '__forgeframe_wire_type__') &&
-    hasOwnKey(value, '__forgeframe_wire_value__') &&
-    value.__forgeframe_wire_type__ === 'date' &&
-    (typeof value.__forgeframe_wire_value__ === 'string' ||
-      value.__forgeframe_wire_value__ === null)
-  );
+	return (
+		hasOwnKey(value, "__forgeframe_wire_type__") &&
+		hasOwnKey(value, "__forgeframe_wire_value__") &&
+		value.__forgeframe_wire_type__ === "date" &&
+		(typeof value.__forgeframe_wire_value__ === "string" ||
+			value.__forgeframe_wire_value__ === null)
+	);
 }
 
 /**
@@ -54,9 +57,9 @@ export function isDateWireValue(value: unknown): value is DateWireValue {
  * @internal
  */
 export function decodeDateWireValue(value: DateWireValue): Date {
-  return value.__forgeframe_wire_value__ === null
-    ? new Date(Number.NaN)
-    : new Date(value.__forgeframe_wire_value__);
+	return value.__forgeframe_wire_value__ === null
+		? new Date(Number.NaN)
+		: new Date(value.__forgeframe_wire_value__);
 }
 
 /**
@@ -64,17 +67,14 @@ export function decodeDateWireValue(value: DateWireValue): Date {
  * @internal
  */
 export function stringifyWireValue(value: unknown): string {
-  return JSON.stringify(value, function wireValueReplacer(key, jsonValue) {
-    const holder = this as Record<string, unknown>;
-    const originalValue =
-      key === ''
-        ? value
-        : holder[key];
+	return JSON.stringify(value, function wireValueReplacer(key, jsonValue) {
+		const holder = this as Record<string, unknown>;
+		const originalValue = key === "" ? value : holder[key];
 
-    return originalValue instanceof Date
-      ? encodeDateWireValue(originalValue)
-      : jsonValue;
-  });
+		return originalValue instanceof Date
+			? encodeDateWireValue(originalValue)
+			: jsonValue;
+	});
 }
 
 /**
@@ -82,7 +82,7 @@ export function stringifyWireValue(value: unknown): string {
  * @internal
  */
 export function parseWireValue(json: string): unknown {
-  return JSON.parse(json, (_key, value) =>
-    isDateWireValue(value) ? decodeDateWireValue(value) : value
-  );
+	return JSON.parse(json, (_key, value) =>
+		isDateWireValue(value) ? decodeDateWireValue(value) : value,
+	);
 }

@@ -11,7 +11,7 @@ const wildcardPatternCache = new Map<string, RegExp>();
 const WILDCARD_CACHE_LIMIT = 200;
 
 function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
@@ -27,30 +27,30 @@ function escapeRegExp(value: string): string {
  * @internal
  */
 export function compileWildcardDomainPattern(pattern: string): RegExp | null {
-  if (!pattern.includes('*')) {
-    return null;
-  }
+	if (!pattern.includes("*")) {
+		return null;
+	}
 
-  const cachedPattern = wildcardPatternCache.get(pattern);
-  if (cachedPattern) {
-    return cachedPattern;
-  }
+	const cachedPattern = wildcardPatternCache.get(pattern);
+	if (cachedPattern) {
+		return cachedPattern;
+	}
 
-  const escaped = pattern
-    .split('*')
-    .map((segment) => escapeRegExp(segment))
-    .join('.*');
+	const escaped = pattern
+		.split("*")
+		.map((segment) => escapeRegExp(segment))
+		.join(".*");
 
-  const compiledPattern = new RegExp(`^${escaped}$`);
-  if (wildcardPatternCache.size >= WILDCARD_CACHE_LIMIT) {
-    const oldestKey = wildcardPatternCache.keys().next().value;
-    if (oldestKey) {
-      wildcardPatternCache.delete(oldestKey);
-    }
-  }
+	const compiledPattern = new RegExp(`^${escaped}$`);
+	if (wildcardPatternCache.size >= WILDCARD_CACHE_LIMIT) {
+		const oldestKey = wildcardPatternCache.keys().next().value;
+		if (oldestKey) {
+			wildcardPatternCache.delete(oldestKey);
+		}
+	}
 
-  wildcardPatternCache.set(pattern, compiledPattern);
-  return compiledPattern;
+	wildcardPatternCache.set(pattern, compiledPattern);
+	return compiledPattern;
 }
 
 /**
@@ -66,11 +66,17 @@ export function compileWildcardDomainPattern(pattern: string): RegExp | null {
  *
  * @internal
  */
-export function testDomainRegExpStateless(pattern: RegExp, value: string): boolean {
-  if (pattern.global || pattern.sticky) {
-    const stateless = new RegExp(pattern.source, pattern.flags.replace(/[gy]/g, ''));
-    return stateless.test(value);
-  }
+export function testDomainRegExpStateless(
+	pattern: RegExp,
+	value: string,
+): boolean {
+	if (pattern.global || pattern.sticky) {
+		const stateless = new RegExp(
+			pattern.source,
+			pattern.flags.replace(/[gy]/g, ""),
+		);
+		return stateless.test(value);
+	}
 
-  return pattern.test(value);
+	return pattern.test(value);
 }

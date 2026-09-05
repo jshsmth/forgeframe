@@ -7,14 +7,14 @@
  * communication. Messages are prefixed to identify ForgeFrame traffic.
  */
 
-import type { Message } from './types';
-import { MESSAGE_TYPE } from '../constants';
+import { MESSAGE_TYPE } from "../constants";
+import type { Message } from "./types";
 
 /**
  * Protocol prefix to identify ForgeFrame messages.
  * @public
  */
-export const PROTOCOL_PREFIX = 'forgeframe:';
+export const PROTOCOL_PREFIX = "forgeframe:";
 
 /**
  * Serializes a message for postMessage transmission.
@@ -25,7 +25,7 @@ export const PROTOCOL_PREFIX = 'forgeframe:';
  * @public
  */
 export function serializeMessage(message: Message): string {
-  return PROTOCOL_PREFIX + JSON.stringify(message);
+	return PROTOCOL_PREFIX + JSON.stringify(message);
 }
 
 /**
@@ -37,21 +37,21 @@ export function serializeMessage(message: Message): string {
  * @public
  */
 export function deserializeMessage(data: unknown): Message | null {
-  if (typeof data !== 'string') return null;
-  if (!data.startsWith(PROTOCOL_PREFIX)) return null;
+	if (typeof data !== "string") return null;
+	if (!data.startsWith(PROTOCOL_PREFIX)) return null;
 
-  try {
-    const json = data.slice(PROTOCOL_PREFIX.length);
-    const message = JSON.parse(json) as Message;
+	try {
+		const json = data.slice(PROTOCOL_PREFIX.length);
+		const message = JSON.parse(json) as Message;
 
-    if (!message.id || !message.type || !message.name || !message.source) {
-      return null;
-    }
+		if (!message.id || !message.type || !message.name || !message.source) {
+			return null;
+		}
 
-    return message;
-  } catch {
-    return null;
-  }
+		return message;
+	} catch {
+		return null;
+	}
 }
 
 /**
@@ -66,18 +66,18 @@ export function deserializeMessage(data: unknown): Message | null {
  * @public
  */
 export function createRequestMessage(
-  id: string,
-  name: string,
-  data: unknown,
-  source: { uid: string; domain: string }
+	id: string,
+	name: string,
+	data: unknown,
+	source: { uid: string; domain: string },
 ): Message {
-  return {
-    id,
-    type: MESSAGE_TYPE.REQUEST,
-    name,
-    data,
-    source,
-  };
+	return {
+		id,
+		type: MESSAGE_TYPE.REQUEST,
+		name,
+		data,
+		source,
+	};
 }
 
 /**
@@ -92,21 +92,21 @@ export function createRequestMessage(
  * @public
  */
 export function createResponseMessage(
-  requestId: string,
-  data: unknown,
-  source: { uid: string; domain: string },
-  error?: Error
+	requestId: string,
+	data: unknown,
+	source: { uid: string; domain: string },
+	error?: Error,
 ): Message {
-  return {
-    id: requestId,
-    type: MESSAGE_TYPE.RESPONSE,
-    name: 'response',
-    data,
-    source,
-    error: error
-      ? {
-          message: error.message,
-        }
-      : undefined,
-  };
+	return {
+		id: requestId,
+		type: MESSAGE_TYPE.RESPONSE,
+		name: "response",
+		data,
+		source,
+		error: error
+			? {
+					message: error.message,
+				}
+			: undefined,
+	};
 }

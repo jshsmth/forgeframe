@@ -18,9 +18,9 @@ This file defines working conventions for autonomous coding agents in this repos
 ## Tooling and Standards
 
 - Package manager: `npm` with workspaces.
-- Language: TypeScript (`strict: true`).
+- Language: TypeScript 7 (`strict: true`).
 - Build: Vite + TypeScript declaration emit.
-- Lint: ESLint + `typescript-eslint`.
+- Lint and formatting: Biome (recommended rules and default formatting).
 - Test: Vitest (`jsdom` environment).
 
 ## Common Commands (Run from repo root)
@@ -31,7 +31,11 @@ This file defines working conventions for autonomous coding agents in this repos
 - Build library: `npm run build`
 - Build playground: `npm run build:playground`
 - Typecheck library: `npm run typecheck`
-- Lint all packages: `npm run lint`
+- Check lint, formatting, and imports: `npm run lint`
+- Apply formatting and safe fixes: `npm run lint:fix`
+- Format files: `npm run format`
+- Check formatting: `npm run format:check`
+- Run non-writing CI checks: `npm run check:ci`
 - Run tests: `npm run test:run`
 
 ## Change Workflow

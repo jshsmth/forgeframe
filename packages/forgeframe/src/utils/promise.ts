@@ -10,12 +10,12 @@
  * @public
  */
 export interface Deferred<T> {
-  /** The underlying promise that can be awaited */
-  promise: Promise<T>;
-  /** Function to resolve the promise with a value */
-  resolve: (value: T) => void;
-  /** Function to reject the promise with an error */
-  reject: (error: Error) => void;
+	/** The underlying promise that can be awaited */
+	promise: Promise<T>;
+	/** Function to resolve the promise with a value */
+	resolve: (value: T) => void;
+	/** Function to reject the promise with an error */
+	reject: (error: Error) => void;
 }
 
 /**
@@ -42,15 +42,15 @@ export interface Deferred<T> {
  * @public
  */
 export function createDeferred<T>(): Deferred<T> {
-  let resolve!: (value: T) => void;
-  let reject!: (error: Error) => void;
+	let resolve!: (value: T) => void;
+	let reject!: (error: Error) => void;
 
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
+	const promise = new Promise<T>((res, rej) => {
+		resolve = res;
+		reject = rej;
+	});
 
-  return { promise, resolve, reject };
+	return { promise, resolve, reject };
 }
 
 /**
@@ -85,23 +85,23 @@ export function createDeferred<T>(): Deferred<T> {
  * @public
  */
 export function promiseTimeout<T>(
-  promise: Promise<T>,
-  ms: number,
-  message = 'Operation timed out'
+	promise: Promise<T>,
+	ms: number,
+	message = "Operation timed out",
 ): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timeoutId = setTimeout(() => {
-      reject(new Error(`${message} (${ms}ms)`));
-    }, ms);
+	return new Promise((resolve, reject) => {
+		const timeoutId = setTimeout(() => {
+			reject(new Error(`${message} (${ms}ms)`));
+		}, ms);
 
-    promise
-      .then((value) => {
-        clearTimeout(timeoutId);
-        resolve(value);
-      })
-      .catch((error) => {
-        clearTimeout(timeoutId);
-        reject(error);
-      });
-  });
+		promise
+			.then((value) => {
+				clearTimeout(timeoutId);
+				resolve(value);
+			})
+			.catch((error) => {
+				clearTimeout(timeoutId);
+				reject(error);
+			});
+	});
 }

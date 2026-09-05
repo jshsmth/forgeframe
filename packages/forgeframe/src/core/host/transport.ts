@@ -8,204 +8,210 @@
  * registration for the host runtime.
  */
 
-import { FunctionBridge, serializeFunctions } from '../../communication/bridge';
-import { Messenger } from '../../communication/messenger';
-import { EVENT, MESSAGE_NAME } from '../../constants';
-import { getDomain } from '../../window/helpers';
-import type { SerializedProps } from '../../props/types';
-import type {
-  GetPeerInstancesOptions,
-  SiblingInfo,
-} from '../../types/runtime';
-import type {
-  HostTransportOptions,
-  HostTransportPropsHandler,
-} from './types';
+import { FunctionBridge, serializeFunctions } from "../../communication/bridge";
+import { Messenger } from "../../communication/messenger";
+import { EVENT, MESSAGE_NAME } from "../../constants";
+import type { SerializedProps } from "../../props/types";
+import type { GetPeerInstancesOptions, SiblingInfo } from "../../types/runtime";
+import { getDomain } from "../../window/helpers";
+import type { HostTransportOptions, HostTransportPropsHandler } from "./types";
 
 export class HostTransport {
-  public messenger: Messenger;
+	public messenger: Messenger;
 
-  public bridge: FunctionBridge;
+	public bridge: FunctionBridge;
 
-  private destroyed = false;
+	private destroyed = false;
 
-  private initSent = false;
+	private initSent = false;
 
-  private initError: Error | null = null;
+	private initError: Error | null = null;
 
-  private deferredInitFlushScheduled = false;
+	private deferredInitFlushScheduled = false;
 
-  private exportQueue: Promise<void> = Promise.resolve();
+	private exportQueue: Promise<void> = Promise.resolve();
 
-  constructor(private options: HostTransportOptions) {
-    this.messenger = new Messenger(
-      this.options.uid,
-      window,
-      getDomain(),
-      this.options.consumerDomain
-    );
-    this.bridge = new FunctionBridge(
-      this.messenger,
-      (source) => source.window === this.options.consumerWindow
-    );
-  }
+	constructor(private options: HostTransportOptions) {
+		this.messenger = new Messenger(
+			this.options.uid,
+			window,
+			getDomain(),
+			this.options.consumerDomain,
+		);
+		this.bridge = new FunctionBridge(
+			this.messenger,
+			(source) => source.window === this.options.consumerWindow,
+		);
+	}
 
-  registerPropsHandler(handler: HostTransportPropsHandler): void {
-    this.messenger.on<SerializedProps>(MESSAGE_NAME.PROPS, (serializedProps, source) => {
-      if (!handler.isConsumerSource(source)) {
-        return { success: false };
-      }
+	registerPropsHandler(handler: HostTransportPropsHandler): void {
+		this.messenger.on<SerializedProps>(
+			MESSAGE_NAME.PROPS,
+			(serializedProps, source) => {
+				if (!handler.isConsumerSource(source)) {
+					return { success: false };
+				}
 
-      return handler.applySerializedProps(serializedProps);
-    });
-  }
+				return handler.applySerializedProps(serializedProps);
+			},
+		);
+	}
 
-  handleHostPropsAccess(): void {
-    if (this.options.deferInit && !this.initSent && !this.destroyed) {
-      this.scheduleDeferredInitFlush();
-    }
-  }
+	handleHostPropsAccess(): void {
+		if (this.options.deferInit && !this.initSent && !this.destroyed) {
+			this.scheduleDeferredInitFlush();
+		}
+	}
 
-  flushInit(): void {
-    if (this.destroyed || this.initSent) {
-      return;
-    }
+	flushInit(): void {
+		if (this.destroyed || this.initSent) {
+			return;
+		}
 
-    this.initSent = true;
-    void this.sendInit();
-  }
+		this.initSent = true;
+		void this.sendInit();
+	}
 
-  getInitError(): Error | null {
-    return this.initError;
-  }
+	getInitError(): Error | null {
+		return this.initError;
+	}
 
-  updateTrustedConsumerDomain(previousDomain: string, nextDomain: string): void {
-    if (!previousDomain || previousDomain === nextDomain) {
-      return;
-    }
+	updateTrustedConsumerDomain(
+		previousDomain: string,
+		nextDomain: string,
+	): void {
+		if (!previousDomain || previousDomain === nextDomain) {
+			return;
+		}
 
-    this.messenger.removeTrustedDomain(previousDomain);
-    this.messenger.addTrustedDomain(nextDomain);
-  }
+		this.messenger.removeTrustedDomain(previousDomain);
+		this.messenger.addTrustedDomain(nextDomain);
+	}
 
-  async close(): Promise<void> {
-    await this.sendMessage(MESSAGE_NAME.CLOSE, {});
-  }
+	async close(): Promise<void> {
+		await this.sendMessage(MESSAGE_NAME.CLOSE, {});
+	}
 
-  async focus(): Promise<void> {
-    window.focus();
-    await this.sendMessage(MESSAGE_NAME.FOCUS, {});
-  }
+	async focus(): Promise<void> {
+		window.focus();
+		await this.sendMessage(MESSAGE_NAME.FOCUS, {});
+	}
 
-  async resize(dimensions: { width?: string | number; height?: string | number }): Promise<void> {
-    await this.sendMessage(MESSAGE_NAME.RESIZE, dimensions);
-  }
+	async resize(dimensions: {
+		width?: string | number;
+		height?: string | number;
+	}): Promise<void> {
+		await this.sendMessage(MESSAGE_NAME.RESIZE, dimensions);
+	}
 
-  async show(): Promise<void> {
-    await this.sendMessage(MESSAGE_NAME.SHOW, {});
-  }
+	async show(): Promise<void> {
+		await this.sendMessage(MESSAGE_NAME.SHOW, {});
+	}
 
-  async hide(): Promise<void> {
-    await this.sendMessage(MESSAGE_NAME.HIDE, {});
-  }
+	async hide(): Promise<void> {
+		await this.sendMessage(MESSAGE_NAME.HIDE, {});
+	}
 
-  async onError(error: Error): Promise<void> {
-    await this.sendMessage(MESSAGE_NAME.ERROR, {
-      message: error.message,
-    });
-  }
+	async onError(error: Error): Promise<void> {
+		await this.sendMessage(MESSAGE_NAME.ERROR, {
+			message: error.message,
+		});
+	}
 
-  exportData<T>(exports: T): Promise<void> {
-    const operation = this.exportQueue.then(() => this.sendExportBatch(exports));
-    this.exportQueue = operation.catch(() => undefined);
-    return operation;
-  }
+	exportData<T>(exports: T): Promise<void> {
+		const operation = this.exportQueue.then(() =>
+			this.sendExportBatch(exports),
+		);
+		this.exportQueue = operation.catch(() => undefined);
+		return operation;
+	}
 
-  private async sendExportBatch<T>(exports: T): Promise<void> {
-    this.bridge.startBatch();
-    try {
-      const serialized = serializeFunctions(exports, this.bridge);
-      await this.sendMessage(MESSAGE_NAME.EXPORT, serialized);
-      this.bridge.finishBatch();
-    } catch (error) {
-      this.bridge.finishBatch(true);
-      throw error;
-    }
-  }
+	private async sendExportBatch<T>(exports: T): Promise<void> {
+		this.bridge.startBatch();
+		try {
+			const serialized = serializeFunctions(exports, this.bridge);
+			await this.sendMessage(MESSAGE_NAME.EXPORT, serialized);
+			this.bridge.finishBatch();
+		} catch (error) {
+			this.bridge.finishBatch(true);
+			throw error;
+		}
+	}
 
-  async consumerExport<T>(data: T): Promise<void> {
-    await this.sendMessage(MESSAGE_NAME.CONSUMER_EXPORT, data);
-  }
+	async consumerExport<T>(data: T): Promise<void> {
+		await this.sendMessage(MESSAGE_NAME.CONSUMER_EXPORT, data);
+	}
 
-  async getPeerInstances(
-    options?: GetPeerInstancesOptions
-  ): Promise<SiblingInfo[]> {
-    const response = await this.messenger.send<
-      { uid: string; tag: string; options?: GetPeerInstancesOptions },
-      SiblingInfo[]
-    >(
-      this.options.consumerWindow,
-      this.options.getConsumerDomain(),
-      MESSAGE_NAME.GET_SIBLINGS,
-      {
-        uid: this.options.uid,
-        tag: this.options.tag,
-        options,
-      }
-    );
+	async getPeerInstances(
+		options?: GetPeerInstancesOptions,
+	): Promise<SiblingInfo[]> {
+		const response = await this.messenger.send<
+			{ uid: string; tag: string; options?: GetPeerInstancesOptions },
+			SiblingInfo[]
+		>(
+			this.options.consumerWindow,
+			this.options.getConsumerDomain(),
+			MESSAGE_NAME.GET_SIBLINGS,
+			{
+				uid: this.options.uid,
+				tag: this.options.tag,
+				options,
+			},
+		);
 
-    return response ?? [];
-  }
+		return response ?? [];
+	}
 
-  destroy(): void {
-    if (this.destroyed) {
-      return;
-    }
+	destroy(): void {
+		if (this.destroyed) {
+			return;
+		}
 
-    this.destroyed = true;
-    this.deferredInitFlushScheduled = false;
-    this.messenger.destroy();
-    this.bridge.destroy();
-  }
+		this.destroyed = true;
+		this.deferredInitFlushScheduled = false;
+		this.messenger.destroy();
+		this.bridge.destroy();
+	}
 
-  private scheduleDeferredInitFlush(): void {
-    if (this.deferredInitFlushScheduled || this.destroyed || this.initSent) {
-      return;
-    }
+	private scheduleDeferredInitFlush(): void {
+		if (this.deferredInitFlushScheduled || this.destroyed || this.initSent) {
+			return;
+		}
 
-    this.deferredInitFlushScheduled = true;
-    queueMicrotask(() => {
-      this.deferredInitFlushScheduled = false;
-      this.flushInit();
-    });
-  }
+		this.deferredInitFlushScheduled = true;
+		queueMicrotask(() => {
+			this.deferredInitFlushScheduled = false;
+			this.flushInit();
+		});
+	}
 
-  private async sendInit(): Promise<void> {
-    try {
-      await this.sendMessage(MESSAGE_NAME.INIT, {
-        uid: this.options.uid,
-        tag: this.options.tag,
-      });
-    } catch (error) {
-      const initError = error instanceof Error ? error : new Error(String(error));
-      this.initError = initError;
+	private async sendInit(): Promise<void> {
+		try {
+			await this.sendMessage(MESSAGE_NAME.INIT, {
+				uid: this.options.uid,
+				tag: this.options.tag,
+			});
+		} catch (error) {
+			const initError =
+				error instanceof Error ? error : new Error(String(error));
+			this.initError = initError;
 
-      this.options.event.emit(EVENT.ERROR, {
-        type: 'init_failed',
-        message: `Failed to initialize host component: ${initError.message}`,
-        error: initError,
-      });
+			this.options.event.emit(EVENT.ERROR, {
+				type: "init_failed",
+				message: `Failed to initialize host component: ${initError.message}`,
+				error: initError,
+			});
 
-      console.error('Failed to send init message:', error);
-    }
-  }
+			console.error("Failed to send init message:", error);
+		}
+	}
 
-  private async sendMessage<T>(name: string, data: T): Promise<void> {
-    await this.messenger.send(
-      this.options.consumerWindow,
-      this.options.getConsumerDomain(),
-      name,
-      data
-    );
-  }
+	private async sendMessage<T>(name: string, data: T): Promise<void> {
+		await this.messenger.send(
+			this.options.consumerWindow,
+			this.options.getConsumerDomain(),
+			name,
+			data,
+		);
+	}
 }

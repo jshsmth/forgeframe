@@ -1,529 +1,567 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ForgeFrame Playground</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css" />
-    <style>
-      * {
-        box-sizing: border-box;
-      }
-      body {
-        font-family: system-ui, -apple-system, sans-serif;
-        margin: 0;
-        padding: 0;
-        background: #f5f5f5;
-        color: #333;
-        height: 100vh;
-        display: flex;
-        flex-direction: column;
-      }
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>ForgeFrame Playground</title>
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css"
+		>
+		<style>
+		* {
+			box-sizing: border-box;
+		}
+		body {
+			font-family: system-ui, -apple-system, sans-serif;
+			margin: 0;
+			padding: 0;
+			background: #f5f5f5;
+			color: #333;
+			height: 100vh;
+			display: flex;
+			flex-direction: column;
+		}
 
-      /* Header */
-      .header {
-        background: #fff;
-        padding: 0.875rem 1.25rem;
-        border-bottom: 1px solid #e0e0e0;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        flex-shrink: 0;
-      }
-      .header h1 {
-        margin: 0;
-        font-size: 1.35rem;
-        font-weight: 600;
-        color: #333;
-      }
-      .header h1 span {
-        color: #e94560;
-      }
-      .header-controls {
-        display: flex;
-        gap: 1.25rem;
-        align-items: center;
-      }
-      .header-info {
-        font-size: 0.8rem;
-        color: #888;
-      }
-      .test-route-link {
-        color: #e94560;
-        font-size: 0.75rem;
-        font-weight: 600;
-        text-decoration: none;
-      }
-      .test-route-link:hover {
-        text-decoration: underline;
-      }
+		/* Header */
+		.header {
+			background: #fff;
+			padding: 0.875rem 1.25rem;
+			border-bottom: 1px solid #e0e0e0;
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			flex-shrink: 0;
+		}
+		.header h1 {
+			margin: 0;
+			font-size: 1.35rem;
+			font-weight: 600;
+			color: #333;
+		}
+		.header h1 span {
+			color: #e94560;
+		}
+		.header-controls {
+			display: flex;
+			gap: 1.25rem;
+			align-items: center;
+		}
+		.header-info {
+			font-size: 0.8rem;
+			color: #888;
+		}
+		.test-route-link {
+			color: #e94560;
+			font-size: 0.75rem;
+			font-weight: 600;
+			text-decoration: none;
+		}
+		.test-route-link:hover {
+			text-decoration: underline;
+		}
 
-      /* Mode Toggle */
-      .mode-group {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-      }
-      .mode-group.disabled {
-        opacity: 0.4;
-        pointer-events: none;
-      }
-      .mode-label {
-        font-size: 0.7rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: #555;
-        font-weight: 500;
-      }
-      .mode-toggle {
-        display: flex;
-      }
-      .mode-btn {
-        padding: 0.4rem 0.7rem;
-        border: 1px solid #ddd;
-        background: #fff;
-        color: #555;
-        cursor: pointer;
-        font-size: 0.75rem;
-        font-weight: 500;
-        transition: all 0.15s;
-      }
-      .mode-btn:first-child {
-        border-radius: 4px 0 0 4px;
-      }
-      .mode-btn:last-child {
-        border-radius: 0 4px 4px 0;
-      }
-      .mode-btn:not(:last-child) {
-        border-right: none;
-      }
-      .mode-btn:hover {
-        background: #f5f5f5;
-      }
-      .mode-btn.active {
-        background: #e94560;
-        border-color: #e94560;
-        color: #fff;
-      }
+		/* Mode Toggle */
+		.mode-group {
+			display: flex;
+			align-items: center;
+			gap: 0.5rem;
+		}
+		.mode-group.disabled {
+			opacity: 0.4;
+			pointer-events: none;
+		}
+		.mode-label {
+			font-size: 0.7rem;
+			text-transform: uppercase;
+			letter-spacing: 0.05em;
+			color: #555;
+			font-weight: 500;
+		}
+		.mode-toggle {
+			display: flex;
+		}
+		.mode-btn {
+			padding: 0.4rem 0.7rem;
+			border: 1px solid #ddd;
+			background: #fff;
+			color: #555;
+			cursor: pointer;
+			font-size: 0.75rem;
+			font-weight: 500;
+			transition: all 0.15s;
+		}
+		.mode-btn:first-child {
+			border-radius: 4px 0 0 4px;
+		}
+		.mode-btn:last-child {
+			border-radius: 0 4px 4px 0;
+		}
+		.mode-btn:not(:last-child) {
+			border-right: none;
+		}
+		.mode-btn:hover {
+			background: #f5f5f5;
+		}
+		.mode-btn.active {
+			background: #e94560;
+			border-color: #e94560;
+			color: #fff;
+		}
 
-      /* Main Grid: Code on left, Preview and Events on right */
-      .main {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        grid-template-rows: 1fr 1fr;
-        gap: 1px;
-        background: #e0e0e0;
-        flex: 1;
-        min-height: 0;
-      }
-      .main > .panel:first-child {
-        grid-row: 1 / -1;
-      }
+		/* Main Grid: Code on left, Preview and Events on right */
+		.main {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			grid-template-rows: 1fr 1fr;
+			gap: 1px;
+			background: #e0e0e0;
+			flex: 1;
+			min-height: 0;
+		}
+		.main > .panel:first-child {
+			grid-row: 1 / -1;
+		}
 
-      /* Panel Base */
-      .panel {
-        background: #fff;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-      }
-      .panel-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0.5rem 0.75rem;
-        background: #fafafa;
-        border-bottom: 1px solid #eee;
-        flex-shrink: 0;
-      }
-      .panel-header h3 {
-        margin: 0;
-        font-size: 0.7rem;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        color: #888;
-        font-weight: 600;
-      }
-      .panel-content {
-        flex: 1;
-        overflow: auto;
-        min-height: 0;
-      }
+		/* Panel Base */
+		.panel {
+			background: #fff;
+			display: flex;
+			flex-direction: column;
+			overflow: hidden;
+		}
+		.panel-header {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			padding: 0.5rem 0.75rem;
+			background: #fafafa;
+			border-bottom: 1px solid #eee;
+			flex-shrink: 0;
+		}
+		.panel-header h3 {
+			margin: 0;
+			font-size: 0.7rem;
+			text-transform: uppercase;
+			letter-spacing: 0.08em;
+			color: #888;
+			font-weight: 600;
+		}
+		.panel-content {
+			flex: 1;
+			overflow: auto;
+			min-height: 0;
+		}
 
-      /* Code Preview Panel */
-      .code-preview pre {
-        margin: 0;
-        padding: 0.75rem;
-        font-size: 0.75rem;
-        line-height: 1.5;
-        background: #fff;
-      }
-      .code-preview code {
-        font-family: 'SF Mono', 'Consolas', monospace;
-      }
+		/* Code Preview Panel */
+		.code-preview pre {
+			margin: 0;
+			padding: 0.75rem;
+			font-size: 0.75rem;
+			line-height: 1.5;
+			background: #fff;
+		}
+		.code-preview code {
+			font-family: "SF Mono", "Consolas", monospace;
+		}
 
-      /* Component Panel */
-      .component-controls {
-        display: flex;
-        gap: 0.4rem;
-        align-items: center;
-        padding: 0.5rem 0.75rem;
-        background: #fafafa;
-        border-bottom: 1px solid #eee;
-      }
-      .component-controls button {
-        padding: 0.35rem 0.6rem;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 0.7rem;
-        font-weight: 500;
-        transition: all 0.15s;
-      }
-      .btn-render {
-        background: #28a745;
-        border-color: #28a745;
-        color: #fff;
-      }
-      .btn-render:hover {
-        background: #218838;
-      }
-      .btn-render:disabled {
-        background: #ccc;
-        border-color: #ccc;
-        cursor: not-allowed;
-      }
-      .btn-close {
-        background: #dc3545;
-        border-color: #dc3545;
-        color: #fff;
-      }
-      .btn-close:hover {
-        background: #c82333;
-      }
-      .btn-close:disabled {
-        background: #ccc;
-        border-color: #ccc;
-        cursor: not-allowed;
-      }
-      .btn-secondary {
-        background: #fff;
-        color: #666;
-      }
-      .btn-secondary:hover {
-        background: #f5f5f5;
-      }
-      .btn-secondary:disabled {
-        background: #f5f5f5;
-        color: #bbb;
-        cursor: not-allowed;
-      }
-      .controls-spacer {
-        flex: 1;
-      }
-      .status-indicator {
-        font-size: 0.7rem;
-        color: #888;
-        display: flex;
-        align-items: center;
-        gap: 0.4rem;
-      }
-      .status-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: #ccc;
-      }
-      .status-dot.rendered {
-        background: #28a745;
-      }
-      .status-dot.error {
-        background: #dc3545;
-      }
+		/* Component Panel */
+		.component-controls {
+			display: flex;
+			gap: 0.4rem;
+			align-items: center;
+			padding: 0.5rem 0.75rem;
+			background: #fafafa;
+			border-bottom: 1px solid #eee;
+		}
+		.component-controls button {
+			padding: 0.35rem 0.6rem;
+			border: 1px solid #ddd;
+			border-radius: 4px;
+			cursor: pointer;
+			font-size: 0.7rem;
+			font-weight: 500;
+			transition: all 0.15s;
+		}
+		.btn-render {
+			background: #28a745;
+			border-color: #28a745;
+			color: #fff;
+		}
+		.btn-render:hover {
+			background: #218838;
+		}
+		.btn-render:disabled {
+			background: #ccc;
+			border-color: #ccc;
+			cursor: not-allowed;
+		}
+		.btn-close {
+			background: #dc3545;
+			border-color: #dc3545;
+			color: #fff;
+		}
+		.btn-close:hover {
+			background: #c82333;
+		}
+		.btn-close:disabled {
+			background: #ccc;
+			border-color: #ccc;
+			cursor: not-allowed;
+		}
+		.btn-secondary {
+			background: #fff;
+			color: #666;
+		}
+		.btn-secondary:hover {
+			background: #f5f5f5;
+		}
+		.btn-secondary:disabled {
+			background: #f5f5f5;
+			color: #bbb;
+			cursor: not-allowed;
+		}
+		.controls-spacer {
+			flex: 1;
+		}
+		.status-indicator {
+			font-size: 0.7rem;
+			color: #888;
+			display: flex;
+			align-items: center;
+			gap: 0.4rem;
+		}
+		.status-dot {
+			width: 6px;
+			height: 6px;
+			border-radius: 50%;
+			background: #ccc;
+		}
+		.status-dot.rendered {
+			background: #28a745;
+		}
+		.status-dot.error {
+			background: #dc3545;
+		}
 
-      /* Props Bar */
-      .props-bar {
-        display: flex;
-        gap: 0.75rem;
-        padding: 0.5rem 0.75rem;
-        background: #fafafa;
-        border-bottom: 1px solid #eee;
-      }
-      .prop-item {
-        display: flex;
-        align-items: center;
-        gap: 0.4rem;
-      }
-      .prop-item label {
-        font-size: 0.65rem;
-        color: #888;
-        text-transform: uppercase;
-      }
-      .prop-item input {
-        background: #fff;
-        border: 1px solid #ddd;
-        border-radius: 3px;
-        color: #333;
-        padding: 0.25rem 0.4rem;
-        font-size: 0.75rem;
-        font-family: inherit;
-        width: 80px;
-      }
-      .prop-item input:focus {
-        outline: none;
-        border-color: #e94560;
-      }
-      .prop-item button {
-        padding: 0.25rem 0.5rem;
-        background: #fff;
-        border: 1px solid #ddd;
-        border-radius: 3px;
-        color: #666;
-        cursor: pointer;
-        font-size: 0.65rem;
-      }
-      .prop-item button:hover {
-        background: #f5f5f5;
-      }
-      .btn-remove-prop {
-        color: #999;
-        padding: 0.15rem 0.35rem !important;
-        font-size: 0.8rem !important;
-        line-height: 1;
-      }
-      .btn-remove-prop:hover {
-        color: #dc3545;
-        background: #fff5f5 !important;
-        border-color: #dc3545 !important;
-      }
+		/* Props Bar */
+		.props-bar {
+			display: flex;
+			gap: 0.75rem;
+			padding: 0.5rem 0.75rem;
+			background: #fafafa;
+			border-bottom: 1px solid #eee;
+		}
+		.prop-item {
+			display: flex;
+			align-items: center;
+			gap: 0.4rem;
+		}
+		.prop-item label {
+			font-size: 0.65rem;
+			color: #888;
+			text-transform: uppercase;
+		}
+		.prop-item input {
+			background: #fff;
+			border: 1px solid #ddd;
+			border-radius: 3px;
+			color: #333;
+			padding: 0.25rem 0.4rem;
+			font-size: 0.75rem;
+			font-family: inherit;
+			width: 80px;
+		}
+		.prop-item input:focus {
+			outline: none;
+			border-color: #e94560;
+		}
+		.prop-item button {
+			padding: 0.25rem 0.5rem;
+			background: #fff;
+			border: 1px solid #ddd;
+			border-radius: 3px;
+			color: #666;
+			cursor: pointer;
+			font-size: 0.65rem;
+		}
+		.prop-item button:hover {
+			background: #f5f5f5;
+		}
+		.btn-remove-prop {
+			color: #999;
+			/* biome-ignore lint/complexity/noImportantStyles: Preserve the playground button overrides without changing CSS precedence. */
+			padding: 0.15rem 0.35rem !important;
+			/* biome-ignore lint/complexity/noImportantStyles: Preserve the playground button overrides without changing CSS precedence. */
+			font-size: 0.8rem !important;
+			line-height: 1;
+		}
+		.btn-remove-prop:hover {
+			color: #dc3545;
+			/* biome-ignore lint/complexity/noImportantStyles: Preserve the playground button overrides without changing CSS precedence. */
+			background: #fff5f5 !important;
+			/* biome-ignore lint/complexity/noImportantStyles: Preserve the playground button overrides without changing CSS precedence. */
+			border-color: #dc3545 !important;
+		}
 
-      /* Add Prop */
-      .add-prop-container {
-        display: flex;
-        align-items: center;
-        margin-left: auto;
-      }
-      .btn-add-prop {
-        padding: 0.25rem 0.5rem;
-        background: #fff;
-        border: 1px dashed #ccc;
-        border-radius: 3px;
-        color: #666;
-        cursor: pointer;
-        font-size: 0.65rem;
-        display: inline-flex;
-        align-items: center;
-        gap: 0.25rem;
-      }
-      .btn-add-prop:hover {
-        border-color: #e94560;
-        color: #e94560;
-      }
-      .add-prop-form {
-        display: flex;
-        align-items: center;
-        gap: 0.4rem;
-      }
-      .add-prop-form input {
-        background: #fff;
-        border: 1px solid #ddd;
-        border-radius: 3px;
-        color: #333;
-        padding: 0.25rem 0.4rem;
-        font-size: 0.7rem;
-        width: 80px;
-      }
-      .add-prop-form input:focus {
-        outline: none;
-        border-color: #e94560;
-      }
-      .add-prop-form select {
-        background: #fff;
-        border: 1px solid #ddd;
-        border-radius: 3px;
-        color: #333;
-        padding: 0.2rem 0.3rem;
-        font-size: 0.7rem;
-      }
-      .add-prop-form button {
-        padding: 0.25rem 0.5rem;
-        border: 1px solid #ddd;
-        border-radius: 3px;
-        cursor: pointer;
-        font-size: 0.65rem;
-      }
-      #btn-confirm-add {
-        background: #28a745;
-        border-color: #28a745;
-        color: #fff;
-      }
-      #btn-confirm-add:hover {
-        background: #218838;
-      }
-      #btn-cancel-add {
-        background: #fff;
-        color: #666;
-      }
-      #btn-cancel-add:hover {
-        background: #f5f5f5;
-      }
+		/* Add Prop */
+		.add-prop-container {
+			display: flex;
+			align-items: center;
+			margin-left: auto;
+		}
+		.btn-add-prop {
+			padding: 0.25rem 0.5rem;
+			background: #fff;
+			border: 1px dashed #ccc;
+			border-radius: 3px;
+			color: #666;
+			cursor: pointer;
+			font-size: 0.65rem;
+			display: inline-flex;
+			align-items: center;
+			gap: 0.25rem;
+		}
+		.btn-add-prop:hover {
+			border-color: #e94560;
+			color: #e94560;
+		}
+		.add-prop-form {
+			display: flex;
+			align-items: center;
+			gap: 0.4rem;
+		}
+		.add-prop-form input {
+			background: #fff;
+			border: 1px solid #ddd;
+			border-radius: 3px;
+			color: #333;
+			padding: 0.25rem 0.4rem;
+			font-size: 0.7rem;
+			width: 80px;
+		}
+		.add-prop-form input:focus {
+			outline: none;
+			border-color: #e94560;
+		}
+		.add-prop-form select {
+			background: #fff;
+			border: 1px solid #ddd;
+			border-radius: 3px;
+			color: #333;
+			padding: 0.2rem 0.3rem;
+			font-size: 0.7rem;
+		}
+		.add-prop-form button {
+			padding: 0.25rem 0.5rem;
+			border: 1px solid #ddd;
+			border-radius: 3px;
+			cursor: pointer;
+			font-size: 0.65rem;
+		}
+		#btn-confirm-add {
+			background: #28a745;
+			border-color: #28a745;
+			color: #fff;
+		}
+		#btn-confirm-add:hover {
+			background: #218838;
+		}
+		#btn-cancel-add {
+			background: #fff;
+			color: #666;
+		}
+		#btn-cancel-add:hover {
+			background: #f5f5f5;
+		}
 
-      /* Component Container */
-      #component-container {
-        flex: 1;
-        margin: 0.75rem;
-        border: 2px dashed #ddd;
-        border-radius: 6px;
-        background: #fafafa;
-        position: relative;
-        min-height: 0;
-      }
-      #component-container.has-component {
-        border-style: solid;
-        border-color: #e94560;
-        background: #fff;
-      }
-      #component-container > div {
-        width: 100%;
-        height: 100%;
-      }
-      .container-placeholder {
-        position: absolute;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: #bbb;
-        font-size: 0.8rem;
-      }
-      #component-container.has-component .container-placeholder {
-        display: none;
-      }
+		/* Component Container */
+		#component-container {
+			flex: 1;
+			margin: 0.75rem;
+			border: 2px dashed #ddd;
+			border-radius: 6px;
+			background: #fafafa;
+			position: relative;
+			min-height: 0;
+		}
+		#component-container.has-component {
+			border-style: solid;
+			border-color: #e94560;
+			background: #fff;
+		}
+		#component-container > div {
+			width: 100%;
+			height: 100%;
+		}
+		.container-placeholder {
+			position: absolute;
+			inset: 0;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			color: #bbb;
+			font-size: 0.8rem;
+		}
+		#component-container.has-component .container-placeholder {
+			display: none;
+		}
 
-      /* Event Log Panel */
-      #event-log {
-        padding: 0;
-        font-family: 'SF Mono', 'Consolas', monospace;
-        font-size: 0.7rem;
-        line-height: 1.6;
-      }
-      .log-entry {
-        color: #555;
-        padding: 0.4rem 0.75rem;
-        border-bottom: 1px solid #f5f5f5;
-        display: flex;
-        gap: 0.5rem;
-      }
-      .log-entry:nth-child(odd) {
-        background: #fafafa;
-      }
-      .log-entry:nth-child(even) {
-        background: #fff;
-      }
-      .log-entry:last-child {
-        border-bottom: none;
-      }
-      .log-entry .time {
-        color: #999;
-        flex-shrink: 0;
-      }
-      .log-entry .message {
-        flex: 1;
-        word-break: break-word;
-      }
-      .log-entry.success {
-        color: #218838;
-        background: #f0fff4;
-      }
-      .log-entry.success:nth-child(odd) {
-        background: #e8f5ed;
-      }
-      .log-entry.error {
-        color: #c82333;
-        background: #fff5f5;
-      }
-      .log-entry.error:nth-child(odd) {
-        background: #fef0f0;
-      }
-      .log-entry.info {
-        color: #0066cc;
-        background: #f0f7ff;
-      }
-      .log-entry.info:nth-child(odd) {
-        background: #e8f0fa;
-      }
-    </style>
-  </head>
-  <body>
-    <header class="header">
-      <h1><span>Forge</span>Frame Playground</h1>
-      <div class="header-controls">
-        <div class="mode-group">
-          <span class="mode-label">Context</span>
-          <div class="mode-toggle">
-            <button class="mode-btn active" data-context="iframe">Iframe</button>
-            <button class="mode-btn" data-context="popup">Popup</button>
-          </div>
-        </div>
-        <div class="mode-group" id="iframe-style-group">
-          <span class="mode-label">Style</span>
-          <div class="mode-toggle">
-            <button class="mode-btn active" data-style="embedded">Embedded</button>
-            <button class="mode-btn" data-style="modal">Modal</button>
-          </div>
-        </div>
-        <div class="header-info" id="header-info">
-          <!-- Updated dynamically -->
-        </div>
-        <a class="test-route-link" href="/tests">Test routes</a>
-      </div>
-    </header>
+		/* Event Log Panel */
+		#event-log {
+			padding: 0;
+			font-family: "SF Mono", "Consolas", monospace;
+			font-size: 0.7rem;
+			line-height: 1.6;
+		}
+		.log-entry {
+			color: #555;
+			padding: 0.4rem 0.75rem;
+			border-bottom: 1px solid #f5f5f5;
+			display: flex;
+			gap: 0.5rem;
+		}
+		.log-entry:nth-child(odd) {
+			background: #fafafa;
+		}
+		.log-entry:nth-child(even) {
+			background: #fff;
+		}
+		.log-entry:last-child {
+			border-bottom: none;
+		}
+		.log-entry .time {
+			color: #999;
+			flex-shrink: 0;
+		}
+		.log-entry .message {
+			flex: 1;
+			word-break: break-word;
+		}
+		.log-entry.success {
+			color: #218838;
+			background: #f0fff4;
+		}
+		.log-entry.success:nth-child(odd) {
+			background: #e8f5ed;
+		}
+		.log-entry.error {
+			color: #c82333;
+			background: #fff5f5;
+		}
+		.log-entry.error:nth-child(odd) {
+			background: #fef0f0;
+		}
+		.log-entry.info {
+			color: #0066cc;
+			background: #f0f7ff;
+		}
+		.log-entry.info:nth-child(odd) {
+			background: #e8f0fa;
+		}
+		</style>
+	</head>
+	<body>
+		<header class="header">
+			<h1><span>Forge</span>Frame Playground</h1>
+			<div class="header-controls">
+				<div class="mode-group">
+					<span class="mode-label">Context</span>
+					<div class="mode-toggle">
+						<button type="button" class="mode-btn active" data-context="iframe">
+							Iframe
+						</button>
+						<button type="button" class="mode-btn" data-context="popup">
+							Popup
+						</button>
+					</div>
+				</div>
+				<div class="mode-group" id="iframe-style-group">
+					<span class="mode-label">Style</span>
+					<div class="mode-toggle">
+						<button type="button" class="mode-btn active" data-style="embedded">
+							Embedded
+						</button>
+						<button type="button" class="mode-btn" data-style="modal">
+							Modal
+						</button>
+					</div>
+				</div>
+				<div class="header-info" id="header-info">
+					<!-- Updated dynamically -->
+				</div>
+				<a class="test-route-link" href="/tests">Test routes</a>
+			</div>
+		</header>
 
-    <main class="main">
-      <!-- Left: Generated Code -->
-      <div class="panel">
-        <div class="panel-header">
-          <h3>Generated Code</h3>
-        </div>
-        <div class="panel-content code-preview">
-          <pre><code class="language-typescript" id="code-output"></code></pre>
-        </div>
-      </div>
+		<main class="main">
+			<!-- Left: Generated Code -->
+			<div class="panel">
+				<div class="panel-header">
+					<h3>Generated Code</h3>
+				</div>
+				<div class="panel-content code-preview">
+					<pre><code class="language-typescript" id="code-output"></code></pre>
+				</div>
+			</div>
 
-      <!-- Top Right: Component Preview -->
-      <div class="panel">
-        <div class="component-controls">
-          <button class="btn-render" id="btn-render">Render</button>
-          <button class="btn-close" id="btn-close" disabled>Close</button>
-          <button class="btn-secondary" id="btn-focus" disabled>Focus</button>
-          <button class="btn-secondary" id="btn-show" disabled>Show</button>
-          <button class="btn-secondary" id="btn-hide" disabled>Hide</button>
-          <div class="controls-spacer"></div>
-          <div class="status-indicator">
-            <span class="status-dot" id="status-dot"></span>
-            <span id="status-text">Ready</span>
-          </div>
-        </div>
-        <div class="props-bar" id="props-bar">
-          <!-- Dynamic props inputs generated from JSON config -->
-        </div>
-        <div id="component-container">
-          <div class="container-placeholder">Click "Render" to load component</div>
-        </div>
-      </div>
+			<!-- Top Right: Component Preview -->
+			<div class="panel">
+				<div class="component-controls">
+					<button type="button" class="btn-render" id="btn-render">
+						Render
+					</button>
+					<button type="button" class="btn-close" id="btn-close" disabled>
+						Close
+					</button>
+					<button type="button" class="btn-secondary" id="btn-focus" disabled>
+						Focus
+					</button>
+					<button type="button" class="btn-secondary" id="btn-show" disabled>
+						Show
+					</button>
+					<button type="button" class="btn-secondary" id="btn-hide" disabled>
+						Hide
+					</button>
+					<div class="controls-spacer"></div>
+					<div class="status-indicator">
+						<span class="status-dot" id="status-dot"></span>
+						<span id="status-text">Ready</span>
+					</div>
+				</div>
+				<div class="props-bar" id="props-bar">
+					<!-- Dynamic props inputs generated from JSON config -->
+				</div>
+				<div id="component-container">
+					<div class="container-placeholder">
+						Click "Render" to load component
+					</div>
+				</div>
+			</div>
 
-      <!-- Bottom Right: Events -->
-      <div class="panel">
-        <div class="panel-header">
-          <h3>Events</h3>
-          <button class="btn-secondary" id="btn-clear-log" style="padding: 0.2rem 0.4rem; font-size: 0.65rem;">Clear</button>
-        </div>
-        <div class="panel-content" id="event-log"></div>
-      </div>
-    </main>
+			<!-- Bottom Right: Events -->
+			<div class="panel">
+				<div class="panel-header">
+					<h3>Events</h3>
+					<button
+						type="button"
+						class="btn-secondary"
+						id="btn-clear-log"
+						style="padding: 0.2rem 0.4rem; font-size: 0.65rem;"
+					>
+						Clear
+					</button>
+				</div>
+				<div class="panel-content" id="event-log"></div>
+			</div>
+		</main>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
-    <script type="module" src="/router.ts"></script>
-  </body>
+		<script
+			src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"
+		></script>
+		<script
+			src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"
+		></script>
+		<script type="module" src="/router.ts"></script>
+	</body>
 </html>
