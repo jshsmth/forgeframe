@@ -9,7 +9,7 @@
 
 import type { ConsumerExports } from '../../communication/types';
 import type { SerializedProps } from '../../props/types';
-import type { SiblingInfo } from '../../types/runtime';
+import type { RemoteValue, SiblingInfo } from '../../types/runtime';
 import type { PropsDefinition } from '../../types/props';
 import type { Dimensions, DomainMatcher } from '../../types/utility';
 import type { HostComponentRef } from '../../window/types';
@@ -38,7 +38,7 @@ export interface ConsumerTransportHandlers<X> {
   onShow: () => Promise<void>;
   onHide: () => Promise<void>;
   onError: (error: Error) => void;
-  onExport: (exports: X) => void;
+  onExport: (exports: RemoteValue<X>) => void;
   onConsumerExport: (data: unknown) => void;
   onGetSiblings: (
     request: ConsumerSiblingRequest
@@ -362,7 +362,7 @@ export class ConsumerTransport<
           this.bridge,
           this.hostWindow,
           source.domain
-        ) as X
+        ) as RemoteValue<X>
       );
       return { success: true };
     });

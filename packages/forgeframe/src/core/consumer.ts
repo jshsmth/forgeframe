@@ -13,6 +13,7 @@ import type {
   ConsumerPropsInput,
   ConsumerPropsUpdate,
   ForgeFrameComponentInstance,
+  RemoteValue,
 } from '../types/runtime';
 import type { ConsumerExports } from '../communication/types';
 import type { ContextType } from '../constants';
@@ -23,7 +24,6 @@ import { EventEmitter } from '../events/emitter';
 import { generateUID } from '../utils/uid';
 import { CleanupManager } from '../utils/cleanup';
 import { createDeferred, type Deferred } from '../utils/promise';
-import { registerWindow, unregisterWindow } from '../window/proxy';
 import {
   propsToQueryParams,
   propsToBodyParams,
@@ -88,7 +88,7 @@ export class ConsumerComponent<
   public state: Record<string, unknown> = {};
 
   /** Data exported by the host component. */
-  public exports?: X;
+  public exports?: RemoteValue<X>;
 
   /** Data exported from the consumer by the host. */
   public consumerExports?: unknown;
@@ -455,6 +455,7 @@ export class ConsumerComponent<
   async updateProps(
     newProps: ConsumerPropsUpdate<P, I, SchemaInputs>
   ): Promise<void> {
+    this.assertPropsUpdateActive();
     if (this.renderPromise && !this.rendered) {
       throw new Error('Cannot update props while the component is rendering');
     }
@@ -469,6 +470,7 @@ export class ConsumerComponent<
     newProps: ConsumerPropsUpdate<P, I, SchemaInputs>
   ): Promise<void> {
     const hooks: ConsumerPropsUpdateHooks<P> = {
+      assertActive: () => this.assertPropsUpdateActive(),
       resolveUrl: (nextProps) => this.resolveUrl(nextProps),
       resolveUrlOrigin: (url) => this.resolveUrlOrigin(url),
       assertStableRenderedOrigin: (nextHostOrigin) =>
@@ -489,6 +491,13 @@ export class ConsumerComponent<
     };
 
     await this.propsPipeline.updateProps({ ...newProps }, hooks);
+  }
+
+  /** Queued updates must recheck lifecycle state before running user code. @internal */
+  private assertPropsUpdateActive(): void {
+    if (this.destroyed || this.closing) {
+      throw new Error('Cannot update props after the component has closed');
+    }
   }
 
   /**
@@ -726,10 +735,6 @@ export class ConsumerComponent<
         this.cleanup.register(cleanupFn);
       },
     });
-
-    if (this.transport.hostWindow) {
-      registerWindow(this.uid, this.transport.hostWindow);
-    }
   }
 
   /**
@@ -898,10 +903,12 @@ export class ConsumerComponent<
 
     try {
       await this.propsPipeline.syncCurrentPropsToHost({
+        assertActive: () => this.assertPropsUpdateActive(),
         shouldSendPropsToHost: () => this.transport.isHostConnected(),
         sendPropsUpdateToHost: (nextProps) => this.sendPropsUpdateToHost(nextProps),
       });
     } catch (error) {
+      if (this.destroyed || this.closing) return;
       emitConsumerError(
         this.event,
         this.propsPipeline.props as Record<string, unknown>,
@@ -931,7 +938,6 @@ export class ConsumerComponent<
   private setupCleanup(): void {
     this.cleanup.register(() => {
       this.transport.destroy();
-      unregisterWindow(this.uid);
     });
   }
 
@@ -946,7 +952,6 @@ export class ConsumerComponent<
     if (this.renderer) {
       this.renderer.destroy(hostWindow);
     }
-    unregisterWindow(this.uid);
 
     if (this.transport) {
       this.transport.hostWindow = null;

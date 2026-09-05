@@ -48,6 +48,21 @@ const inferredRequiredElement: ReactElement = (
 const inferredRequiredDriverElement: ReactElement = (
   <InferredRequiredReactWithDriver label="ready" />
 );
+const containerRef = React.createRef<HTMLDivElement>();
+const elementWithRef: ReactElement = (
+  <InferredRequiredReact label="ready" ref={containerRef} />
+);
+const driverElementWithRef: ReactElement = (
+  <InferredRequiredReactWithDriver label="ready" ref={(container) => {
+    const div: HTMLDivElement | null = container;
+    void div;
+  }} />
+);
+// @ts-expect-error wrappers forward an HTML div container, not an SVG element
+const invalidRefElement = <InferredRequiredReact label="ready" ref={React.createRef<SVGSVGElement>()} />;
+void elementWithRef;
+void driverElementWithRef;
+void invalidRefElement;
 void inferredRequiredElement;
 void inferredRequiredDriverElement;
 

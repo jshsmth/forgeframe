@@ -53,14 +53,3 @@ export interface WindowNamePayload<_P = Record<string, unknown>> {
   /** Nested component references */
   children?: Record<string, HostComponentRef>;
 }
-
-/**
- * Reference to a window for cross-domain communication.
- *
- * @internal
- */
-export type WindowRef =
-  | { type: 'opener' }
-  | { type: 'parent'; distance: number }
-  | { type: 'global'; uid: string }
-  | { type: 'direct'; win: Window };

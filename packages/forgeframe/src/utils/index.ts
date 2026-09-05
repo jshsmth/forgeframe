@@ -12,8 +12,7 @@
  * import {
  *   generateUID,
  *   CleanupManager,
- *   createDeferred,
- *   delay
+ *   createDeferred
  * } from './utils';
  *
  * // Generate a unique ID
@@ -32,14 +31,11 @@
  * @packageDocumentation
  */
 
-export { generateUID, generateShortUID, isValidUID } from './uid';
+export { generateUID, generateShortUID } from './uid';
 export { CleanupManager } from './cleanup';
 export {
   createDeferred,
   promiseTimeout,
-  waitFor,
-  delay,
-  tryCatch,
   type Deferred,
 } from './promise';
 export { normalizeDimensionToCSS, normalizeDimensionToNumber } from './dimension';

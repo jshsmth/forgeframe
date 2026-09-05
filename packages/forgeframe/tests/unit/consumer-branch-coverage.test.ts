@@ -12,7 +12,6 @@ import { EventEmitter } from '@/events/emitter';
 import { prop } from '@/props/prop';
 import * as iframeRender from '@/render/iframe';
 import * as popupRender from '@/render/popup';
-import * as windowProxy from '@/window/proxy';
 
 const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
 
@@ -586,7 +585,6 @@ describe('Consumer branch coverage and edge paths', () => {
     const stopWatching = vi.fn();
     const openPopupSpy = vi.spyOn(popupRender, 'openPopup').mockReturnValue(popupWindow);
     const watchSpy = vi.spyOn(popupRender, 'watchPopupClose').mockReturnValue(stopWatching);
-    const registerWindowSpy = vi.spyOn(windowProxy, 'registerWindow').mockImplementation(() => {});
     const cleanupRegisterSpy = vi.spyOn(internal.cleanup, 'register');
 
     internal.renderer.context = CONTEXT.POPUP;
@@ -600,7 +598,7 @@ describe('Consumer branch coverage and edge paths', () => {
     expect(openPopupSpy).toHaveBeenCalledTimes(1);
     expect(watchSpy).toHaveBeenCalledWith(popupWindow, expect.any(Function));
     expect(cleanupRegisterSpy).toHaveBeenCalledWith(stopWatching);
-    expect(registerWindowSpy).toHaveBeenCalledWith(consumer.uid, popupWindow);
+    expect(internal.transport.hostWindow).toBe(popupWindow);
   });
 
   it('should submit iframe body params via hidden form when bodyParam props exist', async () => {
@@ -657,7 +655,6 @@ describe('Consumer branch coverage and edge paths', () => {
     const stopWatching = vi.fn();
     const openPopupSpy = vi.spyOn(popupRender, 'openPopup').mockReturnValue(popupWindow);
     vi.spyOn(popupRender, 'watchPopupClose').mockReturnValue(stopWatching);
-    vi.spyOn(windowProxy, 'registerWindow').mockImplementation(() => {});
     getInternals(consumer).renderer.context = CONTEXT.POPUP;
 
     const submitBodyFormSpy = vi.spyOn(

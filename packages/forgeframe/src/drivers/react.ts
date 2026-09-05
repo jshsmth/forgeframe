@@ -55,6 +55,12 @@ interface ReactRuntime<E> {
  * @public
  */
 export interface ReactComponentProps<_P = unknown> {
+  /** Ref to the container element, cleared when the wrapper unmounts. */
+  ref?:
+    | ((value: HTMLDivElement | null) => void)
+    | { current: HTMLDivElement | null }
+    | null;
+
   /**
    * Callback invoked when the component has finished rendering.
    *
@@ -208,7 +214,6 @@ interface ReactPropSyncState<
   comparableProps: Record<string, unknown> | null;
   knownKeys: Set<string>;
   queue: ReactPropUpdate[];
-  inFlightUpdate: ReactPropUpdate | null;
   renderReady: boolean;
   draining: boolean;
   active: boolean;
@@ -223,7 +228,6 @@ function deactivatePropSyncState<
 >(state: ReactPropSyncState<P, X, I, SchemaInputs>): void {
   state.active = false;
   state.queue.length = 0;
-  state.inFlightUpdate = null;
 }
 
 /** Creates a shallow, stable snapshot of the component props for one React commit. @internal */
@@ -321,7 +325,7 @@ export interface ReactComponentType<P, E = unknown> {
  * @param options - Configuration options including the React instance
  * @typeParam P - The canonical props type defined by the ForgeFrame component
  * @typeParam X - The export type for data shared from the host component
- * @typeParam E - The forwarded React element ref type
+ * @typeParam E - The React element return type
  * @typeParam I - An alternate consumer input shape, such as legacy alias keys
  * @typeParam RequireProps - Whether the wrapped factory requires props
  * @typeParam SchemaInputs - Canonical values accepted by each prop schema
@@ -429,8 +433,6 @@ export function createReactComponent<
               return;
             }
 
-            state.inFlightUpdate = update;
-
             try {
               await state.instance.updateProps(
                 update.payload as ConsumerPropsUpdate<P, I, SchemaInputs>
@@ -440,7 +442,6 @@ export function createReactComponent<
                 return;
               }
 
-              state.inFlightUpdate = null;
               state.queue.shift();
               if (update.retryOnFailure) {
                 state.queue.unshift({
@@ -457,12 +458,10 @@ export function createReactComponent<
               return;
             }
 
-            state.inFlightUpdate = null;
             state.queue.shift();
             state.comparableProps = update.desired;
           }
         } finally {
-          state.inFlightUpdate = null;
           state.draining = false;
         }
       };
@@ -482,15 +481,22 @@ export function createReactComponent<
         const initialProps = snapshotProps(
           componentProps as Record<string, unknown>
         );
-        const instance = createInstance(
-          initialProps as ConsumerPropsInput<P, I, SchemaInputs>
-        );
+        let instance: ForgeFrameComponentInstance<P, X, I, SchemaInputs>;
+        try {
+          instance = createInstance(
+            initialProps as ConsumerPropsInput<P, I, SchemaInputs>
+          );
+        } catch (err) {
+          const constructionError = err instanceof Error ? err : new Error(String(err));
+          setError(constructionError);
+          reportReactError(onErrorRef.current ?? undefined, constructionError);
+          return;
+        }
         const syncState: ReactPropSyncState<P, X, I, SchemaInputs> = {
           instance,
           comparableProps: initialProps,
           knownKeys: new Set(Object.keys(initialProps)),
           queue: [],
-          inFlightUpdate: null,
           renderReady: false,
           draining: false,
           active: true,
@@ -500,11 +506,11 @@ export function createReactComponent<
         propSyncRef.current = syncState;
 
         const unsubscribeRendered = instance.event.once('rendered', () => {
-          onRenderedRef.current?.();
+          return onRenderedRef.current?.();
         });
         const unsubscribeClose = instance.event.once('close', () => {
           deactivatePropSyncState(syncState);
-          onCloseRef.current?.();
+          return onCloseRef.current?.();
         });
         const unsubscribeError = instance.event.on('error', (err: Error) => {
           reportReactError(onErrorRef.current ?? undefined, err);
@@ -588,25 +594,19 @@ export function createReactComponent<
         }
       }, [ref]);
 
-      if (error) {
-        return createElement(
-          'div',
-          {
-            className,
-            style: { color: 'red', padding: '16px', ...style },
-          },
-          `Error: ${error.message}`
-        );
-      }
-
-      return createElement('div', {
-        ref: containerRef,
-        className,
-        style: {
-          display: 'inline-block',
-          ...style,
+      return createElement(
+        'div',
+        {
+          ref: containerRef,
+          className,
+          style: error
+            ? { color: 'red', padding: '16px', ...style }
+            : { display: 'inline-block', ...style },
         },
-      });
+        // Keep error content in its own node so recovery cannot clear an iframe
+        // inserted into this container by the new instance's render call.
+        error ? createElement('span', null, `Error: ${error.message}`) : null
+      );
     }
   );
 

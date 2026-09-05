@@ -90,6 +90,7 @@ export type {
   ForgeFrameComponentInstance,
   HostProps,
   HostPropsBuiltins,
+  RemoteValue,
   ChildrenDefinition,
   ConsumerNamespace,
 

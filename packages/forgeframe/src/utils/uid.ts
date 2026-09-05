@@ -45,26 +45,3 @@ export function generateUID(): string {
 export function generateShortUID(): string {
   return Math.random().toString(36).slice(2, 11);
 }
-
-/**
- * Validates whether a string conforms to the ForgeFrame UID format.
- *
- * @param uid - The string to validate
- * @returns `true` if the string matches the UID format, `false` otherwise
- *
- * @remarks
- * A valid ForgeFrame UID consists of two lowercase alphanumeric segments
- * separated by an underscore (e.g., `lxyz123_abc456def`).
- *
- * @example
- * ```typescript
- * isValidUID('abc123_def456'); // true
- * isValidUID('invalid');       // false
- * isValidUID('ABC_123');       // false (uppercase not allowed)
- * ```
- *
- * @public
- */
-export function isValidUID(uid: string): boolean {
-  return /^[a-z0-9]+_[a-z0-9]+$/.test(uid);
-}

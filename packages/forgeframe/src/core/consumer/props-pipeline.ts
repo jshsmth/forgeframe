@@ -25,6 +25,7 @@ const hasOwnDefinedValue = (
  * @internal
  */
 export interface ConsumerPropsUpdateHooks<P extends Record<string, unknown>> {
+  assertActive: () => void;
   resolveUrl: (props: P) => string;
   resolveUrlOrigin: (url: string) => string | null;
   assertStableRenderedOrigin: (nextHostOrigin: string | null) => void;
@@ -40,6 +41,7 @@ export interface ConsumerPropsUpdateHooks<P extends Record<string, unknown>> {
  * @internal
  */
 export interface ConsumerPropsSyncHooks<P extends Record<string, unknown>> {
+  assertActive: () => void;
   shouldSendPropsToHost: () => boolean;
   sendPropsUpdateToHost: (nextProps: P) => Promise<void>;
 }
@@ -433,6 +435,7 @@ export class ConsumerPropsPipeline<
     hooks: ConsumerPropsUpdateHooks<P>
   ): Promise<void> {
     return this.queuePropsUpdate(async () => {
+      hooks.assertActive();
       const {
         nextInputProps,
         nextProps,
@@ -443,6 +446,7 @@ export class ConsumerPropsPipeline<
       const resolvedUrl = hooks.resolveUrl(nextProps);
       const nextHostOrigin = hooks.resolveUrlOrigin(resolvedUrl);
       hooks.assertStableRenderedOrigin(nextHostOrigin);
+      hooks.assertActive();
 
       this.inputProps = nextInputProps;
       this.props = nextProps;
@@ -460,6 +464,7 @@ export class ConsumerPropsPipeline<
       if (hooks.shouldSendPropsToHost()) {
         await hooks.sendPropsUpdateToHost(nextProps);
       }
+      hooks.assertActive();
       hooks.emitPropsUpdated(nextProps);
     }, hooks.shouldSendPropsToHost);
   }
@@ -473,7 +478,9 @@ export class ConsumerPropsPipeline<
    */
   syncCurrentPropsToHost(hooks: ConsumerPropsSyncHooks<P>): Promise<void> {
     return this.queuePropsUpdate(async () => {
+      hooks.assertActive();
       this.revalidateSchemaValues();
+      hooks.assertActive();
       if (hooks.shouldSendPropsToHost()) {
         await hooks.sendPropsUpdateToHost(this.props);
       }

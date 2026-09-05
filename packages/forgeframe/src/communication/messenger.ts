@@ -408,15 +408,27 @@ export class Messenger {
         responseError = err instanceof Error ? err : new Error(String(err));
       }
 
-      const response = createResponseMessage(
-        message.id,
-        responseData,
-        { uid: this.channelUid, domain: this.domain },
-        responseError
-      );
+      const source = { uid: this.channelUid, domain: this.domain };
+      let serializedResponse: string;
+      try {
+        serializedResponse = serializeMessage(createResponseMessage(
+          message.id,
+          responseData,
+          source,
+          responseError
+        ));
+      } catch {
+        // The peer is still reachable when only the handler result is invalid.
+        serializedResponse = serializeMessage(createResponseMessage(
+          message.id,
+          undefined,
+          source,
+          new Error(`Could not serialize response for "${message.name}"`)
+        ));
+      }
 
       try {
-        sourceWin.postMessage(serializeMessage(response), origin);
+        sourceWin.postMessage(serializedResponse, origin);
       } catch {
         // Window might be closed
       }

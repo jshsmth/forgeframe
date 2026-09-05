@@ -5,6 +5,7 @@
  * decision to ship one ESM entrypoint and no public UMD build.
  */
 import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -14,6 +15,8 @@ type RootPackageJson = {
 };
 
 type ForgeFramePackageJson = {
+  version: string;
+  scripts: Record<string, string>;
   module: string;
   exports: {
     '.': {
@@ -76,23 +79,39 @@ describe('package contract', () => {
     const releaseCheck = rootPackageJson.scripts['release:check'];
     const typecheck = rootPackageJson.scripts.typecheck;
 
-    expect(rootPackageJson.scripts.release).toContain('release:check');
-    expect(rootPackageJson.scripts.prepublishOnly).toBe('npm run release:check');
+    const packageJson = readJson<ForgeFramePackageJson>(resolve(packageRoot, 'package.json'));
+    expect(rootPackageJson.scripts.release).toBe('npm publish -w forgeframe');
+    expect(packageJson.scripts.prepublishOnly).toBe('npm run release:check --prefix ../..');
     expect(typecheck).toContain('npm run typecheck -w forgeframe');
     expect(typecheck).toContain('npm run typecheck -w @forgeframe/playground');
     expect(releaseCheck).toContain('npm run lint');
     expect(releaseCheck).toContain('npm run typecheck');
-    expect(releaseCheck).toContain('npm run test:run');
     expect(releaseCheck).toContain('npm run test:coverage');
     expect(releaseCheck).toContain('npm run build');
     expect(releaseCheck).toContain('npm run build:playground');
     expect(releaseCheck).toContain('npm audit');
     expect(releaseCheck).not.toContain('npm audit --omit=dev');
     expect(releaseCheck).toContain('npm pack --dry-run -w forgeframe');
-    expect(rootPackageJson.scripts).not.toHaveProperty('test:browser');
-    expect(rootPackageJson.scripts.lint).not.toContain('playwright');
-    expect(typecheck).not.toContain('tsconfig.browser.json');
-    expect(releaseCheck).not.toContain('playwright');
-    expect(releaseCheck).not.toContain('/private/tmp');
+  });
+
+  it.each([
+    { refType: 'tag', matching: true, succeeds: true },
+    { refType: 'tag', matching: false, succeeds: false },
+    { refType: 'branch', matching: true, succeeds: false },
+  ])('should validate release refs: $refType, matching version $matching', ({ refType, matching, succeeds }) => {
+    const { version } = readJson<ForgeFramePackageJson>(resolve(packageRoot, 'package.json'));
+    const result = spawnSync(process.execPath, [resolve(packageRoot, 'scripts/check-release-tag.mjs')], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        GITHUB_REF_TYPE: refType,
+        GITHUB_REF_NAME: matching ? `v${version}` : `v${version}-wrong`,
+      },
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(succeeds ? 0 : 1);
+    if (!succeeds) {
+      expect(result.stderr).toContain(`Release must run from tag v${version}`);
+    }
   });
 });

@@ -16,7 +16,6 @@ import { CONTEXT, EVENT, MESSAGE_NAME } from '@/constants';
 import { prop } from '@/props/prop';
 import * as popupRender from '@/render/popup';
 import * as templateRender from '@/render/templates';
-import { getWindowByUID } from '@/window/proxy';
 
 const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
 let dispatchedMessageCount = 0;
@@ -1098,7 +1097,6 @@ describe('Consumer lifecycle behavior', () => {
 
     expect(waitForHostSpy).not.toHaveBeenCalled();
     expect(getInternals(consumer).transport.hostWindow).toBeNull();
-    expect(getWindowByUID(consumer.uid)).toBeNull();
   });
 
   it('should stop before opening a popup when dynamic dimensions close the instance', async () => {
@@ -1128,7 +1126,6 @@ describe('Consumer lifecycle behavior', () => {
     expect(openPopupSpy).not.toHaveBeenCalled();
     expect(waitForHostSpy).not.toHaveBeenCalled();
     expect(getInternals(consumer).transport.hostWindow).toBeNull();
-    expect(getWindowByUID(consumer.uid)).toBeNull();
   });
 
   it('should isolate callback failures in callPropCallback', async () => {
