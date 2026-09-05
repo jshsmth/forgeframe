@@ -8,46 +8,46 @@
  * creation, validation, and lifecycle management.
  */
 
+import type { StandardSchemaV1 } from "../props/schema";
 import type {
-  ComponentOptions,
-  ConsumerPropsInput,
-  ForgeFrameComponent,
-  ForgeFrameComponentInstance,
-  HostProps,
-  InferablePropsDefinition,
-  InferredComponentOptions,
-} from '../types/runtime';
+	HostPropsDefinition,
+	InferPropsDefinition,
+	InferPropsDefinitionInput,
+} from "../types/props";
 import type {
-  InferPropsDefinition,
-  InferPropsDefinitionInput,
-  HostPropsDefinition,
-} from '../types/props';
-import type { StandardSchemaV1 } from '../props/schema';
-import { ConsumerComponent } from './consumer';
+	ComponentOptions,
+	ConsumerPropsInput,
+	ForgeFrameComponent,
+	ForgeFrameComponentInstance,
+	HostProps,
+	InferablePropsDefinition,
+	InferredComponentOptions,
+} from "../types/runtime";
+import { hasBrowserWindow } from "../utils/browser";
+import { resolveComponentHostUrl } from "../utils/url";
+import { isHostOfComponent } from "../window/name-payload";
 import {
-  clearIndexedInstances,
-  clearIndexedInstancesByTag,
-  getComponentInstancesByTag as getComponentInstancesByTagFromIndex,
-  getIndexedComponentInstances as getIndexedComponentInstancesFromIndex,
-  indexComponentInstance,
-  removeIndexedComponentInstance,
-  type IndexedComponentInstance,
-} from './component-instance-index';
-import { getHost, initHost } from './host';
-import { HOST_PROPS_BUILTIN_KEYS } from './host/builtin-keys';
-import { isHostOfComponent } from '../window/name-payload';
-import { hasBrowserWindow } from '../utils/browser';
-import { resolveComponentHostUrl } from '../utils/url';
+	clearIndexedInstances,
+	clearIndexedInstancesByTag,
+	getComponentInstancesByTag as getComponentInstancesByTagFromIndex,
+	getIndexedComponentInstances as getIndexedComponentInstancesFromIndex,
+	type IndexedComponentInstance,
+	indexComponentInstance,
+	removeIndexedComponentInstance,
+} from "./component-instance-index";
 import {
-  clearRegisteredComponents,
-  deleteRegisteredComponent,
-  getComponentOptions,
-  getRegisteredComponent,
-  getRegisteredComponentEntries,
-  getRegisteredComponentTags,
-  hasRegisteredComponent,
-  registerComponent,
-} from './component-registry';
+	clearRegisteredComponents,
+	deleteRegisteredComponent,
+	getComponentOptions,
+	getRegisteredComponent,
+	getRegisteredComponentEntries,
+	getRegisteredComponentTags,
+	hasRegisteredComponent,
+	registerComponent,
+} from "./component-registry";
+import { ConsumerComponent } from "./consumer";
+import { getHost, initHost } from "./host";
+import { HOST_PROPS_BUILTIN_KEYS } from "./host/builtin-keys";
 
 /**
  * Validates component configuration options.
@@ -58,59 +58,59 @@ import {
  * @internal
  */
 function validateComponentOptions<P, I, SchemaInputs>(
-  options: ComponentOptions<P, I, SchemaInputs>
+	options: ComponentOptions<P, I, SchemaInputs>,
 ): void {
-  if (!options.tag) {
-    throw new Error('Component tag is required');
-  }
+	if (!options.tag) {
+		throw new Error("Component tag is required");
+	}
 
-  if (!/^[a-z][a-z0-9-]*$/.test(options.tag)) {
-    throw new Error(
-      `Invalid component tag "${options.tag}". Must start with lowercase letter and contain only lowercase letters, numbers, and hyphens.`
-    );
-  }
+	if (!/^[a-z][a-z0-9-]*$/.test(options.tag)) {
+		throw new Error(
+			`Invalid component tag "${options.tag}". Must start with lowercase letter and contain only lowercase letters, numbers, and hyphens.`,
+		);
+	}
 
-  if (!options.url) {
-    throw new Error('Component url is required');
-  }
+	if (!options.url) {
+		throw new Error("Component url is required");
+	}
 
-  if (options.props) {
-    for (const key of Object.keys(options.props)) {
-      if (HOST_PROPS_BUILTIN_KEYS.has(key)) {
-        throw new Error(
-          `Prop "${key}" is reserved by hostProps built-ins and cannot be defined as a custom prop`
-        );
-      }
-    }
-  }
+	if (options.props) {
+		for (const key of Object.keys(options.props)) {
+			if (HOST_PROPS_BUILTIN_KEYS.has(key)) {
+				throw new Error(
+					`Prop "${key}" is reserved by hostProps built-ins and cannot be defined as a custom prop`,
+				);
+			}
+		}
+	}
 
-  // Validate URL format if it's a string (can't validate function URLs at definition time)
-  if (typeof options.url === 'string') {
-    const browserAvailable = hasBrowserWindow();
-    const validationBaseUrl = browserAvailable
-      ? window.location.origin
-      : 'https://forgeframe.invalid';
-    let hasAbsoluteUrl = true;
+	// Validate URL format if it's a string (can't validate function URLs at definition time)
+	if (typeof options.url === "string") {
+		const browserAvailable = hasBrowserWindow();
+		const validationBaseUrl = browserAvailable
+			? window.location.origin
+			: "https://forgeframe.invalid";
+		let hasAbsoluteUrl = true;
 
-    try {
-      new URL(options.url);
-    } catch {
-      hasAbsoluteUrl = false;
-    }
+		try {
+			new URL(options.url);
+		} catch {
+			hasAbsoluteUrl = false;
+		}
 
-    // A relative URL has no real origin until it is resolved in a browser.
-    // Validate its syntax and protocol here, then enforce the domain policy
-    // against the actual resolved URL when an instance renders.
-    resolveComponentHostUrl(
-      options.url,
-      validationBaseUrl,
-      browserAvailable || hasAbsoluteUrl ? options.domain : undefined
-    );
-  }
+		// A relative URL has no real origin until it is resolved in a browser.
+		// Validate its syntax and protocol here, then enforce the domain policy
+		// against the actual resolved URL when an instance renders.
+		resolveComponentHostUrl(
+			options.url,
+			validationBaseUrl,
+			browserAvailable || hasAbsoluteUrl ? options.domain : undefined,
+		);
+	}
 
-  if (hasRegisteredComponent(options.tag)) {
-    throw new Error(`Component "${options.tag}" is already registered`);
-  }
+	if (hasRegisteredComponent(options.tag)) {
+		throw new Error(`Component "${options.tag}" is already registered`);
+	}
 }
 
 /**
@@ -148,165 +148,168 @@ function validateComponentOptions<P, I, SchemaInputs>(
  * @public
  */
 export function create<
-  const D extends InferablePropsDefinition,
-  X = unknown,
-  I extends Record<string, unknown> = InferPropsDefinitionInput<D>,
-  ContextualSchemas extends Record<string, StandardSchemaV1> = {
-    [K in keyof D]: D[K] extends StandardSchemaV1
-      ? D[K]
-      : D[K] extends { schema: infer Schema extends StandardSchemaV1 }
-        ? Schema
-        : never;
-  },
+	const D extends InferablePropsDefinition,
+	X = unknown,
+	I extends Record<string, unknown> = InferPropsDefinitionInput<D>,
+	ContextualSchemas extends Record<string, StandardSchemaV1> = {
+		[K in keyof D]: D[K] extends StandardSchemaV1
+			? D[K]
+			: D[K] extends { schema: infer Schema extends StandardSchemaV1 }
+				? Schema
+				: never;
+	},
 >(
-  options: InferredComponentOptions<D, ContextualSchemas>
+	options: InferredComponentOptions<D, ContextualSchemas>,
 ): ForgeFrameComponent<
-  InferPropsDefinition<D>,
-  X,
-  I,
-  Record<PropertyKey, never> extends ConsumerPropsInput<
-    InferPropsDefinition<D>,
-    I,
-    InferPropsDefinitionInput<D>
-  >
-    ? false
-    : true,
-  InferPropsDefinitionInput<D>
+	InferPropsDefinition<D>,
+	X,
+	I,
+	Record<PropertyKey, never> extends ConsumerPropsInput<
+		InferPropsDefinition<D>,
+		I,
+		InferPropsDefinitionInput<D>
+	>
+		? false
+		: true,
+	InferPropsDefinitionInput<D>
 >;
 export function create<
-  P extends Record<string, unknown> = Record<string, unknown>,
-  X = unknown,
-  I extends Record<string, unknown> = P,
-  SchemaInputs extends Record<string, unknown> = I,
+	P extends Record<string, unknown> = Record<string, unknown>,
+	X = unknown,
+	I extends Record<string, unknown> = P,
+	SchemaInputs extends Record<string, unknown> = I,
 >(
-  options: ComponentOptions<P, I, SchemaInputs>
+	options: ComponentOptions<P, I, SchemaInputs>,
 ): ForgeFrameComponent<P, X, I, false, SchemaInputs>;
 export function create<
-  P extends Record<string, unknown> = Record<string, unknown>,
-  X = unknown,
-  I extends Record<string, unknown> = P,
-  SchemaInputs extends Record<string, unknown> = I,
+	P extends Record<string, unknown> = Record<string, unknown>,
+	X = unknown,
+	I extends Record<string, unknown> = P,
+	SchemaInputs extends Record<string, unknown> = I,
 >(
-  options: ComponentOptions<P, I, SchemaInputs>
+	options: ComponentOptions<P, I, SchemaInputs>,
 ): ForgeFrameComponent<P, X, I, false, SchemaInputs> {
-  validateComponentOptions(options);
-  const runtimeOptions = options;
+	validateComponentOptions(options);
+	const runtimeOptions = options;
 
-  const instances: ForgeFrameComponentInstance<P, X, I, SchemaInputs>[] = [];
-  const componentTag = options.tag;
-  let componentHostProps: HostProps<P> | undefined;
+	const instances: ForgeFrameComponentInstance<P, X, I, SchemaInputs>[] = [];
+	const componentTag = options.tag;
+	let componentHostProps: HostProps<P> | undefined;
 
-  function trackInstance(
-    instance: ConsumerComponent<P, X, I, SchemaInputs>
-  ): ConsumerComponent<P, X, I, SchemaInputs> {
-    if (instance.isDestroyed()) {
-      return instance;
-    }
+	function trackInstance(
+		instance: ConsumerComponent<P, X, I, SchemaInputs>,
+	): ConsumerComponent<P, X, I, SchemaInputs> {
+		if (instance.isDestroyed()) {
+			return instance;
+		}
 
-    instances.push(instance);
-    indexComponentInstance(componentTag, instance);
+		instances.push(instance);
+		indexComponentInstance(componentTag, instance);
 
-    instance.event.once('destroy', () => {
-      const index = instances.indexOf(instance);
-      if (index !== -1) {
-        instances.splice(index, 1);
-      }
+		instance.event.once("destroy", () => {
+			const index = instances.indexOf(instance);
+			if (index !== -1) {
+				instances.splice(index, 1);
+			}
 
-      removeIndexedComponentInstance(instance.uid);
-    });
+			removeIndexedComponentInstance(instance.uid);
+		});
 
-    return instance;
-  }
+		return instance;
+	}
 
-  function createTrackedInstance(
-    props?: ConsumerPropsInput<P, I, SchemaInputs>
-  ): ConsumerComponent<P, X, I, SchemaInputs> {
-    return trackInstance(
-      new ConsumerComponent<P, X, I, SchemaInputs>(
-        runtimeOptions,
-        props,
-        trackInstance
-      )
-    );
-  }
+	function createTrackedInstance(
+		props?: ConsumerPropsInput<P, I, SchemaInputs>,
+	): ConsumerComponent<P, X, I, SchemaInputs> {
+		return trackInstance(
+			new ConsumerComponent<P, X, I, SchemaInputs>(
+				runtimeOptions,
+				props,
+				trackInstance,
+			),
+		);
+	}
 
-  const canDetectComponentHost = (): boolean => {
-    return hasBrowserWindow() && isHostOfComponent(options.tag);
-  };
+	const canDetectComponentHost = (): boolean => {
+		return hasBrowserWindow() && isHostOfComponent(options.tag);
+	};
 
-  const syncHostProps = (): HostProps<P> | undefined => {
-    if (componentHostProps) {
-      return componentHostProps;
-    }
+	const syncHostProps = (): HostProps<P> | undefined => {
+		if (componentHostProps) {
+			return componentHostProps;
+		}
 
-    const activeHost = getHost<P, SchemaInputs>();
-    if (activeHost?.hostProps.tag === options.tag) {
-      const configuredHost = initHost<P, SchemaInputs>(
-        runtimeOptions.props as HostPropsDefinition<P, SchemaInputs> | undefined,
-        options.allowedConsumerDomains
-      );
-      componentHostProps = configuredHost?.hostProps;
-      return componentHostProps;
-    }
+		const activeHost = getHost<P, SchemaInputs>();
+		if (activeHost?.hostProps.tag === options.tag) {
+			const configuredHost = initHost<P, SchemaInputs>(
+				runtimeOptions.props as
+					| HostPropsDefinition<P, SchemaInputs>
+					| undefined,
+				options.allowedConsumerDomains,
+			);
+			componentHostProps = configuredHost?.hostProps;
+			return componentHostProps;
+		}
 
-    if (!canDetectComponentHost()) {
-      return undefined;
-    }
+		if (!canDetectComponentHost()) {
+			return undefined;
+		}
 
-    const host = initHost<P, SchemaInputs>(
-      runtimeOptions.props as HostPropsDefinition<P, SchemaInputs> | undefined,
-      options.allowedConsumerDomains
-    );
-    if (!host) {
-      return undefined;
-    }
+		const host = initHost<P, SchemaInputs>(
+			runtimeOptions.props as HostPropsDefinition<P, SchemaInputs> | undefined,
+			options.allowedConsumerDomains,
+		);
+		if (!host) {
+			return undefined;
+		}
 
-    componentHostProps = host.hostProps;
-    return componentHostProps;
-  };
+		componentHostProps = host.hostProps;
+		return componentHostProps;
+	};
 
-  syncHostProps();
+	syncHostProps();
 
-  const detectHostState = (): boolean => {
-    syncHostProps();
-    return componentHostProps !== undefined || canDetectComponentHost();
-  };
+	const detectHostState = (): boolean => {
+		syncHostProps();
+		return componentHostProps !== undefined || canDetectComponentHost();
+	};
 
-  /**
-   * Component factory function that creates new instances.
-   * @param props - Props to pass to the component instance
-   * @returns A new component instance
-   */
-  const Component = function (
-    props?: ConsumerPropsInput<P, I, SchemaInputs>
-  ): ForgeFrameComponentInstance<P, X, I, SchemaInputs> {
-    return createTrackedInstance(props);
-  } as unknown as ForgeFrameComponent<P, X, I, false, SchemaInputs>;
+	/**
+	 * Component factory function that creates new instances.
+	 * @param props - Props to pass to the component instance
+	 * @returns A new component instance
+	 */
+	// biome-ignore lint/complexity/useArrowFunction: Preserve the factory's regular-function behavior for JavaScript callers.
+	const Component = function (
+		props?: ConsumerPropsInput<P, I, SchemaInputs>,
+	): ForgeFrameComponentInstance<P, X, I, SchemaInputs> {
+		return createTrackedInstance(props);
+	} as unknown as ForgeFrameComponent<P, X, I, false, SchemaInputs>;
 
-  Component.instances = instances;
+	Component.instances = instances;
 
-  Component.isHost = (): boolean => {
-    return detectHostState();
-  };
+	Component.isHost = (): boolean => {
+		return detectHostState();
+	};
 
-  Component.isEmbedded = (): boolean => {
-    return detectHostState();
-  };
+	Component.isEmbedded = (): boolean => {
+		return detectHostState();
+	};
 
-  Object.defineProperty(Component, 'hostProps', {
-    configurable: true,
-    enumerable: true,
-    get: () => syncHostProps(),
-  });
+	Object.defineProperty(Component, "hostProps", {
+		configurable: true,
+		enumerable: true,
+		get: () => syncHostProps(),
+	});
 
-  Component.canRenderTo = async (win: Window): Promise<boolean> => {
-    // Cross-window render targets are not currently supported.
-    return win === window;
-  };
+	Component.canRenderTo = async (win: Window): Promise<boolean> => {
+		// Cross-window render targets are not currently supported.
+		return win === window;
+	};
 
-  registerComponent(Component, runtimeOptions);
+	registerComponent(Component, runtimeOptions);
 
-  return Component;
+	return Component;
 }
 
 /**
@@ -328,14 +331,12 @@ export function create<
  * @public
  */
 export function getComponent<
-  P extends Record<string, unknown> = Record<string, unknown>,
-  X = unknown,
-  I = P,
-  SchemaInputs = I,
->(
-  tag: string
-): ForgeFrameComponent<P, X, I, false, SchemaInputs> | undefined {
-  return getRegisteredComponent<P, X, I, SchemaInputs>(tag);
+	P extends Record<string, unknown> = Record<string, unknown>,
+	X = unknown,
+	I = P,
+	SchemaInputs = I,
+>(tag: string): ForgeFrameComponent<P, X, I, false, SchemaInputs> | undefined {
+	return getRegisteredComponent<P, X, I, SchemaInputs>(tag);
 }
 
 /**
@@ -343,25 +344,30 @@ export function getComponent<
  * @internal
  */
 export function getRegisteredComponents(): Array<
-  [string, ForgeFrameComponent<Record<string, unknown>>]
+	[string, ForgeFrameComponent<Record<string, unknown>>]
 > {
-  return getRegisteredComponentEntries();
+	return getRegisteredComponentEntries();
 }
 
 /**
  * Returns active instances for a specific component tag using an internal index.
  * @internal
  */
-export function getComponentInstancesByTag(tag: string): IndexedComponentInstance[] {
-  return getComponentInstancesByTagFromIndex(tag);
+export function getComponentInstancesByTag(
+	tag: string,
+): IndexedComponentInstance[] {
+	return getComponentInstancesByTagFromIndex(tag);
 }
 
 /**
  * Returns all active indexed instances across tags.
  * @internal
  */
-export function getIndexedComponentInstances(): Array<{ tag: string; instance: IndexedComponentInstance }> {
-  return getIndexedComponentInstancesFromIndex();
+export function getIndexedComponentInstances(): Array<{
+	tag: string;
+	instance: IndexedComponentInstance;
+}> {
+	return getIndexedComponentInstancesFromIndex();
 }
 
 /**
@@ -390,13 +396,13 @@ export { getComponentOptions };
  * @public
  */
 export async function destroy<
-  P extends Record<string, unknown>,
-  I = P,
-  SchemaInputs = I,
+	P extends Record<string, unknown>,
+	I = P,
+	SchemaInputs = I,
 >(
-  instance: ForgeFrameComponentInstance<P, unknown, I, SchemaInputs>
+	instance: ForgeFrameComponentInstance<P, unknown, I, SchemaInputs>,
 ): Promise<void> {
-  await instance.close();
+	await instance.close();
 }
 
 /**
@@ -417,11 +423,11 @@ export async function destroy<
  * @public
  */
 export async function destroyByTag(tag: string): Promise<void> {
-  const component = getRegisteredComponent(tag);
-  if (!component) return;
+	const component = getRegisteredComponent(tag);
+	if (!component) return;
 
-  const instances = [...component.instances];
-  await Promise.all(instances.map((instance) => instance.close()));
+	const instances = [...component.instances];
+	await Promise.all(instances.map((instance) => instance.close()));
 }
 
 /**
@@ -442,8 +448,8 @@ export async function destroyByTag(tag: string): Promise<void> {
  * @public
  */
 export async function destroyAll(): Promise<void> {
-  const tags = getRegisteredComponentTags();
-  await Promise.all(tags.map((tag) => destroyByTag(tag)));
+	const tags = getRegisteredComponentTags();
+	await Promise.all(tags.map((tag) => destroyByTag(tag)));
 }
 
 /**
@@ -456,8 +462,8 @@ export async function destroyAll(): Promise<void> {
  * @internal
  */
 export function unregisterComponent(tag: string): void {
-  deleteRegisteredComponent(tag);
-  clearIndexedInstancesByTag(tag);
+	deleteRegisteredComponent(tag);
+	clearIndexedInstancesByTag(tag);
 }
 
 /**
@@ -469,6 +475,6 @@ export function unregisterComponent(tag: string): void {
  * @internal
  */
 export function clearComponents(): void {
-  clearRegisteredComponents();
-  clearIndexedInstances();
+	clearRegisteredComponents();
+	clearIndexedInstances();
 }

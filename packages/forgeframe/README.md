@@ -1245,9 +1245,18 @@ Then open `http://localhost:5173`. The `/tests` page contains browser scenarios 
 
 ### Checks
 
+Development uses TypeScript 7 and Biome with its default formatting and recommended lint rules. Run `npm ci` to install the pinned workspace tools; npm scripts use the local `tsc` and `biome` executables. Generated builds, coverage, and the npm lockfile are excluded from Biome. Markdown, YAML, and TOML are not formatted by these commands.
+
+For VS Code, use the official Biome extension (`biomejs.biome`) for supported files and the TypeScript 7 language-service extension (`TypeScriptTeam.native-preview`) for native compiler editor support. Other editors should use their Biome and TypeScript 7 LSP integrations. The compiler upgrade is development tooling; it does not require consumers to upgrade to TypeScript 7.
+
+Biome retains its recommended warning severities. Existing non-null assertions in unit tests, browser scenarios, and playground DOM bindings remain warnings: replacing them with optional chaining could silently skip assertions or actions. Intentional React effect signatures, prototype-safety fixtures, and CSS precedence overrides have local suppressions with explanations.
+
 | Command | What it checks |
 |---------|----------------|
-| `npm run lint` | Library, tests, and playground lint rules |
+| `npm run lint` | Biome lint, formatting, and import checks across source and supported configuration files |
+| `npm run lint:fix` | Apply Biome formatting, import organization, and safe lint fixes |
+| `npm run format` / `npm run format:check` | Write / check Biome formatting |
+| `npm run check:ci` | Non-writing Biome checks for CI |
 | `npm run typecheck` | Library source, compile-time API contracts, and playground types |
 | `npm run test:run` | Unit and integration tests in jsdom, plus Node-specific suites |
 | `npm run test:coverage` | The same tests with coverage thresholds enforced |

@@ -11,33 +11,33 @@
  */
 
 export {
-  createIframe,
-  createPrerenderIframe,
-  destroyIframe,
-  resizeIframe,
-  showIframe,
-  hideIframe,
-  focusIframe,
-  type IframeOptions,
-} from './iframe';
+	createIframe,
+	createPrerenderIframe,
+	destroyIframe,
+	focusIframe,
+	hideIframe,
+	type IframeOptions,
+	resizeIframe,
+	showIframe,
+} from "./iframe";
 
 export {
-  openPopup,
-  closePopup,
-  focusPopup,
-  isPopupBlocked,
-  watchPopupClose,
-  resizePopup,
-  PopupOpenError,
-  type PopupOptions,
-} from './popup';
+	closePopup,
+	focusPopup,
+	isPopupBlocked,
+	openPopup,
+	PopupOpenError,
+	type PopupOptions,
+	resizePopup,
+	watchPopupClose,
+} from "./popup";
 
 export {
-  defaultContainerTemplate,
-  defaultPrerenderTemplate,
-  applyDimensions,
-  createStyleElement,
-  fadeIn,
-  fadeOut,
-  swapPrerenderContent,
-} from './templates';
+	applyDimensions,
+	createStyleElement,
+	defaultContainerTemplate,
+	defaultPrerenderTemplate,
+	fadeIn,
+	fadeOut,
+	swapPrerenderContent,
+} from "./templates";

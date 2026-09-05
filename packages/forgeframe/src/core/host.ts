@@ -8,15 +8,16 @@
  * focused internal modules under `src/core/host/`.
  */
 
-import type { HostProps } from '../types/runtime';
-import { isForgeFrameWindow } from '../window/name-payload';
-import { getHost as getActiveHost } from './host/bootstrap';
-export { HostComponent } from './host/component';
+import type { HostProps } from "../types/runtime";
+import { isForgeFrameWindow } from "../window/name-payload";
+import { getHost as getActiveHost } from "./host/bootstrap";
+
 export {
-  clearHostInstance,
-  getHost,
-  initHost,
-} from './host/bootstrap';
+	clearHostInstance,
+	getHost,
+	initHost,
+} from "./host/bootstrap";
+export { HostComponent } from "./host/component";
 
 /**
  * Checks if the current window is a ForgeFrame host context.
@@ -37,7 +38,7 @@ export {
  * @public
  */
 export function isHost(): boolean {
-  return getActiveHost() !== null || isForgeFrameWindow();
+	return getActiveHost() !== null || isForgeFrameWindow();
 }
 
 /**
@@ -62,7 +63,7 @@ export function isHost(): boolean {
  * @public
  */
 export function isEmbedded(): boolean {
-  return getActiveHost() !== null || isForgeFrameWindow();
+	return getActiveHost() !== null || isForgeFrameWindow();
 }
 
 /**
@@ -85,6 +86,8 @@ export function isEmbedded(): boolean {
  *
  * @public
  */
-export function getHostProps<P extends Record<string, unknown>>(): HostProps<P> | undefined {
-  return (window as unknown as { hostProps?: HostProps<P> }).hostProps;
+export function getHostProps<P extends Record<string, unknown>>():
+	| HostProps<P>
+	| undefined {
+	return (window as unknown as { hostProps?: HostProps<P> }).hostProps;
 }

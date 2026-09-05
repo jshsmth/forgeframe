@@ -1,15 +1,6 @@
-import type {
-  StandardSchemaV1Issue,
-  StandardSchemaV1Result,
-} from '../schema';
-import type {
-  InferUnionSchemaInput,
-  InferUnionSchemaOutput,
-} from './base';
-import {
-  PropSchema,
-  validateSchemaSync,
-} from './base';
+import type { StandardSchemaV1Issue, StandardSchemaV1Result } from "../schema";
+import type { InferUnionSchemaInput, InferUnionSchemaOutput } from "./base";
+import { PropSchema, validateSchemaSync } from "./base";
 
 /**
  * Schema for literal value props.
@@ -22,32 +13,36 @@ import {
  *
  * @public
  */
-export class LiteralSchema<T extends string | number | boolean> extends PropSchema<T> {
-  /** @internal */
-  private _value: T;
+export class LiteralSchema<
+	T extends string | number | boolean,
+> extends PropSchema<T> {
+	/** @internal */
+	private _value: T;
 
-  constructor(value: T) {
-    super();
-    this._value = value;
-  }
+	constructor(value: T) {
+		super();
+		this._value = value;
+	}
 
-  /** @internal */
-  protected _validate(value: unknown): StandardSchemaV1Result<T> {
-    if (value !== this._value) {
-      return {
-        issues: [
-          { message: `Expected ${JSON.stringify(this._value)}, got ${JSON.stringify(value)}` },
-        ],
-      };
-    }
+	/** @internal */
+	protected _validate(value: unknown): StandardSchemaV1Result<T> {
+		if (value !== this._value) {
+			return {
+				issues: [
+					{
+						message: `Expected ${JSON.stringify(this._value)}, got ${JSON.stringify(value)}`,
+					},
+				],
+			};
+		}
 
-    return { value: value as T };
-  }
+		return { value: value as T };
+	}
 
-  /** @internal */
-  protected _clone(): LiteralSchema<T> {
-    return this._copyBaseTo(new LiteralSchema(this._value));
-  }
+	/** @internal */
+	protected _clone(): LiteralSchema<T> {
+		return this._copyBaseTo(new LiteralSchema(this._value));
+	}
 }
 
 /**
@@ -61,36 +56,36 @@ export class LiteralSchema<T extends string | number | boolean> extends PropSche
  * @public
  */
 export class EnumSchema<T extends string | number> extends PropSchema<T> {
-  /** @internal */
-  private _values: readonly T[];
-  /** @internal */
-  private _valueSet: ReadonlySet<T>;
+	/** @internal */
+	private _values: readonly T[];
+	/** @internal */
+	private _valueSet: ReadonlySet<T>;
 
-  constructor(values: readonly T[]) {
-    super();
-    this._values = values;
-    this._valueSet = new Set(values);
-  }
+	constructor(values: readonly T[]) {
+		super();
+		this._values = values;
+		this._valueSet = new Set(values);
+	}
 
-  /** @internal */
-  protected _validate(value: unknown): StandardSchemaV1Result<T> {
-    if (!this._valueSet.has(value as T)) {
-      return {
-        issues: [
-          {
-            message: `Expected one of [${this._values.map((v) => JSON.stringify(v)).join(', ')}], got ${JSON.stringify(value)}`,
-          },
-        ],
-      };
-    }
+	/** @internal */
+	protected _validate(value: unknown): StandardSchemaV1Result<T> {
+		if (!this._valueSet.has(value as T)) {
+			return {
+				issues: [
+					{
+						message: `Expected one of [${this._values.map((v) => JSON.stringify(v)).join(", ")}], got ${JSON.stringify(value)}`,
+					},
+				],
+			};
+		}
 
-    return { value: value as T };
-  }
+		return { value: value as T };
+	}
 
-  /** @internal */
-  protected _clone(): EnumSchema<T> {
-    return this._copyBaseTo(new EnumSchema(this._values));
-  }
+	/** @internal */
+	protected _clone(): EnumSchema<T> {
+		return this._copyBaseTo(new EnumSchema(this._values));
+	}
 }
 
 /**
@@ -106,69 +101,71 @@ export class EnumSchema<T extends string | number> extends PropSchema<T> {
  * @public
  */
 export class UnionSchema<
-  S extends readonly [
-    PropSchema<unknown, unknown>,
-    ...PropSchema<unknown, unknown>[],
-  ],
+	S extends readonly [
+		PropSchema<unknown, unknown>,
+		...PropSchema<unknown, unknown>[],
+	],
 > extends PropSchema<InferUnionSchemaOutput<S>, InferUnionSchemaInput<S>> {
-  /** @internal */
-  private _schemas: S;
+	/** @internal */
+	private _schemas: S;
 
-  constructor(schemas: S) {
-    super();
+	constructor(schemas: S) {
+		super();
 
-    if (schemas.length === 0) {
-      throw new Error('prop.union() requires at least one schema');
-    }
+		if (schemas.length === 0) {
+			throw new Error("prop.union() requires at least one schema");
+		}
 
-    this._schemas = schemas;
-  }
+		this._schemas = schemas;
+	}
 
-  /** @internal */
-  protected _validateInput(
-    value: unknown
-  ): StandardSchemaV1Result<InferUnionSchemaOutput<S>> {
-    if (value === null) {
-      if (this._nullable) {
-        return { value: null as InferUnionSchemaOutput<S> };
-      }
+	/** @internal */
+	protected _validateInput(
+		value: unknown,
+	): StandardSchemaV1Result<InferUnionSchemaOutput<S>> {
+		if (value === null) {
+			if (this._nullable) {
+				return { value: null as InferUnionSchemaOutput<S> };
+			}
 
-      return this._validate(value);
-    }
+			return this._validate(value);
+		}
 
-    if (value === undefined) {
-      if (this._default !== undefined) {
-        return { value: this._getDefaultValue() as InferUnionSchemaOutput<S> };
-      }
+		if (value === undefined) {
+			if (this._default !== undefined) {
+				return { value: this._getDefaultValue() as InferUnionSchemaOutput<S> };
+			}
 
-      if (this._optional) {
-        return { value: undefined as InferUnionSchemaOutput<S> };
-      }
+			if (this._optional) {
+				return { value: undefined as InferUnionSchemaOutput<S> };
+			}
 
-      return this._validate(value);
-    }
+			return this._validate(value);
+		}
 
-    return this._validate(value);
-  }
+		return this._validate(value);
+	}
 
-  /** @internal */
-  protected _validate(value: unknown): StandardSchemaV1Result<InferUnionSchemaOutput<S>> {
-    const issues: StandardSchemaV1Issue[] = [];
+	/** @internal */
+	protected _validate(
+		value: unknown,
+	): StandardSchemaV1Result<InferUnionSchemaOutput<S>> {
+		const issues: StandardSchemaV1Issue[] = [];
 
-    for (const schema of this._schemas) {
-      const result = validateSchemaSync(schema, value);
-      if (!result.issues) {
-        return { value: result.value as InferUnionSchemaOutput<S> };
-      }
+		for (const schema of this._schemas) {
+			const result = validateSchemaSync(schema, value);
+			if (!result.issues) {
+				return { value: result.value as InferUnionSchemaOutput<S> };
+			}
 
-      issues.push(...result.issues);
-    }
+			issues.push(...result.issues);
+		}
 
-    return { issues };
-  }
+		return { issues };
+	}
 
-  /** @internal */
-  protected _clone(): UnionSchema<S> {
-    return this._copyBaseTo(new UnionSchema(this._schemas));
-  }
+	/** @internal */
+	protected _clone(): UnionSchema<S> {
+		return this._copyBaseTo(new UnionSchema(this._schemas));
+	}
 }

@@ -8,5 +8,5 @@
  * @internal
  */
 export interface SerializedProps {
-  [key: string]: unknown;
+	[key: string]: unknown;
 }

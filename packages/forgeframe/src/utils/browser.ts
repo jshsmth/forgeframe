@@ -4,5 +4,7 @@
  * @internal
  */
 export function hasBrowserWindow(): boolean {
-  return typeof window !== 'undefined' && typeof window.location !== 'undefined';
+	return (
+		typeof window !== "undefined" && typeof window.location !== "undefined"
+	);
 }

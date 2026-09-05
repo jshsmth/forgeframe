@@ -19,9 +19,9 @@
  * @public
  */
 export function generateUID(): string {
-  const timestamp = Date.now().toString(36);
-  const random = Math.random().toString(36).slice(2, 11);
-  return `${timestamp}_${random}`;
+	const timestamp = Date.now().toString(36);
+	const random = Math.random().toString(36).slice(2, 11);
+	return `${timestamp}_${random}`;
 }
 
 /**
@@ -43,5 +43,5 @@ export function generateUID(): string {
  * @public
  */
 export function generateShortUID(): string {
-  return Math.random().toString(36).slice(2, 11);
+	return Math.random().toString(36).slice(2, 11);
 }

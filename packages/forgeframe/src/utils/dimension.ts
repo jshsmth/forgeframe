@@ -26,12 +26,12 @@
  * @public
  */
 export function normalizeDimensionToCSS(
-  value: string | number | undefined,
-  fallback: string = '100%'
+	value: string | number | undefined,
+	fallback: string = "100%",
 ): string {
-  if (value === undefined) return fallback;
-  if (typeof value === 'number') return `${value}px`;
-  return value;
+	if (value === undefined) return fallback;
+	if (typeof value === "number") return `${value}px`;
+	return value;
 }
 
 /**
@@ -57,12 +57,12 @@ export function normalizeDimensionToCSS(
  * @public
  */
 export function normalizeDimensionToNumber(
-  value: string | number | undefined,
-  fallback: number
+	value: string | number | undefined,
+	fallback: number,
 ): number {
-  if (value === undefined) return fallback;
-  if (typeof value === 'number') return value;
+	if (value === undefined) return fallback;
+	if (typeof value === "number") return value;
 
-  const parsed = parseInt(value, 10);
-  return isNaN(parsed) ? fallback : parsed;
+	const parsed = parseInt(value, 10);
+	return Number.isNaN(parsed) ? fallback : parsed;
 }

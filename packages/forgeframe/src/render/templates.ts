@@ -1,31 +1,31 @@
-import type { TemplateContext } from '../types/templates';
-import type { Dimensions } from '../types/utility';
-import { normalizeDimensionToCSS } from '../utils/dimension';
+import type { TemplateContext } from "../types/templates";
+import type { Dimensions } from "../types/utility";
+import { normalizeDimensionToCSS } from "../utils/dimension";
 
-const SPINNER_STYLE_ID = 'forgeframe-spinner-style';
+const SPINNER_STYLE_ID = "forgeframe-spinner-style";
 
 function ensureSpinnerKeyframes(doc: Document, nonce?: string): void {
-  const existing = doc.getElementById(SPINNER_STYLE_ID);
-  if (existing) {
-    const existingNonce = existing.getAttribute('nonce');
-    if (!nonce || existingNonce === nonce) {
-      return;
-    }
-    existing.remove();
-  }
+	const existing = doc.getElementById(SPINNER_STYLE_ID);
+	if (existing) {
+		const existingNonce = existing.getAttribute("nonce");
+		if (!nonce || existingNonce === nonce) {
+			return;
+		}
+		existing.remove();
+	}
 
-  const style = doc.createElement('style');
-  style.id = SPINNER_STYLE_ID;
-  if (nonce) {
-    style.setAttribute('nonce', nonce);
-  }
-  style.textContent = `
+	const style = doc.createElement("style");
+	style.id = SPINNER_STYLE_ID;
+	if (nonce) {
+		style.setAttribute("nonce", nonce);
+	}
+	style.textContent = `
     @keyframes forgeframe-spin {
       to { transform: rotate(360deg); }
     }
   `;
 
-  (doc.head ?? doc.documentElement).appendChild(style);
+	(doc.head ?? doc.documentElement).appendChild(style);
 }
 
 /**
@@ -61,23 +61,23 @@ function ensureSpinnerKeyframes(doc: Document, nonce?: string): void {
  * @public
  */
 export function defaultContainerTemplate<P>(
-  ctx: TemplateContext<P>
+	ctx: TemplateContext<P>,
 ): HTMLElement {
-  const { doc, dimensions, uid, tag } = ctx;
+	const { doc, dimensions, uid, tag } = ctx;
 
-  const container = doc.createElement('div');
-  container.id = `forgeframe-container-${uid}`;
-  container.setAttribute('data-forgeframe-tag', tag);
+	const container = doc.createElement("div");
+	container.id = `forgeframe-container-${uid}`;
+	container.setAttribute("data-forgeframe-tag", tag);
 
-  Object.assign(container.style, {
-    display: 'inline-block',
-    position: 'relative',
-    width: normalizeDimensionToCSS(dimensions.width),
-    height: normalizeDimensionToCSS(dimensions.height),
-    overflow: 'hidden',
-  });
+	Object.assign(container.style, {
+		display: "inline-block",
+		position: "relative",
+		width: normalizeDimensionToCSS(dimensions.width),
+		height: normalizeDimensionToCSS(dimensions.height),
+		overflow: "hidden",
+	});
 
-  return container;
+	return container;
 }
 
 /**
@@ -116,38 +116,38 @@ export function defaultContainerTemplate<P>(
  * @public
  */
 export function defaultPrerenderTemplate<P>(
-  ctx: TemplateContext<P> & { cspNonce?: string }
+	ctx: TemplateContext<P> & { cspNonce?: string },
 ): HTMLElement {
-  const { doc, dimensions, cspNonce } = ctx;
-  ensureSpinnerKeyframes(doc, cspNonce);
+	const { doc, dimensions, cspNonce } = ctx;
+	ensureSpinnerKeyframes(doc, cspNonce);
 
-  const wrapper = doc.createElement('div');
-  Object.assign(wrapper.style, {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: normalizeDimensionToCSS(dimensions.width),
-    height: normalizeDimensionToCSS(dimensions.height),
-    backgroundColor: '#f5f5f5',
-    position: 'absolute',
-    top: '0',
-    left: '0',
-    zIndex: '100',
-  });
+	const wrapper = doc.createElement("div");
+	Object.assign(wrapper.style, {
+		display: "flex",
+		alignItems: "center",
+		justifyContent: "center",
+		width: normalizeDimensionToCSS(dimensions.width),
+		height: normalizeDimensionToCSS(dimensions.height),
+		backgroundColor: "#f5f5f5",
+		position: "absolute",
+		top: "0",
+		left: "0",
+		zIndex: "100",
+	});
 
-  const spinner = doc.createElement('div');
-  Object.assign(spinner.style, {
-    width: '40px',
-    height: '40px',
-    border: '3px solid #e0e0e0',
-    borderTopColor: '#3498db',
-    borderRadius: '50%',
-    animation: 'forgeframe-spin 1s linear infinite',
-  });
+	const spinner = doc.createElement("div");
+	Object.assign(spinner.style, {
+		width: "40px",
+		height: "40px",
+		border: "3px solid #e0e0e0",
+		borderTopColor: "#3498db",
+		borderRadius: "50%",
+		animation: "forgeframe-spin 1s linear infinite",
+	});
 
-  wrapper.appendChild(spinner);
+	wrapper.appendChild(spinner);
 
-  return wrapper;
+	return wrapper;
 }
 
 /**
@@ -171,15 +171,15 @@ export function defaultPrerenderTemplate<P>(
  * @public
  */
 export function applyDimensions(
-  element: HTMLElement,
-  dimensions: Dimensions
+	element: HTMLElement,
+	dimensions: Dimensions,
 ): void {
-  if (dimensions.width !== undefined) {
-    element.style.width = normalizeDimensionToCSS(dimensions.width);
-  }
-  if (dimensions.height !== undefined) {
-    element.style.height = normalizeDimensionToCSS(dimensions.height);
-  }
+	if (dimensions.width !== undefined) {
+		element.style.width = normalizeDimensionToCSS(dimensions.width);
+	}
+	if (dimensions.height !== undefined) {
+		element.style.height = normalizeDimensionToCSS(dimensions.height);
+	}
 }
 
 /**
@@ -209,16 +209,16 @@ export function applyDimensions(
  * @public
  */
 export function createStyleElement(
-  doc: Document,
-  css: string,
-  nonce?: string
+	doc: Document,
+	css: string,
+	nonce?: string,
 ): HTMLStyleElement {
-  const style = doc.createElement('style');
-  if (nonce) {
-    style.setAttribute('nonce', nonce);
-  }
-  style.textContent = css;
-  return style;
+	const style = doc.createElement("style");
+	if (nonce) {
+		style.setAttribute("nonce", nonce);
+	}
+	style.textContent = css;
+	return style;
 }
 
 /**
@@ -247,17 +247,17 @@ export function createStyleElement(
  * @public
  */
 export function fadeIn(element: HTMLElement, duration = 200): Promise<void> {
-  return new Promise((resolve) => {
-    element.style.opacity = '0';
-    element.style.transition = `opacity ${duration}ms ease-in`;
+	return new Promise((resolve) => {
+		element.style.opacity = "0";
+		element.style.transition = `opacity ${duration}ms ease-in`;
 
-    // Force reflow
-    void element.offsetHeight;
+		// Force reflow
+		void element.offsetHeight;
 
-    element.style.opacity = '1';
+		element.style.opacity = "1";
 
-    setTimeout(resolve, duration);
-  });
+		setTimeout(resolve, duration);
+	});
 }
 
 /**
@@ -286,12 +286,12 @@ export function fadeIn(element: HTMLElement, duration = 200): Promise<void> {
  * @public
  */
 export function fadeOut(element: HTMLElement, duration = 200): Promise<void> {
-  return new Promise((resolve) => {
-    element.style.transition = `opacity ${duration}ms ease-out`;
-    element.style.opacity = '0';
+	return new Promise((resolve) => {
+		element.style.transition = `opacity ${duration}ms ease-out`;
+		element.style.opacity = "0";
 
-    setTimeout(resolve, duration);
-  });
+		setTimeout(resolve, duration);
+	});
 }
 
 /**
@@ -324,18 +324,18 @@ export function fadeOut(element: HTMLElement, duration = 200): Promise<void> {
  * @public
  */
 export async function swapPrerenderContent(
-  _container: HTMLElement,
-  prerenderElement: HTMLElement | null,
-  actualElement: HTMLElement
+	_container: HTMLElement,
+	prerenderElement: HTMLElement | null,
+	actualElement: HTMLElement,
 ): Promise<void> {
-  if (prerenderElement) {
-    await fadeOut(prerenderElement, 150);
-    prerenderElement.remove();
-  }
+	if (prerenderElement) {
+		await fadeOut(prerenderElement, 150);
+		prerenderElement.remove();
+	}
 
-  actualElement.style.display = '';
-  actualElement.style.visibility = 'visible';
-  actualElement.style.opacity = '0';
+	actualElement.style.display = "";
+	actualElement.style.visibility = "visible";
+	actualElement.style.opacity = "0";
 
-  await fadeIn(actualElement, 150);
+	await fadeIn(actualElement, 150);
 }

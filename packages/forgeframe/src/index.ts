@@ -30,114 +30,102 @@
  * ```
  */
 
-export { ForgeFrame } from './forgeframe';
-export { default } from './forgeframe';
+export type {
+	ContextType,
+	EventType,
+	SerializationType,
+} from "./constants";
+export {
+	CONTEXT,
+	EVENT,
+	PROP_SERIALIZATION,
+	VERSION,
+} from "./constants";
 
 // Named exports for tree-shaking
 export {
-  create,
-  destroy,
-  destroyByTag,
-  destroyAll,
-  isHost,
-  isEmbedded,
-  getHostProps,
-  initHost,
-} from './core';
-
+	create,
+	destroy,
+	destroyAll,
+	destroyByTag,
+	getHostProps,
+	initHost,
+	isEmbedded,
+	isHost,
+} from "./core";
+// React integration exports
 export {
-  PROP_SERIALIZATION,
-  CONTEXT,
-  EVENT,
-  VERSION,
-} from './constants';
-
-export { PopupOpenError } from './render/popup';
-
-// Schema utilities
-export { isStandardSchema } from './props/schema';
+	createReactComponent,
+	type ReactComponentProps,
+	type ReactComponentType,
+	type ReactDriverOptions,
+	withReactComponent,
+} from "./drivers/react";
+export { default, ForgeFrame } from "./forgeframe";
 
 // Prop schema builders
 export {
-  prop,
-  PropSchema,
-  StringSchema,
-  NumberSchema,
-  DateSchema,
-  BooleanSchema,
-  FunctionSchema,
-  ArraySchema,
-  TupleSchema,
-  ObjectSchema,
-  RecordSchema,
-  LiteralSchema,
-  EnumSchema,
-  UnionSchema,
-  AnySchema,
-  type Prop,
-  type InferObjectInputShape,
-  type InferObjectShape,
-} from './props/prop';
-
+	AnySchema,
+	ArraySchema,
+	BooleanSchema,
+	DateSchema,
+	EnumSchema,
+	FunctionSchema,
+	type InferObjectInputShape,
+	type InferObjectShape,
+	LiteralSchema,
+	NumberSchema,
+	ObjectSchema,
+	type Prop,
+	PropSchema,
+	prop,
+	RecordSchema,
+	StringSchema,
+	TupleSchema,
+	UnionSchema,
+} from "./props/prop";
+// Schema utilities
+export { isStandardSchema } from "./props/schema";
+export { PopupOpenError } from "./render/popup";
 // Type exports
 export type {
-  // Component types
-  ComponentOptions,
-  ConsumerPropsInput,
-  ConsumerPropsUpdate,
-  ForgeFrameComponent,
-  ForgeFrameComponentReference,
-  ForgeFrameComponentInstance,
-  HostProps,
-  HostPropsBuiltins,
-  RemoteValue,
-  ChildrenDefinition,
-  ConsumerNamespace,
-
-  // Props types
-  PropDefinition,
-  PropDefinitionEntry,
-  PropsDefinition,
-  HostPropsDefinition,
-  InferPropsDefinition,
-  InferPropsDefinitionInput,
-  PropContext,
-
-  // Standard Schema types
-  StandardSchemaV1,
-  InferSchemaOutput,
-  SchemaPropDefinition,
-
-  // Template types
-  TemplateContext,
-  ContainerTemplate,
-  PrerenderTemplate,
-
-  // Utility types
-  Dimensions,
-  DomainMatcher,
-  IframeAttributes,
-  IframeStyles,
-  EligibilityResult,
-  SiblingInfo,
-  GetPeerInstancesOptions,
-
-  // Event types
-  EventHandler,
-  EventEmitterInterface,
-} from './types';
-
-export type {
-  ContextType,
-  EventType,
-  SerializationType,
-} from './constants';
-
-// React integration exports
-export {
-  createReactComponent,
-  withReactComponent,
-  type ReactDriverOptions,
-  type ReactComponentProps,
-  type ReactComponentType,
-} from './drivers/react';
+	ChildrenDefinition,
+	// Component types
+	ComponentOptions,
+	ConsumerNamespace,
+	ConsumerPropsInput,
+	ConsumerPropsUpdate,
+	ContainerTemplate,
+	// Utility types
+	Dimensions,
+	DomainMatcher,
+	EligibilityResult,
+	EventEmitterInterface,
+	// Event types
+	EventHandler,
+	ForgeFrameComponent,
+	ForgeFrameComponentInstance,
+	ForgeFrameComponentReference,
+	GetPeerInstancesOptions,
+	HostProps,
+	HostPropsBuiltins,
+	HostPropsDefinition,
+	IframeAttributes,
+	IframeStyles,
+	InferPropsDefinition,
+	InferPropsDefinitionInput,
+	InferSchemaOutput,
+	PrerenderTemplate,
+	PropContext,
+	// Props types
+	PropDefinition,
+	PropDefinitionEntry,
+	PropsDefinition,
+	RemoteValue,
+	SchemaPropDefinition,
+	SiblingInfo,
+	// Standard Schema types
+	StandardSchemaV1,
+	// Template types
+	TemplateContext,
+} from "./types";

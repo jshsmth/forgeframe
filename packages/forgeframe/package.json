@@ -1,57 +1,57 @@
 {
-  "name": "forgeframe",
-  "version": "0.1.1",
-  "description": "Modern cross-domain iframe component framework - a TypeScript alternative to zoid",
-  "type": "module",
-  "module": "./dist/forgeframe.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/forgeframe.js"
-    }
-  },
-  "sideEffects": false,
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
-  ],
-  "scripts": {
-    "clean": "rm -rf dist",
-    "build": "node -e \"require('node:fs').copyFileSync('../../README.md', 'README.md')\" && vite build && tsc --emitDeclarationOnly && node scripts/fix-dts-imports.mjs",
-    "typecheck": "tsc --noEmit && npm run typecheck:tests",
-    "typecheck:tests": "tsc -p tests/typecheck/tsconfig.json --noEmit",
-    "test": "vitest",
-    "test:run": "vitest run",
-    "test:coverage": "vitest run --coverage",
-    "prepublishOnly": "npm run release:check --prefix ../.."
-  },
-  "keywords": [
-    "iframe",
-    "cross-domain",
-    "component",
-    "zoid",
-    "postmessage",
-    "popup",
-    "embed"
-  ],
-  "author": "Josh Smith",
-  "license": "MIT",
-  "homepage": "https://github.com/jshsmth/ForgeFrame#readme",
-  "bugs": {
-    "url": "https://github.com/jshsmth/ForgeFrame/issues"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/jshsmth/ForgeFrame.git"
-  },
-  "devDependencies": {
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.7",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
-    "valibot": "^1.4.2",
-    "zod": "^4.5.4"
-  }
+	"name": "forgeframe",
+	"version": "0.1.1",
+	"description": "Modern cross-domain iframe component framework - a TypeScript alternative to zoid",
+	"type": "module",
+	"module": "./dist/forgeframe.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/forgeframe.js"
+		}
+	},
+	"sideEffects": false,
+	"files": [
+		"dist",
+		"README.md",
+		"LICENSE"
+	],
+	"scripts": {
+		"clean": "rm -rf dist",
+		"build": "node -e \"require('node:fs').copyFileSync('../../README.md', 'README.md')\" && vite build && tsc --emitDeclarationOnly && node scripts/fix-dts-imports.mjs",
+		"typecheck": "tsc --noEmit && npm run typecheck:tests",
+		"typecheck:tests": "tsc -p tests/typecheck/tsconfig.json --noEmit",
+		"test": "vitest",
+		"test:run": "vitest run",
+		"test:coverage": "vitest run --coverage",
+		"prepublishOnly": "npm run release:check --prefix ../.."
+	},
+	"keywords": [
+		"iframe",
+		"cross-domain",
+		"component",
+		"zoid",
+		"postmessage",
+		"popup",
+		"embed"
+	],
+	"author": "Josh Smith",
+	"license": "MIT",
+	"homepage": "https://github.com/jshsmth/ForgeFrame#readme",
+	"bugs": {
+		"url": "https://github.com/jshsmth/ForgeFrame/issues"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/jshsmth/ForgeFrame.git"
+	},
+	"devDependencies": {
+		"@types/react": "^19.2.18",
+		"@types/react-dom": "^19.2.7",
+		"react": "^19.2.8",
+		"react-dom": "^19.2.8",
+		"valibot": "^1.4.2",
+		"zod": "^4.5.4"
+	}
 }

@@ -8,246 +8,260 @@
  * `window.hostProps` exposure behavior.
  */
 
-import { EVENT } from '../../constants';
-import { deserializeProps } from '../../props/serialize';
-import { isStandardSchema } from '../../props';
-import { validateNormalizedProps } from '../../props/normalize';
-import { EMPTY_PROP_DEFINITIONS } from '../../props/definitions';
-import { getDomain } from '../../window/helpers';
-import { getRegisteredComponent } from '../component-registry';
-import { HOST_PROPS_BUILTIN_KEYS } from './builtin-keys';
-import type { SerializedProps } from '../../props/types';
-import type { ForgeFrameComponent, HostProps, RemoteValue } from '../../types/runtime';
+import { EVENT } from "../../constants";
+import { isStandardSchema } from "../../props";
+import { EMPTY_PROP_DEFINITIONS } from "../../props/definitions";
+import { validateNormalizedProps } from "../../props/normalize";
+import { deserializeProps } from "../../props/serialize";
+import type { SerializedProps } from "../../props/types";
+import type { HostPropsDefinition, PropDefinition } from "../../types/props";
 import type {
-  HostPropsDefinition,
-  PropDefinition,
-} from '../../types/props';
-import type { HostComponentRef, WindowNamePayload } from '../../window/types';
-import type {
-  HostPropsRuntimeOptions,
-  WindowWithHostProps,
-} from './types';
+	ForgeFrameComponent,
+	HostProps,
+	RemoteValue,
+} from "../../types/runtime";
+import { getDomain } from "../../window/helpers";
+import type { HostComponentRef, WindowNamePayload } from "../../window/types";
+import { getRegisteredComponent } from "../component-registry";
+import { HOST_PROPS_BUILTIN_KEYS } from "./builtin-keys";
+import type { HostPropsRuntimeOptions, WindowWithHostProps } from "./types";
 
-function filterReservedHostPropKeys<P extends Record<string, unknown>>(props: P): P {
-  const filteredProps: Record<string, unknown> = {};
+function filterReservedHostPropKeys<P extends Record<string, unknown>>(
+	props: P,
+): P {
+	const filteredProps: Record<string, unknown> = {};
 
-  for (const [key, value] of Object.entries(props)) {
-    if (HOST_PROPS_BUILTIN_KEYS.has(key)) {
-      continue;
-    }
+	for (const [key, value] of Object.entries(props)) {
+		if (HOST_PROPS_BUILTIN_KEYS.has(key)) {
+			continue;
+		}
 
-    filteredProps[key] = value;
-  }
+		filteredProps[key] = value;
+	}
 
-  return filteredProps as P;
+	return filteredProps as P;
 }
 
 export class HostPropsRuntime<
-  P extends Record<string, unknown>,
-  SchemaInputs = P,
+	P extends Record<string, unknown>,
+	SchemaInputs = P,
 > {
-  public hostProps!: HostProps<P>;
+	public hostProps!: HostProps<P>;
 
-  public consumerProps!: RemoteValue<P>;
+	public consumerProps!: RemoteValue<P>;
 
-  public propsHandlers: Set<(props: RemoteValue<P>) => void> = new Set();
+	public propsHandlers: Set<(props: RemoteValue<P>) => void> = new Set();
 
-  constructor(
-    private propDefinitions: HostPropsDefinition<P, SchemaInputs> =
-      EMPTY_PROP_DEFINITIONS as HostPropsDefinition<P, SchemaInputs>,
-    private options: HostPropsRuntimeOptions
-  ) {}
+	constructor(
+		private propDefinitions: HostPropsDefinition<
+			P,
+			SchemaInputs
+		> = EMPTY_PROP_DEFINITIONS as HostPropsDefinition<P, SchemaInputs>,
+		private options: HostPropsRuntimeOptions,
+	) {}
 
-  initializeHostProps(payload: WindowNamePayload<P>): HostProps<P> {
-    const deserializedProps = this.deserialize(payload.props);
+	initializeHostProps(payload: WindowNamePayload<P>): HostProps<P> {
+		const deserializedProps = this.deserialize(payload.props);
 
-    // Shared schemas validate the wire value's shape; deserialization changes
-    // callable return types without changing their runtime function kind.
-    validateNormalizedProps(
-      deserializedProps as P,
-      this.getBootstrapValidationDefinitions()
-    );
-    this.consumerProps = deserializedProps;
+		// Shared schemas validate the wire value's shape; deserialization changes
+		// callable return types without changing their runtime function kind.
+		validateNormalizedProps(
+			deserializedProps as P,
+			this.getBootstrapValidationDefinitions(),
+		);
+		this.consumerProps = deserializedProps;
 
-    const hostConsumerProps = filterReservedHostPropKeys(deserializedProps);
+		const hostConsumerProps = filterReservedHostPropKeys(deserializedProps);
 
-    this.hostProps = {
-      ...hostConsumerProps,
-      uid: this.options.uid,
-      tag: this.options.tag,
-      close: () => this.options.controls.close(),
-      focus: () => this.options.controls.focus(),
-      resize: (dimensions) => this.options.controls.resize(dimensions),
-      show: () => this.options.controls.show(),
-      hide: () => this.options.controls.hide(),
-      onProps: (handler: (props: RemoteValue<P>) => void) => this.onProps(handler),
-      onError: (error: Error) => this.options.controls.onError(error),
-      getConsumer: () => this.options.getConsumerWindow(),
-      getConsumerDomain: () => this.options.getConsumerDomain(),
-      export: <T>(exports: T) => this.options.controls.exportData(exports),
-      consumer: {
-        props: this.consumerProps,
-        export: <T>(data: T) => this.options.controls.consumerExport(data),
-      },
-      getPeerInstances: (options) => this.options.controls.getPeerInstances(options),
-      children: this.buildNestedComponents(payload.children),
-    };
+		this.hostProps = {
+			...hostConsumerProps,
+			uid: this.options.uid,
+			tag: this.options.tag,
+			close: () => this.options.controls.close(),
+			focus: () => this.options.controls.focus(),
+			resize: (dimensions) => this.options.controls.resize(dimensions),
+			show: () => this.options.controls.show(),
+			hide: () => this.options.controls.hide(),
+			onProps: (handler: (props: RemoteValue<P>) => void) =>
+				this.onProps(handler),
+			onError: (error: Error) => this.options.controls.onError(error),
+			getConsumer: () => this.options.getConsumerWindow(),
+			getConsumerDomain: () => this.options.getConsumerDomain(),
+			export: <T>(exports: T) => this.options.controls.exportData(exports),
+			consumer: {
+				props: this.consumerProps,
+				export: <T>(data: T) => this.options.controls.consumerExport(data),
+			},
+			getPeerInstances: (options) =>
+				this.options.controls.getPeerInstances(options),
+			children: this.buildNestedComponents(payload.children),
+		};
 
-    return this.hostProps;
-  }
+		return this.hostProps;
+	}
 
-  exposeHostProps(): void {
-    const hostWindow = window as unknown as WindowWithHostProps<P>;
+	exposeHostProps(): void {
+		const hostWindow = window as unknown as WindowWithHostProps<P>;
 
-    try {
-      Object.defineProperty(hostWindow, 'hostProps', {
-        configurable: true,
-        enumerable: true,
-        get: () => {
-          this.options.onFirstHostPropsAccess();
-          return this.hostProps;
-        },
-        set: (value: HostProps<P> | undefined) => {
-          if (value) {
-            this.hostProps = value;
-          }
-        },
-      });
-    } catch {
-      hostWindow.hostProps = this.hostProps;
-    }
-  }
+		try {
+			Object.defineProperty(hostWindow, "hostProps", {
+				configurable: true,
+				enumerable: true,
+				get: () => {
+					this.options.onFirstHostPropsAccess();
+					return this.hostProps;
+				},
+				set: (value: HostProps<P> | undefined) => {
+					if (value) {
+						this.hostProps = value;
+					}
+				},
+			});
+		} catch {
+			hostWindow.hostProps = this.hostProps;
+		}
+	}
 
-  applyHostConfiguration(
-    propDefinitions: HostPropsDefinition<P, SchemaInputs>
-  ): void {
-    validateNormalizedProps(
-      this.consumerProps as P,
-      this.getBootstrapValidationDefinitions(propDefinitions)
-    );
-    this.propDefinitions = propDefinitions;
-    Object.assign(this.hostProps, filterReservedHostPropKeys(this.consumerProps));
-    this.hostProps.consumer.props = this.consumerProps;
-  }
+	applyHostConfiguration(
+		propDefinitions: HostPropsDefinition<P, SchemaInputs>,
+	): void {
+		validateNormalizedProps(
+			this.consumerProps as P,
+			this.getBootstrapValidationDefinitions(propDefinitions),
+		);
+		this.propDefinitions = propDefinitions;
+		Object.assign(
+			this.hostProps,
+			filterReservedHostPropKeys(this.consumerProps),
+		);
+		this.hostProps.consumer.props = this.consumerProps;
+	}
 
-  applySerializedProps(serializedProps: SerializedProps): { success: true } {
-    try {
-      const previousProps = this.consumerProps;
-      const nextProps = this.deserialize(serializedProps);
+	applySerializedProps(serializedProps: SerializedProps): { success: true } {
+		try {
+			const previousProps = this.consumerProps;
+			const nextProps = this.deserialize(serializedProps);
 
-      validateNormalizedProps(nextProps as P, this.propDefinitions);
-      const nextHostProps = filterReservedHostPropKeys(nextProps);
+			validateNormalizedProps(nextProps as P, this.propDefinitions);
+			const nextHostProps = filterReservedHostPropKeys(nextProps);
 
-      this.removeStaleHostProps(previousProps, nextHostProps);
-      this.consumerProps = nextProps;
-      Object.assign(this.hostProps, nextHostProps);
-      this.hostProps.consumer.props = this.consumerProps;
+			this.removeStaleHostProps(previousProps, nextHostProps);
+			this.consumerProps = nextProps;
+			Object.assign(this.hostProps, nextHostProps);
+			this.hostProps.consumer.props = this.consumerProps;
 
-      for (const handler of this.propsHandlers) {
-        try {
-          handler(nextProps);
-        } catch (error) {
-          console.error('Error in props handler:', error);
-        }
-      }
+			for (const handler of this.propsHandlers) {
+				try {
+					handler(nextProps);
+				} catch (error) {
+					console.error("Error in props handler:", error);
+				}
+			}
 
-      this.options.event.emit(EVENT.PROPS, nextProps);
+			this.options.event.emit(EVENT.PROPS, nextProps);
 
-      return { success: true };
-    } catch (error) {
-      const propsError = error instanceof Error ? error : new Error(String(error));
-      console.error('Error deserializing props:', propsError);
-      this.options.event.emit(EVENT.ERROR, propsError);
-      throw propsError;
-    }
-  }
+			return { success: true };
+		} catch (error) {
+			const propsError =
+				error instanceof Error ? error : new Error(String(error));
+			console.error("Error deserializing props:", propsError);
+			this.options.event.emit(EVENT.ERROR, propsError);
+			throw propsError;
+		}
+	}
 
-  destroy(): void {
-    this.propsHandlers.clear();
-  }
+	destroy(): void {
+		this.propsHandlers.clear();
+	}
 
-  private onProps(handler: (props: RemoteValue<P>) => void): { cancel: () => void } {
-    this.propsHandlers.add(handler);
+	private onProps(handler: (props: RemoteValue<P>) => void): {
+		cancel: () => void;
+	} {
+		this.propsHandlers.add(handler);
 
-    return {
-      cancel: () => this.propsHandlers.delete(handler),
-    };
-  }
+		return {
+			cancel: () => this.propsHandlers.delete(handler),
+		};
+	}
 
-  private deserialize(serializedProps: SerializedProps): RemoteValue<P> {
-    return deserializeProps(
-      serializedProps,
-      this.propDefinitions,
-      this.options.getMessenger(),
-      this.options.getBridge(),
-      this.options.getConsumerWindow(),
-      this.options.getConsumerDomain()
-    ) as RemoteValue<P>;
-  }
+	private deserialize(serializedProps: SerializedProps): RemoteValue<P> {
+		return deserializeProps(
+			serializedProps,
+			this.propDefinitions,
+			this.options.getMessenger(),
+			this.options.getBridge(),
+			this.options.getConsumerWindow(),
+			this.options.getConsumerDomain(),
+		) as RemoteValue<P>;
+	}
 
-  private getBootstrapValidationDefinitions(
-    propDefinitions = this.propDefinitions
-  ): HostPropsDefinition<P, SchemaInputs> {
-    if (
-      !this.options.isConsumerDomainVerified() ||
-      this.options.getConsumerDomain() !== getDomain()
-    ) {
-      return propDefinitions;
-    }
+	private getBootstrapValidationDefinitions(
+		propDefinitions = this.propDefinitions,
+	): HostPropsDefinition<P, SchemaInputs> {
+		if (
+			!this.options.isConsumerDomainVerified() ||
+			this.options.getConsumerDomain() !== getDomain()
+		) {
+			return propDefinitions;
+		}
 
-    let hasDeferredSameDomainProp = false;
-    const bootstrapDefinitions = {
-      ...propDefinitions,
-    } as HostPropsDefinition<P, SchemaInputs>;
+		let hasDeferredSameDomainProp = false;
+		const bootstrapDefinitions = {
+			...propDefinitions,
+		} as HostPropsDefinition<P, SchemaInputs>;
 
-    for (const [key, definition] of Object.entries(propDefinitions)) {
-      if (!definition || isStandardSchema(definition) || !definition.sameDomain) {
-        continue;
-      }
+		for (const [key, definition] of Object.entries(propDefinitions)) {
+			if (
+				!definition ||
+				isStandardSchema(definition) ||
+				!definition.sameDomain
+			) {
+				continue;
+			}
 
-      hasDeferredSameDomainProp = true;
-      bootstrapDefinitions[key as keyof P] = {
-        ...(definition as PropDefinition<unknown, P>),
-        required: false,
-      } as HostPropsDefinition<P, SchemaInputs>[keyof P];
-    }
+			hasDeferredSameDomainProp = true;
+			bootstrapDefinitions[key as keyof P] = {
+				...(definition as PropDefinition<unknown, P>),
+				required: false,
+			} as HostPropsDefinition<P, SchemaInputs>[keyof P];
+		}
 
-    return hasDeferredSameDomainProp ? bootstrapDefinitions : propDefinitions;
-  }
+		return hasDeferredSameDomainProp ? bootstrapDefinitions : propDefinitions;
+	}
 
-  private buildNestedComponents(
-    nestedRefs?: Record<string, HostComponentRef>
-  ): Record<string, ForgeFrameComponent> | undefined {
-    if (!nestedRefs) {
-      return undefined;
-    }
+	private buildNestedComponents(
+		nestedRefs?: Record<string, HostComponentRef>,
+	): Record<string, ForgeFrameComponent> | undefined {
+		if (!nestedRefs) {
+			return undefined;
+		}
 
-    const components: Record<string, ForgeFrameComponent> = {};
+		const components: Record<string, ForgeFrameComponent> = {};
 
-    for (const [name, ref] of Object.entries(nestedRefs)) {
-      const component = getRegisteredComponent(ref.tag);
-      if (component) {
-        components[name] = component;
-      } else {
-        console.warn(
-          `Nested component "${name}" (${ref.tag}) must be registered in the host bundle before hostProps is initialized`
-        );
-      }
-    }
+		for (const [name, ref] of Object.entries(nestedRefs)) {
+			const component = getRegisteredComponent(ref.tag);
+			if (component) {
+				components[name] = component;
+			} else {
+				console.warn(
+					`Nested component "${name}" (${ref.tag}) must be registered in the host bundle before hostProps is initialized`,
+				);
+			}
+		}
 
-    return Object.keys(components).length > 0 ? components : undefined;
-  }
+		return Object.keys(components).length > 0 ? components : undefined;
+	}
 
-  private removeStaleHostProps(
-    previousProps: RemoteValue<P>,
-    nextHostProps: Record<string, unknown>
-  ): void {
-    for (const key of Object.keys(previousProps)) {
-      if (HOST_PROPS_BUILTIN_KEYS.has(key) || key in nextHostProps) {
-        continue;
-      }
+	private removeStaleHostProps(
+		previousProps: RemoteValue<P>,
+		nextHostProps: Record<string, unknown>,
+	): void {
+		for (const key of Object.keys(previousProps)) {
+			if (HOST_PROPS_BUILTIN_KEYS.has(key) || key in nextHostProps) {
+				continue;
+			}
 
-      delete (this.hostProps as Record<string, unknown>)[key];
-    }
-  }
+			delete (this.hostProps as Record<string, unknown>)[key];
+		}
+	}
 }

@@ -1,19 +1,19 @@
 {
-  "name": "@forgeframe/playground",
-  "version": "1.0.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "clean": "rm -rf dist",
-    "dev": "concurrently \"npm run dev:consumer\" \"npm run dev:host\"",
-    "dev:consumer": "vite --config vite.config.consumer.ts",
-    "dev:host": "vite --config vite.config.host.ts",
-    "typecheck": "tsc --noEmit",
-    "build": "npm run build:consumer && npm run build:host",
-    "build:consumer": "vite build --config vite.config.consumer.ts",
-    "build:host": "vite build --config vite.config.host.ts"
-  },
-  "dependencies": {
-    "forgeframe": "*"
-  }
+	"name": "@forgeframe/playground",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"clean": "rm -rf dist",
+		"dev": "concurrently \"npm run dev:consumer\" \"npm run dev:host\"",
+		"dev:consumer": "vite --config vite.config.consumer.ts",
+		"dev:host": "vite --config vite.config.host.ts",
+		"typecheck": "tsc --noEmit",
+		"build": "npm run build:consumer && npm run build:host",
+		"build:consumer": "vite build --config vite.config.consumer.ts",
+		"build:host": "vite build --config vite.config.host.ts"
+	},
+	"dependencies": {
+		"forgeframe": "*"
+	}
 }

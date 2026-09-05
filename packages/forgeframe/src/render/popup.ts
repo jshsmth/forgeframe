@@ -1,5 +1,5 @@
-import type { Dimensions } from '../types/utility';
-import { normalizeDimensionToNumber } from '../utils/dimension';
+import type { Dimensions } from "../types/utility";
+import { normalizeDimensionToNumber } from "../utils/dimension";
 
 /**
  * Configuration options for opening a popup window.
@@ -7,28 +7,28 @@ import { normalizeDimensionToNumber } from '../utils/dimension';
  * @public
  */
 export interface PopupOptions {
-  /**
-   * The URL to load in the popup window.
-   */
-  url: string;
+	/**
+	 * The URL to load in the popup window.
+	 */
+	url: string;
 
-  /**
-   * The name/target for the popup window.
-   *
-   * @remarks
-   * This is used as the window name for `window.open()`. If a window with
-   * this name already exists, the URL will be loaded in that window.
-   */
-  name: string;
+	/**
+	 * The name/target for the popup window.
+	 *
+	 * @remarks
+	 * This is used as the window name for `window.open()`. If a window with
+	 * this name already exists, the URL will be loaded in that window.
+	 */
+	name: string;
 
-  /**
-   * The dimensions for the popup window.
-   *
-   * @remarks
-   * String dimension values will be parsed as integers (e.g., `'500px'` becomes `500`).
-   * If a dimension cannot be parsed, a default of 500 pixels is used.
-   */
-  dimensions: Dimensions;
+	/**
+	 * The dimensions for the popup window.
+	 *
+	 * @remarks
+	 * String dimension values will be parsed as integers (e.g., `'500px'` becomes `500`).
+	 * If a dimension cannot be parsed, a default of 500 pixels is used.
+	 */
+	dimensions: Dimensions;
 }
 
 /**
@@ -53,10 +53,10 @@ export interface PopupOptions {
  * @public
  */
 export class PopupOpenError extends Error {
-  constructor(message = 'Popup blocked by browser') {
-    super(message);
-    this.name = 'PopupOpenError';
-  }
+	constructor(message = "Popup blocked by browser") {
+		super(message);
+		this.name = "PopupOpenError";
+	}
 }
 
 /**
@@ -101,34 +101,34 @@ export class PopupOpenError extends Error {
  * @public
  */
 export function openPopup(options: PopupOptions): Window {
-  const { url, name, dimensions } = options;
+	const { url, name, dimensions } = options;
 
-  const width = normalizeDimensionToNumber(dimensions.width, 500);
-  const height = normalizeDimensionToNumber(dimensions.height, 500);
+	const width = normalizeDimensionToNumber(dimensions.width, 500);
+	const height = normalizeDimensionToNumber(dimensions.height, 500);
 
-  const left = Math.floor(window.screenX + (window.outerWidth - width) / 2);
-  const top = Math.floor(window.screenY + (window.outerHeight - height) / 2);
+	const left = Math.floor(window.screenX + (window.outerWidth - width) / 2);
+	const top = Math.floor(window.screenY + (window.outerHeight - height) / 2);
 
-  const features = [
-    `width=${width}`,
-    `height=${height}`,
-    `left=${left}`,
-    `top=${top}`,
-    'menubar=no',
-    'toolbar=no',
-    'location=yes', // Required for security
-    'status=no',
-    'resizable=yes',
-    'scrollbars=yes',
-  ].join(',');
+	const features = [
+		`width=${width}`,
+		`height=${height}`,
+		`left=${left}`,
+		`top=${top}`,
+		"menubar=no",
+		"toolbar=no",
+		"location=yes", // Required for security
+		"status=no",
+		"resizable=yes",
+		"scrollbars=yes",
+	].join(",");
 
-  const win = window.open(url, name, features);
+	const win = window.open(url, name, features);
 
-  if (!win || isPopupBlocked(win)) {
-    throw new PopupOpenError();
-  }
+	if (!win || isPopupBlocked(win)) {
+		throw new PopupOpenError();
+	}
 
-  return win;
+	return win;
 }
 
 /**
@@ -151,13 +151,13 @@ export function openPopup(options: PopupOptions): Window {
  * @public
  */
 export function closePopup(win: Window): void {
-  try {
-    if (!win.closed) {
-      win.close();
-    }
-  } catch {
-    // Close may fail cross-origin
-  }
+	try {
+		if (!win.closed) {
+			win.close();
+		}
+	} catch {
+		// Close may fail cross-origin
+	}
 }
 
 /**
@@ -181,13 +181,13 @@ export function closePopup(win: Window): void {
  * @public
  */
 export function focusPopup(win: Window): void {
-  try {
-    if (!win.closed) {
-      win.focus();
-    }
-  } catch {
-    // Focus may fail cross-origin
-  }
+	try {
+		if (!win.closed) {
+			win.focus();
+		}
+	} catch {
+		// Focus may fail cross-origin
+	}
 }
 
 /**
@@ -213,19 +213,19 @@ export function focusPopup(win: Window): void {
  * @public
  */
 export function isPopupBlocked(win: Window | null): boolean {
-  if (!win) return true;
+	if (!win) return true;
 
-  try {
-    // Try to access a property - blocked popups throw errors
-    if (win.closed) return true;
+	try {
+		// Try to access a property - blocked popups throw errors
+		if (win.closed) return true;
 
-    // Some browsers return a window that's not really usable
-    if (win.innerHeight === 0 || win.innerWidth === 0) return true;
+		// Some browsers return a window that's not really usable
+		if (win.innerHeight === 0 || win.innerWidth === 0) return true;
 
-    return false;
-  } catch {
-    return true;
-  }
+		return false;
+	} catch {
+		return true;
+	}
 }
 
 /**
@@ -260,53 +260,57 @@ export function isPopupBlocked(win: Window | null): boolean {
  * @public
  */
 export function watchPopupClose(
-  win: Window,
-  callback: () => void,
-  options: { initialInterval?: number; maxInterval?: number; multiplier?: number } = {}
+	win: Window,
+	callback: () => void,
+	options: {
+		initialInterval?: number;
+		maxInterval?: number;
+		multiplier?: number;
+	} = {},
 ): () => void {
-  const {
-    initialInterval = 100,  // Start fast to catch quick closes
-    maxInterval = 2000,     // Cap at 2 seconds
-    multiplier = 1.5,       // Exponential backoff multiplier
-  } = options;
+	const {
+		initialInterval = 100, // Start fast to catch quick closes
+		maxInterval = 2000, // Cap at 2 seconds
+		multiplier = 1.5, // Exponential backoff multiplier
+	} = options;
 
-  let currentInterval = initialInterval;
-  let timer: ReturnType<typeof setTimeout>;
-  let stopped = false;
+	let currentInterval = initialInterval;
+	let timer: ReturnType<typeof setTimeout>;
+	let stopped = false;
 
-  const invokeCallback = (): void => {
-    try {
-      callback();
-    } catch (err) {
-      console.error('Error in popup close callback:', err);
-    }
-  };
+	const invokeCallback = (): void => {
+		try {
+			callback();
+		} catch (err) {
+			console.error("Error in popup close callback:", err);
+		}
+	};
 
-  const check = (): void => {
-    if (stopped) return;
+	const check = (): void => {
+		if (stopped) return;
 
-    try {
-      if (win.closed) {
-        invokeCallback();
-        return;
-      }
-    } catch {
-      // Window might be inaccessible (cross-origin navigation)
-      invokeCallback();
-      return;
-    }
+		try {
+			if (win.closed) {
+				invokeCallback();
+				return;
+			}
+		} catch {
+			// Window might be inaccessible (cross-origin navigation)
+			invokeCallback();
+			return;
+		}
 
-    // Schedule next check with exponential backoff
-    currentInterval = Math.min(currentInterval * multiplier, maxInterval);
-    timer = setTimeout(check, currentInterval);
-  };
+		// Schedule next check with exponential backoff
+		currentInterval = Math.min(currentInterval * multiplier, maxInterval);
+		timer = setTimeout(check, currentInterval);
+	};
 
-  timer = setTimeout(check, currentInterval);
+	timer = setTimeout(check, currentInterval);
 
-  return () => {
-    stopped = true;
-    clearTimeout(timer);
-  };
+	return () => {
+		stopped = true;
+		clearTimeout(timer);
+	};
 }
 
 /**
@@ -330,14 +334,14 @@ export function watchPopupClose(
  * @public
  */
 export function resizePopup(win: Window, dimensions: Dimensions): void {
-  try {
-    const width = normalizeDimensionToNumber(dimensions.width, win.outerWidth);
-    const height = normalizeDimensionToNumber(
-      dimensions.height,
-      win.outerHeight
-    );
-    win.resizeTo(width, height);
-  } catch {
-    // Resize might be blocked
-  }
+	try {
+		const width = normalizeDimensionToNumber(dimensions.width, win.outerWidth);
+		const height = normalizeDimensionToNumber(
+			dimensions.height,
+			win.outerHeight,
+		);
+		win.resizeTo(width, height);
+	} catch {
+		// Resize might be blocked
+	}
 }

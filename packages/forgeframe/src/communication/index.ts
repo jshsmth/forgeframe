@@ -9,16 +9,16 @@
  * internal implementation structure.
  */
 
-export { Messenger, type MessageHandler } from './messenger';
 export {
-  FunctionBridge,
-  serializeFunctions,
-  deserializeFunctions,
-} from './bridge';
+	deserializeFunctions,
+	FunctionBridge,
+	serializeFunctions,
+} from "./bridge";
+export { type MessageHandler, Messenger } from "./messenger";
 export {
-  PROTOCOL_PREFIX,
-  serializeMessage,
-  deserializeMessage,
-  createRequestMessage,
-  createResponseMessage,
-} from './protocol';
+	createRequestMessage,
+	createResponseMessage,
+	deserializeMessage,
+	PROTOCOL_PREFIX,
+	serializeMessage,
+} from "./protocol";
