@@ -77,6 +77,41 @@ describe('Props sync integration', () => {
     vi.restoreAllMocks();
   });
 
+  it('should reject queued and subsequent prop updates when the instance closes', async () => {
+    harness = createIframeIntegrationHarness();
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const validate = vi.fn();
+    const Component = create<SyncProps>({
+      tag: 'integration-close-during-props-sync',
+      url: 'https://host.example.com/widget',
+      props: SYNC_PROP_DEFINITIONS,
+      validate,
+    });
+    const instance = Component({ title: 'initial' });
+    const rendering = instance.render(container);
+    await harness.bootstrapIframeHost(container, SYNC_PROP_DEFINITIONS);
+    await rendering;
+    validate.mockClear();
+
+    // Hold the first update at the window boundary so the next update queues.
+    vi.spyOn(harness.hostWindow, 'postMessage').mockImplementationOnce(() => {});
+    const first = instance.updateProps({ title: 'in flight' });
+    const firstRejected = expect(first).rejects.toThrow('Messenger destroyed');
+    const queued = instance.updateProps({ title: 'queued' });
+    const queuedRejected = expect(queued).rejects.toThrow('closed');
+
+    await instance.close();
+    await firstRejected;
+    await queuedRejected;
+    await expect(instance.updateProps({ title: 'after close' })).rejects.toThrow('closed');
+    expect(validate).toHaveBeenCalledTimes(1);
+    expect(validate).toHaveBeenCalledWith({
+      props: expect.objectContaining({ title: 'in flight' }),
+    });
+    expect(container.querySelectorAll('iframe')).toHaveLength(0);
+  });
+
   it('should sync updated props, remove undefined keys, and notify host subscribers once', async () => {
     harness = createIframeIntegrationHarness();
 

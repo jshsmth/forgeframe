@@ -41,6 +41,29 @@ describe('Function prop bridge integration', () => {
     vi.restoreAllMocks();
   });
 
+  it('should report unserializable callback results without waiting for a message timeout', async () => {
+    harness = createIframeIntegrationHarness();
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const definitions = { getResult: prop.function<() => unknown>() };
+    const Component = create({
+      tag: 'integration-unserializable-callback-result',
+      url: 'https://host.example.com/widget',
+      props: definitions,
+    });
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    let result: unknown = cyclic;
+    const instance = Component({ getResult: () => result });
+    const rendering = instance.render(container);
+    const { hostProps } = await harness.bootstrapIframeHost(container, definitions);
+    await rendering;
+
+    await expect(hostProps.getResult()).rejects.toThrow('Could not serialize response');
+    result = 42;
+    await expect(hostProps.getResult()).resolves.toBe(42);
+  });
+
   it('should propagate async callback results and thrown errors across the bridge', async () => {
     harness = createIframeIntegrationHarness();
 

@@ -19,12 +19,13 @@
   ],
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "vite build && tsc --emitDeclarationOnly && node scripts/fix-dts-imports.mjs",
+    "build": "node -e \"require('node:fs').copyFileSync('../../README.md', 'README.md')\" && vite build && tsc --emitDeclarationOnly && node scripts/fix-dts-imports.mjs",
     "typecheck": "tsc --noEmit && npm run typecheck:tests",
     "typecheck:tests": "tsc -p tests/typecheck/tsconfig.json --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "prepublishOnly": "npm run release:check --prefix ../.."
   },
   "keywords": [
     "iframe",
@@ -47,6 +48,9 @@
   },
   "devDependencies": {
     "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "valibot": "^1.4.2",
     "zod": "^4.5.4"
   }

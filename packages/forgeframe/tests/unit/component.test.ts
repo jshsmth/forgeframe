@@ -457,7 +457,7 @@ describe('Component Creation', () => {
     expect(internal.propsPipeline.props.computed).toBe('focused-during-construction');
   });
 
-  it('should tolerate construction-time PropContext.close followed by updateProps', async () => {
+  it('should reject updates after construction-time PropContext.close', async () => {
     const CloseResolverComponent = create<{
       amount?: number;
       computed?: string;
@@ -482,8 +482,10 @@ describe('Component Creation', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    await expect(instance.updateProps({ amount: 2 })).resolves.toBeUndefined();
-    expect(internal.propsPipeline.props.amount).toBe(2);
+    await expect(instance.updateProps({ amount: 2 })).rejects.toThrow(
+      'Cannot update props after the component has closed'
+    );
+    expect(internal.propsPipeline.props.amount).toBeUndefined();
   });
 
   it('should tolerate construction-time PropContext.close followed by resize', async () => {

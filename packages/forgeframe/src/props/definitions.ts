@@ -76,7 +76,7 @@ export interface BuiltinProps {
  * @internal
  */
 export const EMPTY_PROP_DEFINITIONS =
-  Object.freeze({}) as PropsDefinition<Record<string, unknown>>;
+  /* @__PURE__ */ Object.freeze({}) as PropsDefinition<Record<string, unknown>>;
 
 /**
  * Default prop definitions for all built-in props.
@@ -87,85 +87,92 @@ export const EMPTY_PROP_DEFINITIONS =
  *
  * @public
  */
-export const BUILTIN_PROP_DEFINITIONS: Record<string, PropDefinition> = {
-  uid: {
-    schema: prop.string().optional(),
-    sendToHost: true,
-  },
+export const BUILTIN_PROP_DEFINITIONS: Record<string, PropDefinition> =
+  /* @__PURE__ */ createBuiltinPropDefinitions();
 
-  tag: {
-    schema: prop.string().optional(),
-    sendToHost: true,
-  },
+// Keep schema initialization in a named pure call so consumer bundlers can drop
+// it when only importing helpers such as isHost from the built ESM entrypoint.
+function createBuiltinPropDefinitions(): Record<string, PropDefinition> {
+  return {
+    uid: {
+      schema: prop.string().optional(),
+      sendToHost: true,
+    },
 
-  dimensions: {
-    schema: prop.object<Dimensions>().default(() => ({ width: '100%', height: '100%' })),
-    sendToHost: false,
-  },
+    tag: {
+      schema: prop.string().optional(),
+      sendToHost: true,
+    },
 
-  timeout: {
-    schema: prop.number().default(10000),
-    sendToHost: false,
-  },
+    dimensions: {
+      schema: prop.object<Dimensions>().default(() => ({ width: '100%', height: '100%' })),
+      sendToHost: false,
+    },
 
-  cspNonce: {
-    schema: prop.string().optional(),
-    sendToHost: true,
-  },
+    timeout: {
+      schema: prop.number().default(10000),
+      sendToHost: false,
+    },
 
-  // Lifecycle callbacks - not sent to host (consumer-only)
-  onDisplay: {
-    schema: prop.function().optional(),
-    sendToHost: false,
-  },
+    cspNonce: {
+      schema: prop.string().optional(),
+      sendToHost: true,
+    },
 
-  onRendered: {
-    schema: prop.function().optional(),
-    sendToHost: false,
-  },
+    // Lifecycle callbacks - not sent to host (consumer-only)
+    onDisplay: {
+      schema: prop.function().optional(),
+      sendToHost: false,
+    },
 
-  onRender: {
-    schema: prop.function().optional(),
-    sendToHost: false,
-  },
+    onRendered: {
+      schema: prop.function().optional(),
+      sendToHost: false,
+    },
 
-  onPrerendered: {
-    schema: prop.function().optional(),
-    sendToHost: false,
-  },
+    onRender: {
+      schema: prop.function().optional(),
+      sendToHost: false,
+    },
 
-  onPrerender: {
-    schema: prop.function().optional(),
-    sendToHost: false,
-  },
+    onPrerendered: {
+      schema: prop.function().optional(),
+      sendToHost: false,
+    },
 
-  onClose: {
-    schema: prop.function().optional(),
-    sendToHost: false,
-  },
+    onPrerender: {
+      schema: prop.function().optional(),
+      sendToHost: false,
+    },
 
-  onDestroy: {
-    schema: prop.function().optional(),
-    sendToHost: false,
-  },
+    onClose: {
+      schema: prop.function().optional(),
+      sendToHost: false,
+    },
 
-  onResize: {
-    schema: prop.function().optional(),
-    sendToHost: false,
-  },
+    onDestroy: {
+      schema: prop.function().optional(),
+      sendToHost: false,
+    },
 
-  onFocus: {
-    schema: prop.function().optional(),
-    sendToHost: false,
-  },
+    onResize: {
+      schema: prop.function().optional(),
+      sendToHost: false,
+    },
 
-  onError: {
-    schema: prop.function().optional(),
-    sendToHost: false,
-  },
+    onFocus: {
+      schema: prop.function().optional(),
+      sendToHost: false,
+    },
 
-  onProps: {
-    schema: prop.function().optional(),
-    sendToHost: false,
-  },
-};
+    onError: {
+      schema: prop.function().optional(),
+      sendToHost: false,
+    },
+
+    onProps: {
+      schema: prop.function().optional(),
+      sendToHost: false,
+    },
+  };
+}

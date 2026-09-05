@@ -17,7 +17,7 @@ import { getDomain } from '../../window/helpers';
 import { getRegisteredComponent } from '../component-registry';
 import { HOST_PROPS_BUILTIN_KEYS } from './builtin-keys';
 import type { SerializedProps } from '../../props/types';
-import type { ForgeFrameComponent, HostProps } from '../../types/runtime';
+import type { ForgeFrameComponent, HostProps, RemoteValue } from '../../types/runtime';
 import type {
   HostPropsDefinition,
   PropDefinition,
@@ -48,9 +48,9 @@ export class HostPropsRuntime<
 > {
   public hostProps!: HostProps<P>;
 
-  public consumerProps!: P;
+  public consumerProps!: RemoteValue<P>;
 
-  public propsHandlers: Set<(props: P) => void> = new Set();
+  public propsHandlers: Set<(props: RemoteValue<P>) => void> = new Set();
 
   constructor(
     private propDefinitions: HostPropsDefinition<P, SchemaInputs> =
@@ -61,8 +61,10 @@ export class HostPropsRuntime<
   initializeHostProps(payload: WindowNamePayload<P>): HostProps<P> {
     const deserializedProps = this.deserialize(payload.props);
 
+    // Shared schemas validate the wire value's shape; deserialization changes
+    // callable return types without changing their runtime function kind.
     validateNormalizedProps(
-      deserializedProps,
+      deserializedProps as P,
       this.getBootstrapValidationDefinitions()
     );
     this.consumerProps = deserializedProps;
@@ -78,7 +80,7 @@ export class HostPropsRuntime<
       resize: (dimensions) => this.options.controls.resize(dimensions),
       show: () => this.options.controls.show(),
       hide: () => this.options.controls.hide(),
-      onProps: (handler: (props: P) => void) => this.onProps(handler),
+      onProps: (handler: (props: RemoteValue<P>) => void) => this.onProps(handler),
       onError: (error: Error) => this.options.controls.onError(error),
       getConsumer: () => this.options.getConsumerWindow(),
       getConsumerDomain: () => this.options.getConsumerDomain(),
@@ -120,7 +122,7 @@ export class HostPropsRuntime<
     propDefinitions: HostPropsDefinition<P, SchemaInputs>
   ): void {
     validateNormalizedProps(
-      this.consumerProps,
+      this.consumerProps as P,
       this.getBootstrapValidationDefinitions(propDefinitions)
     );
     this.propDefinitions = propDefinitions;
@@ -133,7 +135,7 @@ export class HostPropsRuntime<
       const previousProps = this.consumerProps;
       const nextProps = this.deserialize(serializedProps);
 
-      validateNormalizedProps(nextProps, this.propDefinitions);
+      validateNormalizedProps(nextProps as P, this.propDefinitions);
       const nextHostProps = filterReservedHostPropKeys(nextProps);
 
       this.removeStaleHostProps(previousProps, nextHostProps);
@@ -164,7 +166,7 @@ export class HostPropsRuntime<
     this.propsHandlers.clear();
   }
 
-  private onProps(handler: (props: P) => void): { cancel: () => void } {
+  private onProps(handler: (props: RemoteValue<P>) => void): { cancel: () => void } {
     this.propsHandlers.add(handler);
 
     return {
@@ -172,7 +174,7 @@ export class HostPropsRuntime<
     };
   }
 
-  private deserialize(serializedProps: SerializedProps): P {
+  private deserialize(serializedProps: SerializedProps): RemoteValue<P> {
     return deserializeProps(
       serializedProps,
       this.propDefinitions,
@@ -180,7 +182,7 @@ export class HostPropsRuntime<
       this.options.getBridge(),
       this.options.getConsumerWindow(),
       this.options.getConsumerDomain()
-    );
+    ) as RemoteValue<P>;
   }
 
   private getBootstrapValidationDefinitions(
@@ -237,7 +239,7 @@ export class HostPropsRuntime<
   }
 
   private removeStaleHostProps(
-    previousProps: P,
+    previousProps: RemoteValue<P>,
     nextHostProps: Record<string, unknown>
   ): void {
     for (const key of Object.keys(previousProps)) {

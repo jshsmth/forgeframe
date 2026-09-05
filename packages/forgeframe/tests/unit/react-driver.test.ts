@@ -130,30 +130,27 @@ describe('createReactComponent', () => {
   it('should render container div', () => {
     const ReactComponent = createReactComponent(mockComponent, { React: mockReact as never });
 
-    ReactComponent({});
-
-    expect(mockReact.createElement).toHaveBeenCalledWith('div', expect.objectContaining({
-      style: expect.objectContaining({
-        display: 'inline-block',
-      }),
-    }));
+    expect(ReactComponent({})).toMatchObject({
+      type: 'div',
+      props: { style: { display: 'inline-block' } },
+    });
   });
 
   it('should apply className and style props', () => {
     const ReactComponent = createReactComponent(mockComponent, { React: mockReact as never });
 
-    ReactComponent({
+    const element = ReactComponent({
       className: 'custom-class',
       style: { background: 'red' },
     });
 
-    expect(mockReact.createElement).toHaveBeenCalledWith('div', expect.objectContaining({
-      className: 'custom-class',
-      style: expect.objectContaining({
-        display: 'inline-block',
-        background: 'red',
-      }),
-    }));
+    expect(element).toMatchObject({
+      type: 'div',
+      props: {
+        className: 'custom-class',
+        style: { display: 'inline-block', background: 'red' },
+      },
+    });
   });
 
   it('should call useRef for container', () => {

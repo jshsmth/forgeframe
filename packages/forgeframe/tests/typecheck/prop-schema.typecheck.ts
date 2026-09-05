@@ -88,6 +88,32 @@ export const assertEmptyTupleOutput: Assert<
 const nestedObjectInput: InferInput<typeof _nestedObjectSchema> = {
   requiredField: true,
 };
+const nestedObjectOutput: InferOutput<typeof _nestedObjectSchema> = {
+  requiredField: true,
+  defaultedField: 'default',
+};
+// @ts-expect-error Defaults make the normalized output field required.
+const outputWithoutDefault: InferOutput<typeof _nestedObjectSchema> = { requiredField: true };
+// @ts-expect-error A field that cannot produce undefined stays required.
+const outputWithoutRequired: InferOutput<typeof _nestedObjectSchema> = { defaultedField: 'default' };
+
+const _optionalOutputObject = prop.object().shape({
+  optionalBranch: prop.union(prop.string(), prop.number().optional()),
+  nullable: prop.string().nullable(),
+});
+const optionalBranchOutput: InferOutput<typeof _optionalOutputObject> = { nullable: null };
+// @ts-expect-error Accepting null does not allow an output field to be omitted.
+const missingNullableOutput: InferOutput<typeof _optionalOutputObject> = {};
+
+const _readonlyObjectSchema = prop.object().shape({
+  required: prop.string(),
+  optional: prop.string().optional(),
+} as const);
+declare const readonlyOutput: InferOutput<typeof _readonlyObjectSchema>;
+// @ts-expect-error Existing readonly shape modifiers are retained.
+readonlyOutput.required = 'changed';
+// @ts-expect-error Optionality does not remove readonly shape modifiers.
+readonlyOutput.optional = 'changed';
 const defaultedTupleInput: InferInput<typeof _defaultedTupleSchema> = [
   undefined,
   undefined,
@@ -103,6 +129,11 @@ const defaultedBranchUnionInput: InferInput<
 > = undefined;
 const anyInput: InferInput<typeof _anySchema> = null;
 void nestedObjectInput;
+void nestedObjectOutput;
+void outputWithoutDefault;
+void outputWithoutRequired;
+void optionalBranchOutput;
+void missingNullableOutput;
 void defaultedTupleInput;
 void defaultedArrayInput;
 void defaultedValueRecordInput;

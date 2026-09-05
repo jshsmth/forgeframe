@@ -8,9 +8,11 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `component-clone.test.ts`: Clone snapshot preservation, lifecycle tracking, peer visibility, and global/tag cleanup.
 - `component-instance-index.test.ts`: Internal active-instance indexing, reindexing, tag clearing, and peer lookup snapshot behavior.
 - `component.test.ts`: Component creation, registration, instance lifecycle, and host-context detection.
+- `component-node-runtime-transition.test.ts`: Component registration across a Node-to-browser runtime transition.
 - `consumer-branch-coverage.test.ts`: Consumer branch/edge-path coverage for domain trust, rendering, and prop-sync internals.
 - `domain-pattern.test.ts`: Wildcard domain compilation cache behavior and stateless `RegExp` trust checks.
 - `consumer-lifecycle.test.ts`: Consumer handshake, lifecycle messaging, open/close guards, and update validation.
+- `consumer-renderer.test.ts`: Renderer ownership of iframe/popup resources, templates, and teardown.
 - `consumer-transport.test.ts`: Direct consumer transport behavior for trust rotation, failed prop sync cleanup, handshake waiting, and async init error forwarding.
 - `emitter.test.ts`: Event emitter subscription semantics, once/off behavior, and async error isolation.
 - `host-branch-coverage.test.ts`: Host branch/edge-path coverage for deferred init, failure capture, and guard paths.
@@ -19,9 +21,11 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `host-security.test.ts`: Host allowlist enforcement and deferred-init security gating.
 - `iframe.test.ts`: Iframe creation, reserved-attribute guards, visibility, and sizing helpers.
 - `index-side-effect-free.test.ts`: Public entrypoint import stays side-effect-free until `initHost()` is called explicitly in ForgeFrame-shaped host windows.
+- `index-node-smoke.test.ts`: Public entrypoint imports and component definitions without browser globals.
 - `messenger.test.ts`: Cross-window messenger request/response flow, filtering, trust checks, and teardown behavior.
 - `messenger-routing.test.ts`: Multi-instance channel routing and function bridge response isolation.
 - `popup.test.ts`: Popup open/close/focus/resize helpers and close/popup-block detection.
+- `package-contract.test.ts`: ESM package exports, documentation claims, and release checks.
 - `prop-schema.test.ts`: `prop` schema builder behavior and Standard Schema compliance checks.
 - `props-serialize.test.ts`: BASE64/DOTIFY serialization round-trips and malformed wrapper fallback behavior.
 - `props-alias-materialization.test.ts`: Pure alias-chain resolution, precedence, reset propagation, explicit clearing, and cycle safety.
@@ -40,7 +44,6 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `version.test.ts`: Version constant synchronization with package metadata.
 - `window-helpers.test.ts`: Cross-window helper behavior for domain checks, traversal, and defensive operations.
 - `window-name-payload.test.ts`: Window name payload encoding/parsing and ForgeFrame-window detection helpers.
-- `window-proxy.test.ts`: Window registry/reference creation, resolution, and serialization constraints.
 
 ## Integration Tests (`packages/forgeframe/tests/integration`)
 
@@ -51,10 +54,14 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `popup-host-handshake.test.ts`: End-to-end popup happy path and popup-blocked failure coverage through `render(..., 'popup')` and `initHost()`.
 - `props-alias-sync.test.ts`: End-to-end canonical host synchronization for initial, updated, and chained alias values.
 - `props-sync.test.ts`: Post-connect prop updates across the real messaging pipeline, including host snapshot replacement, stale key removal, and `onProps` subscriber delivery.
+- `react-driver-dom.test.ts`: Real React DOM reconciliation in jsdom, including StrictMode, construction errors, render recovery, refs, and async observer isolation.
 
 ## Type Tests (`packages/forgeframe/tests/typecheck`)
 
 - `component-inference.typecheck.ts`: Compile-time assertions for inferred and explicit schema-backed component props, third-party schemas, callbacks, and typed children.
+- `host.typecheck.ts`: Host initialization and host-prop schema input/output contracts.
+- `remote-values.typecheck.ts`: Promise-returning remote callbacks and exports, nested data shapes, and unchanged local callback inputs.
+- `prop-schema.typecheck.ts`: Prop builder inference, defaults, optionality, and composite schemas.
 - `alias-inputs.ts`: Compile-time assertions for canonical-key aliases, legacy aliases, mixed updates, and React wrapper input props.
 - `react-jsx.tsx`: Compile-time assertions for React JSX wrapper props and element return types.
 - `schema.typecheck.ts`: Compile-time assertions for Standard Schema utility and contract types.
@@ -68,5 +75,6 @@ This index documents what each ForgeFrame test file validates and the naming con
 ## Quick Commands
 
 - Run all ForgeFrame tests: `npm run test:run -w forgeframe`
+- Run the same suite with coverage thresholds: `npm run test:coverage -w forgeframe` (no separate test run needed)
 - Run a single test file: `npm run test:run -w forgeframe -- tests/unit/<file>.test.ts`
 - Run typecheck assertions: `npm run typecheck:tests -w forgeframe`

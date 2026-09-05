@@ -23,6 +23,29 @@ import type {
   IframeStyles,
 } from './utility';
 
+/**
+ * A value received across the component boundary.
+ *
+ * @remarks
+ * Callback props and exported methods always return promises on the receiving
+ * side, even when their local implementation returns synchronously. Nested
+ * objects and arrays retain their shape, and Date props remain Date instances.
+ * Callback arguments and results use the JSON message contract; they are not
+ * recursively converted into remote function references.
+ *
+ * @typeParam T - The value's type in the window that supplies it.
+ * @public
+ */
+export type RemoteValue<T> = T extends (...args: never[]) => Promise<unknown>
+  ? T
+  : T extends (...args: infer Args) => infer Result
+    ? (...args: Args) => Promise<Awaited<Result>>
+  : T extends Date
+    ? T
+    : T extends object
+      ? { [K in keyof T]: RemoteValue<T[K]> }
+      : T;
+
 /** Whether two prop shapes expose the same set of keys. @internal */
 type HasSamePropKeys<A, B> = [Exclude<keyof A, keyof B>] extends [never]
   ? [Exclude<keyof B, keyof A>] extends [never]
@@ -512,7 +535,7 @@ export interface ForgeFrameComponentInstance<
   /**
    * Data exported from the host component via `hostProps.export()`.
    */
-  exports?: X;
+  exports?: RemoteValue<X>;
 }
 
 /**
@@ -625,7 +648,7 @@ export interface ConsumerNamespace<P = Record<string, unknown>> {
   /**
    * Access consumer's props.
    */
-  props: P;
+  props: RemoteValue<P>;
 
   /**
    * Export data/methods from consumer context.
@@ -724,7 +747,7 @@ export interface HostPropsBuiltins<P = Record<string, unknown>> {
    * @param handler - Function called when props change
    * @returns Object with cancel function to unsubscribe
    */
-  onProps: (handler: (props: P) => void) => { cancel: () => void };
+  onProps: (handler: (props: RemoteValue<P>) => void) => { cancel: () => void };
 
   /**
    * Report an error to the consumer.
@@ -819,4 +842,4 @@ export interface HostPropsBuiltins<P = Record<string, unknown>> {
  *
  * @public
  */
-export type HostProps<P = Record<string, unknown>> = P & HostPropsBuiltins<P>;
+export type HostProps<P = Record<string, unknown>> = RemoteValue<P> & HostPropsBuiltins<P>;

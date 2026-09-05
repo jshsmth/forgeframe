@@ -80,6 +80,7 @@ Imagine a payment company (like Stripe) wants to let merchants embed a checkout 
 - [API Reference](#api-reference)
 - [TypeScript](#typescript)
 - [Browser Support](#browser-support)
+- [Developing ForgeFrame](#developing-forgeframe)
 
 ---
 
@@ -344,7 +345,7 @@ const MyComponent = ForgeFrame.create({
     config: prop.object(),
     items: prop.array(),
     position: prop.tuple(prop.number(), prop.number()),
-    onSubmit: prop.function<(data: FormData) => void>(),
+    onSubmit: prop.function<(data: { email: string }) => void>(),
     nickname: prop.string().optional(),
     theme: prop.string().default('light'),
     email: prop.string().email(),
@@ -594,7 +595,7 @@ const Checkout = ForgeFrame.create({
 
 ### Updating Props
 
-Props can be updated after rendering.
+Props can be updated after rendering. Once `close()` starts, new and queued updates reject; queued updates do not start validation or emit prop callbacks after teardown.
 
 ```typescript
 const instance = MyComponent({ name: 'Initial' });
@@ -617,6 +618,28 @@ Built-in `window.hostProps` names are reserved. Consumer props with names such a
 top-level ForgeFrame methods and metadata exposed on `window.hostProps`.
 
 ---
+
+### Cross-window callback values
+
+A callback implementation may return synchronously, but calling it from the other window always returns a promise. This applies to callbacks in `hostProps`, `hostProps.consumer.props`, `onProps` snapshots, and methods in `instance.exports`. The exported `RemoteValue<T>` type describes that remote view, including callbacks nested in objects and arrays.
+
+For generic or overloaded callbacks, declare every call signature with a `Promise` return type and use an async implementation. This preserves TypeScript's overloads and relationships between arguments and results; automatic conversion of synchronous signatures cannot preserve those relationships.
+
+```typescript
+// Consumer definition: the local implementation can be synchronous.
+const Counter = ForgeFrame.create({
+  tag: 'counter',
+  url: 'https://widgets.example.com/counter',
+  props: { getCount: prop.function<() => number>() },
+});
+const counter = Counter({ getCount: () => 42 });
+await counter.render('#container');
+
+// Host: use await even though getCount's local implementation returns a number.
+const count = await window.hostProps.getCount();
+```
+
+Callback arguments and results use JSON serialization. Pass plain objects, arrays, strings, finite numbers, booleans, and `null`; a callback may also return `undefined` for no result. Convert `Date` values to ISO strings and extract plain fields from `FormData` before calling a remote function. Functions passed as arguments or returned by callbacks are not bridged. Cyclic objects and `BigInt` results reject with a serialization error. This differs from prop snapshots and `hostProps.export(...)`, which explicitly bridge functions and preserve `Date` values.
 
 ## Host Window API (hostProps)
 
@@ -688,7 +711,7 @@ Use `initHost()` when:
 const props = window.hostProps;
 
 props.email;
-props.onLogin(user);
+await props.onLogin(user);
 props.uid;
 props.tag;
 
@@ -887,6 +910,9 @@ The React component accepts all your component props plus:
 | `context` | `'iframe' \| 'popup'` | Render mode |
 | `className` | `string` | Container CSS class |
 | `style` | `CSSProperties` | Container inline styles |
+| `ref` | `React.Ref<HTMLDivElement>` | Access the wrapper's container element |
+
+Construction and render failures are reported through `onError` and shown inside the wrapper without removing sibling React content. Changing `context` creates a fresh instance and can recover from a render failure; changing the wrapper's React `key` explicitly remounts it. The container ref stays attached while the error is displayed.
 
 ### Factory Pattern
 
@@ -1157,12 +1183,12 @@ import { initHost, prop, type HostProps } from 'forgeframe';
 
 interface MyProps {
   name: string;
-  onSubmit: (data: FormData) => void;
+  onSubmit: (data: { email: string }) => void;
 }
 
 const hostProps = {
   name: prop.string(),
-  onSubmit: prop.function<(data: FormData) => void>(),
+  onSubmit: prop.function<(data: { email: string }) => void>(),
 };
 
 const allowedConsumerDomains = ['https://app.example.com'];
@@ -1187,6 +1213,63 @@ window.hostProps!.resize;
 ForgeFrame ships ES2022 output. Use modern evergreen browsers or transpile the package for older targets in your consumer build pipeline.
 
 **Note:** Internet Explorer is not supported. If you require IE-era compatibility, use [Zoid](https://github.com/krakenjs/zoid).
+
+---
+
+## Developing ForgeFrame
+
+Use Node.js 24 for local development; CI also checks Node.js 22. Run commands from the repository root:
+
+```bash
+npm ci
+npm run dev
+```
+
+The playground starts the consumer at `https://localhost:5173` and the host at `https://localhost:5174`. Both use the library source directly, so a separate library build is unnecessary during development. The HTTPS setup uses `vite-plugin-mkcert` and may prompt to trust its local certificate authority on first use.
+
+To run locally over HTTP without certificate setup:
+
+```bash
+FORGEFRAME_SKIP_MKCERT=1 VITE_HOST_URL=http://localhost:5174/ FORGEFRAME_PLAYGROUND_OPEN=0 npm run dev
+```
+
+Then open `http://localhost:5173`. The `/tests` page contains browser scenarios for iframe/popup handshakes, prop updates, callbacks, and lifecycle behavior. Use `npm run dev:consumer` or `npm run dev:host` to start the two servers separately. Set `VITE_HOST_URL` when the host runs at another address.
+
+### Architecture and ownership
+
+- `packages/forgeframe/src/index.ts` defines the public package exports. Other source barrels are internal; the package exposes no subpath imports.
+- `core/component.ts` owns component factories and instance tracking. `core/consumer.ts` coordinates rendering, the prop pipeline, and transport; `core/host/` owns host bootstrap and `hostProps`.
+- `communication/` owns request/response messaging and callback bridging. Transports retain their peer window directly and validate browser-provided sources and origins.
+- `props/` owns schemas, normalization, and serialization. Schema input and normalized output are different contracts: repeated validation at trust boundaries protects mutated props and must not blindly reapply transformations.
+- `render/` owns iframe/popup resources and templates; `drivers/` contains the optional React adapter. `packages/playground/` exercises the library as a consumer and host.
+
+### Checks
+
+| Command | What it checks |
+|---------|----------------|
+| `npm run lint` | Library, tests, and playground lint rules |
+| `npm run typecheck` | Library source, compile-time API contracts, and playground types |
+| `npm run test:run` | Unit and integration tests in jsdom, plus Node-specific suites |
+| `npm run test:coverage` | The same tests with coverage thresholds enforced |
+| `npm run build && npm run typecheck:package` | ESM output and emitted declarations under NodeNext resolution |
+| `npm run build:playground` | Consumer and host production builds |
+| `npm run release:check` | Lint, types, tests once with coverage, builds, dependency audit, and package dry run; does not publish |
+
+See the [test index](https://github.com/jshsmth/ForgeFrame/blob/main/packages/forgeframe/tests/README.md) for suite selection and single-file commands. jsdom checks do not replace browser testing of cross-origin navigation, popup blockers, or visual behavior. `npm audit` requires registry access; an audit service failure leaves the release check incomplete even when local checks pass.
+
+Edit the root `README.md` for documentation changes. The library build copies it to `packages/forgeframe/README.md` for npm publication; do not edit that copy separately. Commit the refreshed copy with documentation changes. Declaration files under `dist/` are generated by TypeScript and adjusted by `scripts/fix-dts-imports.mjs` for NodeNext consumers; do not edit them by hand.
+
+### Release workflow
+
+Version preparation and publication are separate:
+
+1. Run `npm run version:patch`, `version:minor`, or `version:major` to update workspace metadata and the lockfile only. For an explicit version, use `npm version 1.0.0 -w forgeframe --no-git-tag-version`. These commands do not commit, tag, publish, or push.
+2. Run `npm run release:check`, review the changes, and commit the intended release source and metadata.
+3. Create the matching Git tag, such as `v1.0.0`, on that commit. Keep the working tree clean so the published files match the tagged source.
+4. Run `npm run release` to publish. The publishable workspace owns `prepublishOnly`, so both this command and `npm publish -w forgeframe` run the full checks before publication.
+5. Push the release commit and its specific tag explicitly. The GitHub workflow requires the tag to match the package version, validates it, and creates release notes; it does not publish to npm. Manual workflow runs must select the matching tag.
+
+The former `release:patch`, `release:minor`, and `release:major` helpers were removed because workspace versioning does not create the commits or tags those helpers assumed. Use `npm run release:check` for local verification without publishing or pushing.
 
 ---
 

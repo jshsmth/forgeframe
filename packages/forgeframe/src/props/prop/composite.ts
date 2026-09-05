@@ -1,6 +1,7 @@
 import type { StandardSchemaV1Result } from '../schema';
 import type {
   InferSchemaInput,
+  InferSchemaValue,
   InferTupleInputShape,
   InferTupleShape,
 } from './base';
@@ -191,10 +192,17 @@ export class TupleSchema<
 export type InferObjectShape<
   S extends Record<string, PropSchema<unknown, unknown>>,
 > = {
-  [K in keyof S]: S[K] extends PropSchema<infer Output, unknown>
-    ? Output
-    : never;
+  [K in keyof S as K extends OptionalObjectOutputKeys<S> ? never : K]: InferSchemaValue<S[K]>;
+} & {
+  [K in keyof S as K extends OptionalObjectOutputKeys<S> ? K : never]?: InferSchemaValue<S[K]>;
 };
+
+/** Keys whose normalized field values can be omitted. @internal */
+type OptionalObjectOutputKeys<
+  S extends Record<string, PropSchema<unknown, unknown>>,
+> = {
+  [K in keyof S]-?: undefined extends InferSchemaValue<S[K]> ? K : never;
+}[keyof S];
 
 /** Keys whose field schemas accept omission. @internal */
 type OptionalObjectInputKeys<
@@ -286,8 +294,8 @@ export class ObjectSchema<
 
     if (!this._strict) {
       for (const key of Object.keys(obj)) {
-        if (!(key in this._shape)) {
-          result[key] = obj[key];
+        if (!Object.prototype.hasOwnProperty.call(this._shape, key)) {
+          defineDataProperty(result, key, obj[key]);
         }
       }
     }

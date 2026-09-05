@@ -112,46 +112,4 @@ export class CleanupManager {
       }
     }
   }
-
-  /**
-   * Checks whether cleanup has already been performed.
-   *
-   * @returns `true` if {@link cleanup} has been called, `false` otherwise
-   *
-   * @example
-   * ```typescript
-   * if (!cleanupManager.isCleaned()) {
-   *   // Safe to register more tasks
-   *   cleanupManager.register(myTask);
-   * }
-   * ```
-   *
-   * @public
-   */
-  isCleaned(): boolean {
-    return this.cleaned;
-  }
-
-  /**
-   * Resets the manager to its initial state, allowing it to be reused.
-   *
-   * @remarks
-   * This method clears all registered tasks and resets the cleaned flag.
-   * It is primarily intended for testing scenarios or cases where the
-   * manager needs to be reused after cleanup.
-   *
-   * @example
-   * ```typescript
-   * // In a test teardown
-   * afterEach(() => {
-   *   cleanupManager.reset();
-   * });
-   * ```
-   *
-   * @public
-   */
-  reset(): void {
-    this.tasks = [];
-    this.cleaned = false;
-  }
 }

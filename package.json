@@ -19,12 +19,11 @@
     "test:run": "npm run test:run -w forgeframe",
     "test:coverage": "npm run test:coverage -w forgeframe",
     "typecheck:package": "tsc --noEmit --skipLibCheck false --module NodeNext --moduleResolution NodeNext --target ES2022 packages/forgeframe/dist/index.d.ts",
-    "release:check": "npm run lint && npm run typecheck && npm run test:run && npm run test:coverage && npm run build && npm run typecheck:package && npm run build:playground && npm audit && npm pack --dry-run -w forgeframe",
-    "prepublishOnly": "npm run release:check",
-    "release": "npm run release:check && npm publish -w forgeframe",
-    "release:patch": "npm version patch -w forgeframe && npm run release && git push && git push --tags",
-    "release:minor": "npm version minor -w forgeframe && npm run release && git push && git push --tags",
-    "release:major": "npm version major -w forgeframe && npm run release && git push && git push --tags"
+    "release:check": "npm run lint && npm run typecheck && npm run test:coverage && npm run build && npm run typecheck:package && npm run build:playground && npm audit && npm pack --dry-run -w forgeframe",
+    "release": "npm publish -w forgeframe",
+    "version:patch": "npm version patch -w forgeframe --no-git-tag-version",
+    "version:minor": "npm version minor -w forgeframe --no-git-tag-version",
+    "version:major": "npm version major -w forgeframe --no-git-tag-version"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

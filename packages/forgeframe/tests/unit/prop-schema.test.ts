@@ -487,6 +487,20 @@ describe('prop.tuple()', () => {
 // ============================================================================
 
 describe('prop.object()', () => {
+  it('should preserve unknown own keys without inheriting or changing object prototypes', () => {
+    const input = JSON.parse('{"constructor":"constructor-value","toString":"string-value","hasOwnProperty":"own-value","__proto__":{"injected":true}}');
+    for (const shape of [{}, Object.create(null)]) {
+      const schema = prop.object().shape(shape);
+      const result = schema['~standard'].validate(input);
+      expect(result).toEqual({ value: input });
+      expect('value' in result).toBe(true);
+      if ('value' in result) {
+        expect(Object.getPrototypeOf(result.value)).toBe(Object.prototype);
+        expect(Object.prototype.hasOwnProperty.call(result.value, '__proto__')).toBe(true);
+      }
+    }
+  });
+
   it('should validate objects', () => {
     const schema = prop.object();
     expect(schema['~standard'].validate({ a: 1 })).toEqual({ value: { a: 1 } });
