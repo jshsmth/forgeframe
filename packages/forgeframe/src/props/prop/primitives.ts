@@ -7,6 +7,16 @@ import {
 	validateDateBound,
 } from "./base";
 
+/** Checks absolute HTTP(S) URL syntax without normalizing the schema output. */
+function isHttpUrl(value: string): boolean {
+	try {
+		const url = new URL(value);
+		return url.protocol === "http:" || url.protocol === "https:";
+	} catch {
+		return false;
+	}
+}
+
 /**
  * Schema for string props with optional validation constraints.
  *
@@ -27,6 +37,8 @@ export class StringSchema extends PropSchema<string> {
 	private _patternMessage?: string;
 	/** @internal */
 	private _trim = false;
+	/** @internal */
+	private _url = false;
 
 	/** @internal */
 	protected _validate(value: unknown): StandardSchemaV1Result<string> {
@@ -49,6 +61,9 @@ export class StringSchema extends PropSchema<string> {
 					{ message: `String must be at most ${this._maxLength} characters` },
 				],
 			};
+		}
+		if (this._url && !isHttpUrl(str)) {
+			return { issues: [{ message: "Invalid URL" }] };
 		}
 		if (this._pattern && !testRegExpStateless(this._pattern, str)) {
 			return {
@@ -73,6 +88,7 @@ export class StringSchema extends PropSchema<string> {
 		clone._pattern = this._pattern;
 		clone._patternMessage = this._patternMessage;
 		clone._trim = this._trim;
+		clone._url = this._url;
 		return clone;
 	}
 
@@ -139,10 +155,12 @@ export class StringSchema extends PropSchema<string> {
 	/**
 	 * Validates the string as an HTTP or HTTPS URL.
 	 *
-	 * @returns A cloned string schema with a URL pattern constraint.
+	 * @returns A cloned string schema requiring a parseable absolute HTTP(S) URL.
 	 */
 	url(): StringSchema {
-		return this.pattern(/^https?:\/\/.+/, "Invalid URL");
+		const clone = this._clone();
+		clone._url = true;
+		return clone;
 	}
 
 	/**

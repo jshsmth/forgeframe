@@ -186,6 +186,50 @@ describe("prop.string()", () => {
 		});
 	});
 
+	it.each([
+		"https:// invalid url",
+		"https://",
+		"http://[broken",
+		"https://example.com:invalid",
+		"ftp://example.com",
+		"/relative/path",
+	])("rejects malformed or non-HTTP URLs: %s", (value) => {
+		expect(prop.string().url()["~standard"].validate(value)).toEqual({
+			issues: [{ message: "Invalid URL" }],
+		});
+	});
+
+	it.each([
+		"https://example.com:8443/path?q=value#fragment",
+		"http://localhost:3000",
+		"https://[::1]/path",
+		"HTTPS://EXAMPLE.COM/Original%20Path",
+	])("preserves a valid HTTP(S) URL: %s", (value) => {
+		expect(prop.string().url()["~standard"].validate(value)).toEqual({ value });
+	});
+
+	it("keeps URL validation immutable and composable with trimming and patterns", () => {
+		const original = prop.string();
+		const url = original.url();
+		const constrained = url
+			.trim()
+			.pattern(/example\.com/, "Expected example.com");
+		expect(original["~standard"].validate("invalid")).toEqual({
+			value: "invalid",
+		});
+		expect(
+			constrained["~standard"].validate(" https://example.com/path "),
+		).toEqual({
+			value: "https://example.com/path",
+		});
+		expect(constrained["~standard"].validate("https://other.com")).toEqual({
+			issues: [{ message: "Expected example.com" }],
+		});
+		expect(constrained["~standard"].validate("example.com")).toEqual({
+			issues: [{ message: "Invalid URL" }],
+		});
+	});
+
 	it("should validate uuid", () => {
 		const schema = prop.string().uuid();
 		expect(schema["~standard"].validate("invalid")).toHaveProperty("issues");

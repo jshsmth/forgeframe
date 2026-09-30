@@ -88,12 +88,15 @@ export class FunctionBridge {
 	 * Creates a new FunctionBridge instance.
 	 *
 	 * @param messenger - The messenger to use for cross-domain calls
+	 * @param isExpectedSource - Admits browser-verified callers for this bridge.
+	 * @param callMessageName - Internal call channel, separating peer relays from prop/export batches.
 	 */
 	constructor(
 		private messenger: Messenger,
 		private isExpectedSource: (
 			source: Parameters<MessageHandler>[1],
 		) => boolean = () => true,
+		private callMessageName: string = MESSAGE_NAME.CALL,
 	) {
 		this.setupCallHandler();
 	}
@@ -195,7 +198,7 @@ export class FunctionBridge {
 		targetDomain: string,
 	): CallableFunction {
 		const wrapper = async (...args: unknown[]): Promise<unknown> =>
-			this.messenger.send(targetWin, targetDomain, MESSAGE_NAME.CALL, {
+			this.messenger.send(targetWin, targetDomain, this.callMessageName, {
 				id: ref.__id__,
 				args,
 			});
@@ -216,8 +219,13 @@ export class FunctionBridge {
 		return (
 			typeof value === "object" &&
 			value !== null &&
+			Reflect.ownKeys(value).length === 3 &&
+			Object.hasOwn(value, "__type__") &&
+			Object.hasOwn(value, "__id__") &&
+			Object.hasOwn(value, "__name__") &&
 			(value as FunctionRef).__type__ === "function" &&
-			typeof (value as FunctionRef).__id__ === "string"
+			typeof (value as FunctionRef).__id__ === "string" &&
+			typeof (value as FunctionRef).__name__ === "string"
 		);
 	}
 
@@ -227,7 +235,7 @@ export class FunctionBridge {
 	 */
 	private setupCallHandler(): void {
 		this.messenger.on<{ id: string; args: unknown[] }>(
-			MESSAGE_NAME.CALL,
+			this.callMessageName,
 			async ({ id, args }, source) => {
 				if (!this.isExpectedSource(source)) {
 					throw new Error("Function call rejected from unexpected window");

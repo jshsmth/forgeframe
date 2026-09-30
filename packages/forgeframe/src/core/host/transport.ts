@@ -8,7 +8,11 @@
  * registration for the host runtime.
  */
 
-import { FunctionBridge, serializeFunctions } from "../../communication/bridge";
+import {
+	deserializeFunctions,
+	FunctionBridge,
+	serializeFunctions,
+} from "../../communication/bridge";
 import { Messenger } from "../../communication/messenger";
 import { EVENT, MESSAGE_NAME } from "../../constants";
 import type { SerializedProps } from "../../props/types";
@@ -22,6 +26,8 @@ export class HostTransport {
 	public messenger: Messenger;
 
 	public bridge: FunctionBridge;
+
+	private peerBridge: FunctionBridge;
 
 	private destroyed = false;
 
@@ -46,6 +52,13 @@ export class HostTransport {
 			(source) =>
 				source.window === this.options.consumerWindow &&
 				source.domain === this.options.getConsumerDomain(),
+		);
+		this.peerBridge = new FunctionBridge(
+			this.messenger,
+			(source) =>
+				source.window === this.options.consumerWindow &&
+				source.domain === this.options.getConsumerDomain(),
+			MESSAGE_NAME.PEER_CALL,
 		);
 	}
 
@@ -176,7 +189,12 @@ export class HostTransport {
 			},
 		);
 
-		return response ?? [];
+		return deserializeFunctions(
+			response ?? [],
+			this.peerBridge,
+			this.options.consumerWindow,
+			this.options.getConsumerDomain(),
+		) as SiblingInfo[];
 	}
 
 	destroy(): void {
@@ -188,6 +206,7 @@ export class HostTransport {
 		this.deferredInitFlushScheduled = false;
 		this.messenger.destroy();
 		this.bridge.destroy();
+		this.peerBridge.destroy();
 	}
 
 	private scheduleDeferredInitFlush(): void {

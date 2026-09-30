@@ -40,7 +40,7 @@ Compile-time evidence: [typecheck suite guidance](../packages/forgeframe/tests/R
 
 ### [communication/bridge.ts](../packages/forgeframe/src/communication/bridge.ts)
 
-Registry reconciliation, capacity eviction, reference framing and remote wrapper creation are separate responsibilities. Retain recursive object/array codecs and local ID reconciliation as cohesive algorithms; CALL invokes a supplied function after browser-source authorization.
+Registry reconciliation, capacity eviction, reference framing and remote wrapper creation are separate responsibilities. Retain recursive object/array codecs and local ID reconciliation as cohesive algorithms; CALL and PEER_CALL invoke supplied functions after browser-source authorization. The call channel is supplied to the bridge so peer relay registries retain a lifetime independent of props/export batches. Reference guards require the complete own-property wire shape and preserve records with extra user fields.
 
 - **O:** `isSafeObjectKey`, `FunctionBridge.retainLocalFunction`, `FunctionBridge.findRemoteWrapper`, `FunctionBridge.evictOldestRemote`, `FunctionBridge.evictOldestLocal`, `FunctionBridge.createRemoteWrapper`, `FunctionBridge.isFunctionRef`, `FunctionBridge.removeLocal`, `FunctionBridge.startBatch`, `FunctionBridge.staleLocalIds`, `FunctionBridge.clearRemote`, `FunctionBridge.localFunctionCount`, `FunctionBridge.remoteFunctionCount`, `serializeFunctions`, `deserializeFunctions`, `createFunctionRef`.
 - **I:** `FunctionBridge.constructor`, `FunctionBridge.serialize`, `FunctionBridge.deserialize`, `FunctionBridge.createRemoteWrapper.wrapper`, `FunctionBridge.setupCallHandler`, `FunctionBridge.finishBatch`, `FunctionBridge.destroy`.
@@ -104,7 +104,7 @@ Evidence: [consumer](#evidence-consumer); typecheck.
 
 ### [core/component.ts](../packages/forgeframe/src/core/component.ts)
 
-Declaration policy receives options; static URL context selection receives observed origin. Factory construction and host configuration are integrations; getters are short delegates. Destruction callbacks remove both factory and index identities in order.
+Declaration policy receives options; static URL context selection receives observed origin. Factory construction and host configuration are integrations; getters are short delegates. Factory host-props caching checks the current singleton before reuse and rebinds after a failed bootstrap is retried. Destruction callbacks remove both factory and index identities in order.
 
 - **O:** `assertComponentShape`, `staticUrlValidationContext`, `removeTrackedInstance`, `create.Component.canRenderTo`.
 - **I:** `validateComponentOptions`, `validateStaticComponentUrl`, `create`, `create.createTrackedInstance`, `create.canDetectComponentHost`, `create.syncHostProps`, `create.detectHostState`, `create.Component.isHost`, `create.Component.isEmbedded`, `create.get`, `getComponent`, `getRegisteredComponents`, `getComponentInstancesByTag`, `getIndexedComponentInstances`, `destroy`, `destroyByTag`, `destroyAll`, `unregisterComponent`, `clearComponents`.
@@ -192,7 +192,7 @@ Evidence: [consumer](#evidence-consumer); typecheck.
 
 ### [core/consumer/transport.ts](../packages/forgeframe/src/core/consumer/transport.ts)
 
-Trusted matcher construction is data-only; window/origin observation and messenger rotation are integrations. Bootstrap and INIT integrations retain explicit source/session admission and state-transition order; control callbacks select the next protocol action. Their small response literals remain visible at the handler boundary.
+Trusted matcher construction is data-only; window/origin observation and messenger rotation are integrations. Bootstrap and INIT integrations retain explicit source/session admission and state-transition order; control callbacks select the next protocol action. Their small response literals remain visible at the handler boundary. Peer discovery sequences indexed lookup and recursive serialization through a separate source-guarded relay bridge. Its batch bookkeeping is cleared without retiring held snapshots; reconnect and destroy clear relay identities.
 
 - **O:** `ConsumerTransport.getHostDomain`, `ConsumerTransport.isHostConnected`, `ConsumerTransport.isHostControlSource`, `ConsumerTransport.resetHostWindow`, `collectTrustedDomains`.
 - **I:** `ConsumerTransport.constructor`, `ConsumerTransport.buildTrustedDomains`, `ConsumerTransport.syncTrustedDomainForUrl`, `ConsumerTransport.serializePropsForHost`, `ConsumerTransport.sendPropsUpdateToHost`, `ConsumerTransport.buildWindowName`, `ConsumerTransport.waitForHost`, `ConsumerTransport.setupMessageHandlers`, `ConsumerTransport.onHostControl`, `ConsumerTransport.destroy`.
@@ -268,7 +268,7 @@ Evidence: [host](#evidence-host); typecheck.
 
 ### [core/host/transport.ts](../packages/forgeframe/src/core/host/transport.ts)
 
-Outbound export batches share a FIFO queue. INIT workflow preserves beforeInit, destroy-after-await guard, error capture and event reporting. Browser focus remains part of the focus integration.
+Outbound export batches share a FIFO queue. INIT workflow preserves beforeInit, destroy-after-await guard, error capture and event reporting. Browser focus remains part of the focus integration. Peer lookup sequences a correlated response and recursive decoding through the separate peer-call bridge; prop/export batches cannot retire these relay wrappers.
 
 - **O:** `HostTransport.getInitError`.
 - **I:** `HostTransport.constructor`, `HostTransport.registerPropsHandler`, `HostTransport.requestBootstrap`, `HostTransport.updateTrustedConsumerDomain`, `HostTransport.close`, `HostTransport.focus`, `HostTransport.resize`, `HostTransport.show`, `HostTransport.hide`, `HostTransport.onError`, `HostTransport.exportData`, `HostTransport.sendExportBatch`, `HostTransport.consumerExport`, `HostTransport.getPeerInstances`, `HostTransport.destroy`, `HostTransport.sendInit`, `HostTransport.sendMessage`.
@@ -430,9 +430,9 @@ Evidence: [props](#evidence-props); typecheck.
 
 Scalar schema validation stays cohesive: string trimming/constraints, number bounds/integer checks and Date bounds are algorithms, not workflows. Builder exceptions keep clone/set/return local.
 
-Number validation rejects nonfinite values before JSON transport can change them to null.
+Number validation rejects nonfinite values before JSON transport can change them to null. The pure `isHttpUrl` operation parses absolute HTTP(S) URL syntax; string cloning retains this constraint independently of regex patterns and preserves the schema output.
 
-- **O:** `StringSchema._validate`, `NumberSchema._validate`, `DateSchema._validate`, `BooleanSchema._validate`, `FunctionSchema._validate`, `AnySchema.constructor`, `AnySchema._validate`.
+- **O:** `isHttpUrl`, `StringSchema._validate`, `NumberSchema._validate`, `DateSchema._validate`, `BooleanSchema._validate`, `FunctionSchema._validate`, `AnySchema.constructor`, `AnySchema._validate`.
 - **M:** `StringSchema._clone`, `StringSchema.min`, `StringSchema.max`, `StringSchema.length`, `StringSchema.pattern`, `StringSchema.email`, `StringSchema.url`, `StringSchema.uuid`, `StringSchema.trim`, `StringSchema.nonempty`, `NumberSchema._clone`, `NumberSchema.min`, `NumberSchema.max`, `NumberSchema.int`, `NumberSchema.positive`, `NumberSchema.nonnegative`, `NumberSchema.negative`, `DateSchema._clone`, `DateSchema.min`, `DateSchema.max`, `BooleanSchema._clone`, `FunctionSchema._clone`, `AnySchema._clone`.
 - **Retained rationale —** `StringSchema._clone`, `StringSchema.min`, `StringSchema.max`, `StringSchema.length`, `StringSchema.pattern`, `StringSchema.email`, `StringSchema.url`, `StringSchema.uuid`, `StringSchema.trim`, `StringSchema.nonempty`, `NumberSchema._clone`, `NumberSchema.min`, `NumberSchema.max`, `NumberSchema.int`, `NumberSchema.positive`, `NumberSchema.nonnegative`, `NumberSchema.negative`, `DateSchema._clone`, `DateSchema.min`, `DateSchema.max`, `BooleanSchema._clone`, `FunctionSchema._clone`, `AnySchema._clone`: Immutable fluent construction stays local: clone existing schema state, set the selected constraint, return the same typed builder contract. One-line shortcuts retain the fluent vocabulary; an extra wrapper would add indirection.
 
@@ -449,7 +449,7 @@ Evidence: [props](#evidence-props); typecheck.
 
 ### [props/serialize.ts](../packages/forgeframe/src/props/serialize.ts)
 
-DOTIFY pair decoding and path reconstruction are distinct operations. Recursive wire conversion, escaping, reserved-key checks and malformed fallback remain cohesive codec algorithms. BASE64 and DOTIFY register nested callbacks while encoding JSON values, retaining custom `toJSON()` behavior. After wrapper decoding, the recursive bridge reconstructs callbacks and Date values together, preserving the existing wire formats and transport-owned batch boundary. The encoding closures only delegate function retention to the supplied bridge.
+DOTIFY pair decoding and path reconstruction are distinct operations. Recursive wire conversion, escaping, reserved-key checks and malformed fallback remain cohesive codec algorithms. BASE64 and DOTIFY register nested callbacks while encoding JSON values, retaining custom `toJSON()` behavior. After wrapper decoding, the recursive bridge reconstructs callbacks and Date values together, preserving the existing wire formats and transport-owned batch boundary. The encoding closures only delegate function retention to the supplied bridge. BASE64/DOTIFY guards require both own fields and no extra keys, so user records with additional fields remain ordinary data.
 
 - **O:** `isSafeObjectKey`, `isPlainObject`, `encodeDotNotationPath`, `encodeDotNotationValue`, `createDotNotationPair`, `createDotNotationEmptyObjectPair`, `defineDataProperty`, `toDotNotation`, `fromDotNotation`, `decodeDotNotationPair`, `assignDotNotationPath`, `decodeDotNotationPath`, `isDotifyEncoded`, `serializeProps`, `serializeValue`, `deserializeProps`, `deserializeValue`, `isBase64Encoded`.
 - **O callbacks:** `encodeDotNotationValue.callback@74`, `serializeValue.callback@331`, `fromDotNotation.callback@170`, `decodeDotNotationPath.callback@249`.

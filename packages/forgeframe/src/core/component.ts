@@ -257,11 +257,12 @@ export function create<
 	};
 
 	const syncHostProps = (): HostProps<P> | undefined => {
-		if (componentHostProps) {
+		const activeHost = getHost<P, SchemaInputs>();
+		if (componentHostProps && activeHost?.hostProps === componentHostProps) {
 			return componentHostProps;
 		}
+		componentHostProps = undefined;
 
-		const activeHost = getHost<P, SchemaInputs>();
 		if (activeHost?.hostProps.tag === options.tag) {
 			const configuredHost = initHost<P, SchemaInputs>(
 				runtimeOptions.props as

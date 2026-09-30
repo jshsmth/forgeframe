@@ -264,6 +264,9 @@ function isDotifyEncoded(
 	return (
 		typeof value === "object" &&
 		value !== null &&
+		Reflect.ownKeys(value).length === 2 &&
+		Object.hasOwn(value, "__type__") &&
+		Object.hasOwn(value, "__value__") &&
 		(value as Record<string, unknown>).__type__ === "dotify" &&
 		typeof (value as Record<string, unknown>).__value__ === "string"
 	);
@@ -455,6 +458,9 @@ function isBase64Encoded(
 	return (
 		typeof value === "object" &&
 		value !== null &&
+		Reflect.ownKeys(value).length === 2 &&
+		Object.hasOwn(value, "__type__") &&
+		Object.hasOwn(value, "__value__") &&
 		(value as Record<string, unknown>).__type__ === "base64" &&
 		typeof (value as Record<string, unknown>).__value__ === "string"
 	);

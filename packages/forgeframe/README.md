@@ -411,6 +411,8 @@ All schemas support these base methods:
 
 Shaped object schemas validate own fields. An omitted field is treated as `undefined`, so optional fields and defaults work even for names such as `constructor` and `toString`; inherited values are not supplied as schema inputs.
 
+`prop.string().url()` requires a parseable absolute HTTP(S) URL and preserves the supplied string. It composes with `.pattern()` and `.trim()`; trimming changes the returned string only when requested.
+
 | Type | Factory | Methods |
 |------|---------|---------|
 | String | `prop.string()` | `.min()`, `.max()`, `.length()`, `.email()`, `.url()`, `.uuid()`, `.pattern()`, `.trim()`, `.nonempty()` |
@@ -579,6 +581,7 @@ the sixth generic.
 
 - Use `sameDomain` for values that should never be exposed during cross-origin bootstrap.
 - `DOTIFY` safely preserves nested object keys that contain separators such as `.`, `&`, or `=`.
+- Ordinary objects with transport-like marker fields and additional user fields remain data in all three serialization modes.
 
 ### Passing Props via URL or POST Body (Advanced)
 
@@ -756,6 +759,8 @@ await props.consumer.export(data);
 const peers = await props.getPeerInstances();
 cancel();
 ```
+
+Peer exports preserve data, `Date` values, and nested methods. Methods return promises and are relayed through the shared consumer. Cached methods survive unrelated prop updates. Rediscover peers after a sibling replaces its exports or reconnects; retired methods reject. Peer discovery uses the same bounded function registries as other callbacks.
 
 <details>
 <summary>Method Reference</summary>
@@ -1082,6 +1087,8 @@ const props = host.hostProps;
 ```
 
 Update every host startup path to await `ready`, including hosts that share a component definition and initialize automatically. Upgrade both the consumer and host bundles. If staging the upgrade, update hosts first: current hosts can still read legacy consumer payloads, but current consumers reject older hosts that cannot complete the secure bootstrap. The redirect protection requires the consumer upgrade too.
+
+After a failed bootstrap, a successful same-page `initHost()` retry also refreshes the shared component factory's `hostProps` reference and controls.
 
 Iframe resizing now also updates ForgeFrame's default clipping wrapper. Custom container/prerender templates remain responsible for their own layout.
 

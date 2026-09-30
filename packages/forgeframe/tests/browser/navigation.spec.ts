@@ -137,6 +137,27 @@ test.beforeAll(async () => {
 				</script>`,
 				);
 			}
+			if (req.url === "/factory-retry") {
+				return respond(
+					res,
+					`<!doctype html><script type="module">
+				import {create,initHost,prop} from '/library.js';
+				let reject = true;
+				const count = {'~standard': {version:1,vendor:'retry-fixture',validate(value) {
+					return reject ? {issues:[{message:'temporary rejection'}]} : prop.number()['~standard'].validate(value);
+				}}};
+				const definitions = {count,secret:prop.string(),onComplete:prop.function()};
+				const Component = create({tag:'browser-navigation-review',url:location.href,props:definitions,allowedConsumerDomains:['${consumerOrigin}']});
+				const failed = initHost(definitions, ['${consumerOrigin}']);
+				try { await failed.ready; } catch(error) { window.firstError = error.message; }
+				reject = false;
+				const host = initHost(definitions, ['${consumerOrigin}']);
+				await host.ready;
+				window.sameHostProps = Component.hostProps === host.hostProps;
+				window.received = Component.hostProps; window.ready = true;
+				</script>`,
+				);
+			}
 			respond(
 				res,
 				`<!doctype html><button id="complete" style="position:absolute;top:400px">Complete payment</button>
@@ -1038,6 +1059,63 @@ for (const context of ["iframe", "popup"] as const) {
 				).received.onComplete(),
 			),
 		).toBe(1);
+	});
+
+	test(`${context} factory hostProps follows a successful bootstrap retry`, async ({
+		page,
+	}) => {
+		const popup = context === "popup" ? page.waitForEvent("popup") : null;
+		await mount(page, "/factory-retry", context);
+		const hostPage = popup ? await popup : page;
+		expect(
+			await page.evaluate(
+				() => (window as unknown as { outcome: Promise<string> }).outcome,
+			),
+		).toBe("ready");
+		const host =
+			context === "popup"
+				? hostPage
+				: page.frames().find((frame) => frame.url().startsWith(hostOrigin));
+		if (!host) throw new Error("Missing host window");
+		await host.waitForFunction(
+			() => (window as unknown as { ready: boolean }).ready === true,
+		);
+		expect(
+			await host.evaluate(() => {
+				const state = window as unknown as {
+					firstError: string;
+					sameHostProps: boolean;
+					received: { count: number };
+				};
+				return {
+					error: state.firstError.includes("temporary rejection"),
+					same: state.sameHostProps,
+					count: state.received.count,
+				};
+			}),
+		).toEqual({ error: true, same: true, count: 1 });
+		await page.evaluate(() =>
+			(
+				window as unknown as {
+					instance: { updateProps(props: object): Promise<void> };
+				}
+			).instance.updateProps({ count: 2 }),
+		);
+		expect(
+			await host.evaluate(async () => {
+				const props = (
+					window as unknown as {
+						received: {
+							count: number;
+							onComplete(): Promise<number>;
+							resize(dimensions: { width: number }): Promise<void>;
+						};
+					}
+				).received;
+				await props.resize({ width: 360 });
+				return { count: props.count, callback: await props.onComplete() };
+			}),
+		).toEqual({ count: 2, callback: 1 });
 	});
 
 	test(`${context} preserves a callback update queued during reconnect bootstrap`, async ({

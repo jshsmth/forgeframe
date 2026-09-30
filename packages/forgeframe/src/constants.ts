@@ -143,6 +143,8 @@ export const MESSAGE_NAME = {
 	EXPORT: "forgeframe_export",
 	/** Cross-domain function call */
 	CALL: "forgeframe_call",
+	/** Relayed peer export method call */
+	PEER_CALL: "forgeframe_peer_call",
 	/** Consumer export from host context */
 	CONSUMER_EXPORT: "forgeframe_consumer_export",
 	/** Get sibling components request */

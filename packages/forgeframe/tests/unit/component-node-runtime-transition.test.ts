@@ -58,14 +58,14 @@ describe("Component host detection across runtime transitions", () => {
 			getPeerInstances: vi.fn(),
 		};
 
+		let activeHost: { hostProps: typeof mockHostProps } | null = null;
 		const initHost = vi.fn(() => {
 			if (!browserAvailable || !hostDetected) {
 				return null;
 			}
 
-			return {
-				hostProps: mockHostProps,
-			};
+			activeHost ??= { hostProps: mockHostProps };
+			return activeHost;
 		});
 
 		vi.doMock("@/utils/browser", () => ({
@@ -76,7 +76,7 @@ describe("Component host detection across runtime transitions", () => {
 				hostDetected && tag === "late-host-component",
 		}));
 		vi.doMock("@/core/host", () => ({
-			getHost: () => null,
+			getHost: () => activeHost,
 			initHost,
 		}));
 
@@ -123,9 +123,11 @@ describe("Component host detection across runtime transitions", () => {
 			getPeerInstances: vi.fn(),
 		};
 
-		const initHost = vi.fn(() => ({
-			hostProps: mockHostProps,
-		}));
+		let activeHost: { hostProps: typeof mockHostProps } | null = null;
+		const initHost = vi.fn(() => {
+			activeHost ??= { hostProps: mockHostProps };
+			return activeHost;
+		});
 
 		vi.doMock("@/utils/browser", () => ({
 			hasBrowserWindow: () => browserAvailable,
@@ -135,7 +137,7 @@ describe("Component host detection across runtime transitions", () => {
 				hostDetected && tag === "sticky-host-component",
 		}));
 		vi.doMock("@/core/host", () => ({
-			getHost: () => null,
+			getHost: () => activeHost,
 			initHost,
 		}));
 
@@ -183,9 +185,11 @@ describe("Component host detection across runtime transitions", () => {
 			getPeerInstances: vi.fn(),
 		};
 
-		const initHost = vi.fn(() => ({
-			hostProps: mockHostProps,
-		}));
+		let activeHost: { hostProps: typeof mockHostProps } | null = null;
+		const initHost = vi.fn(() => {
+			activeHost ??= { hostProps: mockHostProps };
+			return activeHost;
+		});
 
 		vi.doMock("@/utils/browser", () => ({
 			hasBrowserWindow: () => browserAvailable,
@@ -195,7 +199,7 @@ describe("Component host detection across runtime transitions", () => {
 				hostDetected && tag === "late-host-component",
 		}));
 		vi.doMock("@/core/host", () => ({
-			getHost: () => null,
+			getHost: () => activeHost,
 			initHost,
 		}));
 

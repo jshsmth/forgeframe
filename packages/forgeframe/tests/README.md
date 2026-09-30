@@ -33,7 +33,7 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `playground-text-rendering.test.ts`: Literal prop keys/values and identity display, safe logger text, update IDs, and preserved host controls.
 - `popup-layout.test.ts`: Popup geometry and polling backoff from supplied screen dimensions.
 - `package-contract.test.ts`: ESM package exports, documentation claims, and release checks.
-- `prop-schema.test.ts`: `prop` schema builder behavior, nonfinite-number rejection, own-field omission/defaults for inherited names in shaped objects, and Standard Schema compliance, trimming before length validation, and immutable literal optional/default clones.
+- `prop-schema.test.ts`: `prop` schema builder behavior, nonfinite-number rejection, own-field omission/defaults for inherited names in shaped objects, and Standard Schema compliance, parseable HTTP(S) URL validation with immutable/composable constraints, trimming before length validation, and immutable literal optional/default clones.
 - `prop-update.test.ts`: Isolated patch/reset merging and validation-key bookkeeping.
 - `props-serialize.test.ts`: BASE64/DOTIFY serialization round-trips, nested callbacks produced by custom `toJSON()`, and malformed wrapper fallback behavior.
 - `props-alias-materialization.test.ts`: Pure alias-chain resolution, precedence, reset propagation, explicit clearing, and cycle safety.
@@ -62,6 +62,7 @@ All unit tests and shared fixtures are strictly compiled by `npm run typecheck`,
 - `consumer-host-handshake.test.ts`: End-to-end iframe happy path covering `create()`, `instance.render()`, `initHost()`, and the real INIT handshake, plus oversized bootstrap metadata rejection followed by a valid retry.
 - `function-prop-bridge.test.ts`: Real cross-window callback bridging from host `window.hostProps` back to consumer callbacks, including async results, thrown errors, BASE64/DOTIFY nested callback/Date bootstrap and updates, and retirement of replaced callbacks after acknowledged updates in all three serialization modes.
 - `host-controls-routing.test.ts`: Real host-builtins coverage for close/focus/resize/show/hide/error/export/peer lookup, plus spoofed-source rejection on consumer and host runtimes.
+- `object-prop-roundtrip.test.ts`: Ordinary BASE64/DOTIFY/function-shaped records retain user fields through bootstrap and updates in all three serialization modes.
 - `popup-host-handshake.test.ts`: End-to-end popup happy path and popup-blocked failure coverage through `render(..., 'popup')` and `initHost()`.
 - `props-alias-sync.test.ts`: End-to-end canonical host synchronization for initial, updated, and chained alias values.
 - `props-sync.test.ts`: Post-connect prop updates across the real messaging pipeline, including host snapshot replacement, stale inherited-name key removal, nonfinite update rejection/recovery, host-side rejection followed by a queued valid update, private prop filtering, and nonblocking/cancellable `onProps` subscriber delivery.
@@ -72,9 +73,11 @@ All integration test files and their shared harness are checked by `npm run type
 
 ## Browser Tests (`packages/forgeframe/tests/browser`)
 
-`navigation.spec.ts` builds the production library and runs in Chromium, Firefox, and WebKit against separate local HTTP origins. It covers redirect isolation, rejection of legacy hosts, default-wrapper resizing, and iframe/popup reconnection after reload and full-page navigation with current props and callable callbacks. Recovery cases cover failed-schema retry, updates already pending at bootstrap, and callback updates queued during reconnection. Initial-navigation cases capture real iframe/popup GET and POST requests, test relative URL policies with cross-origin base tags and callback/converter mutations, and verify fragment preservation, queued prop snapshots, popup loading cleanup, async subscriber rejection isolation, POST names that shadow form methods, and BASE64/DOTIFY nested callback/Date initialization and updates.
+`navigation.spec.ts` builds the production library and runs in Chromium, Firefox, and WebKit against separate local HTTP origins. It covers redirect isolation, rejection of legacy hosts, default-wrapper resizing, and iframe/popup reconnection after reload and full-page navigation with current props and callable callbacks. Recovery cases cover failed-schema retry, shared-factory host-props/control rebinding after successful retry, updates already pending at bootstrap, and callback updates queued during reconnection. Initial-navigation cases capture real iframe/popup GET and POST requests, test relative URL policies with cross-origin base tags and callback/converter mutations, and verify fragment preservation, queued prop snapshots, popup loading cleanup, async subscriber rejection isolation, POST names that shadow form methods, and BASE64/DOTIFY nested callback/Date initialization and updates.
 
 Install the engines with `npx playwright install chromium firefox webkit`, then run `npm run test:browser` from the repository root. CI installs browser system dependencies and runs all three engines on Node 24. WebKit supplies automated Safari-engine coverage; these tests do not establish physical Safari/device acceptance.
+
+`peer-exports.spec.ts` runs real same-origin sibling hosts under a separate consumer origin in all three engines. It verifies nested callable exports and dates, prop-update independence, propagated errors, retirement/replacement of exports, and discovery across component tags.
 
 `playground-text.spec.ts` builds the real host playground and consumer logger. Cross-origin iframe/popup tests verify literal markup-shaped prop names and values, greeting logs, updates, and export controls. Omitted popup dimensions are verified as a 500 × 500 viewport in all three engines.
 
