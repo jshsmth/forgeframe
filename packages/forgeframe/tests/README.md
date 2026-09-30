@@ -37,7 +37,7 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `package-contract.test.ts`: ESM package exports, documentation claims, and release checks.
 - `prop-schema.test.ts`: `prop` schema builder behavior, nonfinite-number rejection, own-field omission/defaults for inherited names in shaped objects, and Standard Schema compliance, parseable HTTP(S) URL validation with immutable/composable constraints, trimming before length validation, immutable literal optional/default clones, and literal/enum union continuation for BigInt/cyclic input and custom encoders without invoking JSON diagnostics.
 - `prop-update.test.ts`: Isolated patch/reset merging and validation-key bookkeeping.
-- `props-serialize.test.ts`: BASE64/DOTIFY serialization round-trips, nested callbacks produced by custom `toJSON()`, and malformed wrapper fallback behavior.
+- `props-serialize.test.ts`: BASE64/DOTIFY serialization round-trips, nested callbacks produced by custom `toJSON()`, JSON-undefined leaf omission, emptied branches, marker-shaped assembled branches, and malformed wrapper fallback behavior.
 - `props-alias-materialization.test.ts`: Pure alias-chain resolution, precedence, reset propagation, explicit clearing, and cycle safety.
 - `props-alias-updates.test.ts`: Consumer update-pipeline alias precedence, validation rollback, and materialized-value preservation.
 - `props.test.ts`: Prop normalization, own canonical/alias selection for inherited names, schema validation, host/query/body filtering and conversion rules.
@@ -65,7 +65,7 @@ All unit tests and shared fixtures are strictly compiled by `npm run typecheck`,
 - `consumer-host-handshake.test.ts`: End-to-end iframe happy path covering `create()`, `instance.render()`, `initHost()`, and the real INIT handshake, plus oversized bootstrap metadata rejection followed by a valid retry.
 - `function-prop-bridge.test.ts`: Real cross-window callback bridging from host `window.hostProps` back to consumer callbacks, including async results, thrown errors, BASE64/DOTIFY nested callback/Date bootstrap and updates, and retirement of replaced callbacks after acknowledged updates in all three serialization modes.
 - `host-controls-routing.test.ts`: Real host-builtins coverage for close/focus/resize/show/hide/error/export/peer lookup, plus spoofed-source rejection on consumer and host runtimes.
-- `object-prop-roundtrip.test.ts`: Ordinary BASE64/DOTIFY/function-shaped records retain user fields through bootstrap and updates in all three serialization modes.
+- `object-prop-roundtrip.test.ts`: Ordinary BASE64/DOTIFY/function-shaped records retain user fields through bootstrap and updates in all three serialization modes, including direct and nested DOTIFY branches converted by custom JSON encoders.
 - `popup-host-handshake.test.ts`: End-to-end popup happy path and popup-blocked failure coverage through `render(..., 'popup')` and `initHost()`.
 - `props-alias-sync.test.ts`: End-to-end canonical host synchronization for initial, updated, and chained alias values.
 - `props-sync.test.ts`: Post-connect prop updates across the real messaging pipeline, including host snapshot replacement, stale inherited-name key removal, nonfinite update rejection/recovery, host-side rejection followed by a queued valid update, private prop filtering, and nonblocking/cancellable `onProps` subscriber delivery.

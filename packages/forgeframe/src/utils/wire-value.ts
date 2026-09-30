@@ -72,9 +72,11 @@ export function assertDefinedArrayEntries(
 ): void {
 	if (typeof value !== "object" || value === null || seen.has(value)) return;
 	if (value instanceof Date) return;
-	// DOTIFY falls back to bridge encoding for a top-level array.
+	// DOTIFY falls back to bridge encoding for arrays and marker-shaped roots.
 	const nodeEncoding =
-		encoding === PROP_SERIALIZATION.DOTIFY && Array.isArray(value)
+		encoding === PROP_SERIALIZATION.DOTIFY &&
+		(Array.isArray(value) ||
+			needsRecordEscape(value as Record<string, unknown>))
 			? PROP_SERIALIZATION.JSON
 			: encoding;
 	// Encoded leaves are checked by the replacer after their encoder runs.

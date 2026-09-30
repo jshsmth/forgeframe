@@ -95,6 +95,58 @@ describe("Array prop transport", () => {
 		},
 	);
 
+	it.each(["render", "update"])(
+		"checks the DOTIFY marker fallback before %s admission",
+		async (action) => {
+			harness = createIframeIntegrationHarness();
+			const container = document.createElement("div");
+			document.body.append(container);
+			let encoderCalls = 0;
+			const invalidArray = Object.assign([undefined], {
+				toJSON: () => {
+					encoderCalls++;
+					return ["safe"];
+				},
+			});
+			const valid = { __type__: "base64", __value__: ["initial"] };
+			const invalid = { __type__: "base64", __value__: invalidArray };
+			const definitions = {
+				record: {
+					schema: prop.object<Record<string, unknown>>(),
+					serialization: PROP_SERIALIZATION.DOTIFY,
+				},
+			};
+			const Component = create({
+				tag: "dotify-fallback-admission",
+				url: "https://host.example.com/widget",
+				props: definitions,
+			});
+			const instance = Component({
+				record: action === "render" ? invalid : valid,
+			});
+			if (action === "render") {
+				await expect(instance.render(container)).rejects.toThrow(
+					"Cannot serialize undefined array entry",
+				);
+				expect(container.children).toHaveLength(0);
+				await instance.updateProps({ record: valid });
+			} else {
+				await expect(instance.updateProps({ record: invalid })).rejects.toThrow(
+					"Cannot serialize undefined array entry",
+				);
+				await instance.updateProps({});
+			}
+			expect(encoderCalls).toBe(0);
+			const rendering = instance.render(container);
+			const { hostProps } = await harness.bootstrapIframeHost(
+				container,
+				definitions,
+			);
+			await rendering;
+			expect(hostProps.record).toEqual(valid);
+		},
+	);
+
 	describe.each(Object.values(PROP_SERIALIZATION))("%s", (serialization) => {
 		it.each(["undefined", "hole"])(
 			"rejects an %s array entry before opening the host and permits a corrected render",

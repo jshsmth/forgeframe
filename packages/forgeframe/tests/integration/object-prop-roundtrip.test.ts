@@ -146,10 +146,12 @@ describe("Ordinary object prop round trips", () => {
 		);
 	});
 	describe.each([
-		{ serialization: PROP_SERIALIZATION.BASE64, nested: false },
-		{ serialization: PROP_SERIALIZATION.BASE64, nested: true },
-		{ serialization: PROP_SERIALIZATION.DOTIFY, nested: true },
-	])("$serialization / nested=$nested", ({ serialization, nested }) => {
+		{ serialization: PROP_SERIALIZATION.BASE64, shape: "root" },
+		{ serialization: PROP_SERIALIZATION.BASE64, shape: "array" },
+		{ serialization: PROP_SERIALIZATION.DOTIFY, shape: "root" },
+		{ serialization: PROP_SERIALIZATION.DOTIFY, shape: "object" },
+		{ serialization: PROP_SERIALIZATION.DOTIFY, shape: "array" },
+	])("$serialization / shape=$shape", ({ serialization, shape }) => {
 		it.each(["convert", "omit"])(
 			"escapes a record after custom encoders %s its marker shape",
 			async (kind) => {
@@ -162,28 +164,21 @@ describe("Ordinary object prop round trips", () => {
 					__id__: "ordinary",
 					__name__: "ordinary",
 				};
+				class EncodedLeaf {
+					toJSON() {
+						encoderCalls++;
+						return kind === "convert" ? "function" : undefined;
+					}
+				}
 				const makeRecord = () =>
 					kind === "convert"
-						? {
-								...expected,
-								__type__: {
-									toJSON: () => {
-										encoderCalls++;
-										return "function";
-									},
-								},
-							}
-						: {
-								...expected,
-								extra: {
-									toJSON: () => {
-										encoderCalls++;
-										return undefined;
-									},
-								},
-							};
-				const wrap = (record: unknown) =>
-					nested ? { items: [record] } : record;
+						? { ...expected, __type__: new EncodedLeaf() }
+						: { ...expected, extra: new EncodedLeaf() };
+				const wrap = (record: unknown) => {
+					if (shape === "array") return { items: [record] };
+					if (shape === "object") return { nested: record };
+					return record;
+				};
 				const definitions = {
 					record: {
 						schema: prop.object<Record<string, unknown>>(),
