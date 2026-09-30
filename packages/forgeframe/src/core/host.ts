@@ -54,7 +54,7 @@ export function isHost(): boolean {
  * @example
  * ```typescript
  * if (isEmbedded()) {
- *   initHost();
+ *   await initHost()?.ready;
  *   const { amount, onSuccess } = window.hostProps;
  *   // Handle embedded context...
  * }
@@ -71,13 +71,15 @@ export function isEmbedded(): boolean {
  *
  * @remarks
  * This is a convenience function to access `window.hostProps`, which contains
- * all props passed from the consumer plus built-in control methods.
+ * all props passed from the consumer plus built-in control methods. Await
+ * `initHost()?.ready` before accessing consumer props.
  *
  * @typeParam P - The props type passed from the consumer
  * @returns The hostProps object or undefined if not in a host context
  *
  * @example
  * ```typescript
+ * await initHost()?.ready;
  * const props = getHostProps();
  * if (props) {
  *   props.onLogin({ id: 1, name: 'John' });

@@ -56,6 +56,12 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `props-sync.test.ts`: Post-connect prop updates across the real messaging pipeline, including host snapshot replacement, stale key removal, and `onProps` subscriber delivery.
 - `react-driver-dom.test.ts`: Real React DOM reconciliation in jsdom, including StrictMode, construction errors, render recovery, refs, and async observer isolation.
 
+## Browser Tests (`packages/forgeframe/tests/browser`)
+
+`navigation.spec.ts` builds the production library and runs in Chromium against separate local HTTP origins. It covers redirect isolation, rejection of legacy hosts, default-wrapper resizing, and iframe/popup reconnection after reload and full-page navigation with current props and callable callbacks. Recovery cases cover failed-schema retry, updates already pending at bootstrap, and callback updates queued during reconnection.
+
+Install Chromium once with `npx playwright install chromium`, then run `npm run test:browser` from the repository root. CI runs these regressions on Node 24.
+
 ## Type Tests (`packages/forgeframe/tests/typecheck`)
 
 - `component-inference.typecheck.ts`: Compile-time assertions for inferred and explicit schema-backed component props, third-party schemas, callbacks, and typed children.

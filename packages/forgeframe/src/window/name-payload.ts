@@ -35,9 +35,9 @@ const MAX_PAYLOAD_SIZE = 32 * 1024;
  * @returns A window name string with the ForgeFrame prefix and base64-encoded payload.
  *
  * @remarks
- * This is the primary mechanism for passing initial props from a consumer window
- * to a host window (iframe or popup). The payload is JSON-serialized and base64-encoded
- * to ensure safe transport via the window.name property.
+ * Protocol 2 uses this only for channel metadata. Consumer props and child
+ * metadata are delivered through verified messaging instead: window.name may
+ * remain readable after redirects and must not carry sensitive data.
  *
  * @example
  * ```typescript
@@ -190,6 +190,7 @@ function isValidWindowNamePayload<P>(
 
 	if (
 		value.protocolVersion !== undefined &&
+		value.protocolVersion !== 1 &&
 		value.protocolVersion !== PROTOCOL_VERSION
 	) {
 		return false;
@@ -457,15 +458,15 @@ export function getInitialPayload<P>(
 }
 
 /**
- * Reads and clears the initial ForgeFrame bootstrap payload from a window name.
+ * Reads the initial ForgeFrame channel metadata or legacy payload from a window name.
  *
  * @typeParam P - The expected type of the props in the payload.
  * @param win - The window to consume the payload from. Defaults to the current window.
  * @returns The decoded WindowNamePayload, or `null` if not a valid ForgeFrame window.
  *
  * @remarks
- * `window.name` persists across navigations, so host bootstrap should consume the
- * payload once and clear it after a successful parse.
+ * Protocol 2 retains channel metadata for reconnection across navigations,
+ * stripping any props and children. Legacy payloads are cleared after parsing.
  *
  * @internal
  */
@@ -484,7 +485,23 @@ export function consumeInitialPayload<P>(
 		return null;
 	}
 
-	clearInitialPayload(win, name);
+	if (payload.protocolVersion === PROTOCOL_VERSION) {
+		// Retain only channel metadata so a new document can reconnect. Props and
+		// executable child metadata must never persist across navigations.
+		try {
+			if (win.name === name) {
+				win.name = buildWindowName({
+					...payload,
+					props: {},
+					children: undefined,
+				});
+			}
+		} catch {
+			// Bootstrap can proceed even if an unusual window rejects name writes.
+		}
+	} else {
+		clearInitialPayload(win, name);
+	}
 
 	return payload;
 }

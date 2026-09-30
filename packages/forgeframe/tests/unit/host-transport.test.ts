@@ -25,6 +25,7 @@ function createTransport({
 	consumerDomain = "https://consumer.example.com",
 	getConsumerDomain,
 	deferInit = true,
+	beforeInit,
 	consumerWindow = { postMessage: vi.fn() } as unknown as Window,
 }: Partial<HostTransportOptions> = {}) {
 	const event = new EventEmitter();
@@ -36,6 +37,7 @@ function createTransport({
 		consumerDomain,
 		getConsumerDomain: getConsumerDomain ?? (() => consumerDomain),
 		deferInit,
+		beforeInit,
 	};
 
 	const transport = new HostTransport(options);
@@ -68,6 +70,31 @@ afterEach(() => {
 });
 
 describe("HostTransport", () => {
+	it("acknowledges validated PROPS while bootstrap is pending to avoid a queue dependency cycle", async () => {
+		const ready = createDeferred<void>();
+		const { transport, consumerWindow } = createTransport({
+			beforeInit: () => ready.promise,
+		});
+		const applySerializedProps = vi.fn(() => ({ success: true as const }));
+		transport.registerPropsHandler({
+			isConsumerSource: (source) => source.window === consumerWindow,
+			applySerializedProps,
+		});
+		const response = Promise.resolve(
+			getPropsHandler(transport)?.(
+				{ amount: 42 },
+				{
+					uid: "host-transport-uid",
+					domain: "https://consumer.example.com",
+					window: consumerWindow,
+				},
+			),
+		);
+		expect(applySerializedProps).toHaveBeenCalledWith({ amount: 42 });
+		await expect(response).resolves.toEqual({ success: true });
+		ready.resolve();
+	});
+
 	it("should reject untrusted prop sources and apply serialized props for the consumer source", () => {
 		const { transport, consumerWindow } = createTransport();
 		const isConsumerSource = vi.fn(
@@ -89,6 +116,14 @@ describe("HostTransport", () => {
 				uid: "foreign",
 				domain: "https://evil.example.com",
 				window: foreignWindow,
+			}),
+		).toEqual({ success: false });
+		expect(applySerializedProps).not.toHaveBeenCalled();
+		expect(
+			handler?.(payload, {
+				uid: "navigated",
+				domain: window.location.origin,
+				window: consumerWindow,
 			}),
 		).toEqual({ success: false });
 		expect(applySerializedProps).not.toHaveBeenCalled();

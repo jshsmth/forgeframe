@@ -758,12 +758,40 @@ describe("getInitialPayload", () => {
 });
 
 describe("consumeInitialPayload", () => {
-	it("should return payload and clear a valid ForgeFrame window name", () => {
+	it("retains only channel metadata so subsequent host documents can reconnect", () => {
+		const original = createWindowPayload({
+			uid: "reconnect-uid",
+			tag: "reconnect-host",
+			context: CONTEXT.IFRAME,
+			consumerDomain: "https://consumer.com",
+			props: { secret: "private" },
+			exports: VALID_EXPORTS,
+			children: {
+				Child: {
+					tag: "child",
+					url: "https://host.com",
+					props: { secret: "private" },
+				},
+			},
+		});
+		const win = { name: buildWindowName(original) } as Window;
+		expect(consumeInitialPayload(win)).toEqual(original);
+		const retained = parseWindowName(win.name);
+		expect(retained).toMatchObject({
+			uid: "reconnect-uid",
+			protocolVersion: PROTOCOL_VERSION,
+			props: {},
+		});
+		expect(retained?.children).toBeUndefined();
+		expect(consumeInitialPayload(win)).toEqual(retained);
+	});
+
+	it("should return payload and clear a legacy ForgeFrame window name", () => {
 		const originalPayload: WindowNamePayload<{ value: number }> = {
 			uid: "test-uid",
 			tag: "test-tag",
 			version: VERSION,
-			protocolVersion: PROTOCOL_VERSION,
+			protocolVersion: 1,
 			context: CONTEXT.IFRAME,
 			consumerDomain: "https://consumer.com",
 			props: { value: 123 },

@@ -119,6 +119,84 @@ afterEach(() => {
 });
 
 describe("ConsumerTransport", () => {
+	it("withholds bootstrap from other windows and origins, including the consumer's own origin", async () => {
+		const transport = createTransport();
+		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+		transport.hostWindow = hostWindow;
+		const onBootstrap = vi.fn(async () => ({ props: { secret: "private" } }));
+		transport.setupMessageHandlers({ ...createHandlers(), onBootstrap });
+		const handler = getHandler(transport, MESSAGE_NAME.BOOTSTRAP);
+		if (!handler) throw new Error("Missing bootstrap handler");
+		const request = { sessionId: "session" };
+		expect(
+			await handler(request, {
+				uid: "consumer-transport-uid",
+				domain: window.location.origin,
+				window: hostWindow,
+			}),
+		).toEqual({ success: false });
+		expect(
+			await handler(request, {
+				uid: "consumer-transport-uid",
+				domain: "https://host.example.com",
+				window,
+			}),
+		).toEqual({ success: false });
+		expect(onBootstrap).not.toHaveBeenCalled();
+		expect(
+			await handler(request, {
+				uid: "consumer-transport-uid",
+				domain: "https://host.example.com",
+				window: hostWindow,
+			}),
+		).toEqual({ props: { secret: "private" } });
+	});
+
+	it("requires INIT to match the latest verified bootstrap session", async () => {
+		const transport = createTransport();
+		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+		transport.hostWindow = hostWindow;
+		transport.buildWindowName({
+			tag: "host",
+			context: CONTEXT.IFRAME,
+			props: {},
+			propDefinitions: {},
+			exports: {
+				init: MESSAGE_NAME.INIT,
+				close: MESSAGE_NAME.CLOSE,
+				resize: MESSAGE_NAME.RESIZE,
+				show: MESSAGE_NAME.SHOW,
+				hide: MESSAGE_NAME.HIDE,
+				onError: MESSAGE_NAME.ERROR,
+				updateProps: MESSAGE_NAME.PROPS,
+				export: MESSAGE_NAME.EXPORT,
+			},
+		});
+		transport.setupMessageHandlers({
+			...createHandlers(),
+			onBootstrap: async () => ({ props: {} }),
+		});
+		const source = {
+			uid: "consumer-transport-uid",
+			domain: "https://host.example.com",
+			window: hostWindow,
+		};
+		const init = getHandler(transport, MESSAGE_NAME.INIT);
+		const bootstrap = getHandler(transport, MESSAGE_NAME.BOOTSTRAP);
+		if (!init || !bootstrap) throw new Error("Missing handshake handlers");
+		expect(await init({}, source)).toEqual({ success: false });
+		await bootstrap({ sessionId: "first" }, source);
+		await bootstrap({ sessionId: "second" }, source);
+		expect(await init({ sessionId: "first" }, source)).toEqual({
+			success: false,
+		});
+		expect(transport.hostInitialized).toBe(false);
+		expect(await init({ sessionId: "second" }, source)).toEqual({
+			success: true,
+		});
+		expect(transport.hostInitialized).toBe(true);
+	});
+
 	it('should fall back to "*" when the resolved host URL has no origin', () => {
 		const transport = createTransport({
 			options: createOptions({ domain: undefined }),

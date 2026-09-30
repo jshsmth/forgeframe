@@ -42,6 +42,16 @@ function readInitialPayload<P>(): WindowNamePayload<P> | null {
 	return pendingInitialPayload as WindowNamePayload<P> | null;
 }
 
+/**
+ * Initializes or reuses the host runtime in a ForgeFrame iframe or popup.
+ *
+ * @remarks
+ * Await the returned host's `ready` promise before reading consumer props or
+ * children. It rejects if the verified bootstrap or host schema validation fails.
+ *
+ * @returns The host runtime, or `null` outside a ForgeFrame host context.
+ * @public
+ */
 export function initHost<P extends Record<string, unknown>, SchemaInputs = P>(
 	propDefinitions?: HostPropsDefinition<P, SchemaInputs>,
 	allowedConsumerDomains?: DomainMatcher,
@@ -88,6 +98,13 @@ export function initHost<P extends Record<string, unknown>, SchemaInputs = P>(
 		) as HostComponent<Record<string, unknown>, Record<string, unknown>>;
 		hostInstance = nextHostInstance;
 		pendingInitialPayload = null;
+		void nextHostInstance.ready.catch(() => {
+			// Async validation failures must allow the same-page retry that
+			// synchronous bootstrap failures already support.
+			if (hostInstance === nextHostInstance) {
+				clearHostInstance();
+			}
+		});
 	} catch (error) {
 		if (
 			error instanceof Error &&

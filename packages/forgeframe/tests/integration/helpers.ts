@@ -526,6 +526,7 @@ function createBaseIntegrationHarness(options?: {
 			throw new Error("Expected initHost() to create a host instance");
 		}
 
+		await host.ready;
 		return {
 			host,
 			hostProps: getHostProps<P>(),
@@ -546,6 +547,7 @@ function createBaseIntegrationHarness(options?: {
 			throw new Error("Expected initHost() to create a host instance");
 		}
 
+		await host.ready;
 		return {
 			host,
 			hostProps: getHostProps<P>(),

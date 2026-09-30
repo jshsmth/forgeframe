@@ -27,7 +27,8 @@ export interface HostComponentRef {
 }
 
 /**
- * Payload encoded in window.name for initial consumer-to-host data transfer.
+ * Channel metadata encoded in window.name. Protocol 2 delivers props and
+ * children separately through verified messaging; legacy payloads include them.
  *
  * @typeParam _P - The props type (unused, for compatibility)
  *
@@ -51,5 +52,11 @@ export interface WindowNamePayload<_P = Record<string, unknown>> {
 	/** Consumer method message names */
 	exports: ConsumerExports;
 	/** Nested component references */
+	children?: Record<string, HostComponentRef>;
+}
+
+/** Props and child references delivered only over verified messaging. @internal */
+export interface HostBootstrapData {
+	props: SerializedProps;
 	children?: Record<string, HostComponentRef>;
 }

@@ -60,6 +60,7 @@ export interface HostTransportOptions {
 	consumerDomain: string;
 	getConsumerDomain(): string;
 	deferInit: boolean;
+	beforeInit?: () => Promise<void>;
 }
 
 export interface HostTransportPropsHandler {

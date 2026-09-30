@@ -16,6 +16,7 @@ import {
 	watchPopupClose,
 } from "../../render/popup";
 import {
+	applyDimensions,
 	defaultContainerTemplate,
 	defaultPrerenderTemplate,
 	swapPrerenderContent,
@@ -333,6 +334,12 @@ export class ConsumerRenderer<
 	resize(dimensions: Dimensions, hostWindow: Window | null): void {
 		if (this.context === CONTEXT.IFRAME && this.iframe) {
 			resizeIframe(this.iframe, dimensions);
+			if (this.ownedContainer && !this.options.containerTemplate) {
+				applyDimensions(this.ownedContainer, dimensions);
+			}
+			if (this.prerenderElement && !this.options.prerenderTemplate) {
+				applyDimensions(this.prerenderElement, dimensions);
+			}
 		} else if (this.context === CONTEXT.POPUP && hostWindow) {
 			resizePopup(hostWindow, dimensions);
 		}
