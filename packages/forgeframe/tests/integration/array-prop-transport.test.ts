@@ -39,6 +39,62 @@ describe("Array prop transport", () => {
 		expect(hostProps.record).toEqual({ safe: "updated" });
 	});
 
+	it.each(["original", "redirected"])(
+		"uses the verified host delivery policy for %s-only arrays after a redirect",
+		async (allowedOrigin) => {
+			const original = "https://host.example.com";
+			const redirected = "https://redirected.example.com";
+			harness = createIframeIntegrationHarness({
+				hostUrl: `${redirected}/widget`,
+			});
+			const container = document.createElement("div");
+			document.body.append(container);
+			const definitions = {
+				visible: prop.string(),
+				restricted: {
+					schema: prop.array().of(prop.string().optional()),
+					trustedDomains: [
+						allowedOrigin === "original" ? original : redirected,
+					],
+				},
+			};
+			const Component = create({
+				tag: "redirect-array-transport",
+				url: `${original}/redirect`,
+				domain: [original, redirected],
+				props: definitions,
+			});
+			const instance = Component({
+				visible: "initial",
+				restricted: ["initial"],
+			});
+			const rendering = instance.render(container);
+			const { hostProps } = await harness.bootstrapIframeHost(
+				container,
+				definitions,
+			);
+			await rendering;
+			const update = instance.updateProps({
+				visible: "updated",
+				restricted: [undefined],
+			});
+			if (allowedOrigin === "original") {
+				await expect(update).resolves.toBeUndefined();
+				expect(hostProps.visible).toBe("updated");
+				expect(hostProps).not.toHaveProperty("restricted");
+			} else {
+				await expect(update).rejects.toThrow(
+					"Cannot serialize undefined array entry",
+				);
+				expect(hostProps.visible).toBe("initial");
+				// A follow-up unrelated patch proves the rejected candidate did not commit.
+				await instance.updateProps({ visible: "recovered" });
+				expect(hostProps.restricted).toEqual(["initial"]);
+				expect(hostProps.visible).toBe("recovered");
+			}
+		},
+	);
+
 	describe.each(Object.values(PROP_SERIALIZATION))("%s", (serialization) => {
 		it.each(["undefined", "hole"])(
 			"rejects an %s array entry before opening the host and permits a corrected render",

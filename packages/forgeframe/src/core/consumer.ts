@@ -504,13 +504,17 @@ export class ConsumerComponent<
 			resolveUrlOrigin: (url) => this.resolveUrlOrigin(url),
 			assertStableRenderedOrigin: (nextHostOrigin) =>
 				this.assertStableRenderedOrigin(nextHostOrigin),
-			validateTransportProps: (props, hostOrigin) =>
+			validateTransportProps: (props, hostOrigin) => {
+				const deliveryOrigin = this.rendered
+					? this.transport.getHostDomain()
+					: (hostOrigin ?? "");
 				validatePropsForHostTransport(
 					props,
 					this.options.props,
-					hostOrigin ?? "",
-					hostOrigin === window.location.origin,
-				),
+					deliveryOrigin,
+					deliveryOrigin === window.location.origin,
+				);
+			},
 			isRendered: () => this.rendered,
 			syncTrustedDomainForUrl: (url) => this.syncTrustedDomainForUrl(url),
 			shouldSendPropsToHost: () =>
