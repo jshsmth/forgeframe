@@ -169,7 +169,7 @@ export class ConsumerPropsPipeline<
 	/** Original schema failure retained until an explicit prop update succeeds. */
 	private pendingNormalizationError: unknown = undefined;
 
-	/** Active in-flight update chain when host synchronization is occurring. */
+	/** Settled tail of all admitted prop work, including disconnected updates. */
 	public pendingPropsUpdate: Promise<void> | null = null;
 
 	constructor(
@@ -535,7 +535,7 @@ export class ConsumerPropsPipeline<
 			}
 			hooks.assertActive();
 			hooks.emitPropsUpdated(nextProps);
-		}, hooks.shouldSendPropsToHost);
+		});
 	}
 
 	/** Commits only a completely validated, origin-checked candidate. */
@@ -565,7 +565,7 @@ export class ConsumerPropsPipeline<
 			if (hooks.shouldSendPropsToHost()) {
 				await hooks.sendPropsUpdateToHost(this.props);
 			}
-		}, hooks.shouldSendPropsToHost);
+		});
 	}
 
 	/**
@@ -574,26 +574,17 @@ export class ConsumerPropsPipeline<
 	 * bootstrap serialization cannot overlap a preceding function-bridge batch.
 	 */
 	readCurrentProps<R>(read: (props: P) => R): Promise<R> {
-		return this.queuePropsUpdate(
-			async () => {
-				this.revalidateSchemaValues();
-				return read(this.props);
-			},
-			() => true,
-		);
+		return this.queuePropsUpdate(async () => {
+			this.revalidateSchemaValues();
+			return read(this.props);
+		});
 	}
 
 	/**
-	 * Queues prop updates when a previous host sync is in flight.
+	 * Installs queue ownership before user callbacks, even without a connected host.
 	 */
-	private queuePropsUpdate<R>(
-		updateFn: () => Promise<R>,
-		shouldTrackFollowingUpdates: () => boolean,
-	): Promise<R> {
+	private queuePropsUpdate<R>(updateFn: () => Promise<R>): Promise<R> {
 		if (!this.pendingPropsUpdate) {
-			if (!shouldTrackFollowingUpdates()) {
-				return updateFn();
-			}
 			// Install the queue entry before invoking user decorators: they may
 			// synchronously enqueue another update while this snapshot is built.
 			const pending = createDeferred<R>();

@@ -96,7 +96,7 @@ function assertComponentShape<P, I, SchemaInputs>(
 	}
 }
 
-/** Resolves static URLs using the current runtime's available origin. */
+/** Resolves static URLs using the browser's navigation base when available. */
 function validateStaticComponentUrl<P, I, SchemaInputs>(
 	options: ComponentOptions<P, I, SchemaInputs>,
 ): void {
@@ -104,7 +104,7 @@ function validateStaticComponentUrl<P, I, SchemaInputs>(
 	if (typeof options.url === "string") {
 		const context = staticUrlValidationContext(
 			options.url,
-			hasBrowserWindow() ? window.location.origin : null,
+			hasBrowserWindow() ? document.baseURI : null,
 		);
 
 		resolveComponentHostUrl(
@@ -118,7 +118,7 @@ function validateStaticComponentUrl<P, I, SchemaInputs>(
 /** Relative declarations defer origin policy until a real browser origin is available. */
 function staticUrlValidationContext(
 	url: string,
-	browserOrigin: string | null,
+	browserBaseUrl: string | null,
 ): { baseUrl: string; enforceDomain: boolean } {
 	let absolute = true;
 	try {
@@ -127,8 +127,8 @@ function staticUrlValidationContext(
 		absolute = false;
 	}
 	return {
-		baseUrl: browserOrigin ?? "https://forgeframe.invalid",
-		enforceDomain: browserOrigin !== null || absolute,
+		baseUrl: browserBaseUrl ?? "https://forgeframe.invalid",
+		enforceDomain: browserBaseUrl !== null || absolute,
 	};
 }
 

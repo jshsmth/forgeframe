@@ -224,7 +224,8 @@ export class ConsumerComponent<
 		const operation = renderTask.promise;
 		this.renderPromise = operation;
 		this.activeRenderTask = renderTask;
-		void this.performRender(container, context).then(
+		const pendingPropsUpdate = this.propsPipeline.pendingPropsUpdate;
+		void this.performRender(container, context, pendingPropsUpdate).then(
 			renderTask.resolve,
 			renderTask.reject,
 		);
@@ -264,16 +265,27 @@ export class ConsumerComponent<
 	/** @internal */
 	private async performRender(
 		container: string | HTMLElement,
-		context?: ContextType,
+		context: ContextType | undefined,
+		pendingPropsUpdate: Promise<void> | null,
 	): Promise<void> {
 		this.renderer.context = context ?? this.options.defaultContext;
+		if (pendingPropsUpdate) {
+			await pendingPropsUpdate;
+			this.assertRenderActive();
+		}
 
 		this.validateForRender();
 
-		const baseUrl = this.resolveUrl();
+		const rawUrl = this.resolveUrl();
 		this.assertRenderActive();
 
+		let baseUrl: string;
 		try {
+			baseUrl = resolveComponentHostUrl(
+				rawUrl,
+				document.baseURI,
+				this.options.domain,
+			).href;
 			this.transport.syncTrustedDomainForUrl(baseUrl);
 		} catch (error) {
 			await this.destroy().catch(() => undefined);
@@ -299,10 +311,8 @@ export class ConsumerComponent<
 			this.assertRenderActive();
 			await this.waitForHost();
 			this.assertRenderActive();
-			if (this.renderer.context === CONTEXT.IFRAME && this.renderer.iframe) {
-				await this.renderer.swapPrerenderContentIfNeeded();
-				this.assertRenderActive();
-			}
+			await this.renderer.completePrerender();
+			this.assertRenderActive();
 
 			this.rendered = true;
 
@@ -619,11 +629,8 @@ export class ConsumerComponent<
 	 * @internal
 	 */
 	private resolveUrlOrigin(url: string): string | null {
-		return resolveComponentHostUrl(
-			url,
-			window.location.origin,
-			this.options.domain,
-		).origin;
+		return resolveComponentHostUrl(url, document.baseURI, this.options.domain)
+			.origin;
 	}
 
 	/**

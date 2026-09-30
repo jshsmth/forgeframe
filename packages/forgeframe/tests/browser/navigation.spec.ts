@@ -8,6 +8,37 @@ let hostOrigin: string;
 let attackerOrigin: string;
 const servers: Server[] = [];
 let bundle: string;
+const deliveryRequests: Array<{ url: string; method: string; body: string }> =
+	[];
+
+function respondToDelivery(
+	req: import("node:http").IncomingMessage,
+	res: import("node:http").ServerResponse,
+): void {
+	let body = "";
+	req.on("data", (chunk) => {
+		body += String(chunk);
+	});
+	req.on("end", () => {
+		deliveryRequests.push({
+			url: req.url ?? "",
+			method: req.method ?? "",
+			body,
+		});
+		respond(
+			res,
+			`<!doctype html><script type="module">
+		import {initHost,prop} from '/library.js';
+		window.unhandled = []; window.notifications = [];
+		window.addEventListener('unhandledrejection', event => { window.unhandled.push(String(event.reason)); });
+		const host = initHost({count:prop.number(),allowed:prop.string(),restricted:prop.string().optional()}, ['${consumerOrigin}']);
+		await host.ready; window.received = host.hostProps; window.ready = true;
+		host.hostProps.onProps(async () => { throw new Error('async observer failure'); });
+		host.hostProps.onProps(props => window.notifications.push(props.count));
+		</script>`,
+		);
+	});
+}
 
 async function listen(server: Server): Promise<number> {
 	servers.push(server);
@@ -52,6 +83,12 @@ test.beforeAll(async () => {
 		createServer((req, res) => {
 			if (req.url === "/library.js")
 				return respond(res, bundle, "text/javascript");
+			if (
+				new URL(req.url ?? "/", "http://fixture.invalid").pathname.endsWith(
+					"/delivery",
+				)
+			)
+				return respondToDelivery(req, res);
 			if (req.url === "/redirect" || req.url === "/allowed-redirect") {
 				res.writeHead(302, {
 					Location: `${attackerOrigin}${req.url === "/allowed-redirect" ? "/allowed-host" : "/capture"}`,
@@ -107,6 +144,12 @@ test.beforeAll(async () => {
 		createServer((req, res) => {
 			if (req.url === "/library.js")
 				return respond(res, bundle, "text/javascript");
+			if (
+				new URL(req.url ?? "/", "http://fixture.invalid").pathname.endsWith(
+					"/delivery",
+				)
+			)
+				return respondToDelivery(req, res);
 			if (req.url === "/allowed-host")
 				return respond(
 					res,
@@ -179,6 +222,273 @@ async function mount(
 		},
 		{ hostOrigin, attackerOrigin, path, context, allowRedirect },
 	);
+}
+
+async function prepareDelivery(
+	page: import("@playwright/test").Page,
+	context: "iframe" | "popup",
+	method: "GET" | "POST",
+	scenario: "base" | "lifecycle" | "converter" | "queued",
+) {
+	await page.goto(consumerOrigin);
+	await page.evaluate(
+		({
+			consumerOrigin,
+			hostOrigin,
+			attackerOrigin,
+			context,
+			method,
+			scenario,
+		}) => {
+			const libraryUrl = `${consumerOrigin}/library.js`;
+			return import(libraryUrl).then(({ create, prop }) => {
+				const base = document.createElement("base");
+				base.href = `${scenario === "base" ? attackerOrigin : hostOrigin}/nested/`;
+				document.head.appendChild(base);
+				const reviewWindow = window as unknown as {
+					instance: import("../../src/types").ForgeFrameComponentInstance<
+						Record<string, unknown>
+					>;
+					outcome: Promise<string>;
+					updates: Promise<void>[];
+				};
+				reviewWindow.updates = [];
+				const parameter = method === "GET" ? "queryParam" : "bodyParam";
+				reviewWindow.instance = create({
+					tag: "browser-delivery-regression",
+					url: "delivery?existing=a%20b#checkout?step=2",
+					domain: [hostOrigin, attackerOrigin],
+					timeout: 3000,
+					props: {
+						count: {
+							schema: prop.number(),
+							[parameter]: true,
+							decorate: ({ value }: { value: unknown }) => {
+								if (scenario === "queued" && value === 2)
+									reviewWindow.updates.push(
+										reviewWindow.instance.updateProps({ count: 3 }),
+									);
+								return value;
+							},
+						},
+						allowed: {
+							schema: prop.string(),
+							[parameter]: ({ value }: { value: unknown }) => {
+								if (scenario === "converter")
+									base.href = `${attackerOrigin}/changed/`;
+								return String(value);
+							},
+						},
+						restricted: {
+							schema: prop.string(),
+							[parameter]: true,
+							trustedDomains: hostOrigin,
+						},
+						hidden: {
+							schema: prop.string(),
+							[parameter]: true,
+							sendToHost: false,
+						},
+						sameOrigin: {
+							schema: prop.string(),
+							[parameter]: true,
+							sameDomain: true,
+						},
+					},
+				})({
+					count: 1,
+					allowed: "visible",
+					restricted: "restricted-sentinel",
+					hidden: "hidden-sentinel",
+					sameOrigin: "same-origin-sentinel",
+					onRender: () => {
+						if (scenario === "lifecycle")
+							base.href = `${attackerOrigin}/changed/`;
+					},
+				});
+				const button = document.createElement("button");
+				button.id = "open-delivery";
+				button.textContent = "Open widget";
+				button.onclick = () => {
+					if (scenario === "queued")
+						reviewWindow.updates.push(
+							reviewWindow.instance.updateProps({ count: 2 }),
+						);
+					reviewWindow.outcome = reviewWindow.instance
+						.render("#mount", context)
+						.then(
+							() => "ready",
+							(error: Error) => error.message,
+						);
+				};
+				document.body.appendChild(button);
+			});
+		},
+		{ consumerOrigin, hostOrigin, attackerOrigin, context, method, scenario },
+	);
+}
+
+for (const context of ["iframe", "popup"] as const) {
+	for (const method of ["GET", "POST"] as const) {
+		for (const scenario of [
+			"base",
+			"lifecycle",
+			"converter",
+			"queued",
+		] as const) {
+			test(`${context} ${method} keeps navigation and prop policy consistent during ${scenario}`, async ({
+				page,
+			}) => {
+				deliveryRequests.length = 0;
+				await prepareDelivery(page, context, method, scenario);
+				const opened = context === "popup" ? page.waitForEvent("popup") : null;
+				await page.click("#open-delivery");
+				const popup = await opened;
+				const outcome = await page.evaluate(
+					() => (window as unknown as { outcome: Promise<string> }).outcome,
+				);
+				expect(outcome).toBe("ready");
+				const destination = scenario === "base" ? attackerOrigin : hostOrigin;
+				const target =
+					popup ??
+					page
+						.frames()
+						.find((frame) =>
+							frame.url().startsWith(`${destination}/nested/delivery`),
+						);
+				if (!target) throw new Error("Missing delivery host");
+				expect(target.url()).toBe(
+					`${destination}/nested/delivery?existing=a%20b${method === "GET" ? `&count=${scenario === "queued" ? 3 : 1}&allowed=visible${scenario === "base" ? "" : "&restricted=restricted-sentinel"}` : ""}#checkout?step=2`,
+				);
+				expect(deliveryRequests).toHaveLength(1);
+				const request = deliveryRequests[0];
+				expect(request?.method).toBe(method);
+				const params =
+					method === "POST"
+						? new URLSearchParams(request?.body)
+						: new URL(request?.url ?? "", destination).searchParams;
+				expect(params.get("count")).toBe(scenario === "queued" ? "3" : "1");
+				expect(params.get("allowed")).toBe("visible");
+				expect(params.get("restricted")).toBe(
+					scenario === "base" ? null : "restricted-sentinel",
+				);
+				expect(params.has("hidden")).toBe(false);
+				expect(params.has("sameOrigin")).toBe(false);
+				expect(
+					await target.evaluate(() => {
+						const props = (
+							window as unknown as {
+								received: {
+									count: number;
+									allowed: string;
+									restricted?: string;
+								};
+							}
+						).received;
+						return {
+							count: props.count,
+							allowed: props.allowed,
+							restricted: props.restricted,
+						};
+					}),
+				).toEqual({
+					count: scenario === "queued" ? 3 : 1,
+					allowed: "visible",
+					restricted: scenario === "base" ? undefined : "restricted-sentinel",
+				});
+				if (context === "popup") {
+					expect(
+						await page
+							.locator("#mount")
+							.evaluate((element) => element.childElementCount),
+					).toBe(0);
+				}
+				const errors: string[] = [];
+				if (popup) popup.on("pageerror", (error) => errors.push(error.message));
+				else page.on("pageerror", (error) => errors.push(error.message));
+				// Prop updates still enforce the opened origin; restore the mutated base first.
+				await page.evaluate((destination) => {
+					const base = document.querySelector("base");
+					if (base) base.href = `${destination}/nested/`;
+				}, destination);
+				await page.evaluate(() =>
+					(
+						window as unknown as {
+							instance: {
+								updateProps: (props: { count: number }) => Promise<void>;
+							};
+						}
+					).instance.updateProps({ count: 4 }),
+				);
+				await expect
+					.poll(() =>
+						target.evaluate(
+							() =>
+								(window as unknown as { notifications: number[] })
+									.notifications,
+						),
+					)
+					.toEqual([4]);
+				expect(
+					await target.evaluate(
+						() => (window as unknown as { unhandled: string[] }).unhandled,
+					),
+				).toEqual([]);
+				expect(errors).toEqual([]);
+				await page.evaluate(() =>
+					(
+						window as unknown as { instance: { close: () => Promise<void> } }
+					).instance.close(),
+				);
+			});
+		}
+	}
+
+	test(`${context} rejects a changed base origin before any restricted HTTP request`, async ({
+		page,
+	}) => {
+		deliveryRequests.length = 0;
+		await page.goto(consumerOrigin);
+		const outcome = await page.evaluate(
+			async ({ consumerOrigin, attackerOrigin, context }) => {
+				const libraryUrl = `${consumerOrigin}/library.js`;
+				const { create, prop } = await import(libraryUrl);
+				const component = create({
+					tag: "browser-base-rejection",
+					url: "/delivery",
+					domain: consumerOrigin,
+					props: {
+						order: {
+							schema: prop.string(),
+							queryParam: true,
+							trustedDomains: consumerOrigin,
+						},
+					},
+				});
+				const instance = component({ order: "restricted-sentinel" });
+				const base = document.createElement("base");
+				base.href = `${attackerOrigin}/`;
+				document.head.appendChild(base);
+				try {
+					await instance.render("#mount", context);
+					return "unexpected success";
+				} catch (error) {
+					return (error as Error).message;
+				}
+			},
+			{ consumerOrigin, attackerOrigin, context },
+		);
+		expect(outcome).toContain(
+			`Component URL origin "${attackerOrigin}" is not allowed`,
+		);
+		expect(deliveryRequests).toEqual([]);
+		expect(page.context().pages()).toHaveLength(1);
+		expect(
+			await page
+				.locator("#mount")
+				.evaluate((element) => element.childElementCount),
+		).toBe(0);
+	});
 }
 
 test("redirected pages cannot read restricted props or complete initialization", async ({

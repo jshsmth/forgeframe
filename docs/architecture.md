@@ -24,12 +24,12 @@ ForgeFrame has two runtimes: the **consumer** is the outer embedding app; the **
 ## Render and verified bootstrap
 
 1. `create()` validates the declaration and registers a factory. Calling the factory constructs and tracks a consumer instance; defining a matching component inside a host also configures host initialization.
-2. `render()` installs its render task before user callbacks can re-enter. `performRender()` validates props, checks eligibility and URL trust, resolves the container, and sequences prerender/open/handshake/display stages.
+2. `render()` installs its render task before user callbacks can re-enter and captures the settled tail of previously admitted prop work. `performRender()` drains that work if present, rechecks cancellation, validates props and eligibility, and pins an absolute URL resolved against `document.baseURI` inside the URL-trust guard. It then resolves the container and sequences prerender/open/handshake/display stages. Newly requested updates remain rejected while rendering.
 3. `emitRenderStage()` checks cancellation after the event and after its prop callback. Resource creation and user templates also keep cancellation checks before advancing.
-4. The renderer creates an iframe or opens a popup. Query and POST parameters retain the delivery policy. POST navigation uses a hidden form; popup creation remains synchronous in the opening workflow.
+4. The renderer creates an iframe or opens a popup using the pinned URL. Origin checks and query/POST delivery policy use the same destination even if a template, lifecycle callback, or converter changes the document base. Query props are appended before fragments without rewriting existing query bytes. POST navigation uses a hidden form; popup creation remains synchronous in the opening workflow.
 5. Protocol 2 `window.name` contains channel metadata. Consuming it strips props and children while retaining reconnect identity. A new host document creates a new session and requests current props through messaging.
 6. Consumer control handlers verify the opened window and configured origin policy before accepting bootstrap or INIT. Bootstrap waits behind pending prop work, filters against the browser-reported host origin, serializes current callbacks, and resets remote exports for reconnection.
-7. The host validates incoming props, finishes readiness, and sends INIT with its session. The consumer accepts the matching session, completes the render, and swaps prerender content.
+7. The host validates incoming props, finishes readiness, and sends INIT with its session. The consumer accepts the matching session and completes loading before rendered/display callbacks. Iframes keep their prerender swap animations; popups remove transient loading content and the default wrapper, restoring the original mount. Custom container shells remain until normal teardown.
 
 Legacy payload behaviour remains distinct. Do not relax its origin verification or allow it to bypass the current consumer's bootstrap requirement. `initHost()` preserves same-page retry after failed asynchronous validation.
 
@@ -41,8 +41,8 @@ Legacy payload behaviour remains distinct. Do not relax its origin verification 
 - Normalization preserves definition order for defaults/decorators. Schema inputs become outputs before output-typed custom validators execute. Output schemas must validate normalized values unchanged.
 - Custom query/body converters retain their prop-definition method receiver. Scalar parameter encoding is a separate data operation.
 - Candidate preparation does not replace the current snapshot. Validation/origin failures leave the previous snapshot intact. Commitment occurs before host synchronization, matching the existing behaviour; a transport failure does not roll back the committed consumer state.
-- Queue entries are installed before decorators can re-enter. Host bootstrap and updates share the queue, preventing bridge batches from overlapping.
-- On the host, deserialize/validate/filter precede reconciliation. Stale custom keys are removed; built-ins remain protected. Subscribers run after commitment and before the props event. A newer acknowledged update arriving during bootstrap takes precedence over the older bootstrap snapshot.
+- Queue entries are installed before decorators or validators can re-enter, including before a host is connected. The first update starts synchronously; subsequent entries run in FIFO order, with failures allowing later entries to continue. Host bootstrap and updates share the queue, preventing bridge batches from overlapping.
+- On the host, deserialize/validate/filter precede reconciliation. Stale custom keys are removed; built-ins remain protected. Subscribers are invoked after commitment and before the props event. Async failures are caught without awaiting subscriber work or delaying acknowledgement. A newer acknowledged update arriving during bootstrap takes precedence over the older bootstrap snapshot.
 
 ## Messages and remote callbacks
 

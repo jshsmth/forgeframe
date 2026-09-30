@@ -219,11 +219,13 @@ export class HostPropsRuntime<
 		}
 	}
 
-	/** Observer failures do not interrupt subsequent observers or lifecycle events. */
+	/** Observes async failures without awaiting subscribers or delaying acknowledgement. */
 	private notifyPropsHandlers(nextProps: RemoteValue<P>): void {
 		for (const handler of this.propsHandlers) {
 			try {
-				handler(nextProps);
+				void Promise.resolve(handler(nextProps)).catch((error: unknown) => {
+					console.error("Error in props handler:", error);
+				});
 			} catch (error) {
 				console.error("Error in props handler:", error);
 			}

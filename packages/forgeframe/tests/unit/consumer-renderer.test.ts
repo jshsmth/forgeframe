@@ -89,6 +89,81 @@ describe("ConsumerRenderer teardown", () => {
 	});
 });
 
+describe("ConsumerRenderer popup loading completion", () => {
+	it.each(["default", "custom", "null"])(
+		"should remove %s loading content while preserving the caller mount",
+		async (template) => {
+			const mount = document.createElement("div");
+			const sibling = document.createElement("button");
+			mount.appendChild(sibling);
+			document.body.appendChild(mount);
+			const shell = document.createElement("section");
+			const control = document.createElement("button");
+			shell.appendChild(control);
+			const renderer = createRenderer({
+				defaultContext: CONTEXT.POPUP,
+				...(template === "custom"
+					? {
+							containerTemplate: ({ prerenderFrame }) => {
+								if (prerenderFrame) shell.appendChild(prerenderFrame);
+								return shell;
+							},
+						}
+					: {}),
+				...(template === "null" ? { prerenderTemplate: () => null } : {}),
+			});
+			renderer.container = mount;
+			await renderer.prerender(
+				() => {
+					throw new Error("Popup must not create an iframe");
+				},
+				() => "popup-loading",
+				() => undefined,
+			);
+			const loader = renderer.prerenderElement;
+			await renderer.completePrerender();
+			expect(renderer.prerenderElement).toBeNull();
+			expect(loader?.isConnected ?? false).toBe(false);
+			expect(mount.contains(sibling)).toBe(true);
+			expect(renderer.container).toBe(template === "custom" ? shell : mount);
+			if (template === "custom") {
+				expect(mount.contains(shell)).toBe(true);
+				expect(shell.contains(control)).toBe(true);
+			} else {
+				expect([...mount.children]).toEqual([sibling]);
+			}
+			await renderer.completePrerender();
+			renderer.destroy(null);
+			renderer.destroy(null);
+			expect(mount.isConnected).toBe(true);
+			expect(mount.contains(sibling)).toBe(true);
+			expect(shell.isConnected).toBe(false);
+		},
+	);
+
+	it("should keep completion safe when removing the loader triggers teardown", async () => {
+		const mount = document.createElement("div");
+		document.body.appendChild(mount);
+		const renderer = createRenderer({ defaultContext: CONTEXT.POPUP });
+		renderer.container = mount;
+		await renderer.prerender(
+			() => {
+				throw new Error("Unexpected iframe");
+			},
+			() => "popup-loading",
+			() => undefined,
+		);
+		const loader = renderer.prerenderElement;
+		if (!loader) throw new Error("Missing popup loader");
+		vi.spyOn(loader, "remove").mockImplementationOnce(() =>
+			renderer.destroy(null),
+		);
+		await renderer.completePrerender();
+		expect(renderer.container).toBeNull();
+		expect(mount.children).toHaveLength(0);
+	});
+});
+
 describe("ConsumerRenderer submitBodyForm", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();

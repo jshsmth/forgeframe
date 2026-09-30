@@ -36,9 +36,9 @@ jobs:
       - name: Run tests with coverage
         run: npm run test:coverage
 
-      - name: Install Chromium
+      - name: Install browser engines
         if: matrix.node-version == 24
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium firefox webkit
 
       - name: Run browser navigation regressions
         if: matrix.node-version == 24

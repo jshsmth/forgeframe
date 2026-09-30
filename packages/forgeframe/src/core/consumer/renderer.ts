@@ -67,6 +67,9 @@ export class ConsumerRenderer<
 	/** Wrapper element created and owned by the renderer. */
 	private ownedContainer: HTMLElement | null = null;
 
+	/** Caller mount retained while templates replace the active container. */
+	private mountContainer: HTMLElement | null = null;
+
 	constructor(
 		private options: NormalizedOptions<P, SchemaInputs>,
 		private uid: string,
@@ -110,6 +113,7 @@ export class ConsumerRenderer<
 		if (!this.container) return;
 
 		const mountContainer = this.container;
+		this.mountContainer = mountContainer;
 		this.ownedContainer = null;
 
 		const props = this.getProps();
@@ -299,9 +303,9 @@ export class ConsumerRenderer<
 	}
 
 	/**
-	 * Swaps prerender content with the live iframe after host initialization.
+	 * Completes transient loading content after initialization in either context.
 	 */
-	async swapPrerenderContentIfNeeded(): Promise<void> {
+	async completePrerender(): Promise<void> {
 		if (this.context === CONTEXT.IFRAME && this.iframe && this.container) {
 			await swapPrerenderContent(
 				this.container,
@@ -309,6 +313,14 @@ export class ConsumerRenderer<
 				this.iframe,
 			);
 			this.prerenderElement = null;
+		} else if (this.context === CONTEXT.POPUP) {
+			this.prerenderElement?.remove();
+			this.prerenderElement = null;
+			if (this.ownedContainer && !this.options.containerTemplate) {
+				this.ownedContainer.remove();
+				this.ownedContainer = null;
+				this.container = this.mountContainer;
+			}
 		}
 	}
 
@@ -420,5 +432,6 @@ export class ConsumerRenderer<
 		}
 
 		this.container = null;
+		this.mountContainer = null;
 	}
 }
