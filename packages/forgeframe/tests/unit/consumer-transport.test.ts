@@ -79,18 +79,7 @@ function getHandler(
 	).handlers.get(name);
 }
 
-function createHandlers(): ConsumerTransportHandlers<{ ready: boolean }> & {
-	onError: ReturnType<typeof vi.fn>;
-	onInit: ReturnType<typeof vi.fn>;
-	onClose: ReturnType<typeof vi.fn>;
-	onResize: ReturnType<typeof vi.fn>;
-	onFocus: ReturnType<typeof vi.fn>;
-	onShow: ReturnType<typeof vi.fn>;
-	onHide: ReturnType<typeof vi.fn>;
-	onExport: ReturnType<typeof vi.fn>;
-	onConsumerExport: ReturnType<typeof vi.fn>;
-	onGetSiblings: ReturnType<typeof vi.fn>;
-} {
+function createHandlers() {
 	return {
 		onInit: vi.fn(async () => {}),
 		onClose: vi.fn(async () => {}),
@@ -98,11 +87,11 @@ function createHandlers(): ConsumerTransportHandlers<{ ready: boolean }> & {
 		onFocus: vi.fn(async () => {}),
 		onShow: vi.fn(async () => {}),
 		onHide: vi.fn(async () => {}),
-		onError: vi.fn(),
-		onExport: vi.fn(),
-		onConsumerExport: vi.fn(),
+		onError: vi.fn((_error: Error) => {}),
+		onExport: vi.fn((_exports: unknown) => {}),
+		onConsumerExport: vi.fn((_data: unknown) => {}),
 		onGetSiblings: vi.fn(async (_request): Promise<SiblingInfo[]> => []),
-	};
+	} satisfies ConsumerTransportHandlers<{ ready: boolean }>;
 }
 
 async function flushMicrotasks(): Promise<void> {

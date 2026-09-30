@@ -349,7 +349,7 @@ describe("Consumer lifecycle behavior", () => {
 			location: { origin: window.location.origin },
 		} as unknown as Window;
 
-		let releaseFirstSend: (() => void) | null = null;
+		let releaseFirstSend!: () => void;
 		const firstSendInFlight = new Promise<void>((resolve) => {
 			releaseFirstSend = resolve;
 		});
@@ -813,7 +813,7 @@ describe("Consumer lifecycle behavior", () => {
 		);
 
 		const unrenderedInstance = createConsumer();
-		await expect(unrenderedInstance.render()).rejects.toThrow(
+		await expect(unrenderedInstance.render("")).rejects.toThrow(
 			"Container is required for rendering",
 		);
 		await expect(

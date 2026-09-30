@@ -39,8 +39,8 @@ export function normalizeDimensionToCSS(
  *
  * @remarks
  * This function is useful for popup window APIs that require numeric values.
- * String values are parsed as integers (e.g., `'500px'` becomes `500`).
- * Undefined values or unparseable strings return the fallback.
+ * Numeric strings and `px` strings are truncated to integer pixels.
+ * Undefined, nonfinite, or nonpixel values return the fallback.
  *
  * @param value - The dimension value to normalize
  * @param fallback - The fallback value to use if normalization fails
@@ -61,8 +61,11 @@ export function normalizeDimensionToNumber(
 	fallback: number,
 ): number {
 	if (value === undefined) return fallback;
-	if (typeof value === "number") return value;
+	if (typeof value === "number")
+		return Number.isFinite(value) ? value : fallback;
 
-	const parsed = parseInt(value, 10);
-	return Number.isNaN(parsed) ? fallback : parsed;
+	const pixels = value.trim();
+	if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:px)?$/i.test(pixels)) return fallback;
+	const parsed = Number.parseFloat(pixels);
+	return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
 }

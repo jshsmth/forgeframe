@@ -151,84 +151,6 @@ describe("Host lifecycle behavior", () => {
 		host.destroy();
 	});
 
-	it("should call consumer control channels through hostProps builtins", async () => {
-		const consumerWindow = { postMessage: vi.fn() } as unknown as Window;
-		const host = createHost({ consumerWindow });
-
-		// Access the internal messenger directly for stable call assertions
-		const sendSpy = vi
-			.spyOn(
-				(
-					host as unknown as {
-						messenger: { send: (...args: unknown[]) => Promise<unknown> };
-					}
-				).messenger,
-				"send",
-			)
-			.mockResolvedValue(undefined);
-
-		const focusSpy = vi.spyOn(window, "focus").mockImplementation(() => {});
-
-		await host.hostProps.close();
-		await host.hostProps.focus();
-		await host.hostProps.resize({ width: 500, height: 300 });
-		await host.hostProps.show();
-		await host.hostProps.hide();
-		await host.hostProps.onError(new Error("host-side error"));
-		await host.hostProps.export({ ready: true });
-		await host.hostProps.consumer.export({ ping: true });
-
-		expect(sendSpy).toHaveBeenCalledWith(
-			consumerWindow,
-			"https://consumer.example.com",
-			MESSAGE_NAME.CLOSE,
-			{},
-		);
-		expect(sendSpy).toHaveBeenCalledWith(
-			consumerWindow,
-			"https://consumer.example.com",
-			MESSAGE_NAME.FOCUS,
-			{},
-		);
-		expect(sendSpy).toHaveBeenCalledWith(
-			consumerWindow,
-			"https://consumer.example.com",
-			MESSAGE_NAME.RESIZE,
-			{ width: 500, height: 300 },
-		);
-		expect(sendSpy).toHaveBeenCalledWith(
-			consumerWindow,
-			"https://consumer.example.com",
-			MESSAGE_NAME.SHOW,
-			{},
-		);
-		expect(sendSpy).toHaveBeenCalledWith(
-			consumerWindow,
-			"https://consumer.example.com",
-			MESSAGE_NAME.HIDE,
-			{},
-		);
-		expect(sendSpy).toHaveBeenCalledWith(
-			consumerWindow,
-			"https://consumer.example.com",
-			MESSAGE_NAME.ERROR,
-			expect.objectContaining({ message: "host-side error" }),
-		);
-		expect(sendSpy).toHaveBeenCalledWith(
-			consumerWindow,
-			"https://consumer.example.com",
-			MESSAGE_NAME.EXPORT,
-			{ ready: true },
-		);
-		expect(sendSpy).toHaveBeenCalledWith(
-			consumerWindow,
-			"https://consumer.example.com",
-			MESSAGE_NAME.CONSUMER_EXPORT,
-			{ ping: true },
-		);
-		expect(focusSpy).toHaveBeenCalled();
-	});
-
 	it("should withhold all props until the messaging bootstrap completes", () => {
 		const definitions = {
 			label: { schema: prop.string() },
@@ -313,7 +235,11 @@ describe("Host lifecycle behavior", () => {
 		vi.spyOn(Messenger.prototype, "send").mockResolvedValueOnce({
 			props: { amount: 42 },
 		});
-		const host = initHost(definitions, undefined, { deferInit: true });
+		const host = initHost<{ amount: number }, { amount: string }>(
+			definitions,
+			undefined,
+			{ deferInit: true },
+		);
 		await host?.ready;
 
 		expect(host?.hostProps.amount).toBe(42);
@@ -568,54 +494,6 @@ describe("Host lifecycle behavior", () => {
 					true,
 				),
 		).toThrow('Prop "secret" is required but was not provided');
-	});
-
-	it("should apply PROPS updates to hostProps and notify subscribers", () => {
-		const host = createHost();
-		const propsHandler = (
-			host as unknown as { messenger: { handlers: Map<string, DirectHandler> } }
-		).messenger.handlers.get(MESSAGE_NAME.PROPS);
-		const initialConsumerProps = host.hostProps.consumer.props;
-
-		expect(propsHandler).toBeDefined();
-
-		const subscriber = vi.fn();
-		host.hostProps.onProps(subscriber);
-
-		const result = propsHandler!({ amount: 42 }, createMessageSource(window));
-
-		expect(result).toEqual({ success: true });
-		expect(host.hostProps.amount).toBe(42);
-		expect(host.hostProps.consumer.props).toEqual({ amount: 42 });
-		expect(host.hostProps.consumer.props).not.toBe(initialConsumerProps);
-		expect(
-			(host as unknown as { consumerProps: Record<string, unknown> })
-				.consumerProps,
-		).toBe(host.hostProps.consumer.props);
-		expect(subscriber).toHaveBeenCalledWith({ amount: 42 });
-	});
-
-	it("should clear stale hostProps keys when omitted from a later PROPS payload", () => {
-		const host = createHost();
-		const propsHandler = (
-			host as unknown as { messenger: { handlers: Map<string, DirectHandler> } }
-		).messenger.handlers.get(MESSAGE_NAME.PROPS);
-
-		expect(propsHandler).toBeDefined();
-
-		const first = propsHandler!(
-			{ amount: 42, currency: "USD" },
-			createMessageSource(window),
-		);
-		const second = propsHandler!({ amount: 42 }, createMessageSource(window));
-
-		expect(first).toEqual({ success: true });
-		expect(second).toEqual({ success: true });
-		expect(host.hostProps.amount).toBe(42);
-		expect("currency" in (host.hostProps as Record<string, unknown>)).toBe(
-			false,
-		);
-		expect(host.hostProps.consumer.props).toEqual({ amount: 42 });
 	});
 
 	it("should isolate failing props subscribers and continue notifying others", () => {

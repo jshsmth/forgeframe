@@ -21,7 +21,7 @@ The starting point passed 878 tests in 48 suites and 13 Chromium tests. Each wav
 | <a id="evidence-render"></a>render | [consumer-renderer.test](../packages/forgeframe/tests/unit/consumer-renderer.test.ts), [iframe.test](../packages/forgeframe/tests/unit/iframe.test.ts), [popup.test](../packages/forgeframe/tests/unit/popup.test.ts), [render-templates.test](../packages/forgeframe/tests/unit/render-templates.test.ts), [body-param-bootstrap.test](../packages/forgeframe/tests/integration/body-param-bootstrap.test.ts), [popup-host-handshake.test](../packages/forgeframe/tests/integration/popup-host-handshake.test.ts) |
 | <a id="evidence-consumer"></a>consumer | [component.test](../packages/forgeframe/tests/unit/component.test.ts), [component-clone.test](../packages/forgeframe/tests/unit/component-clone.test.ts), [component-instance-index.test](../packages/forgeframe/tests/unit/component-instance-index.test.ts), [consumer-lifecycle.test](../packages/forgeframe/tests/unit/consumer-lifecycle.test.ts), [consumer-branch-coverage.test](../packages/forgeframe/tests/unit/consumer-branch-coverage.test.ts), [consumer-transport.test](../packages/forgeframe/tests/unit/consumer-transport.test.ts), [consumer-host-handshake.test](../packages/forgeframe/tests/integration/consumer-host-handshake.test.ts), [host-controls-routing.test](../packages/forgeframe/tests/integration/host-controls-routing.test.ts) |
 | <a id="evidence-host"></a>host | [host-security.test](../packages/forgeframe/tests/unit/host-security.test.ts), [host-lifecycle.test](../packages/forgeframe/tests/unit/host-lifecycle.test.ts), [host-branch-coverage.test](../packages/forgeframe/tests/unit/host-branch-coverage.test.ts), [host-transport.test](../packages/forgeframe/tests/unit/host-transport.test.ts), [props-sync.test](../packages/forgeframe/tests/integration/props-sync.test.ts), [consumer-host-handshake.test](../packages/forgeframe/tests/integration/consumer-host-handshake.test.ts) |
-| <a id="evidence-react"></a>react | [react-driver.test](../packages/forgeframe/tests/unit/react-driver.test.ts), [react-driver-lifecycle.test](../packages/forgeframe/tests/unit/react-driver-lifecycle.test.ts), [react-driver-prop-sync.test](../packages/forgeframe/tests/unit/react-driver-prop-sync.test.ts), [react-prop-queue.test](../packages/forgeframe/tests/unit/react-prop-queue.test.ts), [react-driver-dom.test](../packages/forgeframe/tests/integration/react-driver-dom.test.ts) |
+| <a id="evidence-react"></a>react | [react-host-sync.test](../packages/forgeframe/tests/integration/react-host-sync.test.ts), [react-driver-lifecycle.test](../packages/forgeframe/tests/unit/react-driver-lifecycle.test.ts), [react-driver-prop-sync.test](../packages/forgeframe/tests/unit/react-driver-prop-sync.test.ts), [react-prop-queue.test](../packages/forgeframe/tests/unit/react-prop-queue.test.ts), [react-driver-dom.test](../packages/forgeframe/tests/integration/react-driver-dom.test.ts) |
 | <a id="evidence-utilities"></a>utilities | [utils.test](../packages/forgeframe/tests/unit/utils.test.ts), [domain-pattern.test](../packages/forgeframe/tests/unit/domain-pattern.test.ts), [window-helpers.test](../packages/forgeframe/tests/unit/window-helpers.test.ts), [window-name-payload.test](../packages/forgeframe/tests/unit/window-name-payload.test.ts), [props-serialize.test](../packages/forgeframe/tests/unit/props-serialize.test.ts), [protocol.test](../packages/forgeframe/tests/unit/protocol.test.ts) |
 | <a id="evidence-contract"></a>contract | [package-contract.test](../packages/forgeframe/tests/unit/package-contract.test.ts), [index-node-smoke.test](../packages/forgeframe/tests/unit/index-node-smoke.test.ts), [index-side-effect-free.test](../packages/forgeframe/tests/unit/index-side-effect-free.test.ts), [component-node-runtime-transition.test](../packages/forgeframe/tests/unit/component-node-runtime-transition.test.ts), [version.test](../packages/forgeframe/tests/unit/version.test.ts) |
 
@@ -395,7 +395,7 @@ Evidence: [props](#evidence-props); typecheck.
 
 ### [props/prop/composite.ts](../packages/forgeframe/src/props/prop/composite.ts)
 
-Outer shape/length constraints and strict-key selection are separate from nested schema traversal. Child validation, issue-path accumulation and result assembly remain cohesive algorithms. Exported classes retain existing members and inference.
+Outer shape/length constraints and strict-key selection are separate from nested schema traversal. Child validation selects own field values, passing omitted fields as undefined before presence/default handling. Issue-path accumulation and result assembly remain cohesive algorithms. Exported classes retain existing members and inference.
 
 - **O:** `TupleSchema.constructor`, `RecordSchema.constructor`, `validateArrayItems`, `validateTupleItems`, `findUnknownObjectKey`, `validateObjectFields`, `validateRecordEntries`, `checkArrayConstraints`, `checkTupleConstraints`, `checkRecordInput`.
 - **I:** `ArraySchema._validate`, `TupleSchema._validate`, `ObjectSchema._validate`, `RecordSchema._validate`.
@@ -567,11 +567,17 @@ Evidence: [utilities](#evidence-utilities); typecheck.
 
 ### [utils/dimension.ts](../packages/forgeframe/src/utils/dimension.ts)
 
-Numeric/CSS dimension normalization uses supplied values and explicit fallbacks.
+Numeric/CSS dimension normalization uses supplied values and explicit fallbacks. Popup conversion admits finite numbers and complete numeric/px strings, truncating string fractions; nonpixel units use the supplied fallback. CSS conversion preserves iframe units.
 
 - **O:** `normalizeDimensionToCSS`, `normalizeDimensionToNumber`.
 
-Evidence: [utilities](#evidence-utilities); typecheck.
+Evidence: [utilities](#evidence-utilities), [dimension.test](../packages/forgeframe/tests/unit/dimension.test.ts), [popup.test](../packages/forgeframe/tests/unit/popup.test.ts); typecheck.
+
+### Playground peer text rendering
+
+`host/main.ts` retains static layout insertion and event binding as a rendering integration. Its local `renderPropsGrid` is a cohesive DOM construction operation using textContent and property assignment for labels, values, and IDs. Identity text is populated after the static layout. `consumer/logger.ts` keeps `log` as one append-and-scroll DOM operation with the existing timestamp/message spans. No shared escaping abstraction or public API is introduced.
+
+Evidence: [playground-text-rendering.test](../packages/forgeframe/tests/unit/playground-text-rendering.test.ts), [playground-text.spec](../packages/forgeframe/tests/browser/playground-text.spec.ts); playground typecheck/build.
 
 ### [utils/domain-pattern.ts](../packages/forgeframe/src/utils/domain-pattern.ts)
 

@@ -39,6 +39,7 @@ Legacy payload behaviour remains distinct. Do not relax its origin verification 
 
 - `PROP_RESET` removes a supplied key; explicit `undefined` remains an own value. Unchanged validation evidence is retained; changed keys lose their previous evidence.
 - Supplied canonical keys and aliases are selected from own properties. Host validation treats omitted inherited names as missing, and reconciliation removes stale custom keys using own membership in the new snapshot. Built-in number schemas admit only finite numbers, preserving their type through JSON transport.
+- Shaped object schemas also select only own fields; omitted nested fields reach presence validation as `undefined`, including names inherited from `Object.prototype`.
 - Normalization preserves definition order for defaults/decorators. Schema inputs become outputs before output-typed custom validators execute. Output schemas must validate normalized values unchanged.
 - Custom query/body converters retain their prop-definition method receiver. Scalar parameter encoding is a separate data operation.
 - Candidate preparation does not replace the current snapshot. Validation/origin failures leave the previous snapshot intact. Commitment occurs before host synchronization, matching the existing behaviour; a transport failure does not roll back the committed consumer state.
@@ -60,6 +61,8 @@ The hook wrapper updates callback refs, mounts an instance for the current conte
 Each mounted instance has isolated sync state. Commits produce shallow snapshots and reset omitted previously known keys. An equivalent pending commit requests one retry on failure; successful acknowledgements advance FIFO state. Draining waits for render readiness and checks current instance identity around every await. Failed or obsolete work cannot update a new mount's refs or queue. Cleanup deactivates the queue before closing and unsubscribing.
 
 ## IOSP maintenance
+
+Popup sizing converts numbers, numeric strings, and `px` strings to pixels. Nonpixel CSS units use 500-pixel opening fallbacks or the current window size during resize; iframe CSS sizing preserves those units. Playground host displays and consumer logs construct dynamic content with DOM text properties, keeping peer-controlled strings out of HTML parsing while retaining static layouts and controls.
 
 Operations implement cohesive policy, transformations, state transitions, or browser actions. Integrations sequence package-owned behaviour. Calls to browser/runtime/schema APIs do not by themselves require extraction. Retain cohesive recursive algorithms and short local adapters; avoid an interface or wrapper without a useful responsibility.
 

@@ -7,7 +7,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MESSAGE_NAME } from "@/constants";
 import { create, EVENT, prop } from "@/index";
-import { serializeProps } from "@/props";
 import type { Dimensions, PropsDefinition } from "@/types";
 import {
 	createIframeIntegrationHarness,
@@ -16,9 +15,9 @@ import {
 	readLastPostedMessageData,
 } from "./helpers";
 
-interface ControlProps {
+type ControlProps = {
 	label: string;
-}
+};
 
 const CONTROL_PROP_DEFINITIONS: PropsDefinition<ControlProps> = {
 	label: { schema: prop.string(), required: true },
@@ -51,13 +50,14 @@ describe("Host controls and routing integration", () => {
 			props: CONTROL_PROP_DEFINITIONS,
 		});
 
-		const instance = ControlsComponent({
+		const initialProps = {
 			label: "Primary",
 			onClose,
 			onFocus,
 			onResize,
 			onError,
-		});
+		};
+		const instance = ControlsComponent(initialProps);
 		instance.event.on(EVENT.ERROR, errorEvent);
 
 		const sibling = ControlsComponent({ label: "Sibling" });
@@ -118,7 +118,9 @@ describe("Host controls and routing integration", () => {
 		await harness.withHostGlobalsAsync(() =>
 			hostProps.consumer.export({ ping: true }),
 		);
-		expect(instance.consumerExports).toEqual({ ping: true });
+		expect(
+			(instance as unknown as { consumerExports?: unknown }).consumerExports,
+		).toEqual({ ping: true });
 
 		await expect(
 			harness.withHostGlobalsAsync(() => hostProps.getPeerInstances()),
@@ -195,10 +197,7 @@ describe("Host controls and routing integration", () => {
 			success: false,
 		});
 
-		const serializedProps = serializeProps(
-			{ label: "Spoofed" },
-			CONTROL_PROP_DEFINITIONS,
-		);
+		const serializedProps = { label: "Spoofed" };
 
 		const evilConsumerWindow = { postMessage: vi.fn() } as unknown as Window;
 		dispatchForgeFrameRequest({

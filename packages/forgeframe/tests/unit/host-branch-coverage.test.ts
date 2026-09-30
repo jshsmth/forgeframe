@@ -225,7 +225,9 @@ describe("Host branch coverage and edge paths", () => {
 			)
 			.mockResolvedValue(undefined);
 
-		const siblings = await host.hostProps.getPeerInstances({ onlyOpen: true });
+		const siblings = await host.hostProps.getPeerInstances({
+			anyConsumer: true,
+		});
 
 		expect(siblings).toEqual([]);
 		expect(sendSpy).toHaveBeenCalledWith(
@@ -235,7 +237,7 @@ describe("Host branch coverage and edge paths", () => {
 			{
 				uid: "host-internal-uid",
 				tag: "host-internal-component",
-				options: { onlyOpen: true },
+				options: { anyConsumer: true },
 			},
 		);
 	});
@@ -245,6 +247,7 @@ describe("Host branch coverage and edge paths", () => {
 		const invalidChildren: Record<string, HostComponentRef> = {
 			BrokenChild: {
 				tag: "InvalidTag",
+				url: "https://host.example.com/broken",
 			},
 		};
 

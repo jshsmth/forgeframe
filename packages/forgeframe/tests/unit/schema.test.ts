@@ -227,9 +227,10 @@ describe("validateProps with schema", () => {
 			return { issues: [{ message: "Must be an email" }] };
 		});
 
-		const definitions: PropsDefinition<{ email: string }> = {
-			email: { schema },
-		};
+		const definitions: PropsDefinition<{ email: string }, { email?: unknown }> =
+			{
+				email: { schema },
+			};
 
 		// Valid email
 		expect(() =>
@@ -247,7 +248,7 @@ describe("validateProps with schema", () => {
 			value: String(v).toLowerCase(),
 		}));
 
-		const definitions: PropsDefinition<{ name: string }> = {
+		const definitions: PropsDefinition<{ name: string }, { name?: unknown }> = {
 			name: { schema },
 		};
 
@@ -263,7 +264,7 @@ describe("validateProps with schema", () => {
 			value: String(v).trim(),
 		}));
 
-		const definitions: PropsDefinition<{ name: string }> = {
+		const definitions: PropsDefinition<{ name: string }, { name?: unknown }> = {
 			name: {
 				schema,
 				validate: customValidate,
@@ -282,7 +283,7 @@ describe("validateProps with schema", () => {
 	it("should check required before schema validation", () => {
 		const schema = createMockSchema<string>((v) => ({ value: String(v) }));
 
-		const definitions: PropsDefinition<{ name: string }> = {
+		const definitions: PropsDefinition<{ name: string }, { name?: unknown }> = {
 			name: { schema, required: true },
 		};
 
@@ -304,9 +305,10 @@ describe("validateProps with schema", () => {
 			},
 		};
 
-		const definitions: PropsDefinition<{ name?: string }> = {
-			name: { schema },
-		};
+		const definitions: PropsDefinition<{ name?: string }, { name?: unknown }> =
+			{
+				name: { schema },
+			};
 
 		validateProps({} as { name?: string }, definitions);
 		expect(validateFn).not.toHaveBeenCalled();
@@ -318,9 +320,10 @@ describe("validateProps with schema", () => {
 			value: `processed: ${v}`,
 		}));
 
-		const definitions: PropsDefinition<{ value: string }> = {
-			value: { schema },
-		};
+		const definitions: PropsDefinition<{ value: string }, { value?: unknown }> =
+			{
+				value: { schema },
+			};
 
 		// Pass a number - schema transforms it to string
 		const props = { value: 42 as unknown as string };
@@ -353,16 +356,17 @@ describe("prop schema API", () => {
 	});
 
 	it("should work with custom validate function alongside schema", () => {
-		const definitions: PropsDefinition<{ email: string }> = {
-			email: {
-				schema: prop.string(),
-				validate: ({ value }) => {
-					if (!value.includes("@")) {
-						throw new Error("Invalid email format");
-					}
+		const definitions: PropsDefinition<{ email: string }, { email?: unknown }> =
+			{
+				email: {
+					schema: prop.string(),
+					validate: ({ value }) => {
+						if (!value.includes("@")) {
+							throw new Error("Invalid email format");
+						}
+					},
 				},
-			},
-		};
+			};
 
 		expect(() =>
 			validateProps({ email: "user@example.com" }, definitions),
@@ -374,7 +378,7 @@ describe("prop schema API", () => {
 	});
 
 	it("should work with required validation", () => {
-		const definitions: PropsDefinition<{ name: string }> = {
+		const definitions: PropsDefinition<{ name: string }, { name?: unknown }> = {
 			name: { schema: prop.string(), required: true },
 		};
 
@@ -394,10 +398,13 @@ describe("prop schema API", () => {
 			return { issues: [{ message: "Must have id" }] };
 		});
 
-		const definitions: PropsDefinition<{
-			user: { id: string };
-			callback: () => void;
-		}> = {
+		const definitions: PropsDefinition<
+			{
+				user: { id: string };
+				callback: () => void;
+			},
+			{ user: unknown; callback: () => void }
+		> = {
 			user: { schema: customSchema },
 			callback: prop.function(),
 		};

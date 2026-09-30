@@ -9,7 +9,13 @@ export function log(message: string, type: LogType = "default") {
 	const time = new Date().toLocaleTimeString();
 	const entry = document.createElement("div");
 	entry.className = `log-entry ${type}`;
-	entry.innerHTML = `<span class="time">${time}</span><span class="message">${message}</span>`;
+	const timestamp = document.createElement("span");
+	timestamp.className = "time";
+	timestamp.textContent = time;
+	const text = document.createElement("span");
+	text.className = "message";
+	text.textContent = message;
+	entry.append(timestamp, text);
 	elements.eventLog.appendChild(entry);
 	elements.eventLog.scrollTop = elements.eventLog.scrollHeight;
 	console.log(`[${time}] ${message}`);

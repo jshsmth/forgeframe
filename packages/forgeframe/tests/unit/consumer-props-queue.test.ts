@@ -83,7 +83,9 @@ describe("Disconnected consumer prop queue", () => {
 			{ count: 0 },
 		);
 		const seen: unknown[] = [];
-		consumer.event.on("props", (value) => seen.push(value));
+		consumer.event.on("props", (value) => {
+			seen.push(value);
+		});
 		const first = consumer.updateProps({ count: 1 });
 		const rejected = consumer
 			.updateProps({ count: "invalid" })

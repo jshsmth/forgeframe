@@ -30,6 +30,12 @@ describe("render template helpers", () => {
 		it("should create a container div with correct attributes", () => {
 			const ctx: TemplateContext<Record<string, unknown>> = {
 				doc: document,
+				context: "iframe",
+				container: document.createElement("div"),
+				frame: null,
+				prerenderFrame: null,
+				close: async () => {},
+				focus: async () => {},
 				dimensions: { width: 400, height: 300 },
 				uid: "test-uid-123",
 				tag: "my-component",
@@ -48,6 +54,12 @@ describe("render template helpers", () => {
 		it("should apply numeric dimensions as pixels", () => {
 			const ctx: TemplateContext<Record<string, unknown>> = {
 				doc: document,
+				context: "iframe",
+				container: document.createElement("div"),
+				frame: null,
+				prerenderFrame: null,
+				close: async () => {},
+				focus: async () => {},
 				dimensions: { width: 400, height: 300 },
 				uid: "test-uid",
 				tag: "test",
@@ -63,6 +75,12 @@ describe("render template helpers", () => {
 		it("should apply string dimensions as-is", () => {
 			const ctx: TemplateContext<Record<string, unknown>> = {
 				doc: document,
+				context: "iframe",
+				container: document.createElement("div"),
+				frame: null,
+				prerenderFrame: null,
+				close: async () => {},
+				focus: async () => {},
 				dimensions: { width: "100%", height: "50vh" },
 				uid: "test-uid",
 				tag: "test",
@@ -78,6 +96,12 @@ describe("render template helpers", () => {
 		it("should apply correct base styles", () => {
 			const ctx: TemplateContext<Record<string, unknown>> = {
 				doc: document,
+				context: "iframe",
+				container: document.createElement("div"),
+				frame: null,
+				prerenderFrame: null,
+				close: async () => {},
+				focus: async () => {},
 				dimensions: { width: 400, height: 300 },
 				uid: "test-uid",
 				tag: "test",
@@ -98,6 +122,12 @@ describe("render template helpers", () => {
 				cspNonce?: string;
 			} = {
 				doc: document,
+				context: "iframe",
+				container: document.createElement("div"),
+				frame: null,
+				prerenderFrame: null,
+				close: async () => {},
+				focus: async () => {},
 				dimensions: { width: 400, height: 300 },
 				uid: "test-uid",
 				tag: "test",
@@ -113,6 +143,12 @@ describe("render template helpers", () => {
 		it("should apply dimensions to wrapper", () => {
 			const ctx: TemplateContext<Record<string, unknown>> = {
 				doc: document,
+				context: "iframe",
+				container: document.createElement("div"),
+				frame: null,
+				prerenderFrame: null,
+				close: async () => {},
+				focus: async () => {},
 				dimensions: { width: 500, height: 400 },
 				uid: "test-uid",
 				tag: "test",
@@ -128,6 +164,12 @@ describe("render template helpers", () => {
 		it("should have correct positioning styles", () => {
 			const ctx: TemplateContext<Record<string, unknown>> = {
 				doc: document,
+				context: "iframe",
+				container: document.createElement("div"),
+				frame: null,
+				prerenderFrame: null,
+				close: async () => {},
+				focus: async () => {},
 				dimensions: { width: 400, height: 300 },
 				uid: "test-uid",
 				tag: "test",
@@ -147,6 +189,12 @@ describe("render template helpers", () => {
 				cspNonce?: string;
 			} = {
 				doc: document,
+				context: "iframe",
+				container: document.createElement("div"),
+				frame: null,
+				prerenderFrame: null,
+				close: async () => {},
+				focus: async () => {},
 				dimensions: { width: 400, height: 300 },
 				uid: "test-uid",
 				tag: "test",
@@ -172,6 +220,12 @@ describe("render template helpers", () => {
 				cspNonce?: string;
 			} = {
 				doc: document,
+				context: "iframe",
+				container: document.createElement("div"),
+				frame: null,
+				prerenderFrame: null,
+				close: async () => {},
+				focus: async () => {},
 				dimensions: { width: 400, height: 300 },
 				uid: "test-uid",
 				tag: "test",
@@ -191,6 +245,12 @@ describe("render template helpers", () => {
 		it("should include keyframe animation in style", () => {
 			const ctx: TemplateContext<Record<string, unknown>> = {
 				doc: document,
+				context: "iframe",
+				container: document.createElement("div"),
+				frame: null,
+				prerenderFrame: null,
+				close: async () => {},
+				focus: async () => {},
 				dimensions: { width: 400, height: 300 },
 				uid: "test-uid",
 				tag: "test",
@@ -206,6 +266,12 @@ describe("render template helpers", () => {
 		it("should inject spinner keyframes once per document", () => {
 			const ctx: TemplateContext<Record<string, unknown>> = {
 				doc: document,
+				context: "iframe",
+				container: document.createElement("div"),
+				frame: null,
+				prerenderFrame: null,
+				close: async () => {},
+				focus: async () => {},
 				dimensions: { width: 400, height: 300 },
 				uid: "first",
 				tag: "test",

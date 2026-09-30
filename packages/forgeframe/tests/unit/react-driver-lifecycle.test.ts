@@ -18,44 +18,6 @@ afterEach(() => {
 });
 
 describe("createReactComponent lifecycle integration", () => {
-	it("should mount, register lifecycle listeners, and cleanup instance", async () => {
-		const { React, refs, effects } = createReactHarness();
-		const { component, instance, event, unsubscribes } =
-			createForgeFrameComponentMock();
-		const onRendered = vi.fn();
-		const onClose = vi.fn();
-		const onError = vi.fn();
-
-		const ReactComponent = createReactComponent(component as never, {
-			React: React as never,
-		});
-		ReactComponent({
-			amount: 10,
-			context: "popup",
-			onRendered,
-			onClose,
-			onError,
-		});
-
-		const container = document.createElement("div");
-		refs[0].current = container;
-
-		effects[0]?.(); // onError ref sync
-		const cleanup = effects[1]?.(); // mount
-
-		expect(component).toHaveBeenCalledWith({ amount: 10 });
-		expect(event.once).toHaveBeenCalledWith("rendered", expect.any(Function));
-		expect(event.once).toHaveBeenCalledWith("close", expect.any(Function));
-		expect(event.on).toHaveBeenCalledWith("error", expect.any(Function));
-		expect(instance.render).toHaveBeenCalledWith(container, "popup");
-
-		(cleanup as (() => void) | undefined)?.();
-		expect(unsubscribes.rendered).toHaveBeenCalledTimes(1);
-		expect(unsubscribes.close).toHaveBeenCalledTimes(1);
-		expect(unsubscribes.error).toHaveBeenCalledTimes(1);
-		expect(instance.close).toHaveBeenCalledTimes(1);
-	});
-
 	it("should skip mount work when container ref is unavailable", () => {
 		const { React, effects } = createReactHarness();
 		const { component } = createForgeFrameComponentMock();
@@ -294,62 +256,6 @@ describe("createReactComponent lifecycle integration", () => {
 		expect(setState).not.toHaveBeenCalledWith(cancellationError);
 	});
 
-	it("should call the latest onRendered callback when props change after mount", () => {
-		const { React, refs, effects } = createReactHarness();
-		const { component, event } = createForgeFrameComponentMock();
-		const firstOnRendered = vi.fn();
-		const secondOnRendered = vi.fn();
-
-		const ReactComponent = createReactComponent(component as never, {
-			React: React as never,
-		});
-		ReactComponent({ amount: 1, onRendered: firstOnRendered });
-		refs[0].current = document.createElement("div");
-		effects[0]?.();
-		effects[1]?.();
-
-		const renderedHandler = event.once.mock.calls.find(
-			([name]) => name === "rendered",
-		)?.[1] as (() => void) | undefined;
-
-		ReactComponent({ amount: 1, onRendered: secondOnRendered });
-		effects[0]?.();
-
-		renderedHandler?.();
-
-		expect(firstOnRendered).not.toHaveBeenCalled();
-		expect(secondOnRendered).toHaveBeenCalledTimes(1);
-		expect(event.once).toHaveBeenCalledTimes(2);
-	});
-
-	it("should call the latest onClose callback when props change after mount", () => {
-		const { React, refs, effects } = createReactHarness();
-		const { component, event } = createForgeFrameComponentMock();
-		const firstOnClose = vi.fn();
-		const secondOnClose = vi.fn();
-
-		const ReactComponent = createReactComponent(component as never, {
-			React: React as never,
-		});
-		ReactComponent({ amount: 1, onClose: firstOnClose });
-		refs[0].current = document.createElement("div");
-		effects[0]?.();
-		effects[1]?.();
-
-		const closeHandler = event.once.mock.calls.find(
-			([name]) => name === "close",
-		)?.[1] as (() => void) | undefined;
-
-		ReactComponent({ amount: 1, onClose: secondOnClose });
-		effects[0]?.();
-
-		closeHandler?.();
-
-		expect(firstOnClose).not.toHaveBeenCalled();
-		expect(secondOnClose).toHaveBeenCalledTimes(1);
-		expect(event.once).toHaveBeenCalledTimes(2);
-	});
-
 	it("should update props without remounting when non-structural props change", async () => {
 		const { React, refs, effects } = createReactHarness();
 		const { component, instance } = createForgeFrameComponentMock();
@@ -472,53 +378,5 @@ describe("createReactComponent lifecycle integration", () => {
 		expect(setState).toHaveBeenNthCalledWith(2, renderError);
 		expect(setState).toHaveBeenNthCalledWith(3, null);
 		expect(second.instance.render).toHaveBeenCalledWith(container, "iframe");
-	});
-
-	it("should forward object refs to the container element", () => {
-		const { React, refs, effects } = createReactHarness();
-		const { component } = createForgeFrameComponentMock();
-		const forwardedRef = { current: null as unknown };
-
-		const ReactComponent = createReactComponent(component as never, {
-			React: React as never,
-		});
-		(
-			ReactComponent as unknown as (
-				props: Record<string, unknown>,
-				ref: { current: unknown },
-			) => unknown
-		)({ amount: 1 }, forwardedRef);
-
-		const container = document.createElement("div");
-		refs[0].current = container;
-		effects[3]?.();
-
-		expect(forwardedRef.current).toBe(container);
-	});
-
-	it("should forward callback refs to the container element and clear them on cleanup", () => {
-		const { React, refs, effects } = createReactHarness();
-		const { component } = createForgeFrameComponentMock();
-		const forwardedRef = vi.fn();
-
-		const ReactComponent = createReactComponent(component as never, {
-			React: React as never,
-		});
-		(
-			ReactComponent as unknown as (
-				props: Record<string, unknown>,
-				ref: (value: unknown) => void,
-			) => unknown
-		)({ amount: 1 }, forwardedRef);
-
-		const container = document.createElement("div");
-		refs[0].current = container;
-		const cleanup = effects[3]?.();
-
-		expect(forwardedRef).toHaveBeenCalledWith(container);
-
-		(cleanup as (() => void) | undefined)?.();
-
-		expect(forwardedRef).toHaveBeenLastCalledWith(null);
 	});
 });

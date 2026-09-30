@@ -54,31 +54,28 @@ describe("Props Normalization", () => {
 		tag: "test-tag",
 		close: vi.fn(),
 		focus: vi.fn(),
-		resize: vi.fn(),
 		onError: vi.fn(),
-		event: {
-			on: vi.fn(),
-			once: vi.fn(),
-			emit: vi.fn(),
-			off: vi.fn(),
-			removeAllListeners: vi.fn(),
-		},
+		state: {},
+		container: null,
 	});
 
 	it.each(["toString", "constructor", "hasOwnProperty"])(
 		"uses own values and defaults for %s",
 		(key) => {
-			const definitions = { [key]: prop.string().optional() };
+			const definitions: PropsDefinition<Record<string, string | undefined>> = {
+				[key]: prop.string().optional(),
+			};
 			const omitted = normalizeProps({}, definitions, createContext());
 			expect(Object.hasOwn(omitted, key)).toBe(true);
 			expect(omitted[key]).toBeUndefined();
 			expect(() => validateProps({}, definitions)).not.toThrow();
 			expect(
-				normalizeProps(
-					{},
-					{ [key]: prop.string().default("fallback") },
-					createContext(),
-				)[key],
+				normalizeProps<
+					Record<string, string>,
+					Record<string, string | undefined>
+				>({}, { [key]: prop.string().default("fallback") }, createContext())[
+					key
+				],
 			).toBe("fallback");
 			expect(
 				normalizeProps({ [key]: "supplied" }, definitions, createContext())[
@@ -99,12 +96,15 @@ describe("Props Normalization", () => {
 		expect(normalizeProps({}, definitions, createContext()).label).toBe(
 			"fallback",
 		);
+		const aliased: Record<string, unknown> = { toString: "alias" };
+		const explicitUndefined = { label: undefined, toString: "alias" };
 		expect(
-			normalizeProps({ toString: "alias" }, definitions, createContext()).label,
+			normalizeProps<{ label?: string }>(aliased, definitions, createContext())
+				.label,
 		).toBe("alias");
 		expect(
-			normalizeProps(
-				{ label: undefined, toString: "alias" },
+			normalizeProps<{ label?: string }>(
+				explicitUndefined,
 				definitions,
 				createContext(),
 			).label,
@@ -112,7 +112,10 @@ describe("Props Normalization", () => {
 	});
 
 	it("should merge user props with defaults", () => {
-		const definitions: PropsDefinition<{ name: string; count: number }> = {
+		const definitions: PropsDefinition<
+			{ name: string; count: number },
+			{ name?: string; count?: number }
+		> = {
 			name: prop.string().default("default-name"),
 			count: prop.number().default(0),
 		};
@@ -336,7 +339,7 @@ describe("Props Validation", () => {
 
 	it("should validate object type", () => {
 		const definitions: PropsDefinition<{ data: Record<string, unknown> }> = {
-			data: prop.object(),
+			data: prop.object<Record<string, unknown>>(),
 		};
 
 		expect(() =>
@@ -529,12 +532,12 @@ describe("Props to Query Params", () => {
 			trusted: {
 				schema: prop.string(),
 				queryParam: true,
-				trustedDomains: "https://host.example.com",
+				trustedDomains: ["https://host.example.com"],
 			},
 			rejected: {
 				schema: prop.string(),
 				queryParam: true,
-				trustedDomains: "https://other.example.com",
+				trustedDomains: ["https://other.example.com"],
 			},
 		};
 
@@ -561,6 +564,7 @@ describe("Props to Query Params", () => {
 		const params = propsToQueryParams(
 			{ token: "abc123", secret: "hidden" },
 			definitions,
+			"https://host.example.com",
 		);
 
 		expect(params.get("token")).toBe("abc123");
@@ -572,7 +576,11 @@ describe("Props to Query Params", () => {
 			userId: { schema: prop.string(), queryParam: "user_id" },
 		};
 
-		const params = propsToQueryParams({ userId: "123" }, definitions);
+		const params = propsToQueryParams(
+			{ userId: "123" },
+			definitions,
+			"https://host.example.com",
+		);
 
 		expect(params.get("user_id")).toBe("123");
 	});
@@ -585,7 +593,11 @@ describe("Props to Query Params", () => {
 			},
 		};
 
-		const params = propsToQueryParams({ data: { a: 1 } }, definitions);
+		const params = propsToQueryParams(
+			{ data: { a: 1 } },
+			definitions,
+			"https://host.example.com",
+		);
 
 		expect(params.get("data")).toBe(btoa(JSON.stringify({ a: 1 })));
 	});
@@ -598,6 +610,7 @@ describe("Props to Query Params", () => {
 		const params = propsToQueryParams(
 			{ config: { key: "value" } },
 			definitions,
+			"https://host.example.com",
 		);
 
 		expect(params.get("config")).toBe(JSON.stringify({ key: "value" }));
@@ -608,7 +621,11 @@ describe("Props to Query Params", () => {
 			callback: { schema: prop.function(), queryParam: true },
 		};
 
-		const params = propsToQueryParams({ callback: () => {} }, definitions);
+		const params = propsToQueryParams(
+			{ callback: () => {} },
+			definitions,
+			"https://host.example.com",
+		);
 
 		expect(params.get("callback")).toBeNull();
 	});
@@ -621,6 +638,7 @@ describe("Props to Query Params", () => {
 		const params = propsToQueryParams(
 			{ optional: undefined } as { optional?: string },
 			definitions,
+			"https://host.example.com",
 		);
 
 		expect(params.get("optional")).toBeNull();
@@ -639,7 +657,7 @@ describe("Props to Body Params", () => {
 			trusted: {
 				schema: prop.string(),
 				bodyParam: true,
-				trustedDomains: "https://host.example.com",
+				trustedDomains: ["https://host.example.com"],
 			},
 		};
 
@@ -661,6 +679,7 @@ describe("Props to Body Params", () => {
 		const params = propsToBodyParams(
 			{ token: "abc123", secret: "hidden" },
 			definitions,
+			"https://host.example.com",
 		);
 
 		expect(params.get("token")).toBe("abc123");
@@ -672,7 +691,11 @@ describe("Props to Body Params", () => {
 			userId: { schema: prop.string(), bodyParam: "user_id" },
 		};
 
-		const params = propsToBodyParams({ userId: "123" }, definitions);
+		const params = propsToBodyParams(
+			{ userId: "123" },
+			definitions,
+			"https://host.example.com",
+		);
 
 		expect(params.get("user_id")).toBe("123");
 	});
@@ -685,7 +708,11 @@ describe("Props to Body Params", () => {
 			},
 		};
 
-		const params = propsToBodyParams({ data: { a: 1 } }, definitions);
+		const params = propsToBodyParams(
+			{ data: { a: 1 } },
+			definitions,
+			"https://host.example.com",
+		);
 
 		expect(params.get("data")).toBe(btoa(JSON.stringify({ a: 1 })));
 	});
@@ -695,7 +722,11 @@ describe("Props to Body Params", () => {
 			config: { schema: prop.object(), bodyParam: true },
 		};
 
-		const params = propsToBodyParams({ config: { key: "value" } }, definitions);
+		const params = propsToBodyParams(
+			{ config: { key: "value" } },
+			definitions,
+			"https://host.example.com",
+		);
 
 		expect(params.get("config")).toBe(JSON.stringify({ key: "value" }));
 	});
@@ -715,6 +746,7 @@ describe("Props to Body Params", () => {
 				optional?: string;
 			},
 			definitions,
+			"https://host.example.com",
 		);
 
 		expect(params.get("callback")).toBeNull();

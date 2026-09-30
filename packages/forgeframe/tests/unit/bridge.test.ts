@@ -45,9 +45,6 @@ const createMockMessenger = () => {
 			}
 			throw new Error("No handler registered");
 		},
-	} as unknown as Messenger & {
-		handlers: Map<string, GenericFunction>;
-		simulateCall: (id: string, args: unknown[]) => Promise<unknown>;
 	};
 };
 
@@ -57,7 +54,7 @@ describe("FunctionBridge", () => {
 
 	beforeEach(() => {
 		messenger = createMockMessenger();
-		bridge = new FunctionBridge(messenger);
+		bridge = new FunctionBridge(messenger as unknown as Messenger);
 	});
 
 	afterEach(() => {
@@ -120,7 +117,10 @@ describe("FunctionBridge", () => {
 		});
 
 		it("should reject calls from an unexpected peer window", async () => {
-			const guardedBridge = new FunctionBridge(messenger, () => false);
+			const guardedBridge = new FunctionBridge(
+				messenger as unknown as Messenger,
+				() => false,
+			);
 			const ref = guardedBridge.serialize(() => "private");
 
 			await expect(messenger.simulateCall(ref.__id__, [])).rejects.toThrow(
@@ -390,7 +390,7 @@ describe("serializeFunctions", () => {
 
 	beforeEach(() => {
 		messenger = createMockMessenger();
-		bridge = new FunctionBridge(messenger);
+		bridge = new FunctionBridge(messenger as unknown as Messenger);
 	});
 
 	afterEach(() => {
@@ -490,7 +490,7 @@ describe("serializeFunctions", () => {
 		value.__proto__ = {
 			leaked: true,
 		};
-		value.constructor = {
+		value["constructor"] = {
 			prototype: {
 				ignored: true,
 			},
@@ -519,7 +519,7 @@ describe("deserializeFunctions", () => {
 
 	beforeEach(() => {
 		messenger = createMockMessenger();
-		bridge = new FunctionBridge(messenger);
+		bridge = new FunctionBridge(messenger as unknown as Messenger);
 	});
 
 	afterEach(() => {
@@ -660,7 +660,7 @@ describe("deserializeFunctions", () => {
 		value.__proto__ = {
 			leaked: true,
 		};
-		value.constructor = {
+		value["constructor"] = {
 			prototype: {
 				ignored: true,
 			},
@@ -691,8 +691,12 @@ describe("round-trip serialization", () => {
 		const consumerMessenger = createMockMessenger();
 		const hostMessenger = createMockMessenger();
 
-		const consumerBridge = new FunctionBridge(consumerMessenger);
-		const hostBridge = new FunctionBridge(hostMessenger);
+		const consumerBridge = new FunctionBridge(
+			consumerMessenger as unknown as Messenger,
+		);
+		const hostBridge = new FunctionBridge(
+			hostMessenger as unknown as Messenger,
+		);
 
 		const targetWin = {} as Window;
 		const targetDomain = "https://host.com";

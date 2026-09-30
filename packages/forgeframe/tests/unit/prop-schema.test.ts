@@ -208,6 +208,25 @@ describe("prop.string()", () => {
 		).toBe("Only lowercase letters");
 	});
 
+	it("trims before applying length constraints without changing the original string schema", () => {
+		const original = prop.string();
+		const trimmed = original.trim();
+		const constrained = trimmed.nonempty().max(3);
+		expect(constrained["~standard"].validate("  abc\n")).toEqual({
+			value: "abc",
+		});
+		expect(constrained["~standard"].validate(" \t\n ")).toHaveProperty(
+			"issues",
+		);
+		expect(constrained["~standard"].validate("  abcd  ")).toHaveProperty(
+			"issues",
+		);
+		expect(trimmed["~standard"].validate(" \t\n ")).toEqual({ value: "" });
+		expect(original["~standard"].validate("  abc\n")).toEqual({
+			value: "  abc\n",
+		});
+	});
+
 	it("should validate global regex patterns consistently", () => {
 		const schema = prop.string().pattern(/^[a-z]+$/g);
 
@@ -458,12 +477,11 @@ describe("prop.array()", () => {
 		);
 	});
 
-	it("should include path in item validation errors", () => {
+	it("should include path in item validation errors", async () => {
 		const schema = prop.array().of(prop.string());
-		const result = schema["~standard"].validate(["a", 1, "c"]);
-		expect(
-			(result as { issues: Array<{ path?: unknown[] }> }).issues[0].path,
-		).toEqual([1]);
+		const result = await schema["~standard"].validate(["a", 1, "c"]);
+		if (!result.issues) throw new Error("Expected validation issues");
+		expect(result.issues[0].path).toEqual([1]);
 	});
 
 	it("should validate min length", () => {
@@ -508,12 +526,11 @@ describe("prop.tuple()", () => {
 		);
 	});
 
-	it("should include path in item validation errors", () => {
+	it("should include path in item validation errors", async () => {
 		const schema = prop.tuple(prop.string(), prop.number().int());
-		const result = schema["~standard"].validate(["x", 1.5]);
-		expect(
-			(result as { issues: Array<{ path?: unknown[] }> }).issues[0].path,
-		).toEqual([1]);
+		const result = await schema["~standard"].validate(["x", 1.5]);
+		if (!result.issues) throw new Error("Expected validation issues");
+		expect(result.issues[0].path).toEqual([1]);
 	});
 
 	it("should support empty tuples", () => {
@@ -536,6 +553,47 @@ describe("prop.tuple()", () => {
 // ============================================================================
 
 describe("prop.object()", () => {
+	it.each(["toString", "constructor", "hasOwnProperty"])(
+		"treats omitted %s as missing in nested objects",
+		(key) => {
+			for (const strict of [false, true]) {
+				for (const input of [{}, Object.create(null)]) {
+					const optional = prop
+						.object()
+						.shape({ [key]: prop.string().optional() });
+					const fallback = prop
+						.object()
+						.shape({ [key]: prop.string().default("fallback") });
+					expect(
+						(strict ? optional.strict() : optional)["~standard"].validate(
+							input,
+						),
+					).toEqual({ value: {} });
+					expect(
+						(strict ? fallback.strict() : fallback)["~standard"].validate(
+							input,
+						),
+					).toEqual({ value: { [key]: "fallback" } });
+					expect(optional["~standard"].validate({ [key]: "supplied" })).toEqual(
+						{ value: { [key]: "supplied" } },
+					);
+				}
+			}
+		},
+	);
+
+	it("does not admit inherited required fields or execute inherited getters", () => {
+		const input = Object.create({
+			get name() {
+				throw new Error("Inherited getter must not run");
+			},
+		});
+		const schema = prop.object().shape({ name: prop.string() });
+		expect(schema["~standard"].validate(input)).toEqual({
+			issues: [{ message: "Required", path: ["name"] }],
+		});
+	});
+
 	it("should preserve unknown own keys without inheriting or changing object prototypes", () => {
 		const input = JSON.parse(
 			'{"constructor":"constructor-value","toString":"string-value","hasOwnProperty":"own-value","__proto__":{"injected":true}}',
@@ -545,7 +603,7 @@ describe("prop.object()", () => {
 			const result = schema["~standard"].validate(input);
 			expect(result).toEqual({ value: input });
 			expect("value" in result).toBe(true);
-			if ("value" in result) {
+			if ("value" in result && result.value !== undefined) {
 				expect(Object.getPrototypeOf(result.value)).toBe(Object.prototype);
 				expect(Object.hasOwn(result.value, "__proto__")).toBe(true);
 			}
@@ -576,16 +634,17 @@ describe("prop.object()", () => {
 		});
 	});
 
-	it("should include path in shape validation errors", () => {
+	it("should include path in shape validation errors", async () => {
 		const schema = prop.object().shape({
 			user: prop.object().shape({
 				email: prop.string().email(),
 			}),
 		});
-		const result = schema["~standard"].validate({ user: { email: "invalid" } });
-		expect(
-			(result as { issues: Array<{ path?: unknown[] }> }).issues[0].path,
-		).toEqual(["user", "email"]);
+		const result = await schema["~standard"].validate({
+			user: { email: "invalid" },
+		});
+		if (!result.issues) throw new Error("Expected validation issues");
+		expect(result.issues[0].path).toEqual(["user", "email"]);
 	});
 
 	it("should allow extra keys by default", () => {
@@ -651,12 +710,11 @@ describe("prop.record()", () => {
 		).toHaveProperty("issues");
 	});
 
-	it("should include path in value validation errors", () => {
+	it("should include path in value validation errors", async () => {
 		const schema = prop.record(prop.number().int());
-		const result = schema["~standard"].validate({ count: 1.5 });
-		expect(
-			(result as { issues: Array<{ path?: unknown[] }> }).issues[0].path,
-		).toEqual(["count"]);
+		const result = await schema["~standard"].validate({ count: 1.5 });
+		if (!result.issues) throw new Error("Expected validation issues");
+		expect(result.issues[0].path).toEqual(["count"]);
 	});
 
 	it("should support default", () => {
@@ -669,7 +727,7 @@ describe("prop.record()", () => {
 		const input = Object.create(null) as Record<string, unknown>;
 		// biome-ignore lint/suspicious/noProto: Exercise an own __proto__ data property to verify prototype-safe handling.
 		input.__proto__ = "proto-value";
-		input.constructor = "ctor-value";
+		input["constructor"] = "ctor-value";
 		input.prototype = "prototype-value";
 
 		const result = schema["~standard"].validate(input);
@@ -696,6 +754,24 @@ describe("prop.literal()", () => {
 		const schema = prop.literal("active");
 		expect(schema["~standard"].validate("active")).toEqual({ value: "active" });
 		expect(schema["~standard"].validate("inactive")).toHaveProperty("issues");
+	});
+
+	it("preserves a literal's accepted value across optional/default clones without mutating the original", () => {
+		const original = prop.literal("active");
+		const optional = original.optional();
+		const fallback = optional.default("active");
+		expect(optional["~standard"].validate("active")).toEqual({
+			value: "active",
+		});
+		expect(optional["~standard"].validate("inactive")).toHaveProperty("issues");
+		expect(fallback["~standard"].validate("inactive")).toHaveProperty("issues");
+		expect(fallback["~standard"].validate(undefined)).toEqual({
+			value: "active",
+		});
+		expect(optional["~standard"].validate(undefined)).toEqual({
+			value: undefined,
+		});
+		expect(original["~standard"].validate(undefined)).toHaveProperty("issues");
 	});
 
 	it("should validate exact number match", () => {
@@ -775,15 +851,14 @@ describe("prop.union()", () => {
 		).toContain("Expected integer");
 	});
 
-	it("should preserve nested issue paths from each branch", () => {
+	it("should preserve nested issue paths from each branch", async () => {
 		const schema = prop.union(
 			prop.object().shape({ age: prop.number() }),
 			prop.object().shape({ name: prop.string() }),
 		);
-		const result = schema["~standard"].validate({ age: "old" });
-		const paths = (
-			result as { issues: Array<{ path?: unknown[] }> }
-		).issues.map((issue) => issue.path);
+		const result = await schema["~standard"].validate({ age: "old" });
+		if (!result.issues) throw new Error("Expected validation issues");
+		const paths = result.issues.map((issue) => issue.path);
 
 		expect(paths).toContainEqual(["age"]);
 		expect(paths).toContainEqual(["name"]);
@@ -918,9 +993,10 @@ describe("integration with validateProps", () => {
 	});
 
 	it("should work with prop.number().default() in component props", () => {
-		const definitions: PropsDefinition<{ count: number }> = {
-			count: prop.number().default(0),
-		};
+		const definitions: PropsDefinition<{ count: number }, { count?: number }> =
+			{
+				count: prop.number().default(0),
+			};
 
 		const props = { count: undefined } as unknown as { count: number };
 		validateProps(props, definitions);
@@ -933,7 +1009,10 @@ describe("integration with validateProps", () => {
 		};
 
 		expect(() =>
-			validateProps({ status: "active" }, definitions),
+			validateProps<{ status: "pending" | "active" }>(
+				{ status: "active" },
+				definitions,
+			),
 		).not.toThrow();
 		expect(() =>
 			validateProps(
@@ -966,7 +1045,10 @@ describe("integration with validateProps", () => {
 			};
 		};
 
-		const definitions: PropsDefinition<UserConfig> = {
+		const definitions: PropsDefinition<
+			UserConfig,
+			{ config: { theme?: string; debug?: boolean } }
+		> = {
 			config: prop.object().shape({
 				theme: prop.string().default("light"),
 				debug: prop.boolean().default(false),
@@ -1036,7 +1118,12 @@ describe("integration with validateProps", () => {
 			point: prop.tuple(prop.number(), prop.number()),
 		};
 
-		expect(() => validateProps({ point: [10, 20] }, definitions)).not.toThrow();
+		expect(() =>
+			validateProps<{ point: [number, number] }>(
+				{ point: [10, 20] },
+				definitions,
+			),
+		).not.toThrow();
 		expect(() =>
 			validateProps(
 				{ point: [10, "20"] } as unknown as { point: [number, number] },
@@ -1046,15 +1133,15 @@ describe("integration with validateProps", () => {
 	});
 
 	it("should work with mixed prop schemas", () => {
-		interface MyProps {
+		type MyProps = {
 			name: string;
 			count: number;
-			email: string;
+			email?: string;
 			tags: string[];
 			status: "active" | "inactive";
-		}
+		};
 
-		const definitions: PropsDefinition<MyProps> = {
+		const definitions: PropsDefinition<MyProps, Partial<MyProps>> = {
 			name: prop.string().min(1),
 			count: prop.number().default(0),
 			email: prop.string().email().optional(),

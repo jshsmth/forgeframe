@@ -9,22 +9,22 @@ import {
 	type IframeIntegrationHarness,
 } from "./helpers";
 
-interface AliasSyncProps {
+type AliasSyncProps = {
 	email: string;
-}
+};
 
-interface AliasSyncInput {
+type AliasSyncInput = {
 	userEmail: string;
-}
+};
 
-interface ChainedAliasSyncProps {
+type ChainedAliasSyncProps = {
 	first: string;
 	second: string;
-}
+};
 
-interface ChainedAliasSyncInput {
+type ChainedAliasSyncInput = {
 	legacy: string;
-}
+};
 
 const ALIAS_PROP_DEFINITIONS: PropsDefinition<AliasSyncProps> = {
 	email: {

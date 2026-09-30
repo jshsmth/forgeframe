@@ -382,7 +382,10 @@ function validateObjectFields<T>(
 	strict: boolean,
 ): StandardSchemaV1Result<T> {
 	for (const [key, schema] of Object.entries(shape)) {
-		const fieldResult = validateSchemaSync(schema, obj[key]);
+		const fieldResult = validateSchemaSync(
+			schema,
+			Object.hasOwn(obj, key) ? obj[key] : undefined,
+		);
 		if (fieldResult.issues) {
 			return { issues: prependIssuePath(fieldResult.issues, key) };
 		}

@@ -14,10 +14,10 @@ import {
 	type PopupIntegrationHarness,
 } from "./helpers";
 
-interface BodyParamProps {
+type BodyParamProps = {
 	token: string;
 	mode: string;
-}
+};
 
 const BODY_PARAM_PROP_DEFINITIONS: PropsDefinition<BodyParamProps> = {
 	token: { schema: prop.string(), required: true, bodyParam: true },

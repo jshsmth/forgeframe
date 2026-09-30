@@ -29,9 +29,15 @@ describe("CleanupManager", () => {
 		const manager = new CleanupManager();
 		const order: number[] = [];
 
-		manager.register(() => order.push(1));
-		manager.register(() => order.push(2));
-		manager.register(() => order.push(3));
+		manager.register(() => {
+			order.push(1);
+		});
+		manager.register(() => {
+			order.push(2);
+		});
+		manager.register(() => {
+			order.push(3);
+		});
 
 		await manager.cleanup();
 
@@ -47,7 +53,9 @@ describe("CleanupManager", () => {
 			await deferred.promise;
 			results.push("async");
 		});
-		manager.register(() => results.push("sync"));
+		manager.register(() => {
+			results.push("sync");
+		});
 
 		const cleanup = manager.cleanup();
 		expect(results).toEqual(["sync"]);
@@ -61,7 +69,9 @@ describe("CleanupManager", () => {
 		const manager = new CleanupManager();
 		let count = 0;
 
-		manager.register(() => count++);
+		manager.register(() => {
+			count++;
+		});
 
 		await manager.cleanup();
 		await manager.cleanup();

@@ -256,7 +256,7 @@ describe("HostTransport", () => {
 		]);
 
 		await expect(
-			transport.getPeerInstances({ onlyOpen: true }),
+			transport.getPeerInstances({ anyConsumer: true }),
 		).resolves.toEqual([
 			{ uid: "peer-1", tag: "host-transport-component", open: true },
 		]);
@@ -268,7 +268,7 @@ describe("HostTransport", () => {
 			{
 				uid: "host-transport-uid",
 				tag: "host-transport-component",
-				options: { onlyOpen: true },
+				options: { anyConsumer: true },
 			},
 		);
 

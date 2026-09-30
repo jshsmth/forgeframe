@@ -96,30 +96,30 @@ function renderEmbedded() {
 
 	const renderPropsGrid = () => {
 		const userProps = getUserProps();
-		return Object.entries(userProps)
-			.map(
-				([key, value]) => `
-        <dt>${key}</dt>
-        <dd id="prop-${key}">${value}</dd>
-      `,
-			)
-			.join("");
+		const grid = document.createDocumentFragment();
+		for (const [key, value] of Object.entries(userProps)) {
+			const label = document.createElement("dt");
+			label.textContent = key;
+			const display = document.createElement("dd");
+			display.id = `prop-${key}`;
+			display.textContent = String(value);
+			grid.append(label, display);
+		}
+		return grid;
 	};
 
 	const render = () => {
 		app.innerHTML = `
       <div class="header">
         <h2><span>Host</span> Component</h2>
-        <span class="badge">${hostProps.tag}</span>
+        <span class="badge" id="host-tag"></span>
       </div>
 
       <div class="grid">
         <div class="card">
           <h3>Received Props</h3>
           <div class="card-content">
-            <dl class="props-grid" id="props-display">
-              ${renderPropsGrid()}
-            </dl>
+            <dl class="props-grid" id="props-display"></dl>
           </div>
         </div>
 
@@ -128,9 +128,9 @@ function renderEmbedded() {
           <div class="card-content">
             <dl class="props-grid">
               <dt>uid</dt>
-              <dd>${hostProps.uid.slice(0, 12)}...</dd>
+              <dd id="host-uid"></dd>
               <dt>consumer</dt>
-              <dd>${hostProps.getConsumerDomain()}</dd>
+              <dd id="consumer-domain"></dd>
             </dl>
           </div>
         </div>
@@ -199,6 +199,17 @@ function renderEmbedded() {
       <p class="status" id="status">Ready</p>
     `;
 
+		document
+			.getElementById("props-display")
+			?.replaceChildren(renderPropsGrid());
+		for (const [id, text] of Object.entries({
+			"host-tag": hostProps.tag,
+			"host-uid": `${hostProps.uid.slice(0, 12)}...`,
+			"consumer-domain": hostProps.getConsumerDomain(),
+		})) {
+			const display = document.getElementById(id);
+			if (display) display.textContent = text;
+		}
 		bindEventHandlers();
 	};
 
