@@ -16,7 +16,9 @@ interface RecordWireValue {
 
 /** Detects ordinary records that would look like codec markers after JSON omission. */
 export function needsRecordEscape(value: Record<string, unknown>): boolean {
-	const keys = Object.keys(value).filter((key) => value[key] !== undefined);
+	const keys = Object.keys(value).filter(
+		(key) => value[key] !== undefined && typeof value[key] !== "symbol",
+	);
 	if (keys.length === 3 && value.__type__ === "function") {
 		return keys.includes("__id__") && keys.includes("__name__");
 	}

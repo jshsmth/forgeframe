@@ -25,6 +25,49 @@ describe("Ordinary object prop round trips", () => {
 				__name__: "ordinary-name",
 			},
 			{
+				__forgeframe_wire_type__: "date",
+				__forgeframe_wire_value__: "2026-01-01T00:00:00.000Z",
+			},
+		])(
+			"preserves ordinary marker records when JSON drops symbol metadata: %j",
+			async (expected) => {
+				harness = createIframeIntegrationHarness();
+				const container = document.createElement("div");
+				document.body.append(container);
+				const definitions = {
+					record: {
+						schema: prop.object<Record<string, unknown>>(),
+						serialization,
+					},
+				};
+				const Component = create({
+					tag: "symbol-marker-record",
+					url: "https://host.example.com/widget",
+					props: definitions,
+				});
+				const record = { ...expected, metadata: Symbol("local metadata") };
+				const instance = Component({ record });
+				const rendering = instance.render(container);
+				const { hostProps } = await harness.bootstrapIframeHost(
+					container,
+					definitions,
+				);
+				await rendering;
+				expect(hostProps.record).toEqual(expected);
+				await instance.updateProps({ record: { nested: record } });
+				expect(hostProps.record).toEqual({ nested: expected });
+				await hostProps.export({ record });
+				expect(instance.exports).toEqual({ record: expected });
+			},
+		);
+
+		it.each([
+			{
+				__type__: "function",
+				__id__: "ordinary-id",
+				__name__: "ordinary-name",
+			},
+			{
 				__type__: "function",
 				__id__: "ordinary-id",
 				__name__: "ordinary-name",
