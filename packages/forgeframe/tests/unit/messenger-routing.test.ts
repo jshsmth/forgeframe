@@ -189,7 +189,7 @@ describe("Messenger instance routing", () => {
 			CONSUMER_ORIGIN,
 		);
 
-		const resultPromise = remoteCallback("payload");
+		const resultPromise = Promise.resolve(remoteCallback("payload"));
 		const request = readMessage(consumerWindow);
 		dispatchWindowMessage(
 			hostWindow,

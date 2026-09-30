@@ -21,7 +21,7 @@
 		"clean": "rm -rf dist",
 		"build": "node -e \"require('node:fs').copyFileSync('../../README.md', 'README.md')\" && vite build && tsc --emitDeclarationOnly && node scripts/fix-dts-imports.mjs",
 		"typecheck": "tsc --noEmit && npm run typecheck:tests",
-		"typecheck:tests": "tsc -p tests/typecheck/tsconfig.json --noEmit && tsc -p tests/browser/tsconfig.json --noEmit",
+		"typecheck:tests": "tsc -p tests/typecheck/tsconfig.json --noEmit && tsc -p tests/unit/tsconfig.json --noEmit && tsc -p tests/integration/tsconfig.json --noEmit && tsc -p tests/browser/tsconfig.json --noEmit",
 		"test": "vitest",
 		"test:run": "vitest run",
 		"test:coverage": "vitest run --coverage",

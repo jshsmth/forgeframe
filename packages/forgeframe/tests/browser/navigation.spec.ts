@@ -710,6 +710,99 @@ for (const context of ["iframe", "popup"] as const) {
 	});
 }
 
+test("concurrent widgets isolate props and callbacks and survive a peer closing", async ({
+	page,
+}) => {
+	type WidgetProps = {
+		count: number;
+		secret: string;
+		onComplete: () => number;
+	};
+	type Widgets = {
+		first: import("../../src/types").ForgeFrameComponentInstance<WidgetProps>;
+		second: import("../../src/types").ForgeFrameComponentInstance<WidgetProps>;
+	};
+	await page.goto(consumerOrigin);
+	await page.evaluate(async (hostOrigin) => {
+		const libraryUrl = "/library.js";
+		const { create, prop } = await import(libraryUrl);
+		const Component = create({
+			tag: "browser-concurrent-widgets",
+			url: `${hostOrigin}/host`,
+			props: {
+				count: prop.number(),
+				secret: prop.string(),
+				onComplete: prop.function(),
+			},
+		});
+		for (const id of ["first", "second"]) {
+			const mount = document.createElement("div");
+			mount.id = id;
+			document.body.append(mount);
+		}
+		const widgets = window as unknown as Widgets;
+		widgets.first = Component({
+			count: 1,
+			secret: "first-secret",
+			onComplete: () => 100,
+		});
+		widgets.second = Component({
+			count: 2,
+			secret: "second-secret",
+			onComplete: () => 200,
+		});
+		await Promise.all([
+			widgets.first.render("#first"),
+			widgets.second.render("#second"),
+		]);
+	}, hostOrigin);
+	const firstElement = await page.locator("#first iframe").elementHandle();
+	const secondElement = await page.locator("#second iframe").elementHandle();
+	const first = await firstElement?.contentFrame();
+	const second = await secondElement?.contentFrame();
+	if (!first || !second)
+		throw new Error("Expected two initialized widget frames");
+	const readWidget = (frame: import("@playwright/test").Frame) =>
+		frame.evaluate(async () => {
+			const { hostProps } = window as unknown as {
+				hostProps: import("../../src/types").HostProps<WidgetProps>;
+			};
+			return {
+				count: hostProps.count,
+				secret: hostProps.secret,
+				result: await hostProps.onComplete(),
+			};
+		});
+	expect(await Promise.all([readWidget(first), readWidget(second)])).toEqual([
+		{ count: 1, secret: "first-secret", result: 100 },
+		{ count: 2, secret: "second-secret", result: 200 },
+	]);
+	await page.evaluate(async () => {
+		const widgets = window as unknown as Widgets;
+		await widgets.first.updateProps({
+			count: 11,
+			secret: "updated-first",
+			onComplete: () => 101,
+		});
+	});
+	expect(await Promise.all([readWidget(first), readWidget(second)])).toEqual([
+		{ count: 11, secret: "updated-first", result: 101 },
+		{ count: 2, secret: "second-secret", result: 200 },
+	]);
+	await page.evaluate(async () => {
+		const widgets = window as unknown as Widgets;
+		await widgets.first.close();
+		await widgets.second.updateProps({ count: 22 });
+	});
+	await expect(page.locator("#first iframe")).toHaveCount(0);
+	await expect(page.locator("#second iframe")).toHaveCount(1);
+	expect(await readWidget(second)).toEqual({
+		count: 22,
+		secret: "second-secret",
+		result: 200,
+	});
+});
+
 test("redirected pages cannot read restricted props or complete initialization", async ({
 	page,
 }) => {

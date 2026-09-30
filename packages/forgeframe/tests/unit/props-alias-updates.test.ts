@@ -10,32 +10,32 @@ import { clearComponents, create, destroyAll } from "@/core/component";
 import { PROP_RESET } from "@/core/consumer/props-pipeline";
 import { prop } from "@/props/prop";
 
-interface AliasProps {
+type AliasProps = {
 	email?: string;
-}
+};
 
-interface AliasInput {
+type AliasInput = {
 	userEmail?: string;
-}
+};
 
-interface RequiredAliasProps {
+type RequiredAliasProps = {
 	email: string;
-}
+};
 
-interface MaterializedAliasProps {
+type MaterializedAliasProps = {
 	email?: string;
 	computed: string;
 	fallback: string;
-}
+};
 
-interface ChainedAliasProps {
+type ChainedAliasProps = {
 	first?: string;
 	second?: string;
-}
+};
 
-interface ChainedAliasInput {
+type ChainedAliasInput = {
 	legacy?: string;
-}
+};
 
 type ConsumerPropsInternals = {
 	propsPipeline: {
@@ -50,7 +50,7 @@ function getPropsInternals(instance: unknown): ConsumerPropsInternals {
 
 function withUserEmail<P>(
 	value: string | undefined,
-	canonical?: Partial<P>,
+	canonical: Partial<P> = {},
 ): AliasInput & Partial<P> {
 	return {
 		...canonical,

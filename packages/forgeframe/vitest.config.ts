@@ -13,6 +13,7 @@ export default defineConfig({
 	resolve: {
 		alias: {
 			"@": resolve(import.meta.dirname, "src"),
+			forgeframe: resolve(import.meta.dirname, "src/index.ts"),
 		},
 	},
 	test: {

@@ -202,7 +202,7 @@ const LoginForm = ForgeFrame.create<LoginProps>({
 
 - **`tag`** (required): Unique identifier for the component
 - **`url`** (required): URL of the host page to embed
-- **`dimensions`**: Width and height of the iframe
+- **`dimensions`**: Width and height of the iframe or popup. Iframes accept CSS units; popups accept numbers, numeric strings, or `px` strings. Other CSS units use the popup fallback of 500 pixels per dimension (or the current size during resize).
 - **`props`**: Schema definitions for props passed to the host
 
 </details>
@@ -408,6 +408,8 @@ All schemas support these base methods:
 | `.default(value)` | Sets a default value (or factory function) |
 
 ### Schema Types
+
+Shaped object schemas validate own fields. An omitted field is treated as `undefined`, so optional fields and defaults work even for names such as `constructor` and `toString`; inherited values are not supplied as schema inputs.
 
 | Type | Factory | Methods |
 |------|---------|---------|
@@ -1279,6 +1281,8 @@ FORGEFRAME_SKIP_MKCERT=1 VITE_HOST_URL=http://localhost:5174/ FORGEFRAME_PLAYGRO
 Then open `http://localhost:5173`. The `/tests` page contains browser scenarios for iframe/popup handshakes, prop updates, callbacks, and lifecycle behavior. Use `npm run dev:consumer` or `npm run dev:host` to start the two servers separately. Set `VITE_HOST_URL` when the host runs at another address.
 
 ### Architecture and ownership
+
+The playground displays cross-window prop values, identity fields, and log messages as text. When building a host UI, use `textContent` for received strings rather than interpolating them into HTML.
 
 Read the [architecture guide](docs/architecture.md) for state ownership and render/bootstrap, props, callback, and React flows. The [IOSP review record](docs/iosp-review.md) classifies runtime callables and links their test evidence.
 

@@ -22,6 +22,7 @@ import { getSiblingInstances } from "@/core/consumer/siblings";
 import { clearHostInstance, getHostProps, initHost, isHost } from "@/core/host";
 import * as hostSecurity from "@/core/host/security";
 import { prop } from "@/props/prop";
+import type { PropContext } from "@/types";
 import { buildWindowName } from "@/window/name-payload";
 
 const VALID_EXPORTS: ConsumerExports = {
@@ -40,6 +41,7 @@ const originalWindowName = window.name;
 type ConsumerInternals = {
 	renderer: {
 		context: string;
+		resize: (...args: unknown[]) => void;
 	};
 	transport: {
 		hostWindow: Window | null;
@@ -186,6 +188,7 @@ describe("Component Creation", () => {
 			},
 		});
 		const onLogin = vi.fn();
+		// @ts-expect-error Deliberately omit a required input to exercise the runtime guard.
 		const invalidInstance = MyComponent({ onLogin });
 		const container = document.createElement("div");
 
@@ -399,7 +402,7 @@ describe("Component Creation", () => {
 				},
 				fallback: {
 					schema: prop.string(),
-					default: (ctx) => {
+					default: (ctx: PropContext<Record<string, unknown>>) => {
 						ctx.onError(defaultResolverError);
 						return "default-value";
 					},
@@ -448,7 +451,7 @@ describe("Component Creation", () => {
 			props: {
 				computed: {
 					schema: prop.string(),
-					default: (ctx) => {
+					default: (ctx: PropContext<Record<string, unknown>>) => {
 						void ctx.focus();
 						return "focused-during-construction";
 					},
@@ -515,10 +518,7 @@ describe("Component Creation", () => {
 
 		const instance = CloseResolverComponent({ onResize });
 		const internal = getConsumerInternals(instance);
-		const resizeSpy = vi.spyOn(
-			internal.renderer as { resize: (...args: unknown[]) => void },
-			"resize",
-		);
+		const resizeSpy = vi.spyOn(internal.renderer, "resize");
 		const dimensions = { width: 320, height: 200 };
 
 		await Promise.resolve();
@@ -927,7 +927,11 @@ describe("Component Instance", () => {
 	it("should parse explicit fallback inputs before output callbacks", async () => {
 		const computeValue = vi.fn(() => "41");
 		const decorate = vi.fn(({ value }: { value: number }) => value + 1);
-		const TransformFallbackComponent = create({
+		const TransformFallbackComponent = create<
+			{ amount: number; label?: string },
+			unknown,
+			{ amount?: string; label?: string }
+		>({
 			tag: "transformed-explicit-fallback-component",
 			url: "https://example.com/transformed-fallback",
 			props: {
@@ -958,7 +962,11 @@ describe("Component Instance", () => {
 	});
 
 	it("should require output validation for consumer-only transformed props", () => {
-		const ConsumerOnlyTransformComponent = create({
+		const ConsumerOnlyTransformComponent = create<
+			{ amount: number },
+			unknown,
+			{ amount: string }
+		>({
 			tag: "consumer-only-transform-component",
 			url: "https://example.com/consumer-only-transform",
 			props: {
@@ -983,7 +991,11 @@ describe("Component Instance", () => {
 			(props: { target: { href: string }; label?: string }) =>
 				props.target.href,
 		);
-		const ConsumerOnlyTargetComponent = create({
+		const ConsumerOnlyTargetComponent = create<
+			{ target: { href: string }; label?: string },
+			unknown,
+			{ target: string; label?: string }
+		>({
 			tag: "consumer-only-mutable-transform-component",
 			url: resolveUrl,
 			props: {
@@ -1089,7 +1101,11 @@ describe("Component Instance", () => {
 
 	it("should pass normalized schema outputs to prop decorators exactly once", async () => {
 		const decorate = vi.fn(({ value }: { value: number }) => value + 1);
-		const DecoratedTransformComponent = create({
+		const DecoratedTransformComponent = create<
+			{ amount: number; label?: string },
+			unknown,
+			{ amount: string; label?: string }
+		>({
 			tag: "decorated-transform-component",
 			url: "https://example.com/decorated-transform",
 			props: {
@@ -1147,7 +1163,11 @@ describe("Component Instance", () => {
 	});
 
 	it("should pass schema defaults to output decorators before callbacks", () => {
-		const SchemaDefaultComponent = create({
+		const SchemaDefaultComponent = create<
+			{ attackerUrl: string; targetUrl: string },
+			unknown,
+			{ attackerUrl: string; targetUrl?: string }
+		>({
 			tag: "decorated-schema-default-component",
 			url: (props) => props.targetUrl,
 			props: {
@@ -1168,7 +1188,11 @@ describe("Component Instance", () => {
 	});
 
 	it("should revalidate output-compatible decorated defaults", () => {
-		const SchemaDefaultComponent = create({
+		const SchemaDefaultComponent = create<
+			{ attackerUrl: string; targetUrl: string },
+			unknown,
+			{ attackerUrl: string; targetUrl?: string }
+		>({
 			tag: "invalid-decorated-schema-default-component",
 			url: (props) => props.targetUrl,
 			props: {
@@ -1297,7 +1321,7 @@ describe("Component Instance", () => {
 	it("should rerun custom validation for retained mutable inputs", async () => {
 		const safeOrigin = "https://safe.example.com";
 		const target = new URL(`${safeOrigin}/component`);
-		const MutableUrlComponent = create({
+		const MutableUrlComponent = create<{ target: URL }>({
 			tag: "mutable-url-custom-validation-component",
 			url: (props) => props.target.href,
 			props: {
@@ -1381,7 +1405,10 @@ describe("Component Instance", () => {
 	it("should recheck mutable output-compatible decorated values", async () => {
 		const safeOrigin = "https://safe.example.com";
 		const decoratedTargets: Array<{ href: string }> = [];
-		const DecoratedPolicyComponent = create({
+		const DecoratedPolicyComponent = create<{
+			target: { href: string };
+			label?: string;
+		}>({
 			tag: "mutable-decorated-policy-component",
 			url: (props) => props.target.href,
 			props: {
@@ -1440,7 +1467,7 @@ describe("Component Instance", () => {
 	it("should recheck decorated values mutated during render callbacks", async () => {
 		const safeOrigin = "https://safe.example.com";
 		let decoratedTarget: { href: string } | undefined;
-		const DecoratedRenderComponent = create({
+		const DecoratedRenderComponent = create<{ target: { href: string } }>({
 			tag: "render-mutated-decorated-policy-component",
 			url: (props) => props.target.href,
 			props: {
@@ -1772,9 +1799,9 @@ describe("Component Registry", () => {
 		});
 
 		it("should work with typed components", () => {
-			interface MyProps {
+			type MyProps = {
 				name: string;
-			}
+			};
 
 			create<MyProps>({
 				tag: "typed-component",

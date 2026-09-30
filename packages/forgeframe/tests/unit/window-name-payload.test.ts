@@ -163,8 +163,8 @@ describe("parseWindowName", () => {
 					tag: "child-component",
 					url: "https://example.com/child",
 					props: {
-						amount: { __type__: "prop" },
-					} as Record<string, unknown>,
+						amount: { required: true },
+					},
 					defaultContext: CONTEXT.POPUP,
 					dimensions: {
 						width: 320,
@@ -195,8 +195,8 @@ describe("parseWindowName", () => {
 					tag: "child-component",
 					url: "https://example.com/child",
 					props: {
-						amount: { __type__: "prop" },
-					} as Record<string, unknown>,
+						amount: { required: true },
+					},
 					defaultContext: CONTEXT.IFRAME,
 				},
 			},
@@ -770,7 +770,7 @@ describe("consumeInitialPayload", () => {
 				Child: {
 					tag: "child",
 					url: "https://host.com",
-					props: { secret: "private" },
+					props: { secret: { default: "private" } },
 				},
 			},
 		});

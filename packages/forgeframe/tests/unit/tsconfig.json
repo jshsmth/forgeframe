@@ -1,0 +1,13 @@
+{
+	"extends": "../typecheck/tsconfig.json",
+	"compilerOptions": {
+		"rootDir": "../../..",
+		"types": ["node", "vite/client"],
+		/* Match workspace/Vite resolution without requiring generated declarations. */
+		"paths": {
+			"@/*": ["../../src/*"],
+			"forgeframe": ["../../src/index.ts"]
+		}
+	},
+	"include": ["./**/*.ts", "./**/*.tsx"]
+}

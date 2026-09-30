@@ -448,8 +448,8 @@ describe("Consumer branch coverage and edge paths", () => {
 
 		const bridge = getInternals(consumer).transport.bridge;
 
-		let resolveFirstSend: (() => void) | null = null;
-		let resolveSecondSend: (() => void) | null = null;
+		let resolveFirstSend!: () => void;
+		let resolveSecondSend!: () => void;
 		const firstSend = new Promise<void>((resolve) => {
 			resolveFirstSend = resolve;
 		});
@@ -782,11 +782,7 @@ describe("Consumer branch coverage and edge paths", () => {
 
 		expect(() =>
 			buildNestedHostRefs(
-				getInternals(consumer).options as {
-					children?: (args: {
-						props: Record<string, unknown>;
-					}) => Record<string, unknown>;
-				},
+				getInternals(consumer).options,
 				getInternals(consumer).propsPipeline.props,
 			),
 		).toThrow('Nested component "InvalidChild" is missing component metadata');

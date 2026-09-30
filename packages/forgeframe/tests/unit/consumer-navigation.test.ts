@@ -76,7 +76,7 @@ describe("Consumer navigation admission", () => {
 					props: {
 						order: {
 							schema: prop.string(),
-							trustedDomains: "https://host.example",
+							trustedDomains: ["https://host.example"],
 							queryParam: ({ value }) => {
 								if (mutation === "converter")
 									base.href = "https://untrusted.example/";

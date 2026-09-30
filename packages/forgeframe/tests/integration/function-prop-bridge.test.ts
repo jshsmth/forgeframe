@@ -12,20 +12,20 @@ import {
 	type IframeIntegrationHarness,
 } from "./helpers";
 
-interface CallbackPayload {
+type CallbackPayload = {
 	orderId: string;
 	amount: number;
-}
+};
 
-interface CallbackResult {
+type CallbackResult = {
 	approved: boolean;
 	receipt: string;
-}
+};
 
-interface CallbackBridgeProps {
+type CallbackBridgeProps = {
 	onApprove: (payload: CallbackPayload) => Promise<CallbackResult>;
 	label?: string;
-}
+};
 
 const CALLBACK_PROP_DEFINITIONS: PropsDefinition<CallbackBridgeProps> = {
 	onApprove: {
@@ -44,6 +44,44 @@ describe("Function prop bridge integration", () => {
 		harness = null;
 		vi.restoreAllMocks();
 	});
+
+	it.each([
+		["default", undefined],
+		["BASE64", PROP_SERIALIZATION.BASE64],
+		["DOTIFY", PROP_SERIALIZATION.DOTIFY],
+	] as const)(
+		"retires replaced callbacks after acknowledged %s updates",
+		async (_label, serialization) => {
+			harness = createIframeIntegrationHarness();
+			const container = document.createElement("div");
+			document.body.append(container);
+			const definitions = {
+				config: {
+					schema: prop.object().shape({ run: prop.function<() => string>() }),
+					serialization,
+				},
+			};
+			const Component = create({
+				tag: "integration-replaced-callback",
+				url: "https://host.example.com/widget",
+				props: definitions,
+			});
+			const original = vi.fn(() => "original");
+			const instance = Component({ config: { run: original } });
+			const rendering = instance.render(container);
+			const { hostProps } = await harness.bootstrapIframeHost(
+				container,
+				definitions,
+			);
+			await rendering;
+			const cached = hostProps.config.run;
+			await expect(cached()).resolves.toBe("original");
+			await instance.updateProps({ config: { run: () => "replacement" } });
+			await expect(hostProps.config.run()).resolves.toBe("replacement");
+			await expect(cached()).rejects.toThrow(/Function with id ".+" not found/);
+			expect(original).toHaveBeenCalledOnce();
+		},
+	);
 
 	it.each([PROP_SERIALIZATION.BASE64, PROP_SERIALIZATION.DOTIFY])(
 		"bridges nested callbacks across %s bootstrap and updates",
@@ -159,10 +197,9 @@ describe("Function prop bridge integration", () => {
 		let result: unknown = cyclic;
 		const instance = Component({ getResult: () => result });
 		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(
-			container,
-			definitions,
-		);
+		const { hostProps } = await harness.bootstrapIframeHost<{
+			getResult: () => unknown;
+		}>(container, definitions);
 		await rendering;
 
 		await expect(hostProps.getResult()).rejects.toThrow(

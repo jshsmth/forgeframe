@@ -52,16 +52,14 @@ describe("Props serialization behavior", () => {
 			const definitions = { config: { schema: prop.object(), serialization } };
 			const serialized = JSON.parse(
 				JSON.stringify(
-					serializeProps(
+					serializeProps<{ config: Record<string, unknown> }>(
 						{ config: { custom: new CustomValue() } },
 						definitions,
 						bridge,
 					),
 				),
 			);
-			const restored = deserializeProps<{
-				config: { custom: { callback: () => Promise<number>; date: Date } };
-			}>(
+			const restored = deserializeProps<{ config: Record<string, unknown> }>(
 				serialized,
 				definitions,
 				messenger,
@@ -69,8 +67,10 @@ describe("Props serialization behavior", () => {
 				window,
 				"https://consumer.example.com",
 			);
-			expect(typeof restored.config.custom.callback).toBe("function");
-			expect(restored.config.custom.date).toEqual(date);
+			expect(restored.config.custom).toEqual({
+				callback: expect.any(Function),
+				date,
+			});
 			expect(bridge.localFunctionCount).toBe(1);
 		},
 	);
@@ -173,7 +173,7 @@ describe("Props serialization behavior", () => {
 			},
 		};
 
-		const serialized = serializeProps(
+		const serialized = serializeProps<{ metadata: Record<string, unknown> }>(
 			{ metadata: { amount: 10, nested: { complete: true } } },
 			definitions,
 			bridge,
@@ -210,7 +210,7 @@ describe("Props serialization behavior", () => {
 			},
 		};
 
-		const serialized = serializeProps(
+		const serialized = serializeProps<{ metadata: Record<string, unknown> }>(
 			{
 				metadata: {
 					publishedAt,
@@ -252,7 +252,7 @@ describe("Props serialization behavior", () => {
 		};
 
 		const deserialized = deserializeProps(
-			serializeProps(
+			serializeProps<{ metadata: Record<string, unknown> }>(
 				{
 					metadata: {
 						publishedAt: {
@@ -293,7 +293,7 @@ describe("Props serialization behavior", () => {
 			},
 		};
 
-		const serialized = serializeProps(
+		const serialized = serializeProps<{ config: Record<string, unknown> }>(
 			{ config: { user: { id: "u_123" }, enabled: true } },
 			definitions,
 			bridge,
@@ -332,7 +332,7 @@ describe("Props serialization behavior", () => {
 			},
 		};
 
-		const serialized = serializeProps(
+		const serialized = serializeProps<{ config: Record<string, unknown> }>(
 			{
 				config: {
 					publishedAt,
@@ -374,7 +374,7 @@ describe("Props serialization behavior", () => {
 		};
 
 		const deserialized = deserializeProps(
-			serializeProps(
+			serializeProps<{ config: Record<string, unknown> }>(
 				{
 					config: {
 						publishedAt: {
@@ -415,7 +415,7 @@ describe("Props serialization behavior", () => {
 			},
 		};
 
-		const serialized = serializeProps(
+		const serialized = serializeProps<{ config: Record<string, unknown> }>(
 			{
 				config: {
 					settings: {
@@ -452,7 +452,7 @@ describe("Props serialization behavior", () => {
 			},
 		};
 
-		const serialized = serializeProps(
+		const serialized = serializeProps<{ payload: Record<string, unknown> }>(
 			{
 				payload: {
 					metadata: {},
@@ -547,7 +547,7 @@ describe("Props serialization behavior", () => {
 			}
 		}
 
-		const serialized = serializeProps(
+		const serialized = serializeProps<{ payload: Record<string, unknown> }>(
 			{
 				payload: {
 					weird: new MarkerValue(),
@@ -584,7 +584,7 @@ describe("Props serialization behavior", () => {
 			},
 		};
 
-		const serialized = serializeProps(
+		const serialized = serializeProps<{ payload: Record<string, unknown> }>(
 			{
 				payload: {
 					present: true,
@@ -630,7 +630,7 @@ describe("Props serialization behavior", () => {
 			},
 		};
 
-		const serialized = serializeProps(
+		const serialized = serializeProps<{ config: Record<string, unknown> }>(
 			{
 				config: {
 					"user.id": {
@@ -694,7 +694,7 @@ describe("Props serialization behavior", () => {
 			},
 		};
 
-		const serialized = serializeProps(
+		const serialized = serializeProps<{ payload: Record<string, unknown> }>(
 			{
 				payload: {
 					'["a"]': "value",
@@ -842,7 +842,7 @@ describe("Props serialization behavior", () => {
 
 	it("should skip undefined keys while serializing props", () => {
 		const { bridge } = createBridgeWithMessenger();
-		const serialized = serializeProps(
+		const serialized = serializeProps<{ defined: string; missing?: string }>(
 			{
 				defined: "ok",
 				missing: undefined,

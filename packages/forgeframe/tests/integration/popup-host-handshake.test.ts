@@ -12,10 +12,10 @@ import {
 	type PopupIntegrationHarness,
 } from "./helpers";
 
-interface PopupProps {
+type PopupProps = {
 	amount: number;
 	message: string;
-}
+};
 
 const POPUP_PROP_DEFINITIONS: PropsDefinition<PopupProps> = {
 	amount: { schema: prop.number(), required: true },

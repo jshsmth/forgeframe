@@ -6,37 +6,37 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { create, prop } from "@/index";
+import { create, EVENT, prop } from "@/index";
 import type { PropsDefinition } from "@/types";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
 } from "./helpers";
 
-interface SyncProps {
+type SyncProps = {
 	title: string;
 	optionalNote?: string;
-}
+};
 
-interface DateSyncProps {
+type DateSyncProps = {
 	publishedAt: Date;
-}
+};
 
-interface TransformedSyncProps {
+type TransformedSyncProps = {
 	amount: number;
-}
+};
 
-interface TransformedSyncInput {
+type TransformedSyncInput = {
 	amount: string;
-}
+};
 
-interface OptionalTransformOutputSyncProps {
+type OptionalTransformOutputSyncProps = {
 	amount: number | undefined;
-}
+};
 
-interface OptionalTransformOutputSyncInput {
+type OptionalTransformOutputSyncInput = {
 	amount: string;
-}
+};
 
 const SYNC_PROP_DEFINITIONS: PropsDefinition<SyncProps> = {
 	title: { schema: prop.string(), required: true },
@@ -80,6 +80,150 @@ describe("Props sync integration", () => {
 		vi.restoreAllMocks();
 	});
 
+	it("preserves host snapshots on host-side rejection and continues the queued update", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const Component = create({
+			tag: "integration-host-validation-recovery",
+			url: "https://host.example.com/widget",
+			props: { amount: prop.number() },
+		});
+		const instance = Component({ amount: 1 });
+		const rendering = instance.render(container);
+		const { host, hostProps } = await harness.bootstrapIframeHost<{
+			amount: number;
+		}>(container, {
+			amount: prop.number().min(0),
+		});
+		await rendering;
+		vi.spyOn(console, "error").mockImplementation(() => undefined);
+		const snapshots: number[] = [];
+		const rejectedSnapshots: unknown[] = [];
+		hostProps.onProps(({ amount }) => {
+			snapshots.push(amount);
+		});
+		host.event.on(EVENT.ERROR, () => {
+			rejectedSnapshots.push({
+				amount: hostProps.amount,
+				consumer: hostProps.consumer.props,
+			});
+		});
+
+		const rejected = expect(
+			instance.updateProps({ amount: -1 }),
+		).rejects.toThrow("Number must be >= 0");
+		const next = instance.updateProps({ amount: 2 });
+		await rejected;
+		await next;
+		expect(rejectedSnapshots).toEqual([{ amount: 1, consumer: { amount: 1 } }]);
+		expect(snapshots).toEqual([2]);
+		expect(hostProps.consumer.props).toEqual({ amount: 2 });
+		expect(hostProps.amount).toBe(2);
+	});
+
+	it("acknowledges updates while a subscriber is pending and stops delivery after cancellation", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const definitions = { title: prop.string() };
+		const Component = create({
+			tag: "integration-props-subscriber-cancel",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const instance = Component({ title: "initial" });
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost<{ title: string }>(
+			container,
+			definitions,
+		);
+		await rendering;
+		let rejectSubscriber!: (error: Error) => void;
+		const pending = new Promise<void>((_resolve, reject) => {
+			rejectSubscriber = reject;
+		});
+		const cancelledSnapshots: string[] = [];
+		const liveSnapshots: string[] = [];
+		const subscription = hostProps.onProps(({ title }) => {
+			cancelledSnapshots.push(title);
+			return pending;
+		});
+		hostProps.onProps(({ title }) => {
+			liveSnapshots.push(title);
+		});
+		await instance.updateProps({ title: "first" });
+		expect(hostProps.title).toBe("first");
+		subscription.cancel();
+		subscription.cancel();
+		const failure = new Error("cancelled subscriber rejected");
+		const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		rejectSubscriber(failure);
+		await harness.flushMessages();
+		expect(log).toHaveBeenCalledWith("Error in props handler:", failure);
+		await instance.updateProps({ title: "second" });
+		expect(cancelledSnapshots).toEqual(["first"]);
+		expect(liveSnapshots).toEqual(["first", "second"]);
+		expect(hostProps.consumer.props).toEqual({ title: "second" });
+	});
+
+	it("withholds consumer-only and origin-restricted props during bootstrap and later updates", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const definitions = {
+			title: prop.string(),
+			local: { schema: prop.string().optional(), sendToHost: false },
+			sameOrigin: { schema: prop.string().optional(), sameDomain: true },
+			restricted: {
+				schema: prop.string().optional(),
+				trustedDomains: ["https://other.example.com"],
+			},
+		};
+		const validate = vi.fn();
+		const Component = create({
+			tag: "integration-private-prop-delivery",
+			url: "https://host.example.com/widget",
+			props: definitions,
+			validate,
+		});
+		const instance = Component({
+			title: "initial",
+			local: "local secret",
+			sameOrigin: "same-origin secret",
+			restricted: "restricted secret",
+		});
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			definitions,
+		);
+		await rendering;
+		expect(hostProps.consumer.props).toEqual({ title: "initial" });
+		const snapshots: unknown[] = [];
+		hostProps.onProps((props) => {
+			snapshots.push(props);
+		});
+		await instance.updateProps({
+			title: "updated",
+			local: "next local",
+			sameOrigin: "next same-origin",
+			restricted: "next restricted",
+		});
+		expect(hostProps.consumer.props).toEqual({ title: "updated" });
+		expect(snapshots).toEqual([{ title: "updated" }]);
+		for (const key of ["local", "sameOrigin", "restricted"]) {
+			expect(Object.hasOwn(hostProps, key)).toBe(false);
+		}
+		expect(validate).toHaveBeenLastCalledWith({
+			props: expect.objectContaining({
+				local: "next local",
+				sameOrigin: "next same-origin",
+				restricted: "next restricted",
+			}),
+		});
+	});
+
 	it("removes inherited-name custom props from both host snapshots", async () => {
 		harness = createIframeIntegrationHarness();
 		const container = document.createElement("div");
@@ -94,7 +238,11 @@ describe("Props sync integration", () => {
 			url: "https://host.example.com/widget",
 			props: definitions,
 		});
-		const instance = Component({});
+		const instance = Component({
+			toString: undefined,
+			constructor: undefined,
+			hasOwnProperty: undefined,
+		});
 		const rendering = instance.render(container);
 		const { hostProps } = await harness.bootstrapIframeHost(
 			container,
@@ -233,9 +381,7 @@ describe("Props sync integration", () => {
 		).resolves.toBeUndefined();
 
 		expect(hostProps.title).toBe("Updated title");
-		expect("optionalNote" in (hostProps as Record<string, unknown>)).toBe(
-			false,
-		);
+		expect("optionalNote" in hostProps).toBe(false);
 		expect(hostProps.consumer.props).toEqual({ title: "Updated title" });
 		expect(hostProps.consumer.props).not.toBe(initialConsumerProps);
 		expect(onProps).toHaveBeenCalledTimes(1);
@@ -337,11 +483,10 @@ describe("Props sync integration", () => {
 		const instance = TransformedSyncComponent({ amount: "41" });
 
 		const renderPromise = instance.render(container);
-		const { hostProps } =
-			await harness.bootstrapIframeHost<TransformedSyncProps>(
-				container,
-				TRANSFORMED_SYNC_PROP_DEFINITIONS,
-			);
+		const { hostProps } = await harness.bootstrapIframeHost<
+			TransformedSyncProps,
+			TransformedSyncInput
+		>(container, TRANSFORMED_SYNC_PROP_DEFINITIONS);
 
 		await expect(renderPromise).resolves.toBeUndefined();
 
@@ -380,11 +525,10 @@ describe("Props sync integration", () => {
 		const instance = OptionalTransformOutputSyncComponent({ amount: "empty" });
 
 		const renderPromise = instance.render(container);
-		const { hostProps } =
-			await harness.bootstrapIframeHost<OptionalTransformOutputSyncProps>(
-				container,
-				OPTIONAL_TRANSFORM_OUTPUT_SYNC_PROP_DEFINITIONS,
-			);
+		const { hostProps } = await harness.bootstrapIframeHost<
+			OptionalTransformOutputSyncProps,
+			OptionalTransformOutputSyncInput
+		>(container, OPTIONAL_TRANSFORM_OUTPUT_SYNC_PROP_DEFINITIONS);
 
 		await expect(renderPromise).resolves.toBeUndefined();
 

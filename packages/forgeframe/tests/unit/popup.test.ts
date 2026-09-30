@@ -379,6 +379,16 @@ describe("resizePopup", () => {
 		expect(mockWin.resizeTo).toHaveBeenCalledWith(400, 300);
 	});
 
+	it("keeps current dimensions when resize uses nonpixel CSS units", () => {
+		const mockWin = {
+			outerWidth: 400,
+			outerHeight: 300,
+			resizeTo: vi.fn(),
+		} as unknown as Window;
+		resizePopup(mockWin, { width: "100%", height: "50vh" });
+		expect(mockWin.resizeTo).toHaveBeenCalledWith(400, 300);
+	});
+
 	it("should handle string dimensions", () => {
 		const mockWin = {
 			outerWidth: 400,

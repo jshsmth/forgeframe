@@ -12,10 +12,10 @@ import {
 	type IframeIntegrationHarness,
 } from "./helpers";
 
-interface HandshakeProps {
+type HandshakeProps = {
 	amount: number;
 	message: string;
-}
+};
 
 const HANDSHAKE_PROP_DEFINITIONS: PropsDefinition<HandshakeProps> = {
 	amount: { schema: prop.number(), required: true },
@@ -29,6 +29,50 @@ describe("Consumer/host handshake integration", () => {
 		await harness?.cleanup();
 		harness = null;
 		vi.restoreAllMocks();
+	});
+
+	it("rejects oversized bootstrap metadata before installing a host and accepts a valid retry", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const Component = create({
+			tag: "oversized-bootstrap-admission",
+			url: "https://host.example.com/widget",
+			props: { title: prop.string() },
+		});
+		const instance = Component({ title: "safe" });
+		const render = instance.render(container);
+		// Cleanup may cancel this render if an admission assertion fails.
+		void render.catch(() => {});
+		const iframe = await harness.waitForIframe(container);
+		harness.attachHostToIframe(iframe);
+		const validName = harness.hostWindow.name;
+		const prefix = "__forgeframe__";
+		const metadata = JSON.parse(
+			decodeURIComponent(atob(validName.slice(prefix.length))),
+		);
+		harness.hostWindow.name =
+			prefix +
+			btoa(
+				encodeURIComponent(
+					JSON.stringify({ ...metadata, padding: "x".repeat(32 * 1024) }),
+				),
+			);
+		vi.spyOn(console, "error").mockImplementation(() => {});
+		expect(harness.bootstrapHost({ title: prop.string() })).toBeNull();
+		expect(
+			harness.withHostGlobals(() => Reflect.get(window, "hostProps")),
+		).toBeUndefined();
+		harness.hostWindow.name = validName;
+		const host = harness.bootstrapHost<{ title: string }>({
+			title: prop.string(),
+		});
+		if (!host)
+			throw new Error("Expected the valid retry to initialize the host");
+		await host.ready;
+		await expect(render).resolves.toBeUndefined();
+		expect(host.hostProps.title).toBe("safe");
+		expect(container.querySelector("iframe")).toBe(iframe);
 	});
 
 	it("should resolve render() after initHost() completes the iframe INIT handshake", async () => {

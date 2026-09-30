@@ -52,7 +52,7 @@ function restoreGlobalBindings(snapshot: GlobalBindingSnapshot): void {
 }
 
 function resolveRequestedOrigin(
-	targetOrigin: Parameters<Window["postMessage"]>[1],
+	targetOrigin: string | WindowPostMessageOptions | undefined,
 ): string {
 	if (typeof targetOrigin === "string") {
 		return targetOrigin;
@@ -158,7 +158,7 @@ export function dispatchForgeFrameRequest(options: {
 export function readLastPostedMessageData(sourceWindow: Window): unknown {
 	const calls = (
 		sourceWindow as unknown as {
-			postMessage?: { mock?: { calls: unknown[][] } };
+			postMessage?: Window["postMessage"] & { mock?: { calls: unknown[][] } };
 		}
 	).postMessage;
 
@@ -181,9 +181,9 @@ interface BaseIntegrationHarness {
 	hostOrigin: string;
 	withHostGlobals: <T>(callback: () => T) => T;
 	withHostGlobalsAsync: <T>(callback: () => Promise<T>) => Promise<T>;
-	bootstrapHost: <P extends Record<string, unknown>>(
-		propDefinitions?: HostPropsDefinition<P>,
-	) => ReturnType<typeof initHost<P>>;
+	bootstrapHost: <P extends Record<string, unknown>, SchemaInputs = P>(
+		propDefinitions?: HostPropsDefinition<P, SchemaInputs>,
+	) => ReturnType<typeof initHost<P, SchemaInputs>>;
 	getHostProps: <P extends Record<string, unknown>>() => HostProps<P>;
 	getLastFormSubmission: () => FormSubmissionRecord | null;
 	flushMessages: () => Promise<void>;
@@ -193,14 +193,14 @@ interface BaseIntegrationHarness {
 export interface IframeIntegrationHarness extends BaseIntegrationHarness {
 	waitForIframe: (container?: ParentNode) => Promise<HTMLIFrameElement>;
 	attachHostToIframe: (iframe: HTMLIFrameElement) => void;
-	bootstrapHost: <P extends Record<string, unknown>>(
-		propDefinitions?: HostPropsDefinition<P>,
-	) => ReturnType<typeof initHost<P>>;
-	bootstrapIframeHost: <P extends Record<string, unknown>>(
+	bootstrapHost: <P extends Record<string, unknown>, SchemaInputs = P>(
+		propDefinitions?: HostPropsDefinition<P, SchemaInputs>,
+	) => ReturnType<typeof initHost<P, SchemaInputs>>;
+	bootstrapIframeHost: <P extends Record<string, unknown>, SchemaInputs = P>(
 		container: ParentNode,
-		propDefinitions?: HostPropsDefinition<P>,
+		propDefinitions?: HostPropsDefinition<P, SchemaInputs>,
 	) => Promise<{
-		host: NonNullable<ReturnType<typeof initHost<P>>>;
+		host: NonNullable<ReturnType<typeof initHost<P, SchemaInputs>>>;
 		hostProps: HostProps<P>;
 		iframe: HTMLIFrameElement;
 	}>;
@@ -210,10 +210,10 @@ export interface PopupIntegrationHarness extends BaseIntegrationHarness {
 	waitForPopupOpen: () => Promise<PopupOpenRecord>;
 	getLastPopupOpen: () => PopupOpenRecord | null;
 	blockNextPopup: () => void;
-	bootstrapPopupHost: <P extends Record<string, unknown>>(
-		propDefinitions?: HostPropsDefinition<P>,
+	bootstrapPopupHost: <P extends Record<string, unknown>, SchemaInputs = P>(
+		propDefinitions?: HostPropsDefinition<P, SchemaInputs>,
 	) => Promise<{
-		host: NonNullable<ReturnType<typeof initHost<P>>>;
+		host: NonNullable<ReturnType<typeof initHost<P, SchemaInputs>>>;
 		hostProps: HostProps<P>;
 	}>;
 }
@@ -230,18 +230,18 @@ function createBaseIntegrationHarness(options?: {
 	waitForPopupOpen: () => Promise<PopupOpenRecord>;
 	getLastPopupOpen: () => PopupOpenRecord | null;
 	blockNextPopup: () => void;
-	bootstrapIframeHost: <P extends Record<string, unknown>>(
+	bootstrapIframeHost: <P extends Record<string, unknown>, SchemaInputs = P>(
 		container: ParentNode,
-		propDefinitions?: HostPropsDefinition<P>,
+		propDefinitions?: HostPropsDefinition<P, SchemaInputs>,
 	) => Promise<{
-		host: NonNullable<ReturnType<typeof initHost<P>>>;
+		host: NonNullable<ReturnType<typeof initHost<P, SchemaInputs>>>;
 		hostProps: HostProps<P>;
 		iframe: HTMLIFrameElement;
 	}>;
-	bootstrapPopupHost: <P extends Record<string, unknown>>(
-		propDefinitions?: HostPropsDefinition<P>,
+	bootstrapPopupHost: <P extends Record<string, unknown>, SchemaInputs = P>(
+		propDefinitions?: HostPropsDefinition<P, SchemaInputs>,
 	) => Promise<{
-		host: NonNullable<ReturnType<typeof initHost<P>>>;
+		host: NonNullable<ReturnType<typeof initHost<P, SchemaInputs>>>;
 		hostProps: HostProps<P>;
 	}>;
 } {
@@ -492,10 +492,10 @@ function createBaseIntegrationHarness(options?: {
 		return popupOpenPromise;
 	};
 
-	const bootstrapHost = <P extends Record<string, unknown>>(
-		propDefinitions?: HostPropsDefinition<P>,
-	): ReturnType<typeof initHost<P>> => {
-		return withHostGlobals(() => initHost(propDefinitions));
+	const bootstrapHost = <P extends Record<string, unknown>, SchemaInputs = P>(
+		propDefinitions?: HostPropsDefinition<P, SchemaInputs>,
+	): ReturnType<typeof initHost<P, SchemaInputs>> => {
+		return withHostGlobals(() => initHost<P, SchemaInputs>(propDefinitions));
 	};
 
 	const getHostProps = <P extends Record<string, unknown>>(): HostProps<P> => {
@@ -510,18 +510,21 @@ function createBaseIntegrationHarness(options?: {
 		return hostProps;
 	};
 
-	const bootstrapIframeHost = async <P extends Record<string, unknown>>(
+	const bootstrapIframeHost = async <
+		P extends Record<string, unknown>,
+		SchemaInputs = P,
+	>(
 		container: ParentNode,
-		propDefinitions?: HostPropsDefinition<P>,
+		propDefinitions?: HostPropsDefinition<P, SchemaInputs>,
 	): Promise<{
-		host: NonNullable<ReturnType<typeof initHost<P>>>;
+		host: NonNullable<ReturnType<typeof initHost<P, SchemaInputs>>>;
 		hostProps: HostProps<P>;
 		iframe: HTMLIFrameElement;
 	}> => {
 		const iframe = await waitForIframe(container);
 		attachHostToIframe(iframe);
 
-		const host = bootstrapHost(propDefinitions);
+		const host = bootstrapHost<P, SchemaInputs>(propDefinitions);
 		if (!host) {
 			throw new Error("Expected initHost() to create a host instance");
 		}
@@ -534,15 +537,18 @@ function createBaseIntegrationHarness(options?: {
 		};
 	};
 
-	const bootstrapPopupHost = async <P extends Record<string, unknown>>(
-		propDefinitions?: HostPropsDefinition<P>,
+	const bootstrapPopupHost = async <
+		P extends Record<string, unknown>,
+		SchemaInputs = P,
+	>(
+		propDefinitions?: HostPropsDefinition<P, SchemaInputs>,
 	): Promise<{
-		host: NonNullable<ReturnType<typeof initHost<P>>>;
+		host: NonNullable<ReturnType<typeof initHost<P, SchemaInputs>>>;
 		hostProps: HostProps<P>;
 	}> => {
 		await waitForPopupOpen();
 
-		const host = bootstrapHost(propDefinitions);
+		const host = bootstrapHost<P, SchemaInputs>(propDefinitions);
 		if (!host) {
 			throw new Error("Expected initHost() to create a host instance");
 		}
