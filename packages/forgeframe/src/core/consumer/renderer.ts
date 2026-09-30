@@ -132,41 +132,58 @@ export class ConsumerRenderer<
 			hideIframe(this.iframe);
 		}
 
-		const prerenderContext: TemplateContext<P> & { cspNonce?: string } = {
-			uid: this.uid,
-			tag: this.options.tag,
-			context: this.context,
-			dimensions,
+		const prerenderContext = this.createTemplateContext(
 			props,
-			doc: document,
-			container: mountContainer,
-			frame: this.iframe,
-			prerenderFrame: null,
-			close: () => this.callbacks.close(),
-			focus: () => this.callbacks.focus(),
+			dimensions,
+			mountContainer,
+			null,
 			cspNonce,
-		};
-
+		);
 		this.prerenderElement = prerenderTemplateFn(prerenderContext);
 		assertActive();
-
-		const templateContext: TemplateContext<P> & { cspNonce?: string } = {
-			uid: this.uid,
-			tag: this.options.tag,
-			context: this.context,
-			dimensions,
+		const templateContext = this.createTemplateContext(
 			props,
-			doc: document,
-			container: mountContainer,
-			frame: this.iframe,
-			prerenderFrame: this.prerenderElement,
-			close: () => this.callbacks.close(),
-			focus: () => this.callbacks.focus(),
+			dimensions,
+			mountContainer,
+			this.prerenderElement,
 			cspNonce,
-		};
+		);
 
 		const containerEl = containerTemplateFn(templateContext);
 		assertActive();
+		this.mountPrerenderContent(mountContainer, containerEl, assertActive);
+	}
+
+	/** Constructs template data without invoking user templates. */
+	private createTemplateContext(
+		props: P,
+		dimensions: Dimensions,
+		container: HTMLElement,
+		prerenderFrame: HTMLElement | null,
+		cspNonce?: string,
+	): TemplateContext<P> & { cspNonce?: string } {
+		return {
+			uid: this.uid,
+			tag: this.options.tag,
+			context: this.context,
+			dimensions,
+			props,
+			doc: document,
+			container,
+			frame: this.iframe,
+			prerenderFrame,
+			close: () => this.callbacks.close(),
+			focus: () => this.callbacks.focus(),
+			cspNonce,
+		};
+	}
+
+	/** Mounts only renderer-owned artifacts, checking cancellation after each DOM action. */
+	private mountPrerenderContent(
+		mountContainer: HTMLElement,
+		containerEl: HTMLElement | null | undefined,
+		assertActive: () => void,
+	): void {
 		if (containerEl) {
 			if (containerEl !== mountContainer) {
 				const ownsContainer = !containerEl.parentNode;
@@ -180,11 +197,11 @@ export class ConsumerRenderer<
 		}
 
 		if (this.prerenderElement && !this.prerenderElement.parentNode) {
-			this.container.appendChild(this.prerenderElement);
+			(this.container as HTMLElement).appendChild(this.prerenderElement);
 			assertActive();
 		}
 		if (this.iframe && !this.iframe.parentNode) {
-			this.container.appendChild(this.iframe);
+			(this.container as HTMLElement).appendChild(this.iframe);
 			assertActive();
 		}
 	}
@@ -222,21 +239,37 @@ export class ConsumerRenderer<
 		params.assertActive();
 		const hasBodyParams = bodyParams.toString().length > 0;
 
-		if (this.context === CONTEXT.IFRAME) {
-			if (!this.iframe) {
-				throw new Error("Iframe not created during prerender");
-			}
+		return this.context === CONTEXT.IFRAME
+			? this.openIframe(params, url, bodyParams, hasBodyParams)
+			: this.openPopup(params, url, bodyParams, hasBodyParams);
+	}
 
-			params.assertActive();
-			if (hasBodyParams) {
-				params.submitBodyForm(this.iframe.name, url, bodyParams);
-			} else {
-				this.iframe.src = url;
-			}
-
-			return this.iframe.contentWindow;
+	private openIframe(
+		params: ConsumerOpenParams,
+		url: string,
+		bodyParams: URLSearchParams,
+		hasBodyParams: boolean,
+	): Window | null {
+		if (!this.iframe) {
+			throw new Error("Iframe not created during prerender");
 		}
 
+		params.assertActive();
+		if (hasBodyParams) {
+			params.submitBodyForm(this.iframe.name, url, bodyParams);
+		} else {
+			this.iframe.src = url;
+		}
+
+		return this.iframe.contentWindow;
+	}
+
+	private openPopup(
+		params: ConsumerOpenParams,
+		url: string,
+		bodyParams: URLSearchParams,
+		hasBodyParams: boolean,
+	): Window {
 		const windowName = params.buildWindowName();
 		params.assertActive();
 		const dimensions = this.resolveDimensions();

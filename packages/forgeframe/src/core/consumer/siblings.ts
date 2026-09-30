@@ -11,7 +11,7 @@ import type { GetPeerInstancesOptions, SiblingInfo } from "../../types/runtime";
 import {
 	getComponentInstancesByTag,
 	getIndexedComponentInstances,
-} from "../component";
+} from "../component-instance-index";
 
 /**
  * Request shape used for consumer sibling lookups.
@@ -30,35 +30,24 @@ export interface ConsumerSiblingRequest {
 export function getSiblingInstances(
 	request: ConsumerSiblingRequest,
 ): SiblingInfo[] {
+	const indexed = request.options?.anyConsumer
+		? getIndexedComponentInstances()
+		: getComponentInstancesByTag(request.tag).map((instance) => ({
+				tag: request.tag,
+				instance,
+			}));
+	return selectSiblingInstances(indexed, request.uid);
+}
+
+/** Selects peer snapshots from supplied indexed instances, excluding the requesting identity. @internal */
+export function selectSiblingInstances(
+	indexed: ReturnType<typeof getIndexedComponentInstances>,
+	requestingUid: string,
+): SiblingInfo[] {
 	const siblings: SiblingInfo[] = [];
-
-	if (request.options?.anyConsumer) {
-		for (const indexed of getIndexedComponentInstances()) {
-			if (indexed.instance.uid === request.uid) {
-				continue;
-			}
-
-			siblings.push({
-				uid: indexed.instance.uid,
-				tag: indexed.tag,
-				exports: indexed.instance.exports,
-			});
-		}
-
-		return siblings;
+	for (const { tag, instance } of indexed) {
+		if (instance.uid === requestingUid) continue;
+		siblings.push({ uid: instance.uid, tag, exports: instance.exports });
 	}
-
-	for (const instance of getComponentInstancesByTag(request.tag)) {
-		if (instance.uid === request.uid) {
-			continue;
-		}
-
-		siblings.push({
-			uid: instance.uid,
-			tag: request.tag,
-			exports: instance.exports,
-		});
-	}
-
 	return siblings;
 }

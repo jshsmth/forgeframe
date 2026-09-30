@@ -1,5 +1,6 @@
 import type { Dimensions } from "../types/utility";
 import { normalizeDimensionToNumber } from "../utils/dimension";
+import { buildPopupFeatures, nextPopupPollInterval } from "./popup-layout";
 
 /**
  * Configuration options for opening a popup window.
@@ -106,21 +107,7 @@ export function openPopup(options: PopupOptions): Window {
 	const width = normalizeDimensionToNumber(dimensions.width, 500);
 	const height = normalizeDimensionToNumber(dimensions.height, 500);
 
-	const left = Math.floor(window.screenX + (window.outerWidth - width) / 2);
-	const top = Math.floor(window.screenY + (window.outerHeight - height) / 2);
-
-	const features = [
-		`width=${width}`,
-		`height=${height}`,
-		`left=${left}`,
-		`top=${top}`,
-		"menubar=no",
-		"toolbar=no",
-		"location=yes", // Required for security
-		"status=no",
-		"resizable=yes",
-		"scrollbars=yes",
-	].join(",");
+	const features = buildPopupFeatures(width, height, window);
 
 	const win = window.open(url, name, features);
 
@@ -301,7 +288,11 @@ export function watchPopupClose(
 		}
 
 		// Schedule next check with exponential backoff
-		currentInterval = Math.min(currentInterval * multiplier, maxInterval);
+		currentInterval = nextPopupPollInterval(
+			currentInterval,
+			multiplier,
+			maxInterval,
+		);
 		timer = setTimeout(check, currentInterval);
 	};
 

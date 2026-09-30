@@ -524,6 +524,34 @@ describe("Messenger", () => {
 			expect(responseData.error).toBeDefined();
 			expect(responseData.error.message).toBe("Handler error");
 		});
+
+		it("preserves immediate synchronous failures and one-await successful responses", async () => {
+			messenger.on("syncError", () => {
+				throw new Error("sync failure");
+			});
+			messenger.on("syncResult", () => 42);
+			const postMessage = vi.fn();
+			const sourceWindow = { postMessage } as unknown as Window;
+			const source = { uid: "test-uid", domain: "https://sender.com" };
+			dispatchMessage(
+				serializeMessage(
+					createRequestMessage("error", "syncError", {}, source),
+				),
+				sourceWindow,
+				"https://sender.com",
+			);
+			expect(postMessage).toHaveBeenCalledTimes(1);
+			dispatchMessage(
+				serializeMessage(
+					createRequestMessage("result", "syncResult", {}, source),
+				),
+				sourceWindow,
+				"https://sender.com",
+			);
+			expect(postMessage).toHaveBeenCalledTimes(1);
+			await Promise.resolve();
+			expect(postMessage).toHaveBeenCalledTimes(2);
+		});
 	});
 
 	describe("message filtering", () => {

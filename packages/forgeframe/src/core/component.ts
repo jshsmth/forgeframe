@@ -60,6 +60,17 @@ import { HOST_PROPS_BUILTIN_KEYS } from "./host/builtin-keys";
 function validateComponentOptions<P, I, SchemaInputs>(
 	options: ComponentOptions<P, I, SchemaInputs>,
 ): void {
+	assertComponentShape(options);
+	validateStaticComponentUrl(options);
+	if (hasRegisteredComponent(options.tag)) {
+		throw new Error(`Component "${options.tag}" is already registered`);
+	}
+}
+
+/** Checks component declaration policy without browser or registry access. */
+function assertComponentShape<P, I, SchemaInputs>(
+	options: ComponentOptions<P, I, SchemaInputs>,
+): void {
 	if (!options.tag) {
 		throw new Error("Component tag is required");
 	}
@@ -83,34 +94,48 @@ function validateComponentOptions<P, I, SchemaInputs>(
 			}
 		}
 	}
+}
 
+/** Resolves static URLs using the current runtime's available origin. */
+function validateStaticComponentUrl<P, I, SchemaInputs>(
+	options: ComponentOptions<P, I, SchemaInputs>,
+): void {
 	// Validate URL format if it's a string (can't validate function URLs at definition time)
 	if (typeof options.url === "string") {
-		const browserAvailable = hasBrowserWindow();
-		const validationBaseUrl = browserAvailable
-			? window.location.origin
-			: "https://forgeframe.invalid";
-		let hasAbsoluteUrl = true;
+		const context = staticUrlValidationContext(
+			options.url,
+			hasBrowserWindow() ? window.location.origin : null,
+		);
 
-		try {
-			new URL(options.url);
-		} catch {
-			hasAbsoluteUrl = false;
-		}
-
-		// A relative URL has no real origin until it is resolved in a browser.
-		// Validate its syntax and protocol here, then enforce the domain policy
-		// against the actual resolved URL when an instance renders.
 		resolveComponentHostUrl(
 			options.url,
-			validationBaseUrl,
-			browserAvailable || hasAbsoluteUrl ? options.domain : undefined,
+			context.baseUrl,
+			context.enforceDomain ? options.domain : undefined,
 		);
 	}
+}
 
-	if (hasRegisteredComponent(options.tag)) {
-		throw new Error(`Component "${options.tag}" is already registered`);
+/** Relative declarations defer origin policy until a real browser origin is available. */
+function staticUrlValidationContext(
+	url: string,
+	browserOrigin: string | null,
+): { baseUrl: string; enforceDomain: boolean } {
+	let absolute = true;
+	try {
+		new URL(url);
+	} catch {
+		absolute = false;
 	}
+	return {
+		baseUrl: browserOrigin ?? "https://forgeframe.invalid",
+		enforceDomain: browserOrigin !== null || absolute,
+	};
+}
+
+/** Removes one identity from the factory-owned list. */
+function removeTrackedInstance<T>(instances: T[], instance: T): void {
+	const index = instances.indexOf(instance);
+	if (index !== -1) instances.splice(index, 1);
 }
 
 /**
@@ -207,10 +232,7 @@ export function create<
 		indexComponentInstance(componentTag, instance);
 
 		instance.event.once("destroy", () => {
-			const index = instances.indexOf(instance);
-			if (index !== -1) {
-				instances.splice(index, 1);
-			}
+			removeTrackedInstance(instances, instance);
 
 			removeIndexedComponentInstance(instance.uid);
 		});

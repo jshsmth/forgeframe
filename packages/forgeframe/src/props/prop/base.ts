@@ -128,6 +128,54 @@ export type InferTupleInputShape<
 };
 
 /**
+ * Selects a presence action without evaluating defaults or nested schemas.
+ * A default takes precedence over optionality for `undefined`. Union schemas
+ * delegate unhandled `null` and `undefined` to their members instead of rejecting early.
+ * @internal
+ */
+export function selectSchemaPresence(
+	value: unknown,
+	optional: boolean,
+	nullable: boolean,
+	hasDefault: boolean,
+	union = false,
+): "validate" | "default" | "null" | "undefined" | "missing" | "invalid-null" {
+	if (value === null)
+		return nullable ? "null" : union ? "validate" : "invalid-null";
+	if (value !== undefined) return "validate";
+	if (hasDefault) return "default";
+	if (optional) return "undefined";
+	return union ? "validate" : "missing";
+}
+
+/**
+ * Executes only the selected presence action, calling at most one supplied callback.
+ * Default values are returned directly without passing through `validate`.
+ * @internal
+ */
+export function validateSchemaPresence<T>(
+	decision: ReturnType<typeof selectSchemaPresence>,
+	value: unknown,
+	getDefault: () => T,
+	validate: (value: unknown) => StandardSchemaV1Result<T>,
+): StandardSchemaV1Result<T> {
+	switch (decision) {
+		case "default":
+			return { value: getDefault() };
+		case "null":
+			return { value: null as T };
+		case "undefined":
+			return { value: undefined as T };
+		case "missing":
+			return { issues: [{ message: "Required" }] };
+		case "invalid-null":
+			return { issues: [{ message: "Expected a value, got null" }] };
+		case "validate":
+			return validate(value);
+	}
+}
+
+/**
  * Abstract base class for all ForgeFrame prop schemas.
  *
  * @remarks
@@ -168,24 +216,17 @@ export abstract class PropSchema<T, I = T> implements StandardSchemaV1<I, T> {
 
 	/** @internal */
 	protected _validateInput(value: unknown): StandardSchemaV1Result<T> {
-		if (value === null) {
-			if (this._nullable) {
-				return { value: null as T };
-			}
-			return { issues: [{ message: "Expected a value, got null" }] };
-		}
-
-		if (value === undefined) {
-			if (this._default !== undefined) {
-				return { value: this._getDefaultValue() };
-			}
-			if (this._optional) {
-				return { value: undefined as T };
-			}
-			return { issues: [{ message: "Required" }] };
-		}
-
-		return this._validate(value);
+		return validateSchemaPresence(
+			selectSchemaPresence(
+				value,
+				this._optional,
+				this._nullable,
+				this._default !== undefined,
+			),
+			value,
+			() => this._getDefaultValue(),
+			(input) => this._validate(input),
+		);
 	}
 
 	/**

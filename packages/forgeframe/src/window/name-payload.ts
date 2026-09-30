@@ -458,6 +458,17 @@ export function getInitialPayload<P>(
 }
 
 /**
+ * Copies channel metadata while clearing props and nested child definitions for reconnection.
+ * The input and its other metadata are preserved; no window-name write occurs here.
+ * @internal
+ */
+export function retainChannelMetadata<P>(
+	payload: WindowNamePayload<P>,
+): WindowNamePayload<P> {
+	return { ...payload, props: {}, children: undefined };
+}
+
+/**
  * Reads the initial ForgeFrame channel metadata or legacy payload from a window name.
  *
  * @typeParam P - The expected type of the props in the payload.
@@ -490,11 +501,7 @@ export function consumeInitialPayload<P>(
 		// executable child metadata must never persist across navigations.
 		try {
 			if (win.name === name) {
-				win.name = buildWindowName({
-					...payload,
-					props: {},
-					children: undefined,
-				});
+				win.name = buildWindowName(retainChannelMetadata(payload));
 			}
 		} catch {
 			// Bootstrap can proceed even if an unusual window rejects name writes.

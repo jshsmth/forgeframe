@@ -14,6 +14,7 @@ This file defines working conventions for autonomous coding agents in this repos
 - `packages/forgeframe/tests`: Unit, integration, and typecheck suites for the library. See `packages/forgeframe/tests/README.md` for suite-specific guidance.
 - `packages/playground`: Consumer/host demo apps used for local validation.
 - `README.md`: Public usage and API documentation.
+- For subsystem changes, read [architecture and state ownership](docs/architecture.md). For IOSP review or refactoring, consult [callable classifications and test evidence](docs/iosp-review.md).
 
 ## Tooling and Standards
 
@@ -58,6 +59,13 @@ This file defines working conventions for autonomous coding agents in this repos
 - Reuse existing module boundaries under `packages/forgeframe/src`; prefer the closest existing module before creating a new one.
 - Prefer small, composable functions and avoid unnecessary dependencies.
 - Maintain origin/sandbox safety checks for any cross-window messaging changes.
+
+## IOSP Review Checklist
+
+- Give each changed callable one cohesive operation or an explicit sequence of named operations. Keep helpers beside their owning subsystem.
+- Pass browser observations into pure policy; keep state in its existing runtime and preserve callback, cancellation, and commit order.
+- Preserve public types, wire formats, origin checks, and errors. Keep recursive algorithms and small local helpers together when extraction adds indirection.
+- Update the affected classifications in `docs/iosp-review.md`, explain any retained mixed helper, and run its listed boundary tests.
 
 ## Files to Avoid Editing Unless Required
 
