@@ -1,18 +1,36 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearComponents, destroyAll } from "@/core/component";
+import { ConsumerComponent } from "@/core/consumer";
 import { elements } from "../../../playground/consumer/elements";
 import { renderPropsBar } from "../../../playground/consumer/props-bar";
 import {
+	createModalTemplate,
+	renderComponent,
+} from "../../../playground/consumer/renderer";
+import {
+	componentCache,
 	currentPropValues,
 	resetPropValues,
+	setCurrentConfig,
+	setInstance,
 } from "../../../playground/consumer/state";
 
-vi.mock("../../../playground/consumer/logger", () => ({ log: vi.fn() }));
+vi.mock("../../../playground/consumer/logger", () => ({
+	log: vi.fn(),
+	setStatus: vi.fn(),
+	setButtonsEnabled: vi.fn(),
+}));
 
 beforeEach(() => {
 	elements.propsBar = document.createElement("div");
 	document.body.append(elements.propsBar);
 });
-afterEach(() => {
+afterEach(async () => {
+	await destroyAll();
+	clearComponents();
+	componentCache.clear();
+	setInstance(null);
+	vi.restoreAllMocks();
 	resetPropValues();
 	document.body.replaceChildren();
 });
@@ -80,5 +98,54 @@ describe("playground prop editor", () => {
 		input.value = "";
 		input.dispatchEvent(new Event("change"));
 		expect(currentPropValues.count).toBe(5);
+	});
+	it("renders typed editor values without converting composites or callbacks to strings", async () => {
+		const config = {
+			tag: "typed-editor",
+			url: "https://example.com",
+			props: {
+				items: { type: "array", required: true, default: [1] },
+				record: { type: "object", required: true, default: { count: 2 } },
+				onRun: { type: "function", required: true },
+			},
+		};
+		setCurrentConfig(config);
+		renderPropsBar(config);
+		let eligible = false;
+		const render = vi
+			.spyOn(ConsumerComponent.prototype, "render")
+			.mockImplementation(async function (
+				this: ConsumerComponent<Record<string, unknown>>,
+			) {
+				eligible = this.isEligible();
+			});
+		await renderComponent();
+		expect(render).toHaveBeenCalledOnce();
+		expect(eligible).toBe(true);
+		expect(currentPropValues.items).toEqual([1]);
+		expect(currentPropValues.record).toEqual({ count: 2 });
+		expect(currentPropValues.onRun).toBeTypeOf("function");
+	});
+	it("refreshes cached modal definitions when the prop configuration changes", () => {
+		const config = {
+			tag: "modal-editor",
+			url: "https://example.com",
+			props: { first: { type: "string" } },
+		};
+		const first = createModalTemplate(config);
+		expect(createModalTemplate(config)).toBe(first);
+		const changed = createModalTemplate({
+			...config,
+			props: { second: { type: "number" } },
+		});
+		expect(changed).not.toBe(first);
+		expect(
+			changed({
+				second: 2,
+				onGreet: () => {},
+				onClose: () => {},
+				onError: () => {},
+			}).isEligible(),
+		).toBe(true);
 	});
 });

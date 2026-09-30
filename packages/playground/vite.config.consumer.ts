@@ -43,6 +43,7 @@ export default defineConfig(({ command }) => {
 	return {
 		plugins: [...(shouldUseMkcert ? [mkcert()] : []), staticTestRoutes()],
 		root: resolve(import.meta.dirname, "consumer"),
+		cacheDir: resolve(import.meta.dirname, "node_modules/.vite-consumer"),
 		define: {
 			__FORGEFRAME_VERSION__: JSON.stringify(forgeframePackageJson.version),
 		},
@@ -53,6 +54,7 @@ export default defineConfig(({ command }) => {
 		},
 		server: {
 			port: 5173,
+			strictPort: true,
 			open: shouldOpenBrowser,
 		},
 		build: {

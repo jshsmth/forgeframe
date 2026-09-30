@@ -56,7 +56,7 @@ function escapeHtml(value: string): string {
 	});
 }
 
-function parsePropInput(
+export function parsePropInput(
 	input: HTMLInputElement,
 	type: string,
 	previous: unknown,
@@ -175,6 +175,7 @@ export function renderPropsBar(config: PlaygroundConfig) {
 						log(`Updated ${propName} to: ${input.value}`, "info");
 					}
 					setPropValue(propName, value);
+					onConfigChange?.();
 				} catch (error) {
 					log(`Could not update ${propName}: ${String(error)}`, "error");
 				}
@@ -196,6 +197,7 @@ export function renderPropsBar(config: PlaygroundConfig) {
 						currentPropValues[propName],
 					),
 				);
+				onConfigChange?.();
 			} catch (error) {
 				log(`Could not update ${propName}: ${String(error)}`, "error");
 			}

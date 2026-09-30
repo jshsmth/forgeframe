@@ -30,6 +30,7 @@ export default defineConfig(({ command }) => {
 			},
 		],
 		root: resolve(import.meta.dirname, "host"),
+		cacheDir: resolve(import.meta.dirname, "node_modules/.vite-host"),
 		define: {
 			__FORGEFRAME_VERSION__: JSON.stringify(forgeframePackageJson.version),
 		},
@@ -40,6 +41,7 @@ export default defineConfig(({ command }) => {
 		},
 		server: {
 			port: 5174,
+			strictPort: true,
 		},
 		build: {
 			outDir: resolve(import.meta.dirname, "dist/host"),
