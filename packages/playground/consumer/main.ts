@@ -8,7 +8,11 @@ import { updateCodePreview } from "./code-generator";
 import { DEFAULT_CONFIG } from "./config";
 import { elements } from "./elements";
 import { clearLog, log } from "./logger";
-import { renderPropsBar, setOnConfigChange } from "./props-bar";
+import {
+	renderPropsBar,
+	setOnConfigChange,
+	setOnPropValuesChange,
+} from "./props-bar";
 import { renderComponent } from "./renderer";
 import {
 	currentConfig,
@@ -27,6 +31,9 @@ function handleConfigChange() {
 }
 
 setOnConfigChange(handleConfigChange);
+setOnPropValuesChange(() => {
+	updateCodePreview(currentConfig, currentContext, currentIframeStyle);
+});
 
 // ============================================================================
 // Mode Toggle

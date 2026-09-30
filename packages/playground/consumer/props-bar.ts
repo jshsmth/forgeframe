@@ -16,9 +16,14 @@ import type { DynamicProps, PlaygroundConfig } from "./types";
 
 // Callback for when config changes (set by main.ts)
 let onConfigChange: (() => void) | null = null;
+let onPropValuesChange: (() => void) | null = null;
 
 export function setOnConfigChange(callback: () => void) {
 	onConfigChange = callback;
+}
+
+export function setOnPropValuesChange(callback: () => void) {
+	onPropValuesChange = callback;
 }
 
 export function getDefaultValue(propDef: Record<string, unknown>): unknown {
@@ -175,7 +180,7 @@ export function renderPropsBar(config: PlaygroundConfig) {
 						log(`Updated ${propName} to: ${input.value}`, "info");
 					}
 					setPropValue(propName, value);
-					onConfigChange?.();
+					onPropValuesChange?.();
 				} catch (error) {
 					log(`Could not update ${propName}: ${String(error)}`, "error");
 				}
@@ -197,7 +202,7 @@ export function renderPropsBar(config: PlaygroundConfig) {
 						currentPropValues[propName],
 					),
 				);
-				onConfigChange?.();
+				onPropValuesChange?.();
 			} catch (error) {
 				log(`Could not update ${propName}: ${String(error)}`, "error");
 			}
