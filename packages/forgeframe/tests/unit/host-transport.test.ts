@@ -4,12 +4,14 @@
  * Covers trusted-domain updates, deferred init scheduling guards, init failure
  * normalization, props handler filtering, and idempotent teardown behavior.
  */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EVENT, MESSAGE_NAME } from "@/constants";
 import { HostTransport } from "@/core/host/transport";
 import type { HostTransportOptions } from "@/core/host/types";
 import { EventEmitter } from "@/events/emitter";
 import { createDeferred } from "@/utils/promise";
+import { requireValue } from "../require-value";
 
 type PropsHandlerSource = {
 	uid: string;
@@ -64,7 +66,7 @@ async function flushMicrotasks(): Promise<void> {
 
 afterEach(() => {
 	while (createdTransports.length > 0) {
-		createdTransports.pop()!.destroy();
+		requireValue(createdTransports.pop()).destroy();
 	}
 	vi.restoreAllMocks();
 });

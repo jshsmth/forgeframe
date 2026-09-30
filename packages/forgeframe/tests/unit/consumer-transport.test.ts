@@ -5,6 +5,7 @@
  * cleanup across failed updates, wait-for-host races, and async init error
  * forwarding from the INIT handshake.
  */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CONTEXT, MESSAGE_NAME } from "@/constants";
 import type { ConsumerTransportHandlers } from "@/core/consumer/transport";
@@ -13,6 +14,7 @@ import type { NormalizedOptions } from "@/core/consumer/types";
 import { prop } from "@/props/prop";
 import type { Dimensions, SiblingInfo } from "@/types";
 import { createDeferred } from "@/utils/promise";
+import { requireValue } from "../require-value";
 
 type TestProps = {
 	onReady?: () => void;
@@ -101,7 +103,7 @@ async function flushMicrotasks(): Promise<void> {
 
 afterEach(() => {
 	while (createdTransports.length > 0) {
-		createdTransports.pop()!.destroy();
+		requireValue(createdTransports.pop()).destroy();
 	}
 	vi.useRealTimers();
 	vi.restoreAllMocks();

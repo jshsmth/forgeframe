@@ -55,6 +55,29 @@ describe("serializeMessage", () => {
 });
 
 describe("deserializeMessage", () => {
+	it.each([
+		{ id: 1 },
+		{ id: "" },
+		{ name: [] },
+		{ type: "unsupported" },
+		{ source: "invalid" },
+		{ source: { uid: "uid", domain: 1 } },
+		{ source: { uid: [], domain: "https://example.com" } },
+		{ error: { message: [] } },
+		{ error: null },
+	])("rejects malformed envelope fields: %j", (patch) => {
+		const valid = createRequestMessage(
+			"id",
+			"test",
+			{},
+			{ uid: "uid", domain: "https://example.com" },
+		);
+		expect(
+			deserializeMessage(
+				`${PROTOCOL_PREFIX}${JSON.stringify({ ...valid, ...patch })}`,
+			),
+		).toBeNull();
+	});
 	it("should return null for non-string data", () => {
 		expect(deserializeMessage(123)).toBeNull();
 		expect(deserializeMessage(null)).toBeNull();

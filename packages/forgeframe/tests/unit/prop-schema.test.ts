@@ -186,6 +186,50 @@ describe("prop.string()", () => {
 		});
 	});
 
+	it.each([
+		"https:// invalid url",
+		"https://",
+		"http://[broken",
+		"https://example.com:invalid",
+		"ftp://example.com",
+		"/relative/path",
+	])("rejects malformed or non-HTTP URLs: %s", (value) => {
+		expect(prop.string().url()["~standard"].validate(value)).toEqual({
+			issues: [{ message: "Invalid URL" }],
+		});
+	});
+
+	it.each([
+		"https://example.com:8443/path?q=value#fragment",
+		"http://localhost:3000",
+		"https://[::1]/path",
+		"HTTPS://EXAMPLE.COM/Original%20Path",
+	])("preserves a valid HTTP(S) URL: %s", (value) => {
+		expect(prop.string().url()["~standard"].validate(value)).toEqual({ value });
+	});
+
+	it("keeps URL validation immutable and composable with trimming and patterns", () => {
+		const original = prop.string();
+		const url = original.url();
+		const constrained = url
+			.trim()
+			.pattern(/example\.com/, "Expected example.com");
+		expect(original["~standard"].validate("invalid")).toEqual({
+			value: "invalid",
+		});
+		expect(
+			constrained["~standard"].validate(" https://example.com/path "),
+		).toEqual({
+			value: "https://example.com/path",
+		});
+		expect(constrained["~standard"].validate("https://other.com")).toEqual({
+			issues: [{ message: "Expected example.com" }],
+		});
+		expect(constrained["~standard"].validate("example.com")).toEqual({
+			issues: [{ message: "Invalid URL" }],
+		});
+	});
+
 	it("should validate uuid", () => {
 		const schema = prop.string().uuid();
 		expect(schema["~standard"].validate("invalid")).toHaveProperty("issues");
@@ -727,7 +771,7 @@ describe("prop.record()", () => {
 		const input = Object.create(null) as Record<string, unknown>;
 		// biome-ignore lint/suspicious/noProto: Exercise an own __proto__ data property to verify prototype-safe handling.
 		input.__proto__ = "proto-value";
-		input["constructor"] = "ctor-value";
+		Reflect.set(input, "constructor", "ctor-value");
 		input.prototype = "prototype-value";
 
 		const result = schema["~standard"].validate(input);
@@ -829,6 +873,31 @@ describe("prop.enum()", () => {
 // ============================================================================
 
 describe("prop.union()", () => {
+	it.each([prop.literal("ok"), prop.enum(["ok"])])(
+		"continues past rejection without serializing circular objects or calling toJSON",
+		(branch) => {
+			const circular: { self?: unknown } = {};
+			circular.self = circular;
+			const custom = {
+				toJSON: () => {
+					throw new Error("unexpected serialization");
+				},
+			};
+			const schema = prop.union(branch, prop.any());
+			expect(schema["~standard"].validate(circular)).toEqual({
+				value: circular,
+			});
+			expect(schema["~standard"].validate(custom)).toEqual({ value: custom });
+			expect(branch["~standard"].validate(circular)).toHaveProperty("issues");
+		},
+	);
+	it.each([prop.literal("ok"), prop.enum(["ok"])])(
+		"continues past a rejected literal or enum for a BigInt input",
+		(branch) => {
+			const schema = prop.union(branch, prop.any());
+			expect(schema["~standard"].validate(1n)).toEqual({ value: 1n });
+		},
+	);
 	it("should validate any matching branch", () => {
 		const schema = prop.union(prop.string(), prop.number());
 		expect(schema["~standard"].validate("hello")).toEqual({ value: "hello" });

@@ -3,6 +3,7 @@
  *
  * Covers consumer domain allowlist enforcement, hostProps invalidation, and deferred init gating under security checks.
  */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MessageHandler } from "@/communication/messenger";
 import {
@@ -16,6 +17,7 @@ import * as hostSecurity from "@/core/host/security";
 import { prop } from "@/props/prop";
 import { buildWindowName } from "@/window/name-payload";
 import type { WindowNamePayload } from "@/window/types";
+import { requireValue } from "../require-value";
 
 const originalWindowName = window.name;
 const originalDocumentReferrer = document.referrer;
@@ -187,7 +189,7 @@ describe("Host security", () => {
 
 		expect(propsHandler).toBeDefined();
 
-		propsHandler!(
+		requireValue(propsHandler)(
 			{
 				uid: "spoofed-uid",
 				close: "spoofed-close",

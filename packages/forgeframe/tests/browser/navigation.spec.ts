@@ -113,6 +113,19 @@ test.beforeAll(async () => {
 			await host.ready; window.received = host.hostProps; window.ready = true;
 			</script>`,
 				);
+			if (req.url === "/record-props") {
+				return respond(
+					res,
+					`<!doctype html><script type="module">
+				import {initHost,prop} from '/library.js';
+				const host = initHost({record:prop.object()}, ['${consumerOrigin}']);
+				await host.ready;
+				window.received = host.hostProps;
+				await host.hostProps.export({record:host.hostProps.record});
+				window.ready = true;
+				</script>`,
+				);
+			}
 			if (req.url === "/early-update") {
 				return respond(
 					res,
@@ -134,6 +147,27 @@ test.beforeAll(async () => {
 				const host = initHost({count:prop.number(),secret:prop.string(),onComplete:prop.function()}, ['${consumerOrigin}']);
 				window.reusedFailedHost = host === failed;
 				await host.ready; window.received = host.hostProps; window.ready = true;
+				</script>`,
+				);
+			}
+			if (req.url === "/factory-retry") {
+				return respond(
+					res,
+					`<!doctype html><script type="module">
+				import {create,initHost,prop} from '/library.js';
+				let reject = true;
+				const count = {'~standard': {version:1,vendor:'retry-fixture',validate(value) {
+					return reject ? {issues:[{message:'temporary rejection'}]} : prop.number()['~standard'].validate(value);
+				}}};
+				const definitions = {count,secret:prop.string(),onComplete:prop.function()};
+				const Component = create({tag:'browser-navigation-review',url:location.href,props:definitions,allowedConsumerDomains:['${consumerOrigin}']});
+				const failed = initHost(definitions, ['${consumerOrigin}']);
+				try { await failed.ready; } catch(error) { window.firstError = error.message; }
+				reject = false;
+				const host = initHost(definitions, ['${consumerOrigin}']);
+				await host.ready;
+				window.sameHostProps = Component.hostProps === host.hostProps;
+				window.received = Component.hostProps; window.ready = true;
 				</script>`,
 				);
 			}
@@ -1040,6 +1074,63 @@ for (const context of ["iframe", "popup"] as const) {
 		).toBe(1);
 	});
 
+	test(`${context} factory hostProps follows a successful bootstrap retry`, async ({
+		page,
+	}) => {
+		const popup = context === "popup" ? page.waitForEvent("popup") : null;
+		await mount(page, "/factory-retry", context);
+		const hostPage = popup ? await popup : page;
+		expect(
+			await page.evaluate(
+				() => (window as unknown as { outcome: Promise<string> }).outcome,
+			),
+		).toBe("ready");
+		const host =
+			context === "popup"
+				? hostPage
+				: page.frames().find((frame) => frame.url().startsWith(hostOrigin));
+		if (!host) throw new Error("Missing host window");
+		await host.waitForFunction(
+			() => (window as unknown as { ready: boolean }).ready === true,
+		);
+		expect(
+			await host.evaluate(() => {
+				const state = window as unknown as {
+					firstError: string;
+					sameHostProps: boolean;
+					received: { count: number };
+				};
+				return {
+					error: state.firstError.includes("temporary rejection"),
+					same: state.sameHostProps,
+					count: state.received.count,
+				};
+			}),
+		).toEqual({ error: true, same: true, count: 1 });
+		await page.evaluate(() =>
+			(
+				window as unknown as {
+					instance: { updateProps(props: object): Promise<void> };
+				}
+			).instance.updateProps({ count: 2 }),
+		);
+		expect(
+			await host.evaluate(async () => {
+				const props = (
+					window as unknown as {
+						received: {
+							count: number;
+							onComplete(): Promise<number>;
+							resize(dimensions: { width: number }): Promise<void>;
+						};
+					}
+				).received;
+				await props.resize({ width: 360 });
+				return { count: props.count, callback: await props.onComplete() };
+			}),
+		).toEqual({ count: 2, callback: 1 });
+	});
+
 	test(`${context} preserves a callback update queued during reconnect bootstrap`, async ({
 		page,
 	}) => {
@@ -1059,7 +1150,7 @@ for (const context of ["iframe", "popup"] as const) {
 				reviewWindow.armed = false;
 				reviewWindow.instance = create({
 					tag: "reconnect-queued-update",
-					url: hostOrigin + "/host",
+					url: `${hostOrigin}/host`,
 					domain: hostOrigin,
 					props: {
 						count: {
@@ -1194,4 +1285,106 @@ for (const context of ["iframe", "popup"] as const) {
 			).toEqual({});
 		}
 	});
+}
+
+for (const context of ["iframe", "popup"] as const) {
+	for (const serialization of ["json", "base64", "dotify"] as const) {
+		test(`${context} preserves marker-shaped records through ${serialization} props and exports`, async ({
+			page,
+		}) => {
+			await page.goto(consumerOrigin);
+			const opening =
+				context === "popup"
+					? page.waitForEvent("popup")
+					: Promise.resolve(page);
+			await page.evaluate(
+				async ({ hostOrigin, context, serialization }) => {
+					const libraryUrl = "/library.js";
+					const { create, prop }: typeof import("../../src/index") =
+						await import(libraryUrl);
+					const Component = create({
+						tag: "marker-record-browser",
+						url: `${hostOrigin}/record-props`,
+						props: { record: { schema: prop.object(), serialization } },
+					});
+					const record = {
+						callback: {
+							__type__: "function",
+							__id__: "ordinary-id",
+							__name__: "ordinary-name",
+							optional: undefined,
+						},
+						date: {
+							__forgeframe_wire_type__: "date",
+							__forgeframe_wire_value__: null,
+							optional: undefined,
+						},
+						encoded: {
+							__type__: "base64",
+							__value__: "JTdCJTIyZGVjb2RlZCUyMiUzQXRydWUlN0Q=",
+							optional: undefined,
+						},
+						escaped: {
+							__forgeframe_wire_type__: "record",
+							__forgeframe_wire_value__: { original: true },
+						},
+					};
+					const instance = Component({ record });
+					(window as unknown as { instance: typeof instance }).instance =
+						instance;
+					await instance.render("#mount", context);
+				},
+				{ hostOrigin, context, serialization },
+			);
+			const hostPage = await opening;
+			const host =
+				context === "popup"
+					? hostPage
+					: page
+							.frames()
+							.find((frame) => frame.url() === `${hostOrigin}/record-props`);
+			if (!host) throw new Error("Missing host");
+			await host.waitForFunction(
+				() => (window as unknown as { ready: boolean }).ready === true,
+			);
+			const expected = {
+				callback: {
+					__type__: "function",
+					__id__: "ordinary-id",
+					__name__: "ordinary-name",
+				},
+				date: {
+					__forgeframe_wire_type__: "date",
+					__forgeframe_wire_value__: null,
+				},
+				encoded: {
+					__type__: "base64",
+					__value__: "JTdCJTIyZGVjb2RlZCUyMiUzQXRydWUlN0Q=",
+				},
+				escaped: {
+					__forgeframe_wire_type__: "record",
+					__forgeframe_wire_value__: { original: true },
+				},
+			};
+			expect(
+				await host.evaluate(
+					() =>
+						(window as unknown as { received: { record: object } }).received
+							.record,
+				),
+			).toEqual(expected);
+			expect(
+				await page.evaluate(
+					() =>
+						(window as unknown as { instance: { exports: object } }).instance
+							.exports,
+				),
+			).toEqual({ record: expected });
+			await page.evaluate(() =>
+				(
+					window as unknown as { instance: { close(): Promise<void> } }
+				).instance.close(),
+			);
+		});
+	}
 }

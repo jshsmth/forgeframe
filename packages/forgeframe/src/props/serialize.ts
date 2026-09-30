@@ -18,7 +18,9 @@ import type { PropDefinition, PropsDefinition } from "../types/props";
 import {
 	decodeDateWireValue,
 	encodeDateWireValue,
+	escapeWireRecord,
 	isDateWireValue,
+	needsRecordEscape,
 	stringifyWireValue,
 } from "../utils/wire-value";
 import { BUILTIN_PROP_DEFINITIONS } from "./definitions";
@@ -69,10 +71,9 @@ function encodeDotNotationPath(
 function encodeDotNotationValue(
 	value: unknown,
 	bridge: FunctionBridge,
-): string {
-	return encodeURIComponent(
-		stringifyWireValue(value, (fn) => bridge.serialize(fn)),
-	);
+): string | undefined {
+	const json = stringifyWireValue(value, (fn) => bridge.serialize(fn));
+	return json === undefined ? undefined : encodeURIComponent(json);
 }
 
 /**
@@ -84,7 +85,10 @@ function createDotNotationPair(
 	value: unknown,
 	bridge: FunctionBridge,
 ): string {
-	return `${encodeDotNotationPath(path)}=${encodeDotNotationValue(value, bridge)}`;
+	const encoded = encodeDotNotationValue(value, bridge);
+	return encoded === undefined
+		? ""
+		: `${encodeDotNotationPath(path)}=${encoded}`;
 }
 
 /**
@@ -142,14 +146,20 @@ function toDotNotation(
 
 		const nextPath = [...path, key];
 
-		if (isPlainObject(value)) {
+		if (isPlainObject(value) && !needsRecordEscape(value)) {
 			parts.push(toDotNotation(value, bridge, nextPath));
 		} else {
 			parts.push(createDotNotationPair(nextPath, value, bridge));
 		}
 	}
 
-	return parts.filter(Boolean).join("&");
+	const encoded = parts.filter(Boolean).join("&");
+	return (
+		encoded ||
+		(path.length === 0
+			? DOTIFY_EMPTY_OBJECT_PAYLOAD
+			: createDotNotationEmptyObjectPair(path))
+	);
 }
 
 /**
@@ -162,15 +172,33 @@ function toDotNotation(
  */
 function fromDotNotation(str: string): Record<string, unknown> {
 	const result: Record<string, unknown> = {};
+	const branches = new WeakSet<object>([result]);
 	if (!str || str === DOTIFY_EMPTY_OBJECT_PAYLOAD) return result;
 	for (const pair of str.split("&")) {
 		const entry = decodeDotNotationPair(pair);
 		if (!entry) continue;
 		const keys = decodeDotNotationPath(entry.path);
 		if (keys.some((key) => !isSafeObjectKey(key))) continue;
-		assignDotNotationPath(result, keys, entry.value);
+		assignDotNotationPath(result, keys, entry.value, branches);
 	}
-	return result;
+	return escapeDotNotationBranches(result, branches);
+}
+
+/** Escapes assembled records after leaf conversion, preserving generated leaf markers. */
+function escapeDotNotationBranches(
+	record: Record<string, unknown>,
+	branches: WeakSet<object>,
+): Record<string, unknown> {
+	for (const [key, entry] of Object.entries(record)) {
+		if (isPlainObject(entry) && branches.has(entry)) {
+			defineDataProperty(
+				record,
+				key,
+				escapeDotNotationBranches(entry, branches),
+			);
+		}
+	}
+	return { ...escapeWireRecord(record) };
 }
 
 /** Decodes one framed pair; malformed wrappers retain their existing fallback. */
@@ -207,6 +235,7 @@ function assignDotNotationPath(
 	result: Record<string, unknown>,
 	keys: string[],
 	value: unknown,
+	branches: WeakSet<object>,
 ): void {
 	let current = result;
 
@@ -220,6 +249,7 @@ function assignDotNotationPath(
 			Array.isArray(existing)
 		) {
 			current[key] = {};
+			branches.add(current[key] as object);
 		}
 		current = current[key] as Record<string, unknown>;
 	}
@@ -264,6 +294,9 @@ function isDotifyEncoded(
 	return (
 		typeof value === "object" &&
 		value !== null &&
+		Reflect.ownKeys(value).length === 2 &&
+		Object.hasOwn(value, "__type__") &&
+		Object.hasOwn(value, "__value__") &&
 		(value as Record<string, unknown>).__type__ === "dotify" &&
 		typeof (value as Record<string, unknown>).__value__ === "string"
 	);
@@ -337,7 +370,12 @@ function serializeValue(
 	}
 
 	if (serialization === PROP_SERIALIZATION.DOTIFY) {
-		if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+		if (
+			typeof value === "object" &&
+			value !== null &&
+			!Array.isArray(value) &&
+			!needsRecordEscape(value as Record<string, unknown>)
+		) {
 			return {
 				__type__: "dotify",
 				__value__: toDotNotation(value as Record<string, unknown>, bridge),
@@ -455,6 +493,9 @@ function isBase64Encoded(
 	return (
 		typeof value === "object" &&
 		value !== null &&
+		Reflect.ownKeys(value).length === 2 &&
+		Object.hasOwn(value, "__type__") &&
+		Object.hasOwn(value, "__value__") &&
 		(value as Record<string, unknown>).__type__ === "base64" &&
 		typeof (value as Record<string, unknown>).__value__ === "string"
 	);

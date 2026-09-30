@@ -10,9 +10,12 @@
 import { MESSAGE_NAME } from "../constants";
 import { generateShortUID } from "../utils/uid";
 import {
+	assertDefinedArrayEntry,
 	decodeDateWireValue,
 	encodeDateWireValue,
+	escapeWireRecord,
 	isDateWireValue,
+	isRecordWireValue,
 } from "../utils/wire-value";
 import type { MessageHandler, Messenger } from "./messenger";
 import type { FunctionRef } from "./types";
@@ -88,12 +91,15 @@ export class FunctionBridge {
 	 * Creates a new FunctionBridge instance.
 	 *
 	 * @param messenger - The messenger to use for cross-domain calls
+	 * @param isExpectedSource - Admits browser-verified callers for this bridge.
+	 * @param callMessageName - Internal call channel, separating peer relays from prop/export batches.
 	 */
 	constructor(
 		private messenger: Messenger,
 		private isExpectedSource: (
 			source: Parameters<MessageHandler>[1],
 		) => boolean = () => true,
+		private callMessageName: string = MESSAGE_NAME.CALL,
 	) {
 		this.setupCallHandler();
 	}
@@ -195,7 +201,7 @@ export class FunctionBridge {
 		targetDomain: string,
 	): CallableFunction {
 		const wrapper = async (...args: unknown[]): Promise<unknown> =>
-			this.messenger.send(targetWin, targetDomain, MESSAGE_NAME.CALL, {
+			this.messenger.send(targetWin, targetDomain, this.callMessageName, {
 				id: ref.__id__,
 				args,
 			});
@@ -216,8 +222,13 @@ export class FunctionBridge {
 		return (
 			typeof value === "object" &&
 			value !== null &&
+			Reflect.ownKeys(value).length === 3 &&
+			Object.hasOwn(value, "__type__") &&
+			Object.hasOwn(value, "__id__") &&
+			Object.hasOwn(value, "__name__") &&
 			(value as FunctionRef).__type__ === "function" &&
-			typeof (value as FunctionRef).__id__ === "string"
+			typeof (value as FunctionRef).__id__ === "string" &&
+			typeof (value as FunctionRef).__name__ === "string"
 		);
 	}
 
@@ -227,7 +238,7 @@ export class FunctionBridge {
 	 */
 	private setupCallHandler(): void {
 		this.messenger.on<{ id: string; args: unknown[] }>(
-			MESSAGE_NAME.CALL,
+			this.callMessageName,
 			async ({ id, args }, source) => {
 				if (!this.isExpectedSource(source)) {
 					throw new Error("Function call rejected from unexpected window");
@@ -369,6 +380,9 @@ export function serializeFunctions(
 		}
 		stack.add(obj);
 		try {
+			for (let index = 0; index < obj.length; index++) {
+				assertDefinedArrayEntry(obj[index], [String(index)]);
+			}
 			return obj.map((item) => serializeFunctions(item, bridge, stack));
 		} finally {
 			stack.delete(obj);
@@ -388,7 +402,7 @@ export function serializeFunctions(
 				if (!isSafeObjectKey(key)) continue;
 				result[key] = serializeFunctions(value, bridge, stack);
 			}
-			return result;
+			return escapeWireRecord(result);
 		} finally {
 			stack.delete(obj);
 		}
@@ -445,7 +459,10 @@ export function deserializeFunctions(
 		stack.add(obj);
 		try {
 			const result: Record<string, unknown> = {};
-			for (const [key, value] of Object.entries(obj)) {
+			const record = isRecordWireValue(obj)
+				? obj.__forgeframe_wire_value__
+				: obj;
+			for (const [key, value] of Object.entries(record)) {
 				if (!isSafeObjectKey(key)) continue;
 				result[key] = deserializeFunctions(
 					value,

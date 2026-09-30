@@ -48,9 +48,7 @@ function createNestedHostRef(
 	}
 
 	if (typeof nestedOptions.url !== "string") {
-		throw new Error(
-			`Nested component "${name}" must use a static string URL for protocol-v1 compatibility.`,
-		);
+		throw new Error(`Nested component "${name}" must use a static string URL.`);
 	}
 
 	return {

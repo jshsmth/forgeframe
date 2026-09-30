@@ -3,6 +3,7 @@
  *
  * Covers host handshake timing, control message handling, open/render guards, callback isolation, and updateProps validation paths.
  */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MessageHandler } from "@/communication/messenger";
 import {
@@ -16,6 +17,7 @@ import { PROP_RESET } from "@/core/consumer/props-pipeline";
 import { prop } from "@/props/prop";
 import * as popupRender from "@/render/popup";
 import * as templateRender from "@/render/templates";
+import { requireValue } from "../require-value";
 
 const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
 let dispatchedMessageCount = 0;
@@ -193,7 +195,9 @@ describe("Consumer lifecycle behavior", () => {
 		const initHandler = getHandlers(consumer).get(MESSAGE_NAME.INIT);
 
 		expect(initHandler).toBeDefined();
-		expect(initHandler!({}, createMessageSource(hostWindow))).toEqual({
+		expect(
+			requireValue(initHandler)({}, createMessageSource(hostWindow)),
+		).toEqual({
 			success: true,
 		});
 		await expect(waitPromise).resolves.toBeUndefined();
@@ -209,7 +213,9 @@ describe("Consumer lifecycle behavior", () => {
 		const initHandler = getHandlers(consumer).get(MESSAGE_NAME.INIT);
 
 		expect(initHandler).toBeDefined();
-		expect(initHandler!({}, createMessageSource(hostWindow))).toEqual({
+		expect(
+			requireValue(initHandler)({}, createMessageSource(hostWindow)),
+		).toEqual({
 			success: true,
 		});
 		await expect(waitForHost.call(consumer)).resolves.toBeUndefined();
@@ -307,7 +313,10 @@ describe("Consumer lifecycle behavior", () => {
 
 		expect(initHandler).toBeDefined();
 		expect(
-			initHandler!({}, createMessageSource(internal.transport.hostWindow!)),
+			requireValue(initHandler)(
+				{},
+				createMessageSource(requireValue(internal.transport.hostWindow)),
+			),
 		).toEqual({
 			success: true,
 		});
@@ -379,7 +388,7 @@ describe("Consumer lifecycle behavior", () => {
 		const bootstrapPromise = bootstrapHandler?.(
 			{ sessionId: "new-document" },
 			createMessageSource(
-				internal.transport.hostWindow!,
+				requireValue(internal.transport.hostWindow),
 				window.location.origin,
 			),
 		) as Promise<{ props: Record<string, unknown> }>;
@@ -402,10 +411,10 @@ describe("Consumer lifecycle behavior", () => {
 		expect(latestPayload.secret).toBe("same-origin-only");
 		expect(latestPayload.onReady.__id__).toEqual(expect.any(String));
 		await expect(
-			callHandler!(
+			requireValue(callHandler)(
 				{ id: latestPayload.onReady.__id__, args: [] },
 				createMessageSource(
-					internal.transport.hostWindow!,
+					requireValue(internal.transport.hostWindow),
 					window.location.origin,
 				),
 			),
@@ -482,22 +491,34 @@ describe("Consumer lifecycle behavior", () => {
 		const hideSpy = vi.spyOn(consumer, "hide").mockResolvedValue(undefined);
 
 		await expect(
-			handlers.get(MESSAGE_NAME.CLOSE)!({}, createMessageSource(hostWindow)),
+			requireValue(handlers.get(MESSAGE_NAME.CLOSE))(
+				{},
+				createMessageSource(hostWindow),
+			),
 		).resolves.toEqual({ success: true });
 		await expect(
-			handlers.get(MESSAGE_NAME.RESIZE)!(
+			requireValue(handlers.get(MESSAGE_NAME.RESIZE))(
 				{ width: 420, height: 240 },
 				createMessageSource(hostWindow),
 			),
 		).resolves.toEqual({ success: true });
 		await expect(
-			handlers.get(MESSAGE_NAME.FOCUS)!({}, createMessageSource(hostWindow)),
+			requireValue(handlers.get(MESSAGE_NAME.FOCUS))(
+				{},
+				createMessageSource(hostWindow),
+			),
 		).resolves.toEqual({ success: true });
 		await expect(
-			handlers.get(MESSAGE_NAME.SHOW)!({}, createMessageSource(hostWindow)),
+			requireValue(handlers.get(MESSAGE_NAME.SHOW))(
+				{},
+				createMessageSource(hostWindow),
+			),
 		).resolves.toEqual({ success: true });
 		await expect(
-			handlers.get(MESSAGE_NAME.HIDE)!({}, createMessageSource(hostWindow)),
+			requireValue(handlers.get(MESSAGE_NAME.HIDE))(
+				{},
+				createMessageSource(hostWindow),
+			),
 		).resolves.toEqual({ success: true });
 
 		expect(closeSpy).toHaveBeenCalledTimes(1);

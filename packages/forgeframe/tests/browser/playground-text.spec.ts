@@ -78,8 +78,49 @@ test.beforeAll(async () => {
 			res.end(file);
 		}),
 	);
+	const consumer = await build({
+		configFile: false,
+		root: fileURLToPath(
+			new URL("../../../playground/consumer", import.meta.url),
+		),
+		logLevel: "silent",
+		define: {
+			"import.meta.env.VITE_HOST_URL": JSON.stringify(hostOrigin),
+			__FORGEFRAME_VERSION__: JSON.stringify("1.0.0"),
+		},
+		resolve: {
+			alias: {
+				forgeframe: fileURLToPath(
+					new URL("../../src/index.ts", import.meta.url),
+				),
+			},
+		},
+		build: { write: false },
+	});
+	const consumerFiles = new Map(
+		output(consumer).map((entry) => [
+			entry.fileName,
+			entry.type === "chunk" ? entry.code : entry.source,
+		]),
+	);
 	consumerOrigin = await listen(
 		createServer((req, res) => {
+			const path = new URL(req.url ?? "/", "http://fixture.invalid").pathname;
+			const consumerFile = consumerFiles.get(
+				path === "/editor" ? "index.html" : path.slice(1),
+			);
+			if (consumerFile !== undefined) {
+				res.setHeader(
+					"Content-Type",
+					path.endsWith(".js")
+						? "text/javascript"
+						: path.endsWith(".css")
+							? "text/css"
+							: "text/html",
+				);
+				res.end(consumerFile);
+				return;
+			}
 			if (req.url === "/library.js" || req.url === "/logger.js") {
 				res.setHeader("Content-Type", "text/javascript");
 				res.end(req.url === "/library.js" ? code(library) : code(logger));
@@ -201,3 +242,40 @@ for (const context of ["iframe", "popup"] as const) {
 			.toBe(7);
 	});
 }
+
+test("playground Set applies an edit when blur refreshes the code preview", async ({
+	page,
+}) => {
+	await page.route("https://**/*", (route) => route.abort());
+	await page.goto(`${consumerOrigin}/editor`);
+	await page.locator('input[data-prop="name"]').fill("initial");
+	await page.locator("#btn-render").click();
+	await expect(page.locator("#status-text")).toHaveText("Rendered");
+	const host = page
+		.frames()
+		.find((frame) => frame.url().startsWith(hostOrigin));
+	if (!host) throw new Error("Missing playground host");
+	await expect(host.locator("#prop-name")).toHaveText("initial");
+	await page
+		.locator('input[data-prop="name"]')
+		.fill('updated "quoted" <b>value</b>');
+	const bounds = await page
+		.locator('button[data-update-prop="name"]')
+		.boundingBox();
+	if (!bounds) throw new Error("Missing Set button");
+	// Use physical pointer events without locator retries after blur.
+	await page.mouse.click(
+		bounds.x + bounds.width / 2,
+		bounds.y + bounds.height / 2,
+	);
+	await expect(host.locator("#prop-name")).toHaveText(
+		'updated "quoted" <b>value</b>',
+	);
+	await expect(page.locator("#code-output")).toContainText(
+		JSON.stringify('updated "quoted" <b>value</b>'),
+	);
+	await expect(page.locator("[data-remove-prop]")).toHaveCount(0);
+	await page.locator("#btn-close").click();
+	await expect(page.locator("iframe")).toHaveCount(0);
+	await expect(page.locator("[data-remove-prop]")).toHaveCount(2);
+});

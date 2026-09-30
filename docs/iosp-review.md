@@ -16,7 +16,7 @@ The starting point passed 878 tests in 48 suites and 13 Chromium tests. Each wav
 
 | Evidence group | Suites |
 | --- | --- |
-| <a id="evidence-props"></a>props | [props.test](../packages/forgeframe/tests/unit/props.test.ts), [prop-schema.test](../packages/forgeframe/tests/unit/prop-schema.test.ts), [schema.test](../packages/forgeframe/tests/unit/schema.test.ts), [schema-contract.test](../packages/forgeframe/tests/unit/schema-contract.test.ts), [schema-backward-compat.test](../packages/forgeframe/tests/unit/schema-backward-compat.test.ts), [schema-path-format.test](../packages/forgeframe/tests/unit/schema-path-format.test.ts), [props-alias-materialization.test](../packages/forgeframe/tests/unit/props-alias-materialization.test.ts), [props-alias-updates.test](../packages/forgeframe/tests/unit/props-alias-updates.test.ts), [props-alias-sync.test](../packages/forgeframe/tests/integration/props-alias-sync.test.ts), [props-sync.test](../packages/forgeframe/tests/integration/props-sync.test.ts) |
+| <a id="evidence-props"></a>props | [props.test](../packages/forgeframe/tests/unit/props.test.ts), [prop-schema.test](../packages/forgeframe/tests/unit/prop-schema.test.ts), [schema.test](../packages/forgeframe/tests/unit/schema.test.ts), [schema-contract.test](../packages/forgeframe/tests/unit/schema-contract.test.ts), [schema-interoperability.test](../packages/forgeframe/tests/unit/schema-interoperability.test.ts), [schema-path-format.test](../packages/forgeframe/tests/unit/schema-path-format.test.ts), [props-alias-materialization.test](../packages/forgeframe/tests/unit/props-alias-materialization.test.ts), [props-alias-updates.test](../packages/forgeframe/tests/unit/props-alias-updates.test.ts), [props-alias-sync.test](../packages/forgeframe/tests/integration/props-alias-sync.test.ts), [props-sync.test](../packages/forgeframe/tests/integration/props-sync.test.ts) |
 | <a id="evidence-messaging"></a>messaging | [bridge.test](../packages/forgeframe/tests/unit/bridge.test.ts), [messenger.test](../packages/forgeframe/tests/unit/messenger.test.ts), [messenger-routing.test](../packages/forgeframe/tests/unit/messenger-routing.test.ts), [protocol.test](../packages/forgeframe/tests/unit/protocol.test.ts), [function-prop-bridge.test](../packages/forgeframe/tests/integration/function-prop-bridge.test.ts), [host-controls-routing.test](../packages/forgeframe/tests/integration/host-controls-routing.test.ts) |
 | <a id="evidence-render"></a>render | [consumer-renderer.test](../packages/forgeframe/tests/unit/consumer-renderer.test.ts), [iframe.test](../packages/forgeframe/tests/unit/iframe.test.ts), [popup.test](../packages/forgeframe/tests/unit/popup.test.ts), [render-templates.test](../packages/forgeframe/tests/unit/render-templates.test.ts), [body-param-bootstrap.test](../packages/forgeframe/tests/integration/body-param-bootstrap.test.ts), [popup-host-handshake.test](../packages/forgeframe/tests/integration/popup-host-handshake.test.ts) |
 | <a id="evidence-consumer"></a>consumer | [component.test](../packages/forgeframe/tests/unit/component.test.ts), [component-clone.test](../packages/forgeframe/tests/unit/component-clone.test.ts), [component-instance-index.test](../packages/forgeframe/tests/unit/component-instance-index.test.ts), [consumer-lifecycle.test](../packages/forgeframe/tests/unit/consumer-lifecycle.test.ts), [consumer-branch-coverage.test](../packages/forgeframe/tests/unit/consumer-branch-coverage.test.ts), [consumer-transport.test](../packages/forgeframe/tests/unit/consumer-transport.test.ts), [consumer-host-handshake.test](../packages/forgeframe/tests/integration/consumer-host-handshake.test.ts), [host-controls-routing.test](../packages/forgeframe/tests/integration/host-controls-routing.test.ts) |
@@ -40,7 +40,11 @@ Compile-time evidence: [typecheck suite guidance](../packages/forgeframe/tests/R
 
 ### [communication/bridge.ts](../packages/forgeframe/src/communication/bridge.ts)
 
-Registry reconciliation, capacity eviction, reference framing and remote wrapper creation are separate responsibilities. Retain recursive object/array codecs and local ID reconciliation as cohesive algorithms; CALL invokes a supplied function after browser-source authorization.
+Registry reconciliation, capacity eviction, reference framing and remote wrapper creation are separate responsibilities. Retain recursive object/array codecs and local ID reconciliation as cohesive algorithms; CALL and PEER_CALL invoke supplied functions after browser-source authorization. The call channel is supplied to the bridge so peer relay registries retain a lifetime independent of props/export batches. Reference guards require the complete own-property wire shape and preserve records with extra user fields.
+
+Ordinary marker-shaped records are escaped after JSON conversion and omission and restored as data, including nested escape markers, across JSON/BASE64/DOTIFY props and exports.
+
+Array encoding checks every position before mapping, rejecting undefined entries and sparse holes for both props and exports while leaving object-field omission and function/Date framing unchanged.
 
 - **O:** `isSafeObjectKey`, `FunctionBridge.retainLocalFunction`, `FunctionBridge.findRemoteWrapper`, `FunctionBridge.evictOldestRemote`, `FunctionBridge.evictOldestLocal`, `FunctionBridge.createRemoteWrapper`, `FunctionBridge.isFunctionRef`, `FunctionBridge.removeLocal`, `FunctionBridge.startBatch`, `FunctionBridge.staleLocalIds`, `FunctionBridge.clearRemote`, `FunctionBridge.localFunctionCount`, `FunctionBridge.remoteFunctionCount`, `serializeFunctions`, `deserializeFunctions`, `createFunctionRef`.
 - **I:** `FunctionBridge.constructor`, `FunctionBridge.serialize`, `FunctionBridge.deserialize`, `FunctionBridge.createRemoteWrapper.wrapper`, `FunctionBridge.setupCallHandler`, `FunctionBridge.finishBatch`, `FunctionBridge.destroy`.
@@ -104,7 +108,7 @@ Evidence: [consumer](#evidence-consumer); typecheck.
 
 ### [core/component.ts](../packages/forgeframe/src/core/component.ts)
 
-Declaration policy receives options; static URL context selection receives observed origin. Factory construction and host configuration are integrations; getters are short delegates. Destruction callbacks remove both factory and index identities in order.
+Declaration policy receives options; static URL context selection receives observed origin. Factory construction and host configuration are integrations; getters are short delegates. Factory host-props caching checks the current singleton before reuse and rebinds after a failed bootstrap is retried. Destruction callbacks remove both factory and index identities in order.
 
 - **O:** `assertComponentShape`, `staticUrlValidationContext`, `removeTrackedInstance`, `create.Component.canRenderTo`.
 - **I:** `validateComponentOptions`, `validateStaticComponentUrl`, `create`, `create.createTrackedInstance`, `create.canDetectComponentHost`, `create.syncHostProps`, `create.detectHostState`, `create.Component.isHost`, `create.Component.isEmbedded`, `create.get`, `getComponent`, `getRegisteredComponents`, `getComponentInstancesByTag`, `getIndexedComponentInstances`, `destroy`, `destroyByTag`, `destroyAll`, `unregisterComponent`, `clearComponents`.
@@ -161,6 +165,8 @@ Evidence: [consumer](#evidence-consumer), [prop-update.test](../packages/forgefr
 
 Preparation, schema/decorator sequencing, validation, candidate construction and commitment are separate. Queue ownership stays in the pipeline; disconnected updates also install their entries before user callbacks, and render admission drains the captured settled tail. Deferred normalization and clone restoration retain validation evidence. Regression evidence includes [consumer-props-queue.test](../packages/forgeframe/tests/unit/consumer-props-queue.test.ts).
 
+Update admission now checks deliverable array values after URL/origin policy and before snapshot commitment. Render admission performs the same check before allocating resources. Delivery-time checks retain host-decorator/custom-encoder timing and the existing post-commit transport failure semantics.
+
 - **O:** `UserNormalizationCallbackFailure.constructor`, `buildPropsSnapshot`, `ConsumerPropsPipeline.restoreSnapshot`, `ConsumerPropsPipeline.adoptNormalizedState`, `ConsumerPropsPipeline.deferFailedNormalization`, `ConsumerPropsPipeline.createSnapshot`, `ConsumerPropsPipeline.preparePropPatch`, `ConsumerPropsPipeline.commitSnapshot`.
 - **I:** `prevalidateProvidedSchemaInputs`, `validateNormalizedSchemaValues`, `ConsumerPropsPipeline.constructor`, `ConsumerPropsPipeline.ensureSchemaValidated`, `ConsumerPropsPipeline.revalidateSchemaValues`, `ConsumerPropsPipeline.buildNextProps`, `ConsumerPropsPipeline.validateDeferredSnapshot`, `ConsumerPropsPipeline.normalizePatchedSnapshot`, `ConsumerPropsPipeline.validatePatchedSnapshot`, `ConsumerPropsPipeline.normalizeInputSnapshot`, `ConsumerPropsPipeline.revalidateSchemaInputs`, `ConsumerPropsPipeline.updateProps`, `ConsumerPropsPipeline.syncCurrentPropsToHost`, `ConsumerPropsPipeline.readCurrentProps`, `ConsumerPropsPipeline.queuePropsUpdate`, `ConsumerPropsPipeline.trackPendingUpdate`.
 - **O callbacks:** `ConsumerPropsPipeline.constructor.callback@193`, `ConsumerPropsPipeline.trackPendingUpdate.callback@623`, `ConsumerPropsPipeline.trackPendingUpdate.callback@624`, `ConsumerPropsPipeline.trackPendingUpdate.callback@629`.
@@ -192,7 +198,7 @@ Evidence: [consumer](#evidence-consumer); typecheck.
 
 ### [core/consumer/transport.ts](../packages/forgeframe/src/core/consumer/transport.ts)
 
-Trusted matcher construction is data-only; window/origin observation and messenger rotation are integrations. Bootstrap and INIT integrations retain explicit source/session admission and state-transition order; control callbacks select the next protocol action. Their small response literals remain visible at the handler boundary.
+Trusted matcher construction is data-only; window/origin observation and messenger rotation are integrations. Bootstrap and INIT integrations retain explicit source/session admission and state-transition order; control callbacks select the next protocol action. Their small response literals remain visible at the handler boundary. Peer discovery sequences indexed lookup and recursive serialization through a separate source-guarded relay bridge. Its batch bookkeeping is cleared without retiring held snapshots; reconnect and destroy clear relay identities.
 
 - **O:** `ConsumerTransport.getHostDomain`, `ConsumerTransport.isHostConnected`, `ConsumerTransport.isHostControlSource`, `ConsumerTransport.resetHostWindow`, `collectTrustedDomains`.
 - **I:** `ConsumerTransport.constructor`, `ConsumerTransport.buildTrustedDomains`, `ConsumerTransport.syncTrustedDomainForUrl`, `ConsumerTransport.serializePropsForHost`, `ConsumerTransport.sendPropsUpdateToHost`, `ConsumerTransport.buildWindowName`, `ConsumerTransport.waitForHost`, `ConsumerTransport.setupMessageHandlers`, `ConsumerTransport.onHostControl`, `ConsumerTransport.destroy`.
@@ -268,7 +274,7 @@ Evidence: [host](#evidence-host); typecheck.
 
 ### [core/host/transport.ts](../packages/forgeframe/src/core/host/transport.ts)
 
-Outbound export batches share a FIFO queue. INIT workflow preserves beforeInit, destroy-after-await guard, error capture and event reporting. Browser focus remains part of the focus integration.
+Outbound export batches share a FIFO queue. INIT workflow preserves beforeInit, destroy-after-await guard, error capture and event reporting. Browser focus remains part of the focus integration. Peer lookup sequences a correlated response and recursive decoding through the separate peer-call bridge; prop/export batches cannot retire these relay wrappers.
 
 - **O:** `HostTransport.getInitError`.
 - **I:** `HostTransport.constructor`, `HostTransport.registerPropsHandler`, `HostTransport.requestBootstrap`, `HostTransport.updateTrustedConsumerDomain`, `HostTransport.close`, `HostTransport.focus`, `HostTransport.resize`, `HostTransport.show`, `HostTransport.hide`, `HostTransport.onError`, `HostTransport.exportData`, `HostTransport.sendExportBatch`, `HostTransport.consumerExport`, `HostTransport.getPeerInstances`, `HostTransport.destroy`, `HostTransport.sendInit`, `HostTransport.sendMessage`.
@@ -371,7 +377,7 @@ Evidence: [props](#evidence-props), typecheck.
 Fallback precedence selection, schema probing/conversion, decoration, output-contract decisions and snapshot writes are named responsibilities. Alias traversal and output equality retain cohesive cycle-aware algorithms. Canonical/alias reads and schema/custom validation treat only own snapshot values as supplied; host reconciliation also uses own membership for stale-key removal. Schema validation loops and host decoration are contract operations with explicit supplied values; integrations expose normalization and delivery order. Query/body integrations invoke custom converters as definition methods, preserving their receiver; `serializePropParameter` only encodes values without a custom converter.
 
 - **O:** `resolvePropDefinition`, `hasOwn`, `schemaOutputMatchesInput`, `getCompiledPropDefinitions`, `materializePropAliases`, `invokeUserNormalizationCallback`, `readSuppliedProp`, `selectNormalizationFallback`, `probeSchemaDefault`, `validateNormalizationOutput`, `recordNormalizedValue`, `validateSchemaInputs`, `validateCustomProps`, `decorateHostProp`, `shouldSendPropToHost`, `serializePropParameter`.
-- **I:** `normalizeProps`, `normalizeConsumerProps`, `resolveNormalizationFallback`, `parseExplicitFallback`, `decorateNormalizedValue`, `normalizePropValue`, `normalizePropsInternal`, `validateProps`, `validateConsumerProps`, `validateNormalizedProps`, `validatePropsInternal`, `getPropsForHost`, `propsToQueryParams`, `propsToBodyParams`.
+- **I:** `normalizeProps`, `normalizeConsumerProps`, `resolveNormalizationFallback`, `parseExplicitFallback`, `decorateNormalizedValue`, `normalizePropValue`, `normalizePropsInternal`, `validateProps`, `validateConsumerProps`, `validateNormalizedProps`, `validatePropsInternal`, `getPropsForHost`, `validatePropsForHostTransport`, `propsToQueryParams`, `propsToBodyParams`.
 - **O callbacks:** `getCompiledPropDefinitions.callback@154`, `materializePropAliases.callback@201`, `materializePropAliases.callback@203`, `resolveNormalizationFallback.callback@385`, `resolveNormalizationFallback.callback@397`, `decorateNormalizedValue.callback@462`.
 
 Evidence: [props](#evidence-props); typecheck.
@@ -417,7 +423,9 @@ Evidence: [props](#evidence-props); typecheck.
 
 Literal/enum constraint evaluation and ordered union probing are cohesive validation operations. Union presence uses the same free selector with union-specific null/undefined policy.
 
-- **O:** `LiteralSchema.constructor`, `LiteralSchema._validate`, `EnumSchema.constructor`, `EnumSchema._validate`, `UnionSchema.constructor`, `UnionSchema._validate`.
+`formatRejectedValue` formats primitive values or a type label without invoking arbitrary JSON serialization. Rejected cyclic objects, BigInts and custom encoders therefore cannot abort later union branches.
+
+- **O:** `formatRejectedValue`, `LiteralSchema.constructor`, `LiteralSchema._validate`, `EnumSchema.constructor`, `EnumSchema._validate`, `UnionSchema.constructor`, `UnionSchema._validate`.
 - **I:** `UnionSchema._validateInput`.
 - **M:** `LiteralSchema._clone`, `EnumSchema._clone`, `UnionSchema._clone`.
 - **O callbacks:** `EnumSchema._validate.callback@81`.
@@ -430,9 +438,9 @@ Evidence: [props](#evidence-props); typecheck.
 
 Scalar schema validation stays cohesive: string trimming/constraints, number bounds/integer checks and Date bounds are algorithms, not workflows. Builder exceptions keep clone/set/return local.
 
-Number validation rejects nonfinite values before JSON transport can change them to null.
+Number validation rejects nonfinite values before JSON transport can change them to null. The pure `isHttpUrl` operation parses absolute HTTP(S) URL syntax; string cloning retains this constraint independently of regex patterns and preserves the schema output.
 
-- **O:** `StringSchema._validate`, `NumberSchema._validate`, `DateSchema._validate`, `BooleanSchema._validate`, `FunctionSchema._validate`, `AnySchema.constructor`, `AnySchema._validate`.
+- **O:** `isHttpUrl`, `StringSchema._validate`, `NumberSchema._validate`, `DateSchema._validate`, `BooleanSchema._validate`, `FunctionSchema._validate`, `AnySchema.constructor`, `AnySchema._validate`.
 - **M:** `StringSchema._clone`, `StringSchema.min`, `StringSchema.max`, `StringSchema.length`, `StringSchema.pattern`, `StringSchema.email`, `StringSchema.url`, `StringSchema.uuid`, `StringSchema.trim`, `StringSchema.nonempty`, `NumberSchema._clone`, `NumberSchema.min`, `NumberSchema.max`, `NumberSchema.int`, `NumberSchema.positive`, `NumberSchema.nonnegative`, `NumberSchema.negative`, `DateSchema._clone`, `DateSchema.min`, `DateSchema.max`, `BooleanSchema._clone`, `FunctionSchema._clone`, `AnySchema._clone`.
 - **Retained rationale —** `StringSchema._clone`, `StringSchema.min`, `StringSchema.max`, `StringSchema.length`, `StringSchema.pattern`, `StringSchema.email`, `StringSchema.url`, `StringSchema.uuid`, `StringSchema.trim`, `StringSchema.nonempty`, `NumberSchema._clone`, `NumberSchema.min`, `NumberSchema.max`, `NumberSchema.int`, `NumberSchema.positive`, `NumberSchema.nonnegative`, `NumberSchema.negative`, `DateSchema._clone`, `DateSchema.min`, `DateSchema.max`, `BooleanSchema._clone`, `FunctionSchema._clone`, `AnySchema._clone`: Immutable fluent construction stays local: clone existing schema state, set the selected constraint, return the same typed builder contract. One-line shortcuts retain the fluent vocabulary; an extra wrapper would add indirection.
 
@@ -449,9 +457,9 @@ Evidence: [props](#evidence-props); typecheck.
 
 ### [props/serialize.ts](../packages/forgeframe/src/props/serialize.ts)
 
-DOTIFY pair decoding and path reconstruction are distinct operations. Recursive wire conversion, escaping, reserved-key checks and malformed fallback remain cohesive codec algorithms. BASE64 and DOTIFY register nested callbacks while encoding JSON values, retaining custom `toJSON()` behavior. After wrapper decoding, the recursive bridge reconstructs callbacks and Date values together, preserving the existing wire formats and transport-owned batch boundary. The encoding closures only delegate function retention to the supplied bridge.
+DOTIFY pair decoding and path reconstruction are distinct operations. Reconstruction tracks assembled branches separately from encoded leaves so `escapeDotNotationBranches` escapes their final shapes without confusing genuine leaf function/Date markers. JSON-undefined leaves are omitted and emptied branches retain explicit framing. Recursive wire conversion, escaping, reserved-key checks and malformed fallback remain cohesive codec algorithms. BASE64 and DOTIFY register nested callbacks while encoding JSON values, retaining custom `toJSON()` behavior. After wrapper decoding, the recursive bridge reconstructs callbacks and Date values together, preserving the existing wire formats and transport-owned batch boundary. The encoding closures only delegate function retention to the supplied bridge. BASE64/DOTIFY guards require both own fields and no extra keys, so user records with additional fields remain ordinary data.
 
-- **O:** `isSafeObjectKey`, `isPlainObject`, `encodeDotNotationPath`, `encodeDotNotationValue`, `createDotNotationPair`, `createDotNotationEmptyObjectPair`, `defineDataProperty`, `toDotNotation`, `fromDotNotation`, `decodeDotNotationPair`, `assignDotNotationPath`, `decodeDotNotationPath`, `isDotifyEncoded`, `serializeProps`, `serializeValue`, `deserializeProps`, `deserializeValue`, `isBase64Encoded`.
+- **O:** `isSafeObjectKey`, `isPlainObject`, `encodeDotNotationPath`, `encodeDotNotationValue`, `createDotNotationPair`, `createDotNotationEmptyObjectPair`, `defineDataProperty`, `toDotNotation`, `fromDotNotation`, `escapeDotNotationBranches`, `decodeDotNotationPair`, `assignDotNotationPath`, `decodeDotNotationPath`, `isDotifyEncoded`, `serializeProps`, `serializeValue`, `deserializeProps`, `deserializeValue`, `isBase64Encoded`.
 - **O callbacks:** `encodeDotNotationValue.callback@74`, `serializeValue.callback@331`, `fromDotNotation.callback@170`, `decodeDotNotationPath.callback@249`.
 
 Evidence: [utilities](#evidence-utilities); typecheck.
@@ -620,10 +628,12 @@ Evidence: [utilities](#evidence-utilities); typecheck.
 
 ### [utils/wire-value.ts](../packages/forgeframe/src/utils/wire-value.ts)
 
-Date framing and recursive JSON replacer/reviver behaviour are codec operations. The optional internal function encoder extends the existing replacer for prop codecs while callers without that encoder retain ordinary JSON function omission. Retain recursion and malformed Date handling together.
+Date framing and recursive JSON replacer/reviver behaviour are codec operations. The optional internal function encoder extends the existing replacer for prop codecs while callers without that encoder retain ordinary JSON function omission. Retain recursion and malformed Date handling together. For prop-codec JSON leaves, native conversion runs encoders once and records generated marker paths; `escapeConvertedRecords` then escapes final ordinary record shapes without re-running encoders.
 
-- **O:** `isObjectRecord`, `hasOwnKey`, `encodeDateWireValue`, `isDateWireValue`, `decodeDateWireValue`, `stringifyWireValue`, `stringifyWireValue.wireValueReplacer`, `parseWireValue`.
-- **O callbacks:** `parseWireValue.callback@92`.
+`assertDefinedArrayEntries` checks normalized container values with cycle-safe traversal and without calling custom JSON encoders. `hasJsonEncoder` inspects descriptors without invoking computed properties. BASE64 encoder-bearing branches are deferred to the replacer; `isDotifyObjectBranch` mirrors DOTIFY traversal so only its encoded leaves may defer. Top-level arrays and marker-shaped records use the same JSON bridge fallback during admission and serialization. Non-callable `toJSON` fields remain ordinary data. `assertDefinedArrayEntry` also guards bridge arrays, including holes, and prop-codec replacer values before JSON can convert them to null. Date framing ignores extra instance fields as before.
+
+- **O:** `needsRecordEscape`, `escapeWireRecord`, `isRecordWireValue`, `assertDefinedArrayEntry`, `assertDefinedArrayEntries`, `hasJsonEncoder`, `isDotifyObjectBranch`, `isObjectRecord`, `hasOwnKey`, `encodeDateWireValue`, `isDateWireValue`, `decodeDateWireValue`, `stringifyWireValue`, `escapeConvertedRecords`, `stringifyWireValue.wireValueReplacer`, `parseWireValue`.
+- **O callbacks:** `parseWireValue` reviver; both `escapeConvertedRecords` mapping callbacks.
 
 Evidence: [utilities](#evidence-utilities); typecheck.
 
@@ -656,7 +666,7 @@ Evidence: [utilities](#evidence-utilities); typecheck.
 **Contract only.** Types, re-exports or immutable declarations; no runtime callable body. Public exports and supported subpaths remain unchanged.
 Evidence: [utilities](#evidence-utilities), typecheck.
 
-## Final checks
+## Historical IOSP refactor checks
 
 | Check | Result |
 | --- | --- |
@@ -673,4 +683,4 @@ Evidence: [utilities](#evidence-utilities), typecheck.
 
 Added 20 tests across five new direct-rule suites and two existing boundary suites. The latter preserve unbound computed/default callbacks, bound query/body converter receivers, and synchronous message-handler failure timing. No test or coverage threshold was weakened. The package README mirror is produced by the existing library build.
 
-These are local results. Hosted CI, commits, PR creation, publishing and deployment are outside this internal refactor.
+These results record the earlier internal refactor and are not the current v1 release status. The v1 release gates now include all three browser engines and an installed-package smoke check; see the root README for the current commands.

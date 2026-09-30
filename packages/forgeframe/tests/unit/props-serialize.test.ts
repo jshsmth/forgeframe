@@ -75,6 +75,108 @@ describe("Props serialization behavior", () => {
 		},
 	);
 
+	it.each([
+		{ __type__: "function", __id__: "ordinary", __name__: "ordinary" },
+		{
+			__forgeframe_wire_type__: "date",
+			__forgeframe_wire_value__: "2026-01-01",
+		},
+		{
+			__forgeframe_wire_type__: "record",
+			__forgeframe_wire_value__: { kept: true },
+		},
+		{ __type__: "base64", __value__: "ordinary" },
+		{ __type__: "dotify", __value__: "ordinary" },
+	])(
+		"preserves DOTIFY branches made marker-shaped by leaf conversion: %j",
+		(expected) => {
+			const { messenger, bridge } = createBridgeWithMessenger();
+			let calls = 0;
+			class EncodedLeaf {
+				constructor(private readonly value: unknown) {}
+				toJSON() {
+					calls++;
+					return this.value;
+				}
+			}
+			const makeRecord = () =>
+				Object.fromEntries(
+					Object.entries(expected).map(([key, value]) => [
+						key,
+						new EncodedLeaf(value),
+					]),
+				);
+			const definitions = {
+				payload: {
+					schema: prop.object(),
+					serialization: PROP_SERIALIZATION.DOTIFY,
+				},
+			};
+			const serialized = serializeProps<{ payload: Record<string, unknown> }>(
+				{ payload: { direct: makeRecord(), nested: { record: makeRecord() } } },
+				definitions,
+				bridge,
+			);
+			const restored = deserializeProps(
+				serialized,
+				definitions,
+				messenger,
+				bridge,
+				window,
+				"https://consumer.example.com",
+			);
+			expect(restored.payload).toEqual({
+				direct: expected,
+				nested: { record: expected },
+			});
+			expect(calls).toBe(Object.keys(expected).length * 2);
+		},
+	);
+
+	it("omits JSON-undefined DOTIFY leaves and retains emptied branches", () => {
+		const { messenger, bridge } = createBridgeWithMessenger();
+		let calls = 0;
+		class OmittedLeaf {
+			toJSON() {
+				calls++;
+				return undefined;
+			}
+		}
+		const definitions = {
+			payload: {
+				schema: prop.object(),
+				serialization: PROP_SERIALIZATION.DOTIFY,
+			},
+		};
+		const serialized = serializeProps<{ payload: Record<string, unknown> }>(
+			{
+				payload: {
+					kept: true,
+					omitted: new OmittedLeaf(),
+					symbol: Symbol("metadata"),
+					empty: { omitted: new OmittedLeaf(), missing: undefined },
+					deep: { empty: { symbol: Symbol("metadata") } },
+				},
+			},
+			definitions,
+			bridge,
+		);
+		const restored = deserializeProps(
+			serialized,
+			definitions,
+			messenger,
+			bridge,
+			window,
+			"https://consumer.example.com",
+		);
+		expect(restored.payload).toEqual({
+			kept: true,
+			empty: {},
+			deep: { empty: {} },
+		});
+		expect(calls).toBe(2);
+	});
+
 	it("should round-trip Date props through the default serializer", () => {
 		const { messenger, bridge } = createBridgeWithMessenger();
 		const publishedAt = new Date("2026-01-02T03:04:05.678Z");

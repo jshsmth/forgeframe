@@ -4,7 +4,9 @@
  * This demonstrates how to use ForgeFrame from the host (embedded) side.
  * The host receives props from the consumer via window.hostProps.
  */
+
 import { create, type HostProps, initHost, isHost, prop } from "forgeframe";
+import { requireValue } from "../require-value";
 
 const NESTED_CHILD_TAG = "playground-browser-nested-child";
 const hostOrigin = window.location.origin;
@@ -52,7 +54,7 @@ declare global {
 	}
 }
 
-const app = document.getElementById("app")!;
+const app = requireValue(document.getElementById("app"));
 
 /**
  * Render when embedded via ForgeFrame
@@ -62,7 +64,7 @@ function renderEmbedded() {
 	// - All props passed from consumer (name, count, onGreet, etc.)
 	// - Built-in methods (close, resize, focus, show, hide, export, etc.)
 	// - Context info (uid, tag, getConsumerDomain, etc.)
-	const hostProps = window.hostProps!;
+	const hostProps = requireValue(window.hostProps);
 
 	// Built-in hostProps keys to exclude from "Received Props"
 	const builtInKeys = new Set([

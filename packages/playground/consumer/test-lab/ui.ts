@@ -1,3 +1,4 @@
+import { requireValue } from "../../require-value";
 import type { ScenarioDefinition, TestResult } from "./types";
 
 export const SCENARIOS: ScenarioDefinition[] = [
@@ -154,7 +155,7 @@ const LAB_STYLES = `
 
 export function renderOverview(): void {
 	renderHeader();
-	document.querySelector("main")!.innerHTML = `
+	requireValue(document.querySelector("main")).innerHTML = `
     <p class="lab-kicker">Browser test lab</p>
     <h1 class="lab-title">Focused ForgeFrame scenarios</h1>
     <p class="lab-description">Each route runs against the real consumer and host dev servers and reports its assertions in the page.</p>
@@ -181,7 +182,7 @@ export function renderOverview(): void {
 
 export function renderScenario(scenario: ScenarioDefinition): void {
 	renderHeader();
-	document.querySelector("main")!.innerHTML = `
+	requireValue(document.querySelector("main")).innerHTML = `
     <p class="lab-kicker">Browser scenario</p>
     <h1 class="lab-title">${scenario.title}</h1>
     <p class="lab-description">${scenario.description}</p>
@@ -244,7 +245,7 @@ export function renderResults(results: TestResult[]): void {
 }
 
 export function getSandbox(): HTMLElement {
-	return document.querySelector<HTMLElement>("#scenario-sandbox")!;
+	return requireValue(document.querySelector<HTMLElement>("#scenario-sandbox"));
 }
 
 function renderHeader(): void {

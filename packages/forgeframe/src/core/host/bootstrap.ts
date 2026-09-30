@@ -10,6 +10,7 @@
 import type { HostPropsDefinition } from "../../types/props";
 import type { HostProps } from "../../types/runtime";
 import type { DomainMatcher } from "../../types/utility";
+import { hasBrowserWindow } from "../../utils/browser";
 import {
 	consumeInitialPayload,
 	isForgeFrameWindow,
@@ -57,6 +58,7 @@ export function initHost<P extends Record<string, unknown>, SchemaInputs = P>(
 	allowedConsumerDomains?: DomainMatcher,
 	options: { deferInit?: boolean } = {},
 ): HostComponent<P, SchemaInputs> | null {
+	if (!hasBrowserWindow()) return null;
 	if (hostInstance) {
 		try {
 			hostInstance.applyHostConfiguration(
@@ -134,7 +136,9 @@ export function clearHostInstance(): void {
 		hostInstance = null;
 	}
 
-	delete (
-		window as unknown as { hostProps?: HostProps<Record<string, unknown>> }
-	).hostProps;
+	if (hasBrowserWindow()) {
+		delete (
+			window as unknown as { hostProps?: HostProps<Record<string, unknown>> }
+		).hostProps;
+	}
 }

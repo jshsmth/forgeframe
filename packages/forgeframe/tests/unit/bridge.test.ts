@@ -490,11 +490,11 @@ describe("serializeFunctions", () => {
 		value.__proto__ = {
 			leaked: true,
 		};
-		value["constructor"] = {
+		Reflect.set(value, "constructor", {
 			prototype: {
 				ignored: true,
 			},
-		};
+		});
 
 		const result = serializeFunctions(value, bridge) as Record<string, unknown>;
 
@@ -660,11 +660,11 @@ describe("deserializeFunctions", () => {
 		value.__proto__ = {
 			leaked: true,
 		};
-		value["constructor"] = {
+		Reflect.set(value, "constructor", {
 			prototype: {
 				ignored: true,
 			},
-		};
+		});
 
 		const result = deserializeFunctions(
 			value,

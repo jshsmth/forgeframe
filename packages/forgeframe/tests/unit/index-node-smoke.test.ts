@@ -24,6 +24,9 @@ describe("Index node smoke", () => {
 			create,
 			createReactComponent,
 			initHost,
+			isHost,
+			isEmbedded,
+			getHostProps,
 			prop,
 			withReactComponent,
 		} = publicEntrypoint;
@@ -37,6 +40,14 @@ describe("Index node smoke", () => {
 		expect(ForgeFrame.VERSION).toBe(VERSION);
 		expect(typeof createReactComponent).toBe("function");
 		expect(typeof withReactComponent).toBe("function");
+		expect(isHost()).toBe(false);
+		expect(isEmbedded()).toBe(false);
+		expect(initHost()).toBeNull();
+		expect(getHostProps()).toBeUndefined();
+		expect(ForgeFrame.isHost()).toBe(false);
+		expect(ForgeFrame.isEmbedded()).toBe(false);
+		expect(ForgeFrame.initHost()).toBeNull();
+		expect(ForgeFrame.getHostProps()).toBeUndefined();
 
 		const AbsoluteUrlComponent = ForgeFrame.create({
 			tag: "node-absolute-component",

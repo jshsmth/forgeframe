@@ -677,7 +677,7 @@ export interface SiblingInfo {
 	uid: string;
 	/** Component tag name */
 	tag: string;
-	/** Exports from sibling (if any) */
+	/** Exported data and promise-returning methods from the sibling, if any. */
 	exports?: unknown;
 }
 
@@ -800,6 +800,9 @@ export interface HostPropsBuiltins<P = Record<string, unknown>> {
 	 * @remarks
 	 * Peer instances are other ForgeFrame component instances that share the same
 	 * consumer window. This enables communication between multiple embedded components.
+	 * Exported methods are relayed through the consumer and return promises.
+	 * Rediscover peers after a sibling replaces its exports or reconnects; retired
+	 * methods reject. Unrelated prop updates do not retire cached peer methods.
 	 *
 	 * @param options - Options for peer discovery
 	 * @returns Promise resolving to array of peer info

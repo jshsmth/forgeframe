@@ -10,6 +10,7 @@
 import {
 	deserializeFunctions,
 	FunctionBridge,
+	serializeFunctions,
 } from "../../communication/bridge";
 import { type MessageHandler, Messenger } from "../../communication/messenger";
 import type { ConsumerExports } from "../../communication/types";
@@ -73,6 +74,9 @@ export class ConsumerTransport<
 	/** Function bridge for serializing callable props across windows. */
 	public bridge: FunctionBridge;
 
+	/** Peer relays have a lifetime independent of consumer prop batches. */
+	private peerBridge: FunctionBridge;
+
 	/** Connected host window reference. */
 	public hostWindow: Window | null = null;
 
@@ -109,6 +113,11 @@ export class ConsumerTransport<
 		);
 		this.bridge = new FunctionBridge(this.messenger, (source) =>
 			this.isHostControlSource(source),
+		);
+		this.peerBridge = new FunctionBridge(
+			this.messenger,
+			(source) => this.isHostControlSource(source),
+			MESSAGE_NAME.PEER_CALL,
 		);
 	}
 
@@ -311,6 +320,8 @@ export class ConsumerTransport<
 				this.activeHostDomain = source.domain;
 				this.bootstrapSessionId = data.sessionId;
 				this.bridge.clearRemote();
+				this.peerBridge.startBatch();
+				this.peerBridge.finishBatch();
 				handlers.onReconnect?.();
 				return snapshot;
 			},
@@ -402,7 +413,15 @@ export class ConsumerTransport<
 
 		this.onHostControl<ConsumerSiblingRequest>(
 			MESSAGE_NAME.GET_SIBLINGS,
-			(request) => handlers.onGetSiblings(request),
+			async (request) => {
+				const peers = await handlers.onGetSiblings(request);
+				try {
+					return serializeFunctions(peers, this.peerBridge);
+				} finally {
+					// Repeated discovery and prop updates must preserve held peer snapshots.
+					this.peerBridge.finishBatch(true);
+				}
+			},
 		);
 	}
 
@@ -456,6 +475,7 @@ export class ConsumerTransport<
 	destroy(): void {
 		this.messenger.destroy();
 		this.bridge.destroy();
+		this.peerBridge.destroy();
 	}
 }
 

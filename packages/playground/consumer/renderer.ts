@@ -1,9 +1,12 @@
 /**
  * Component rendering for ForgeFrame Playground
  */
+
 import ForgeFrame, { type PropSchema, prop } from "forgeframe";
+import { requireValue } from "../require-value";
 import { elements } from "./elements";
 import { log, setButtonsEnabled, setStatus } from "./logger";
+import { parsePropInput, renderPropsBar } from "./props-bar";
 import {
 	componentCache,
 	currentConfig,
@@ -19,6 +22,8 @@ import {
 	setPropValue,
 } from "./state";
 import type { DynamicProps, PlaygroundConfig } from "./types";
+
+let componentSequence = 0;
 
 /**
  * Maps string type names to prop schema builders
@@ -85,9 +90,9 @@ export function buildPropsSchema(config: PlaygroundConfig) {
 }
 
 export function createModalTemplate(config: PlaygroundConfig) {
-	const cacheKey = `${config.tag}-modal-${JSON.stringify(config.modalStyle || {})}`;
+	const cacheKey = `modal-${JSON.stringify(config)}`;
 	if (componentCache.has(cacheKey)) {
-		return componentCache.get(cacheKey)!;
+		return requireValue(componentCache.get(cacheKey));
 	}
 
 	const ms = config.modalStyle || {};
@@ -95,7 +100,7 @@ export function createModalTemplate(config: PlaygroundConfig) {
 	const modalHeight = ms.height || 400;
 
 	const component = ForgeFrame.create<DynamicProps>({
-		tag: `${config.tag}-modal-${Date.now()}`, // Unique tag to allow style changes
+		tag: `${config.tag}-modal-${++componentSequence}`,
 		url: config.url,
 		dimensions: { width: modalWidth, height: modalHeight },
 		style: {
@@ -197,7 +202,7 @@ export function createComponent(
 ) {
 	// Create fresh component with unique tag each time to avoid registration conflicts
 	// (unlike modals which can be cached since they append to body fresh each time)
-	const uniqueTag = `${config.tag}-${Date.now()}`;
+	const uniqueTag = `${config.tag}-${++componentSequence}`;
 
 	// For popup context, use modalStyle dimensions as fallback since '100%' doesn't work for popups
 	let dimensions = config.dimensions as {
@@ -233,24 +238,6 @@ export async function renderComponent() {
 
 	const config = currentConfig;
 
-	// Sync prop values from inputs before render
-	elements.propsBar.querySelectorAll("input[data-prop]").forEach((input) => {
-		const propName = (input as HTMLInputElement).dataset.prop!;
-		const propDef = config.props?.[propName] as
-			| Record<string, unknown>
-			| undefined;
-		let value: unknown = (input as HTMLInputElement).value;
-
-		const type = ((propDef?.type as string) || "").toLowerCase();
-		if (type === "number") {
-			value = parseFloat((input as HTMLInputElement).value) || 0;
-		} else if (type === "boolean") {
-			value = (input as HTMLInputElement).value === "true";
-		}
-
-		setPropValue(propName, value);
-	});
-
 	const modeLabel =
 		currentContext === "popup" ? "popup" : `iframe (${currentIframeStyle})`;
 
@@ -258,6 +245,22 @@ export async function renderComponent() {
 	setStatus("Rendering...", "idle");
 
 	try {
+		// Validate every editor value before changing the shared snapshot.
+		const inputs = Array.from(
+			elements.propsBar.querySelectorAll<HTMLInputElement>("input[data-prop]"),
+		);
+		const values = inputs.map((input) => {
+			const name = requireValue(input.dataset.prop);
+			const definition = config.props?.[name] as
+				| Record<string, unknown>
+				| undefined;
+			const type = ((definition?.type as string) || "").toLowerCase();
+			return [
+				name,
+				parsePropInput(input, type, currentPropValues[name]),
+			] as const;
+		});
+		for (const [name, value] of values) setPropValue(name, value);
 		// Use modal template only for iframe context with modal style
 		const useModal =
 			currentContext === "iframe" && currentIframeStyle === "modal";
@@ -290,6 +293,7 @@ export async function renderComponent() {
 		newInstance.event.on("close", () => {
 			log("Event: close", "info");
 			setInstance(null);
+			renderPropsBar(config);
 			setStatus("Closed", "idle");
 			setButtonsEnabled(false);
 			if (modalOverlay) {
@@ -344,6 +348,7 @@ export async function renderComponent() {
 
 		setStatus("Rendered", "rendered");
 		setButtonsEnabled(true);
+		renderPropsBar(config);
 		log(`Component rendered successfully (${modeLabel})`, "success");
 	} catch (err) {
 		log(`Render failed: ${err}`, "error");

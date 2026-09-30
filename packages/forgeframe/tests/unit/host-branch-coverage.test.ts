@@ -3,6 +3,7 @@
  *
  * Covers deferred init branches, hostProps fallback behavior, init failure capture, and environment guard paths.
  */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type MessageHandler, Messenger } from "@/communication/messenger";
 import type { ConsumerExports } from "@/communication/types";
@@ -18,6 +19,7 @@ import * as hostSecurity from "@/core/host/security";
 import * as namePayload from "@/window/name-payload";
 import { buildWindowName } from "@/window/name-payload";
 import type { HostComponentRef, WindowNamePayload } from "@/window/types";
+import { requireValue } from "../require-value";
 
 const VALID_EXPORTS: ConsumerExports = {
 	init: MESSAGE_NAME.INIT,
@@ -207,7 +209,7 @@ describe("Host branch coverage and edge paths", () => {
 
 		const subscription = host.hostProps.onProps(onPropsSpy);
 		subscription.cancel();
-		propsHandler!({ amount: 50 }, createMessageSource(window));
+		requireValue(propsHandler)({ amount: 50 }, createMessageSource(window));
 
 		expect(onPropsSpy).not.toHaveBeenCalled();
 	});

@@ -471,7 +471,7 @@ function createBaseIntegrationHarness(options?: {
 		hostWindow.name = iframe.name;
 		if (iframe.src && iframe.src !== "about:blank") {
 			try {
-				hostDom.reconfigure({ url: iframe.src });
+				hostDom.reconfigure({ url: options?.hostUrl ?? iframe.src });
 			} catch {
 				// Ignore invalid iframe navigation targets in tests.
 			}
