@@ -31,6 +31,7 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `messenger-routing.test.ts`: Multi-instance channel routing and function bridge response isolation.
 - `popup.test.ts`: Popup open/close/focus/resize helpers, nonpixel resize fallbacks, and close/popup-block detection.
 - `playground-code-generator.test.ts`: Executes generated iframe/popup/modal examples with empty props, composite values, callbacks, quoted names, and styles.
+- `playground-props-bar.test.ts`: Quoted prop names and values, typed JSON edits, render-time preservation, invalid input recovery, and modal schema cache invalidation.
 - `playground-text-rendering.test.ts`: Literal prop keys/values and identity display, safe logger text, update IDs, and preserved host controls.
 - `popup-layout.test.ts`: Popup geometry and polling backoff from supplied screen dimensions.
 - `package-contract.test.ts`: ESM package exports, documentation claims, and release checks.
@@ -81,7 +82,7 @@ Install the engines with `npx playwright install chromium firefox webkit`, then 
 
 `peer-exports.spec.ts` runs real same-origin sibling hosts under a separate consumer origin in all three engines. It verifies nested callable exports and dates, prop-update independence, propagated errors, retirement/replacement of exports, and discovery across component tags.
 
-`playground-text.spec.ts` builds the real host playground and consumer logger. Cross-origin iframe/popup tests verify literal markup-shaped prop names and values, greeting logs, updates, and export controls. Omitted popup dimensions are verified as a 500 × 500 viewport in all three engines.
+`playground-text.spec.ts` builds both real playground pages and the consumer logger. Cross-origin iframe/popup tests verify literal markup-shaped prop names and values, greeting logs, updates, and export controls. Omitted popup dimensions are verified as a 500 × 500 viewport in all three engines. The consumer editor also exercises the physical blur-to-Set click sequence, copied-code refresh, and render/close control states.
 
 The suite also renders two same-tag widgets concurrently against the same host origin, verifying independent prop snapshots and callbacks and continued operation after one peer closes.
 
