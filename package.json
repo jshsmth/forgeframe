@@ -26,10 +26,13 @@
 		"version:major": "npm version major -w forgeframe --no-git-tag-version",
 		"format": "biome format --write .",
 		"format:check": "biome format .",
-		"check:ci": "biome ci ."
+		"check:ci": "biome ci .",
+		"test:browser": "npm run test:browser -w forgeframe"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.12",
+		"@playwright/test": "1.63.0",
+		"@types/node": "24.19.0",
 		"@vitest/coverage-v8": "^4.1.11",
 		"concurrently": "^9.2.4",
 		"jsdom": "^27.4.0",

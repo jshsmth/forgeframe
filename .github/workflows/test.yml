@@ -36,6 +36,14 @@ jobs:
       - name: Run tests with coverage
         run: npm run test:coverage
 
+      - name: Install Chromium
+        if: matrix.node-version == 24
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser navigation regressions
+        if: matrix.node-version == 24
+        run: npm run test:browser
+
       - name: Build and validate published types
         run: npm run build && npm run typecheck:package
 

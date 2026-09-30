@@ -13,7 +13,7 @@ import type { ContextType } from "../constants";
 import { CONTEXT, EVENT, MESSAGE_NAME } from "../constants";
 import { EventEmitter } from "../events/emitter";
 import {
-	isStandardSchema,
+	getPropsForHost,
 	propsToBodyParams,
 	propsToQueryParams,
 } from "../props";
@@ -812,12 +812,11 @@ export class ConsumerComponent<
 			props: this.propsPipeline.props,
 			propDefinitions: this.options.props,
 			hostDomain: this.resolveUrlOrigin(baseUrl) ?? "*",
-			children: buildNestedHostRefs(this.options, this.propsPipeline.props),
 			exports: this.createConsumerExports(),
 		});
 	}
 
-	/** Legacy protocol-v1 bootstrap metadata retained for mixed-version hosts. @internal */
+	/** Message names retained in channel metadata for payload compatibility. @internal */
 	private createConsumerExports(): ConsumerExports {
 		return {
 			init: MESSAGE_NAME.INIT,
@@ -879,7 +878,27 @@ export class ConsumerComponent<
 	 */
 	private setupMessageHandlers(): void {
 		this.transport.setupMessageHandlers({
-			onInit: () => this.syncSameDomainPropsAfterInit(),
+			onBootstrap: (source) =>
+				this.propsPipeline.readCurrentProps((props) => {
+					this.assertPropsUpdateActive();
+					const propsForHost = getPropsForHost(
+						props,
+						this.options.props,
+						source.domain,
+						isSameDomain(source.window),
+					);
+					return {
+						props: this.transport.serializePropsForHost(
+							propsForHost as Record<string, unknown>,
+							this.options.props as PropsDefinition<Record<string, unknown>>,
+						),
+						children: buildNestedHostRefs(this.options, props),
+					};
+				}),
+			onReconnect: () => {
+				this.exports = undefined;
+				this.consumerExports = undefined;
+			},
 			onClose: async () => this.close(),
 			onResize: async (dimensions) => this.resize(dimensions),
 			onFocus: async () => this.focus(),
@@ -898,54 +917,6 @@ export class ConsumerComponent<
 				this.consumerExports = data;
 			},
 			onGetSiblings: (request) => getSiblingInstances(request),
-		});
-	}
-
-	/**
-	 * Synchronizes sameDomain props after the host proves its loaded origin via INIT.
-	 * @internal
-	 */
-	private async syncSameDomainPropsAfterInit(): Promise<void> {
-		if (!this.transport.hostWindow || !this.transport.isHostConnected()) {
-			return;
-		}
-
-		if (!isSameDomain(this.transport.hostWindow)) {
-			return;
-		}
-
-		if (!this.hasSameDomainPropDefinition()) {
-			return;
-		}
-
-		try {
-			await this.propsPipeline.syncCurrentPropsToHost({
-				assertActive: () => this.assertPropsUpdateActive(),
-				shouldSendPropsToHost: () => this.transport.isHostConnected(),
-				sendPropsUpdateToHost: (nextProps) =>
-					this.sendPropsUpdateToHost(nextProps),
-			});
-		} catch (error) {
-			if (this.destroyed || this.closing) return;
-			emitConsumerError(
-				this.event,
-				this.propsPipeline.props as Record<string, unknown>,
-				error as Error,
-			);
-		}
-	}
-
-	/**
-	 * Returns true when any prop definition is restricted to same-origin hosts.
-	 * @internal
-	 */
-	private hasSameDomainPropDefinition(): boolean {
-		return Object.values(this.options.props).some((definition) => {
-			if (!definition || isStandardSchema(definition)) {
-				return false;
-			}
-
-			return definition.sameDomain === true;
 		});
 	}
 

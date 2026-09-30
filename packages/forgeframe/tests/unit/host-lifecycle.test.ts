@@ -5,9 +5,15 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import type { MessageHandler } from "@/communication/messenger";
+import { type MessageHandler, Messenger } from "@/communication/messenger";
 import type { ConsumerExports } from "@/communication/types";
-import { CONTEXT, EVENT, MESSAGE_NAME, VERSION } from "@/constants";
+import {
+	CONTEXT,
+	EVENT,
+	MESSAGE_NAME,
+	PROTOCOL_VERSION,
+	VERSION,
+} from "@/constants";
 import { ConsumerComponent } from "@/core/consumer";
 import {
 	clearHostInstance,
@@ -19,6 +25,7 @@ import {
 } from "@/core/host";
 import * as hostSecurity from "@/core/host/security";
 import { prop } from "@/props/prop";
+import { createDeferred } from "@/utils/promise";
 import * as helpers from "@/window/helpers";
 import { buildWindowName } from "@/window/name-payload";
 import type { WindowNamePayload } from "@/window/types";
@@ -103,7 +110,7 @@ function createConsumer(
 
 function createMessageSource(
 	windowRef: Window,
-	domain = "https://consumer.example.com",
+	domain = windowRef.location?.origin ?? "https://consumer.example.com",
 ): HandlerSource {
 	return {
 		uid: "consumer-source",
@@ -123,6 +130,27 @@ afterEach(async () => {
 });
 
 describe("Host lifecycle behavior", () => {
+	it("preserves the latest acknowledged update when an older bootstrap response arrives", async () => {
+		const bootstrap = createDeferred<{ props: { amount: number } }>();
+		vi.spyOn(Messenger.prototype, "send").mockImplementation(
+			() => bootstrap.promise,
+		);
+		const host = createHost({
+			payload: createPayload({ protocolVersion: PROTOCOL_VERSION }),
+		});
+		const propsHandler = (
+			host as unknown as { messenger: { handlers: Map<string, DirectHandler> } }
+		).messenger.handlers.get(MESSAGE_NAME.PROPS);
+		expect(propsHandler?.({ amount: 42 }, createMessageSource(window))).toEqual(
+			{ success: true },
+		);
+		expect(host.hostProps.amount).toBe(42);
+		bootstrap.resolve({ props: { amount: 10 } });
+		await host.ready;
+		expect(host.hostProps.amount).toBe(42);
+		host.destroy();
+	});
+
 	it("should call consumer control channels through hostProps builtins", async () => {
 		const consumerWindow = { postMessage: vi.fn() } as unknown as Window;
 		const host = createHost({ consumerWindow });
@@ -201,7 +229,7 @@ describe("Host lifecycle behavior", () => {
 		expect(focusSpy).toHaveBeenCalled();
 	});
 
-	it("should omit sameDomain props from bootstrap payloads even for same-origin hosts", () => {
+	it("should withhold all props until the messaging bootstrap completes", () => {
 		const definitions = {
 			label: { schema: prop.string() },
 			secret: { schema: prop.string(), sameDomain: true },
@@ -228,7 +256,7 @@ describe("Host lifecycle behavior", () => {
 		const host = initHost(definitions, undefined, { deferInit: true });
 
 		expect(host).not.toBeNull();
-		expect(host!.hostProps.label).toBe("visible");
+		expect(host!.hostProps.label).toBeUndefined();
 		expect(host!.hostProps.secret).toBeUndefined();
 	});
 
@@ -263,7 +291,7 @@ describe("Host lifecycle behavior", () => {
 		expect(sendSpy).toHaveBeenCalled();
 	});
 
-	it("should validate transformed consumer outputs with the host output schema", () => {
+	it("should validate transformed consumer outputs with the host output schema", async () => {
 		const definitions = {
 			amount: {
 				schema: z.string().transform(Number),
@@ -282,7 +310,11 @@ describe("Host lifecycle behavior", () => {
 		).buildWindowName();
 		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
 
+		vi.spyOn(Messenger.prototype, "send").mockResolvedValueOnce({
+			props: { amount: 42 },
+		});
 		const host = initHost(definitions, undefined, { deferInit: true });
+		await host?.ready;
 
 		expect(host?.hostProps.amount).toBe(42);
 		expect(host?.hostProps.consumer.props).toMatchObject({ amount: 42 });

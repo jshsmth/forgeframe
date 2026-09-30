@@ -132,6 +132,38 @@ export function resolveConsumerSecurityContext(options: {
 	};
 }
 
+/** Selects an exact messaging target; the bootstrap response verifies it. */
+export function resolveMessagingConsumerContext(options: {
+	consumerWindow: Window;
+	claimedConsumerDomain: string;
+	allowedConsumerDomains?: DomainMatcher;
+	tag: string;
+}): HostSecurityContext {
+	const consumerDomain =
+		getAccessibleConsumerOrigin(options.consumerWindow) ??
+		options.claimedConsumerDomain;
+	let origin: URL;
+	try {
+		origin = new URL(consumerDomain);
+	} catch {
+		throw new Error(CONSUMER_ORIGIN_VERIFICATION_ERROR);
+	}
+	if (
+		!["http:", "https:"].includes(origin.protocol) ||
+		origin.origin !== consumerDomain
+	) {
+		throw new Error(CONSUMER_ORIGIN_VERIFICATION_ERROR);
+	}
+	if (options.allowedConsumerDomains) {
+		assertAllowedConsumerDomain(
+			options.allowedConsumerDomains,
+			consumerDomain,
+			options.tag,
+		);
+	}
+	return { consumerDomain, consumerDomainVerified: false };
+}
+
 export function reassertAllowedConsumerDomain(options: {
 	consumerWindow: Window;
 	consumerDomain: string;

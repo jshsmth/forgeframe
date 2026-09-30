@@ -484,9 +484,10 @@ const initDelay =
 		? Math.min(requestedInitDelay, 2000)
 		: 0;
 
-const initializeHostPage = () => {
+const initializeHostPage = async () => {
 	// Explicitly initialize the host runtime before reading window.hostProps.
-	initHost();
+	const host = initHost();
+	await host?.ready;
 
 	if (isHost()) {
 		renderEmbedded();
@@ -496,7 +497,9 @@ const initializeHostPage = () => {
 };
 
 if (initDelay > 0) {
-	window.setTimeout(initializeHostPage, initDelay);
+	window.setTimeout(() => {
+		void initializeHostPage().catch(console.error);
+	}, initDelay);
 } else {
-	initializeHostPage();
+	void initializeHostPage().catch(console.error);
 }

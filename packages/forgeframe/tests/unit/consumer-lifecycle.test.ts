@@ -215,48 +215,31 @@ describe("Consumer lifecycle behavior", () => {
 		await expect(waitForHost.call(consumer)).resolves.toBeUndefined();
 	});
 
-	it("should send sameDomain props after INIT when the loaded host is same-origin", async () => {
+	it("should deliver sameDomain props in the verified bootstrap response", async () => {
 		const consumer = createConsumer(
 			{
 				url: "/widget",
-				props: {
-					secret: { schema: prop.string(), sameDomain: true },
-				},
+				props: { secret: { schema: prop.string(), sameDomain: true } },
 			},
 			{ secret: "same-origin-only" },
 		);
-		const handlers = getHandlers(consumer);
-		const initHandler = handlers.get(MESSAGE_NAME.INIT);
-
 		const internal = getInternals(consumer);
-		internal.transport.hostWindow = {
+		const hostWindow = {
 			closed: false,
 			postMessage: vi.fn(),
 			location: { origin: window.location.origin },
 		} as unknown as Window;
-
-		const sendSpy = vi
-			.spyOn(internal.transport.messenger, "send")
-			.mockResolvedValue(undefined);
-
-		expect(initHandler).toBeDefined();
-		expect(
-			initHandler!(
-				{},
-				createMessageSource(
-					internal.transport.hostWindow!,
-					window.location.origin,
-				),
+		internal.transport.hostWindow = hostWindow;
+		const bootstrap = getHandlers(consumer).get(MESSAGE_NAME.BOOTSTRAP);
+		await expect(
+			bootstrap?.(
+				{ sessionId: "same-origin-session" },
+				createMessageSource(hostWindow, window.location.origin),
 			),
-		).toEqual({ success: true });
-		await Promise.resolve();
-
-		expect(sendSpy).toHaveBeenCalledWith(
-			internal.transport.hostWindow,
-			window.location.origin,
-			MESSAGE_NAME.PROPS,
-			expect.objectContaining({ secret: "same-origin-only" }),
-		);
+		).resolves.toEqual({
+			props: { secret: "same-origin-only" },
+			children: undefined,
+		});
 	});
 
 	it("should route prop updates to the verified INIT origin after an allowed redirect", async () => {
@@ -338,7 +321,7 @@ describe("Consumer lifecycle behavior", () => {
 		);
 	});
 
-	it("should queue INIT sameDomain sync behind an in-flight props update to preserve function refs", async () => {
+	it("should queue bootstrap behind an in-flight props update to preserve function refs", async () => {
 		const onReady = vi.fn();
 		const consumer = createConsumer(
 			{
@@ -356,7 +339,7 @@ describe("Consumer lifecycle behavior", () => {
 			},
 		);
 		const handlers = getHandlers(consumer);
-		const initHandler = handlers.get(MESSAGE_NAME.INIT);
+		const bootstrapHandler = handlers.get(MESSAGE_NAME.BOOTSTRAP);
 		const callHandler = handlers.get(MESSAGE_NAME.CALL);
 
 		const internal = getInternals(consumer);
@@ -390,20 +373,16 @@ describe("Consumer lifecycle behavior", () => {
 				return undefined;
 			});
 
-		expect(initHandler).toBeDefined();
+		expect(bootstrapHandler).toBeDefined();
 		expect(callHandler).toBeDefined();
-		expect(
-			initHandler!(
-				{},
-				createMessageSource(
-					internal.transport.hostWindow!,
-					window.location.origin,
-				),
-			),
-		).toEqual({ success: true });
-		await Promise.resolve();
-
 		const updatePromise = consumer.updateProps({ count: 2 });
+		const bootstrapPromise = bootstrapHandler?.(
+			{ sessionId: "new-document" },
+			createMessageSource(
+				internal.transport.hostWindow!,
+				window.location.origin,
+			),
+		) as Promise<{ props: Record<string, unknown> }>;
 
 		expect(sendSpy).toHaveBeenCalledTimes(1);
 
@@ -411,9 +390,9 @@ describe("Consumer lifecycle behavior", () => {
 		await updatePromise;
 		await Promise.resolve();
 
-		expect(sendSpy).toHaveBeenCalledTimes(2);
+		expect(sendSpy).toHaveBeenCalledTimes(1);
 
-		const latestPayload = sentPayloads[1] as {
+		const latestPayload = (await bootstrapPromise).props as {
 			onReady: { __id__: string };
 			count: number;
 			secret: string;

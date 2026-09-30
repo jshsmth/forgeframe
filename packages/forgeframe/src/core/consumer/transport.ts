@@ -21,12 +21,17 @@ import type { PropsDefinition } from "../../types/props";
 import type { RemoteValue, SiblingInfo } from "../../types/runtime";
 import type { Dimensions, DomainMatcher } from "../../types/utility";
 import { createDeferred, promiseTimeout } from "../../utils/promise";
-import { getDomain, isSameDomain, isWindowClosed } from "../../window/helpers";
+import {
+	getDomain,
+	isSameDomain,
+	isWindowClosed,
+	matchDomain,
+} from "../../window/helpers";
 import {
 	buildWindowName,
 	createWindowPayload,
 } from "../../window/name-payload";
-import type { HostComponentRef } from "../../window/types";
+import type { HostBootstrapData, HostComponentRef } from "../../window/types";
 import type { ConsumerSiblingRequest } from "./siblings";
 import type { NormalizedOptions } from "./types";
 
@@ -37,6 +42,8 @@ type VerifiedMessageSource = Parameters<MessageHandler>[1];
  * @internal
  */
 export interface ConsumerTransportHandlers<X> {
+	onBootstrap?: (source: VerifiedMessageSource) => Promise<HostBootstrapData>;
+	onReconnect?: () => void;
 	onInit?: () => void | Promise<void>;
 	onClose: () => Promise<void>;
 	onResize: (dimensions: Dimensions) => Promise<void>;
@@ -84,6 +91,9 @@ export class ConsumerTransport<
 	/** Whether host initialization handshake has completed. */
 	public hostInitialized = false;
 
+	private requiresBootstrap = false;
+	private bootstrapSessionId: string | null = null;
+
 	constructor(
 		private uid: string,
 		private options: NormalizedOptions<P, SchemaInputs>,
@@ -98,7 +108,7 @@ export class ConsumerTransport<
 			trustedDomains,
 		);
 		this.bridge = new FunctionBridge(this.messenger, (source) =>
-			Boolean(this.hostWindow && source.window === this.hostWindow),
+			this.isHostControlSource(source),
 		);
 	}
 
@@ -256,27 +266,14 @@ export class ConsumerTransport<
 		children?: Record<string, HostComponentRef>;
 		exports: ConsumerExports;
 	}): string {
-		const hostDomain = options.hostDomain ?? this.getHostDomain();
-		const propsForHost = getPropsForHost(
-			options.props,
-			options.propDefinitions,
-			hostDomain,
-			false,
-		);
-
-		const serializedProps = this.serializePropsForHost(
-			propsForHost as Record<string, unknown>,
-			options.propDefinitions as PropsDefinition<Record<string, unknown>>,
-		);
-
+		this.requiresBootstrap = true;
 		const payload = createWindowPayload({
 			uid: this.uid,
 			tag: options.tag,
 			context: options.context,
 			consumerDomain: getDomain(),
-			props: serializedProps,
+			props: {},
 			exports: options.exports,
-			children: options.children,
 		});
 
 		return buildWindowName(payload);
@@ -318,23 +315,54 @@ export class ConsumerTransport<
 	 * Sets up host message handlers.
 	 */
 	setupMessageHandlers(handlers: ConsumerTransportHandlers<X>): void {
-		this.onHostControl(MESSAGE_NAME.INIT, (_data, source) => {
-			this.activeHostDomain = source.domain;
-			this.hostInitialized = true;
-			if (this.initPromise) {
-				this.initPromise.resolve();
-			}
+		this.onHostControl<{ sessionId: string }>(
+			MESSAGE_NAME.BOOTSTRAP,
+			async (data, source) => {
+				if (
+					!data ||
+					typeof data.sessionId !== "string" ||
+					!data.sessionId ||
+					!handlers.onBootstrap
+				) {
+					throw new Error("Invalid host bootstrap request");
+				}
+				this.hostInitialized = false;
+				this.bootstrapSessionId = null;
+				const snapshot = await handlers.onBootstrap(source);
+				this.activeHostDomain = source.domain;
+				this.bootstrapSessionId = data.sessionId;
+				this.bridge.clearRemote();
+				handlers.onReconnect?.();
+				return snapshot;
+			},
+		);
+		this.onHostControl<{ sessionId?: string }>(
+			MESSAGE_NAME.INIT,
+			(data, source) => {
+				if (
+					this.requiresBootstrap &&
+					(!this.bootstrapSessionId ||
+						data?.sessionId !== this.bootstrapSessionId)
+				) {
+					return { success: false };
+				}
+				this.activeHostDomain = source.domain;
+				this.hostInitialized = true;
+				if (this.initPromise) {
+					this.initPromise.resolve();
+				}
 
-			if (handlers.onInit) {
-				queueMicrotask(() => {
-					void Promise.resolve(handlers.onInit?.()).catch((error) => {
-						handlers.onError(error as Error);
+				if (handlers.onInit) {
+					queueMicrotask(() => {
+						void Promise.resolve(handlers.onInit?.()).catch((error) => {
+							handlers.onError(error as Error);
+						});
 					});
-				});
-			}
+				}
 
-			return { success: true };
-		});
+				return { success: true };
+			},
+		);
 
 		this.onHostControl(MESSAGE_NAME.CLOSE, async () => {
 			await handlers.onClose();
@@ -419,7 +447,17 @@ export class ConsumerTransport<
 	 * Returns true when a lifecycle/control message came from the opened host window.
 	 */
 	private isHostControlSource(source: VerifiedMessageSource): boolean {
-		return Boolean(this.hostWindow && source.window === this.hostWindow);
+		return Boolean(
+			this.hostWindow &&
+				source.window === this.hostWindow &&
+				matchDomain(
+					this.options.domain ??
+						this.openedHostDomain ??
+						this.dynamicUrlTrustedOrigin ??
+						this.getHostDomain(),
+					source.domain,
+				),
+		);
 	}
 
 	/**

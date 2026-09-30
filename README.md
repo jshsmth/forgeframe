@@ -76,6 +76,7 @@ Imagine a payment company (like Stripe) wants to let merchants embed a checkout 
 - [Templates (Advanced)](#templates-advanced)
 - [React Integration (Optional)](#react-integration-optional)
 - [Advanced Features](#advanced-features)
+- [Secure bootstrap migration](#secure-bootstrap-migration)
 - [Migrating from 0.0.15 to 0.1.0](#migrating-from-0015-to-010)
 - [API Reference](#api-reference)
 - [TypeScript](#typescript)
@@ -151,7 +152,7 @@ declare global {
   }
 }
 
-initHost(paymentProps, allowedConsumerDomains);
+await initHost(paymentProps, allowedConsumerDomains)?.ready;
 const { amount, onSuccess, close } = window.hostProps;
 
 document.getElementById('total')!.textContent = `$${amount}`;
@@ -162,7 +163,7 @@ document.getElementById('pay-btn')!.onclick = async () => {
 ```
 
 That's it! ForgeFrame handles all the cross-domain communication automatically.
-Before reading `window.hostProps` directly, call `initHost(propDefinitions, allowedConsumerDomains)` as shown in [Host Init with initHost](#host-init-with-inithost).
+Before reading props, await `initHost(propDefinitions, allowedConsumerDomains)?.ready` as shown in [Host Init with initHost](#host-init-with-inithost).
 For intentionally open widgets, omit `allowedConsumerDomains`; for payment, auth, or account flows, use an allowlist.
 
 ---
@@ -235,7 +236,7 @@ declare global {
   }
 }
 
-initHost(loginProps, allowedConsumerDomains);
+await initHost(loginProps, allowedConsumerDomains)?.ready;
 const { email, onLogin, onCancel, close } = window.hostProps;
 
 if (email) document.getElementById('email')!.value = email;
@@ -259,7 +260,7 @@ document.getElementById('cancel')!.onclick = async () => {
 <summary>Explanation</summary>
 
 - **`HostProps<LoginProps>`**: Combines your props with built-in methods (`close`, `resize`, etc.)
-- **Host init**: Call `initHost(propDefinitions, allowedConsumerDomains)` before the first direct `window.hostProps` read. Use `allowedConsumerDomains` for security-sensitive embeds; omit it only for intentionally open widgets. If your host defines a component with `ForgeFrame.create(...)`, that component path still initializes the host runtime automatically.
+- **Host init**: Await `initHost(propDefinitions, allowedConsumerDomains)?.ready` before reading props. Use `allowedConsumerDomains` for security-sensitive embeds; omit it only for intentionally open widgets. If your host defines a component with `ForgeFrame.create(...)`, that component path still initializes the host runtime automatically.
 - **`window.hostProps`**: Contains all props passed from the consumer plus built-in methods
 - **`close()`**: Built-in method to close the iframe/popup
 
@@ -666,19 +667,21 @@ declare global {
   }
 }
 
-initHost();
+await initHost()?.ready;
 const { email, onLogin, close, resize } = window.hostProps!;
 ```
 
 ### Host Init with initHost
 
 `initHost(propDefinitions?, allowedConsumerDomains?)` is required when your host bundle reads `window.hostProps` directly.
-It consumes the initial ForgeFrame `window.name` payload, clears that payload after a successful parse, validates props when definitions are provided, and attaches `window.hostProps`.
+It reads channel metadata from `window.name`, requests initial props through origin-checked messaging, validates the received props, and attaches `window.hostProps`. Await the returned host's `ready` promise before reading consumer props or nested children. Initialization errors reject `ready`.
+
+Only channel metadata remains in `window.name`, allowing reloads and subsequent host documents to reconnect and receive the latest props. Browser policies that clear window names across sites can still prevent reconnection. `initHost()` returns `null` outside a ForgeFrame host window; handle that case if the page also supports standalone use.
 
 Supported host boot patterns:
-- Call `initHost(propDefinitions, allowedConsumerDomains)` during host startup, then read `window.hostProps`.
+- Call `initHost(propDefinitions, allowedConsumerDomains)` during host startup, await the returned host's `ready`, then read `window.hostProps`.
 - Call `initHost(propDefinitions)` or `initHost()` only for hosts that are intentionally embeddable by any consumer origin.
-- Define the host with `ForgeFrame.create(...)` and let component creation initialize the host runtime.
+- Define the host with `ForgeFrame.create(...)` and let component creation initialize the host runtime, then await `initHost()?.ready` before reading props.
 
 When a shared definition uses a type-changing schema, carry both the normalized
 host props and schema-input shapes through `HostPropsDefinition` and `initHost`.
@@ -696,7 +699,7 @@ const amountProps = {
   },
 } satisfies HostPropsDefinition<AmountProps, AmountInputs>;
 
-initHost<AmountProps, AmountInputs>(amountProps, allowedConsumerDomains);
+await initHost<AmountProps, AmountInputs>(amountProps, allowedConsumerDomains)?.ready;
 ```
 
 Use `initHost()` when:
@@ -979,14 +982,14 @@ const SecureComponent = ForgeFrame.create({
 On the host page, pass the same host prop definitions and the consumer allowlist into `initHost`:
 
 ```typescript
-initHost(secureProps, [
+await initHost(secureProps, [
   'https://myapp.com',
   'https://*.myapp.com',
   /^https:\/\/.*\.trusted\.com$/,
-]);
+])?.ready;
 ```
 
-When `allowedConsumerDomains` is configured, the host fails closed if the browser does not provide a usable consumer origin. A `no-referrer` navigation can therefore prevent initialization; do not weaken the allowlist to work around that browser privacy setting.
+The host verifies the consumer through a response from the expected parent/opener window and exact origin. This works with `no-referrer` and after full-page host navigation. An invalid origin or a consumer that cannot complete the verified handshake prevents initialization.
 
 Public API removals or behavioral changes are documented in GitHub release notes. Pre-1.0 releases may include breaking changes, so pin an exact version for production integrations and review release notes before upgrading.
 
@@ -1033,12 +1036,29 @@ const ContainerComponent = ForgeFrame.create({
 // Their schemas remain executable code and are never JSON-serialized.
 import { CardFieldComponent, CVVFieldComponent } from './child-components';
 
-initHost(containerPropDefinitions, allowedConsumerDomains);
+await initHost(containerPropDefinitions, allowedConsumerDomains)?.ready;
 const { children } = window.hostProps;
 children.CardField({ onValid: () => {} }).render('#card-container');
 ```
 
-Each child tag must be registered in the host bundle before `hostProps` is initialized. Current hosts resolve executable validators, defaults, decorators, and regular expressions from that local registry instead of reconstructing them from JSON. Protocol-v1 metadata is still emitted for older hosts during staged upgrades, so nested child URLs must remain static strings.
+Each child tag must be registered in the host bundle before `hostProps` is initialized. Current hosts resolve executable validators, defaults, decorators, and regular expressions from that local registry instead of reconstructing them from JSON. Child metadata arrives through the verified bootstrap response. Nested child URLs must remain static strings.
+
+---
+
+## Secure bootstrap migration
+
+The secure bootstrap uses wire protocol version 2. Consumer props and child metadata are delivered only after verifying the loaded host window and origin; they are no longer carried in `window.name`. Initial props therefore arrive asynchronously:
+
+```typescript
+const host = initHost(propDefinitions, allowedConsumerDomains);
+if (!host) throw new Error('This page must be opened by ForgeFrame');
+await host.ready;
+const props = host.hostProps;
+```
+
+Update every host startup path to await `ready`, including hosts that share a component definition and initialize automatically. Upgrade both the consumer and host bundles. If staging the upgrade, update hosts first: current hosts can still read legacy consumer payloads, but current consumers reject older hosts that cannot complete the secure bootstrap. The redirect protection requires the consumer upgrade too.
+
+Iframe resizing now also updates ForgeFrame's default clipping wrapper. Custom container/prerender templates remain responsible for their own layout.
 
 ---
 
@@ -1070,7 +1090,7 @@ If none of these apply, the upgrade should be drop-in for the normal create, ren
 | Nested components | Hosts resolve child factories from their local component registry so executable schemas are preserved. | Import or define child components in the host bundle before `initHost()`. Keep child URLs static for protocol-v1 compatibility. |
 | Remote errors | Error messages still cross the bridge, but remote stack traces do not. | Do not depend on a remote `Error.stack`; collect host-side diagnostics locally. |
 
-The wire protocol remains version 1 and retains legacy nested-component metadata for staged upgrades. Upgrade both sides together where practical. If upgrading separately, ensure the host bundle registers every nested child before switching the consumer, and do not rely on newly callable host exports until both sides are current.
+Version 0.1.0 used wire protocol version 1 and retained legacy nested-component metadata for staged upgrades. For the current protocol, also follow the secure bootstrap migration above. Upgrade both sides together where practical. If upgrading separately, ensure the host bundle registers every nested child before switching the consumer, and do not rely on newly callable host exports until both sides are current.
 
 ---
 
@@ -1087,7 +1107,7 @@ ForgeFrame.destroyByTag(tag)      // Destroy all instances of a tag
 ForgeFrame.destroyAll()           // Destroy all instances
 ForgeFrame.isHost()               // Check if in host context
 ForgeFrame.isEmbedded()           // Alias for isHost() - more intuitive naming
-ForgeFrame.initHost(props?, allowedConsumerDomains?) // Required before direct window.hostProps access
+ForgeFrame.initHost(props?, allowedConsumerDomains?) // Await the returned host.ready before reading props
 ForgeFrame.getHostProps()         // Get hostProps in host context
 ForgeFrame.isStandardSchema(val)  // Check if value is a Standard Schema
 
@@ -1199,7 +1219,7 @@ declare global {
   }
 }
 
-initHost(hostProps, allowedConsumerDomains);
+await initHost(hostProps, allowedConsumerDomains)?.ready;
 window.hostProps!.name;
 window.hostProps!.onSubmit;
 window.hostProps!.close;

@@ -8,17 +8,20 @@
  * preserving the public host runtime surface exported from `src/core/host.ts`.
  */
 
+import { PROTOCOL_VERSION } from "../../constants";
 import { EventEmitter } from "../../events/emitter";
 import { EMPTY_PROP_DEFINITIONS } from "../../props/definitions";
 import type { HostPropsDefinition } from "../../types/props";
 import type { HostProps } from "../../types/runtime";
 import type { DomainMatcher } from "../../types/utility";
+import { matchDomain } from "../../window/helpers";
 import type { WindowNamePayload } from "../../window/types";
 import { HostPropsRuntime } from "./props-runtime";
 import {
 	reassertAllowedConsumerDomain,
 	resolveConsumerSecurityContext,
 	resolveConsumerWindow,
+	resolveMessagingConsumerContext,
 } from "./security";
 import { HostTransport } from "./transport";
 
@@ -27,6 +30,9 @@ export class HostComponent<
 	SchemaInputs = P,
 > {
 	public event: EventEmitter;
+
+	/** Resolves once initial props have arrived and passed the host schemas. */
+	public readonly ready: Promise<void>;
 
 	private uid: string;
 
@@ -45,6 +51,7 @@ export class HostComponent<
 	private propsRuntime!: HostPropsRuntime<P, SchemaInputs>;
 
 	private destroyed = false;
+	private messagingBootstrap: boolean;
 
 	constructor(
 		payload: WindowNamePayload<P>,
@@ -59,6 +66,8 @@ export class HostComponent<
 		this.tag = payload.tag;
 		this.event = new EventEmitter();
 		this.allowedConsumerDomains = allowedConsumerDomains;
+		const deferredProps = payload.protocolVersion === PROTOCOL_VERSION;
+		this.messagingBootstrap = deferredProps;
 
 		let transport: HostTransport | null = null;
 		let propsRuntime: HostPropsRuntime<P, SchemaInputs> | null = null;
@@ -66,7 +75,11 @@ export class HostComponent<
 		try {
 			this.consumerWindow = resolveConsumerWindow();
 
-			const securityContext = resolveConsumerSecurityContext({
+			const securityContext = (
+				deferredProps
+					? resolveMessagingConsumerContext
+					: resolveConsumerSecurityContext
+			)({
 				consumerWindow: this.consumerWindow,
 				claimedConsumerDomain: payload.consumerDomain,
 				allowedConsumerDomains: this.allowedConsumerDomains,
@@ -84,6 +97,7 @@ export class HostComponent<
 				consumerDomain: this.consumerDomain,
 				getConsumerDomain: () => this.consumerDomain,
 				deferInit,
+				beforeInit: deferredProps ? () => this.ready : undefined,
 			});
 			this.transport = transport;
 
@@ -136,8 +150,19 @@ export class HostComponent<
 					this.propsRuntime.applySerializedProps(serializedProps),
 			});
 
-			this.hostProps = this.propsRuntime.initializeHostProps(payload);
+			this.hostProps = this.propsRuntime.initializeHostProps(
+				deferredProps
+					? { ...payload, props: {}, children: undefined }
+					: payload,
+				!deferredProps,
+			);
 			this.propsRuntime.exposeHostProps();
+			this.ready = deferredProps
+				? this.initializeFromConsumer()
+				: Promise.resolve();
+			// Callers can await ready; deferred initialization must not create an
+			// unhandled rejection when the embedding consumer has already closed.
+			void this.ready.catch(() => undefined);
 
 			if (!deferInit) {
 				this.flushInit();
@@ -148,6 +173,24 @@ export class HostComponent<
 			this.event.removeAllListeners();
 			throw error;
 		}
+	}
+
+	private async initializeFromConsumer(): Promise<void> {
+		const data = await this.transport.requestBootstrap();
+		if (this.destroyed)
+			throw new Error("Host destroyed before bootstrap completed");
+		if (
+			!data ||
+			typeof data.props !== "object" ||
+			data.props === null ||
+			Array.isArray(data.props)
+		) {
+			throw new Error("Invalid consumer bootstrap response");
+		}
+		this.consumerDomainVerified = true;
+		if (this.allowedConsumerDomains)
+			this.assertAllowedConsumerDomain(this.allowedConsumerDomains);
+		this.propsRuntime.applyBootstrap(data);
 	}
 
 	public get hostProps(): HostProps<P> {
@@ -186,6 +229,14 @@ export class HostComponent<
 	}
 
 	assertAllowedConsumerDomain(allowedConsumerDomains: DomainMatcher): void {
+		if (this.messagingBootstrap) {
+			if (!matchDomain(allowedConsumerDomains, this.consumerDomain)) {
+				throw new Error(
+					`Consumer domain "${this.consumerDomain}" is not allowed for component "${this.tag}"`,
+				);
+			}
+			return;
+		}
 		const securityContext = reassertAllowedConsumerDomain({
 			consumerWindow: this.consumerWindow,
 			consumerDomain: this.consumerDomain,

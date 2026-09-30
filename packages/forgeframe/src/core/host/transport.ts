@@ -13,7 +13,9 @@ import { Messenger } from "../../communication/messenger";
 import { EVENT, MESSAGE_NAME } from "../../constants";
 import type { SerializedProps } from "../../props/types";
 import type { GetPeerInstancesOptions, SiblingInfo } from "../../types/runtime";
+import { generateShortUID } from "../../utils/uid";
 import { getDomain } from "../../window/helpers";
+import type { HostBootstrapData } from "../../window/types";
 import type { HostTransportOptions, HostTransportPropsHandler } from "./types";
 
 export class HostTransport {
@@ -30,6 +32,7 @@ export class HostTransport {
 	private deferredInitFlushScheduled = false;
 
 	private exportQueue: Promise<void> = Promise.resolve();
+	private sessionId = generateShortUID();
 
 	constructor(private options: HostTransportOptions) {
 		this.messenger = new Messenger(
@@ -40,7 +43,9 @@ export class HostTransport {
 		);
 		this.bridge = new FunctionBridge(
 			this.messenger,
-			(source) => source.window === this.options.consumerWindow,
+			(source) =>
+				source.window === this.options.consumerWindow &&
+				source.domain === this.options.getConsumerDomain(),
 		);
 	}
 
@@ -48,7 +53,10 @@ export class HostTransport {
 		this.messenger.on<SerializedProps>(
 			MESSAGE_NAME.PROPS,
 			(serializedProps, source) => {
-				if (!handler.isConsumerSource(source)) {
+				if (
+					source.domain !== this.options.getConsumerDomain() ||
+					!handler.isConsumerSource(source)
+				) {
 					return { success: false };
 				}
 
@@ -74,6 +82,15 @@ export class HostTransport {
 
 	getInitError(): Error | null {
 		return this.initError;
+	}
+
+	async requestBootstrap(): Promise<HostBootstrapData> {
+		return this.messenger.send(
+			this.options.consumerWindow,
+			this.options.getConsumerDomain(),
+			MESSAGE_NAME.BOOTSTRAP,
+			{ sessionId: this.sessionId },
+		);
 	}
 
 	updateTrustedConsumerDomain(
@@ -187,9 +204,14 @@ export class HostTransport {
 
 	private async sendInit(): Promise<void> {
 		try {
+			if (this.options.beforeInit) {
+				await this.options.beforeInit();
+				if (this.destroyed) return;
+			}
 			await this.sendMessage(MESSAGE_NAME.INIT, {
 				uid: this.options.uid,
 				tag: this.options.tag,
+				...(this.options.beforeInit ? { sessionId: this.sessionId } : {}),
 			});
 		} catch (error) {
 			const initError =

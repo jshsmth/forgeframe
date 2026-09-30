@@ -21,7 +21,11 @@ import type {
 	RemoteValue,
 } from "../../types/runtime";
 import { getDomain } from "../../window/helpers";
-import type { HostComponentRef, WindowNamePayload } from "../../window/types";
+import type {
+	HostBootstrapData,
+	HostComponentRef,
+	WindowNamePayload,
+} from "../../window/types";
 import { getRegisteredComponent } from "../component-registry";
 import { HOST_PROPS_BUILTIN_KEYS } from "./builtin-keys";
 import type { HostPropsRuntimeOptions, WindowWithHostProps } from "./types";
@@ -51,6 +55,8 @@ export class HostPropsRuntime<
 	public consumerProps!: RemoteValue<P>;
 
 	public propsHandlers: Set<(props: RemoteValue<P>) => void> = new Set();
+	private initialized = false;
+	private pendingBootstrapProps: SerializedProps | null = null;
 
 	constructor(
 		private propDefinitions: HostPropsDefinition<
@@ -60,15 +66,20 @@ export class HostPropsRuntime<
 		private options: HostPropsRuntimeOptions,
 	) {}
 
-	initializeHostProps(payload: WindowNamePayload<P>): HostProps<P> {
+	initializeHostProps(
+		payload: WindowNamePayload<P>,
+		validate = true,
+	): HostProps<P> {
 		const deserializedProps = this.deserialize(payload.props);
 
 		// Shared schemas validate the wire value's shape; deserialization changes
 		// callable return types without changing their runtime function kind.
-		validateNormalizedProps(
-			deserializedProps as P,
-			this.getBootstrapValidationDefinitions(),
-		);
+		if (validate)
+			validateNormalizedProps(
+				deserializedProps as P,
+				this.getBootstrapValidationDefinitions(),
+			);
+		this.initialized = validate;
 		this.consumerProps = deserializedProps;
 
 		const hostConsumerProps = filterReservedHostPropKeys(deserializedProps);
@@ -125,16 +136,27 @@ export class HostPropsRuntime<
 	applyHostConfiguration(
 		propDefinitions: HostPropsDefinition<P, SchemaInputs>,
 	): void {
-		validateNormalizedProps(
-			this.consumerProps as P,
-			this.getBootstrapValidationDefinitions(propDefinitions),
-		);
+		if (this.initialized)
+			validateNormalizedProps(
+				this.consumerProps as P,
+				this.getBootstrapValidationDefinitions(propDefinitions),
+			);
 		this.propDefinitions = propDefinitions;
 		Object.assign(
 			this.hostProps,
 			filterReservedHostPropKeys(this.consumerProps),
 		);
 		this.hostProps.consumer.props = this.consumerProps;
+	}
+
+	applyBootstrap(data: HostBootstrapData): void {
+		const children = this.buildNestedComponents(data.children);
+		// An acknowledged PROPS update can arrive before this response. Preserve
+		// that newer snapshot, and validate it against the final host definitions.
+		this.applySerializedProps(this.pendingBootstrapProps ?? data.props);
+		this.hostProps.children = children;
+		this.initialized = true;
+		this.pendingBootstrapProps = null;
 	}
 
 	applySerializedProps(serializedProps: SerializedProps): { success: true } {
@@ -149,6 +171,9 @@ export class HostPropsRuntime<
 			this.consumerProps = nextProps;
 			Object.assign(this.hostProps, nextHostProps);
 			this.hostProps.consumer.props = this.consumerProps;
+			if (!this.initialized) {
+				this.pendingBootstrapProps = serializedProps;
+			}
 
 			for (const handler of this.propsHandlers) {
 				try {
@@ -172,6 +197,7 @@ export class HostPropsRuntime<
 
 	destroy(): void {
 		this.propsHandlers.clear();
+		this.pendingBootstrapProps = null;
 	}
 
 	private onProps(handler: (props: RemoteValue<P>) => void): {

@@ -121,6 +121,8 @@ export type MessageType = (typeof MESSAGE_TYPE)[keyof typeof MESSAGE_TYPE];
  * @internal
  */
 export const MESSAGE_NAME = {
+	/** Request current props after verifying the loaded host's source and origin. */
+	BOOTSTRAP: "forgeframe_bootstrap",
 	/** Host initialization complete */
 	INIT: "forgeframe_init",
 	/** Props update from consumer to host */
@@ -158,7 +160,7 @@ export type MessageName = (typeof MESSAGE_NAME)[keyof typeof MESSAGE_NAME];
  *
  * @internal
  */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 /**
  * Window name prefix for identifying ForgeFrame host windows.

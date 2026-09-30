@@ -4,6 +4,7 @@ import {
 	validateConsumerProps,
 } from "../../props/normalize";
 import type { PropContext } from "../../types/props";
+import { createDeferred } from "../../utils/promise";
 import type { NormalizedOptions } from "./types";
 
 /** Marks a user callback failure so construction does not defer it as schema validation. */
@@ -487,19 +488,42 @@ export class ConsumerPropsPipeline<
 		}, hooks.shouldSendPropsToHost);
 	}
 
+	/** Serializes a bootstrap snapshot after any preceding prop update finishes. */
+	readCurrentProps<R>(read: (props: P) => R): Promise<R> {
+		return this.queuePropsUpdate(
+			async () => {
+				this.revalidateSchemaValues();
+				return read(this.props);
+			},
+			() => true,
+		);
+	}
+
 	/**
 	 * Queues prop updates when a previous host sync is in flight.
 	 */
-	private queuePropsUpdate(
-		updateFn: () => Promise<void>,
+	private queuePropsUpdate<R>(
+		updateFn: () => Promise<R>,
 		shouldTrackFollowingUpdates: () => boolean,
-	): Promise<void> {
+	): Promise<R> {
 		if (!this.pendingPropsUpdate) {
-			const immediateUpdate = updateFn();
-			if (shouldTrackFollowingUpdates()) {
-				this.trackPendingUpdate(immediateUpdate);
+			if (!shouldTrackFollowingUpdates()) {
+				return updateFn();
 			}
-			return immediateUpdate;
+			// Install the queue entry before invoking user decorators: they may
+			// synchronously enqueue another update while this snapshot is built.
+			const pending = createDeferred<R>();
+			this.trackPendingUpdate(pending.promise);
+			try {
+				const immediateUpdate = updateFn();
+				void immediateUpdate.then(pending.resolve, pending.reject);
+				return immediateUpdate;
+			} catch (error) {
+				pending.reject(
+					error instanceof Error ? error : new Error(String(error)),
+				);
+				throw error;
+			}
 		}
 
 		const queuedUpdate = this.pendingPropsUpdate.then(updateFn, updateFn);
@@ -510,7 +534,7 @@ export class ConsumerPropsPipeline<
 	/**
 	 * Tracks a promise as the active queued update and clears it when settled.
 	 */
-	private trackPendingUpdate(updatePromise: Promise<void>): void {
+	private trackPendingUpdate(updatePromise: Promise<unknown>): void {
 		const settledUpdate = updatePromise.then(
 			() => undefined,
 			() => undefined,
