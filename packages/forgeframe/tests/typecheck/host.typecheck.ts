@@ -11,3 +11,8 @@ declare const host: HostComponent<{ amount: number }>;
 declare const replacement: HostProps<{ amount: number }>;
 
 host.hostProps = replacement;
+
+// Observer typing remains compatible with synchronous, async, and implicit-value handlers.
+host.hostProps.onProps(() => {});
+host.hostProps.onProps(async () => {});
+host.hostProps.onProps(({ amount }) => amount);

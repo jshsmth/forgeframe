@@ -38,11 +38,15 @@ export function resolveComponentHostUrl(
 	return resolved;
 }
 
-/** Appends serialized parameters with the existing URL-string semantics. @internal */
+/** Appends serialized parameters without changing existing query bytes or fragments. @internal */
 export function appendComponentQuery(
 	baseUrl: string,
 	queryString: string,
 ): string {
 	if (!queryString) return baseUrl;
-	return `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}${queryString}`;
+	const fragmentIndex = baseUrl.indexOf("#");
+	const navigationUrl =
+		fragmentIndex === -1 ? baseUrl : baseUrl.slice(0, fragmentIndex);
+	const fragment = fragmentIndex === -1 ? "" : baseUrl.slice(fragmentIndex);
+	return `${navigationUrl}${navigationUrl.includes("?") ? "&" : "?"}${queryString}${fragment}`;
 }

@@ -66,10 +66,33 @@ describe("Popup host handshake integration", () => {
 		});
 		expect(hostProps.getConsumer()).toBe(harness.consumerWindow);
 		expect(hostProps.getConsumerDomain()).toBe(harness.consumerOrigin);
+		expect(container.childElementCount).toBe(0);
+		expect(container.isConnected).toBe(true);
 
 		await harness.withHostGlobalsAsync(() => hostProps.export({ ready: true }));
 
 		expect(instance.exports).toEqual({ ready: true });
+	});
+
+	it("should remove popup loading artifacts and close the popup after initialization fails", async () => {
+		harness = createPopupIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+		const PopupComponent = create({
+			tag: "integration-popup-timeout",
+			url: "https://host.example.com/widget",
+			timeout: 10,
+		});
+		const instance = PopupComponent({});
+		const closeSpy = vi.spyOn(harness.hostWindow, "close");
+		const outcome = instance
+			.render(container, "popup")
+			.catch((error: unknown) => error);
+		const popupOpen = await harness.waitForPopupOpen();
+		expect(await outcome).toBeInstanceOf(Error);
+		expect(container.childElementCount).toBe(0);
+		expect(popupOpen).not.toBeNull();
+		expect(closeSpy).toHaveBeenCalledOnce();
 	});
 
 	it("should reject render() with PopupOpenError when the browser blocks the popup", async () => {

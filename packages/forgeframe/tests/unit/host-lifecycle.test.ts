@@ -646,6 +646,98 @@ describe("Host lifecycle behavior", () => {
 		);
 	});
 
+	it.each(["promise", "thenable"])(
+		"should isolate a rejected async props subscriber returning a %s",
+		async (kind) => {
+			const host = createHost();
+			const error = new Error("Async subscriber failure");
+			const consoleSpy = vi
+				.spyOn(console, "error")
+				.mockImplementation(() => {});
+			const order: string[] = [];
+			host.hostProps.onProps(() => {
+				order.push("failing");
+				return kind === "promise"
+					? Promise.reject(error)
+					: {
+							// biome-ignore lint/suspicious/noThenProperty: Exercise subscriber rejection from an intentional thenable.
+							then: (_resolve: unknown, reject: (error: Error) => void) =>
+								reject(error),
+						};
+			});
+			host.hostProps.onProps(() => {
+				order.push("healthy");
+			});
+			host.event.on(EVENT.PROPS, () => {
+				order.push("event");
+			});
+			const propsHandler = (
+				host as unknown as {
+					messenger: { handlers: Map<string, DirectHandler> };
+				}
+			).messenger.handlers.get(MESSAGE_NAME.PROPS);
+			expect(
+				propsHandler?.({ amount: 77 }, createMessageSource(window)),
+			).toEqual({ success: true });
+			expect(order).toEqual(["failing", "healthy", "event"]);
+			expect(host.hostProps.amount).toBe(77);
+			await vi.waitFor(() =>
+				expect(consoleSpy).toHaveBeenCalledWith(
+					"Error in props handler:",
+					error,
+				),
+			);
+		},
+	);
+
+	it("should cancel subscriptions and retain rejection handling after destruction", async () => {
+		const host = createHost();
+		const cancelled = vi.fn();
+		host.hostProps.onProps(cancelled).cancel();
+		let rejectObserver: ((error: Error) => void) | undefined;
+		host.hostProps.onProps(
+			() =>
+				new Promise<void>((_resolve, reject) => {
+					rejectObserver = reject;
+				}),
+		);
+		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		const propsHandler = (
+			host as unknown as { messenger: { handlers: Map<string, DirectHandler> } }
+		).messenger.handlers.get(MESSAGE_NAME.PROPS);
+		expect(propsHandler?.({ amount: 78 }, createMessageSource(window))).toEqual(
+			{ success: true },
+		);
+		expect(cancelled).not.toHaveBeenCalled();
+		host.destroy();
+		const error = new Error("Observer settled after teardown");
+		rejectObserver?.(error);
+		await vi.waitFor(() =>
+			expect(consoleSpy).toHaveBeenCalledWith("Error in props handler:", error),
+		);
+	});
+
+	it("should acknowledge updates without waiting for an async subscriber", () => {
+		const host = createHost();
+		let resolveObserver: (() => void) | undefined;
+		host.hostProps.onProps(
+			() =>
+				new Promise<void>((resolve) => {
+					resolveObserver = resolve;
+				}),
+		);
+		const healthy = vi.fn();
+		host.hostProps.onProps(healthy);
+		const propsHandler = (
+			host as unknown as { messenger: { handlers: Map<string, DirectHandler> } }
+		).messenger.handlers.get(MESSAGE_NAME.PROPS);
+		expect(propsHandler?.({ amount: 88 }, createMessageSource(window))).toEqual(
+			{ success: true },
+		);
+		expect(healthy).toHaveBeenCalledWith({ amount: 88 });
+		resolveObserver?.();
+	});
+
 	it("should emit host error and rethrow when props deserialization fails", () => {
 		const host = createHost();
 		const propsHandler = (

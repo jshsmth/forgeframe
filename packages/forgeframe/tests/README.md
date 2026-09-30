@@ -12,7 +12,9 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `consumer-branch-coverage.test.ts`: Consumer branch/edge-path coverage for domain trust, rendering, and prop-sync internals.
 - `domain-pattern.test.ts`: Wildcard domain compilation cache behavior and stateless `RegExp` trust checks.
 - `consumer-lifecycle.test.ts`: Consumer handshake, lifecycle messaging, open/close guards, and update validation.
-- `consumer-renderer.test.ts`: Renderer ownership of iframe/popup resources, templates, and teardown.
+- `consumer-navigation.test.ts`: Relative URL origin admission, declaration/render base changes, pinned destinations, and fragment-bearing navigation.
+- `consumer-props-queue.test.ts`: Disconnected reentrant updates, FIFO failure recovery, render admission draining, matching initial request/bootstrap snapshots, and cancellation.
+- `consumer-renderer.test.ts`: Renderer ownership of iframe/popup resources, loading completion, custom shell/control preservation, templates, and teardown.
 - `consumer-transport.test.ts`: Direct consumer transport behavior for trust rotation, failed prop sync cleanup, handshake waiting, and async init error forwarding.
 - `consumer-origin-policy.test.ts`: Trust decisions from supplied origin evidence, messaging-origin validation, and changed-origin selection.
 - `emitter.test.ts`: Event emitter subscription semantics, once/off behavior, and async error isolation.
@@ -46,6 +48,7 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `schema.test.ts`: Standard Schema detection and schema-aware prop validation integration.
 - `render-templates.test.ts`: Render template DOM creation, styles, transitions, and prerender swap behavior.
 - `utils.test.ts`: UID, cleanup manager, and promise utility behavior.
+- `url.test.ts`: Relative URL resolution and query appending that preserves fragments, existing encoding, and duplicate parameters.
 - `version.test.ts`: Version constant synchronization with package metadata.
 - `window-helpers.test.ts`: Cross-window helper behavior for domain checks, traversal, and defensive operations.
 - `window-name-payload.test.ts`: Window name payload encoding/parsing and ForgeFrame-window detection helpers.
@@ -63,9 +66,9 @@ This index documents what each ForgeFrame test file validates and the naming con
 
 ## Browser Tests (`packages/forgeframe/tests/browser`)
 
-`navigation.spec.ts` builds the production library and runs in Chromium against separate local HTTP origins. It covers redirect isolation, rejection of legacy hosts, default-wrapper resizing, and iframe/popup reconnection after reload and full-page navigation with current props and callable callbacks. Recovery cases cover failed-schema retry, updates already pending at bootstrap, and callback updates queued during reconnection.
+`navigation.spec.ts` builds the production library and runs in Chromium, Firefox, and WebKit against separate local HTTP origins. It covers redirect isolation, rejection of legacy hosts, default-wrapper resizing, and iframe/popup reconnection after reload and full-page navigation with current props and callable callbacks. Recovery cases cover failed-schema retry, updates already pending at bootstrap, and callback updates queued during reconnection. Initial-navigation cases capture real iframe/popup GET and POST requests, test relative URL policies with cross-origin base tags and callback/converter mutations, and verify fragment preservation, queued prop snapshots, popup loading cleanup, and async subscriber rejection isolation.
 
-Install Chromium once with `npx playwright install chromium`, then run `npm run test:browser` from the repository root. CI runs these regressions on Node 24.
+Install the engines with `npx playwright install chromium firefox webkit`, then run `npm run test:browser` from the repository root. CI installs browser system dependencies and runs all three engines on Node 24. WebKit supplies automated Safari-engine coverage; these tests do not establish physical Safari/device acceptance.
 
 ## Type Tests (`packages/forgeframe/tests/typecheck`)
 

@@ -751,6 +751,8 @@ export interface HostPropsBuiltins<P = Record<string, unknown>> {
 
 	/**
 	 * Subscribe to prop updates from consumer.
+	 * Subscribers run after commitment in registration order. Async work is not
+	 * awaited; synchronous throws and returned promise rejections are logged.
 	 *
 	 * @param handler - Function called when props change
 	 * @returns Object with cancel function to unsubscribe
