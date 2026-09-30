@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { defineConfig } from "vitest/config";
 
 const packageJson = JSON.parse(
-	readFileSync(resolve(__dirname, "package.json"), "utf8"),
+	readFileSync(resolve(import.meta.dirname, "package.json"), "utf8"),
 ) as { version: string };
 
 export default defineConfig({
@@ -12,7 +12,7 @@ export default defineConfig({
 	},
 	resolve: {
 		alias: {
-			"@": resolve(__dirname, "src"),
+			"@": resolve(import.meta.dirname, "src"),
 		},
 	},
 	test: {

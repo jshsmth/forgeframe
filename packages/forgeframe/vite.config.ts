@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { defineConfig } from "vite";
 
 const packageJson = JSON.parse(
-	readFileSync(resolve(__dirname, "package.json"), "utf8"),
+	readFileSync(resolve(import.meta.dirname, "package.json"), "utf8"),
 ) as { version: string };
 
 export default defineConfig({
@@ -12,20 +12,20 @@ export default defineConfig({
 	},
 	build: {
 		lib: {
-			entry: resolve(__dirname, "src/index.ts"),
+			entry: resolve(import.meta.dirname, "src/index.ts"),
 			formats: ["es"],
 			fileName: "forgeframe",
 		},
-		rollupOptions: {
+		rolldownOptions: {
 			external: ["react", "react-dom"],
 		},
 		sourcemap: false,
-		minify: "esbuild",
+		minify: "oxc",
 		target: "es2022",
 	},
 	resolve: {
 		alias: {
-			"@": resolve(__dirname, "src"),
+			"@": resolve(import.meta.dirname, "src"),
 		},
 	},
 });

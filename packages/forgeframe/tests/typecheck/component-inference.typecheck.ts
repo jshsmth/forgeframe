@@ -546,9 +546,15 @@ const OptionalWrappedValidatorComponent = create({
 	props: {
 		label: {
 			schema: z.string(),
-			validate: ({ value }) => {
+			// Zod also has a validate method; it must not erase callback types.
+			validate: ({ value, props }) => {
 				const optionalValue: string | undefined = value;
+				const optionalProp: string | undefined = props.label;
 				void optionalValue;
+				void optionalProp;
+				// @ts-expect-error schema methods must not widen callback values to any
+				const invalidValue: number = value;
+				void invalidValue;
 				// @ts-expect-error omitted wrappers are validated with undefined
 				value.trim();
 			},
@@ -557,6 +563,18 @@ const OptionalWrappedValidatorComponent = create({
 });
 
 void OptionalWrappedValidatorComponent({});
+void OptionalWrappedValidatorComponent({ label: "ready" });
+// @ts-expect-error wrapped Zod schemas retain their input types
+void OptionalWrappedValidatorComponent({ label: 1 });
+
+const IdentityTransformComponent = create({
+	tag: "identity-transform-component",
+	url: "https://example.com/identity-transform",
+	props: { label: z.string().transform((value) => value.trim()) },
+});
+void IdentityTransformComponent({ label: "ready" });
+// @ts-expect-error safe direct transforms retain their schema input types
+void IdentityTransformComponent({ label: 1 });
 
 const RequiredTransformComponent = create({
 	tag: "required-transform-component",

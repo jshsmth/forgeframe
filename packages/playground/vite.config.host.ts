@@ -4,7 +4,10 @@ import { defineConfig } from "vite";
 import mkcert from "vite-plugin-mkcert";
 
 const forgeframePackageJson = JSON.parse(
-	readFileSync(resolve(__dirname, "../forgeframe/package.json"), "utf8"),
+	readFileSync(
+		resolve(import.meta.dirname, "../forgeframe/package.json"),
+		"utf8",
+	),
 ) as { version: string };
 
 export default defineConfig(({ command }) => {
@@ -26,20 +29,20 @@ export default defineConfig(({ command }) => {
 				},
 			},
 		],
-		root: resolve(__dirname, "host"),
+		root: resolve(import.meta.dirname, "host"),
 		define: {
 			__FORGEFRAME_VERSION__: JSON.stringify(forgeframePackageJson.version),
 		},
 		resolve: {
 			alias: {
-				forgeframe: resolve(__dirname, "../forgeframe/src/index.ts"),
+				forgeframe: resolve(import.meta.dirname, "../forgeframe/src/index.ts"),
 			},
 		},
 		server: {
 			port: 5174,
 		},
 		build: {
-			outDir: resolve(__dirname, "dist/host"),
+			outDir: resolve(import.meta.dirname, "dist/host"),
 			emptyOutDir: true,
 		},
 	};

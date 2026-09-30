@@ -3,14 +3,17 @@ import { resolve } from "node:path";
 import type { Plugin } from "vite";
 import { defineConfig } from "vite";
 import mkcert from "vite-plugin-mkcert";
-import { TEST_SCENARIO_IDS } from "./consumer/test-lab/scenario-ids";
+import { TEST_SCENARIO_IDS } from "./consumer/test-lab/scenario-ids.ts";
 
 const forgeframePackageJson = JSON.parse(
-	readFileSync(resolve(__dirname, "../forgeframe/package.json"), "utf8"),
+	readFileSync(
+		resolve(import.meta.dirname, "../forgeframe/package.json"),
+		"utf8",
+	),
 ) as { version: string };
 
 const shouldOpenBrowser = process.env.FORGEFRAME_PLAYGROUND_OPEN !== "0";
-const consumerOutDir = resolve(__dirname, "dist/consumer");
+const consumerOutDir = resolve(import.meta.dirname, "dist/consumer");
 
 function staticTestRoutes(): Plugin {
 	return {
@@ -39,13 +42,13 @@ export default defineConfig(({ command }) => {
 
 	return {
 		plugins: [...(shouldUseMkcert ? [mkcert()] : []), staticTestRoutes()],
-		root: resolve(__dirname, "consumer"),
+		root: resolve(import.meta.dirname, "consumer"),
 		define: {
 			__FORGEFRAME_VERSION__: JSON.stringify(forgeframePackageJson.version),
 		},
 		resolve: {
 			alias: {
-				forgeframe: resolve(__dirname, "../forgeframe/src/index.ts"),
+				forgeframe: resolve(import.meta.dirname, "../forgeframe/src/index.ts"),
 			},
 		},
 		server: {
@@ -55,10 +58,10 @@ export default defineConfig(({ command }) => {
 		build: {
 			outDir: consumerOutDir,
 			emptyOutDir: true,
-			rollupOptions: {
+			rolldownOptions: {
 				input: {
-					main: resolve(__dirname, "consumer/index.html"),
-					redirect: resolve(__dirname, "consumer/redirect.html"),
+					main: resolve(import.meta.dirname, "consumer/index.html"),
+					redirect: resolve(import.meta.dirname, "consumer/redirect.html"),
 				},
 			},
 		},
