@@ -104,6 +104,15 @@ test.beforeAll(async () => {
 			</script>`,
 				);
 			}
+			if (req.url === "/encoded-props")
+				return respond(
+					res,
+					`<!doctype html><script type="module">
+			import {initHost,prop} from '/library.js';
+			const host = initHost({config:prop.object().shape({onComplete:prop.function(),list:prop.array().of(prop.function()),date:prop.date()}),label:prop.string().optional()}, ['${consumerOrigin}']);
+			await host.ready; window.received = host.hostProps; window.ready = true;
+			</script>`,
+				);
 			if (req.url === "/early-update") {
 				return respond(
 					res,
@@ -329,6 +338,216 @@ async function prepareDelivery(
 }
 
 for (const context of ["iframe", "popup"] as const) {
+	test(`${context} POST supports field names that shadow form methods`, async ({
+		page,
+	}) => {
+		deliveryRequests.length = 0;
+		await page.goto(consumerOrigin);
+		await page.evaluate(
+			async ({ hostOrigin, context }) => {
+				const libraryUrl = "/library.js";
+				const { create, prop } = await import(libraryUrl);
+				const instance = create({
+					tag: "browser-named-form-controls",
+					url: `${hostOrigin}/delivery`,
+					domain: hostOrigin,
+					timeout: 3000,
+					props: {
+						count: { schema: prop.number(), bodyParam: "submit" },
+						allowed: { schema: prop.string(), bodyParam: "appendChild" },
+						cleanup: { schema: prop.string(), bodyParam: "remove" },
+						extra: { schema: prop.string(), bodyParam: true },
+						hidden: {
+							schema: prop.string(),
+							bodyParam: true,
+							sendToHost: false,
+						},
+					},
+				})({
+					count: 2,
+					allowed: "visible",
+					cleanup: "cleanup-token",
+					extra: "last-field",
+					hidden: "hidden-sentinel",
+				});
+				const button = document.createElement("button");
+				button.id = "open-post";
+				button.textContent = "Open";
+				button.onclick = () => {
+					(window as unknown as { outcome: Promise<string> }).outcome = instance
+						.render("#mount", context)
+						.then(
+							() => "ready",
+							(error: Error) => error.message,
+						);
+				};
+				document.body.appendChild(button);
+			},
+			{ hostOrigin, context },
+		);
+		const opened = context === "popup" ? page.waitForEvent("popup") : null;
+		await page.click("#open-post", { noWaitAfter: true });
+		const popup = await opened;
+		expect(
+			await page.evaluate(
+				() => (window as unknown as { outcome: Promise<string> }).outcome,
+			),
+		).toBe("ready");
+		expect(deliveryRequests).toHaveLength(1);
+		expect(deliveryRequests[0]?.method).toBe("POST");
+		expect(
+			Object.fromEntries(new URLSearchParams(deliveryRequests[0]?.body)),
+		).toEqual({
+			submit: "2",
+			appendChild: "visible",
+			remove: "cleanup-token",
+			extra: "last-field",
+		});
+		expect(await page.locator("form").count()).toBe(0);
+		const target =
+			popup ??
+			page
+				.frames()
+				.find((frame) => frame.url().startsWith(`${hostOrigin}/delivery`));
+		if (!target) throw new Error("Missing POST host");
+		expect(
+			await target.evaluate(() => {
+				const props = (
+					window as unknown as {
+						received: { count: number; allowed: string; hidden?: string };
+					}
+				).received;
+				return {
+					count: props.count,
+					allowed: props.allowed,
+					hidden: props.hidden,
+				};
+			}),
+		).toEqual({ count: 2, allowed: "visible", hidden: undefined });
+	});
+
+	for (const serialization of ["base64", "dotify"] as const) {
+		test(`${context} ${serialization} preserves nested callbacks and Dates through updates`, async ({
+			page,
+		}) => {
+			await page.goto(consumerOrigin);
+			await page.evaluate(
+				async ({ hostOrigin, context, serialization }) => {
+					const libraryUrl = "/library.js";
+					const { create, prop } = await import(libraryUrl);
+					const instance = create({
+						tag: "browser-encoded-functions",
+						url: `${hostOrigin}/encoded-props`,
+						domain: hostOrigin,
+						timeout: 3000,
+						props: {
+							config: { schema: prop.object(), serialization },
+							label: prop.string().optional(),
+						},
+					})({
+						config: {
+							onComplete: () => 42,
+							list: [() => 7],
+							date: new Date("2026-01-02T03:04:05.678Z"),
+						},
+					});
+					const review = window as unknown as {
+						instance: import("../../src/types").ForgeFrameComponentInstance<
+							Record<string, unknown>
+						>;
+						outcome: Promise<string>;
+					};
+					review.instance = instance;
+					const button = document.createElement("button");
+					button.id = "open-encoded";
+					button.textContent = "Open";
+					button.onclick = () => {
+						review.outcome = instance.render("#mount", context).then(
+							() => "ready",
+							(error: Error) => error.message,
+						);
+					};
+					document.body.appendChild(button);
+				},
+				{ hostOrigin, context, serialization },
+			);
+			const opened = context === "popup" ? page.waitForEvent("popup") : null;
+			await page.click("#open-encoded", { noWaitAfter: true });
+			const popup = await opened;
+			expect(
+				await page.evaluate(
+					() => (window as unknown as { outcome: Promise<string> }).outcome,
+				),
+			).toBe("ready");
+			const target =
+				popup ??
+				page
+					.frames()
+					.find((frame) =>
+						frame.url().startsWith(`${hostOrigin}/encoded-props`),
+					);
+			if (!target) throw new Error("Missing encoded host");
+			const read = () =>
+				target.evaluate(async () => {
+					const config = (
+						window as unknown as {
+							received: {
+								config: {
+									onComplete: () => Promise<number>;
+									list: Array<() => Promise<number>>;
+									date: Date;
+								};
+							};
+						}
+					).received.config;
+					return {
+						callback: await config.onComplete(),
+						list: await config.list[0]?.(),
+						date: config.date.toISOString(),
+					};
+				});
+			expect(await read()).toEqual({
+				callback: 42,
+				list: 7,
+				date: "2026-01-02T03:04:05.678Z",
+			});
+			await page.evaluate(() =>
+				(
+					window as unknown as {
+						instance: import("../../src/types").ForgeFrameComponentInstance<
+							Record<string, unknown>
+						>;
+					}
+				).instance.updateProps({ label: "unrelated" }),
+			);
+			expect(await read()).toEqual({
+				callback: 42,
+				list: 7,
+				date: "2026-01-02T03:04:05.678Z",
+			});
+			await page.evaluate(() =>
+				(
+					window as unknown as {
+						instance: import("../../src/types").ForgeFrameComponentInstance<
+							Record<string, unknown>
+						>;
+					}
+				).instance.updateProps({
+					config: {
+						onComplete: () => 84,
+						list: [() => 14],
+						date: new Date("2026-02-03T04:05:06.789Z"),
+					},
+				}),
+			);
+			expect(await read()).toEqual({
+				callback: 84,
+				list: 14,
+				date: "2026-02-03T04:05:06.789Z",
+			});
+		});
+	}
+
 	for (const method of ["GET", "POST"] as const) {
 		for (const scenario of [
 			"base",

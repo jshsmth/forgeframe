@@ -170,7 +170,7 @@ Evidence: [consumer](#evidence-consumer); typecheck.
 
 ### [core/consumer/renderer.ts](../packages/forgeframe/src/core/consumer/renderer.ts)
 
-Prerender context construction, mounting, iframe/popup opening, POST submission and teardown have named entrypoints. `completePrerender` coordinates iframe swapping or popup loading removal after initialization, retaining the caller mount and custom shells. POST DOM/form work remains one browser operation. Resource acquisition and user callbacks retain synchronous cancellation checkpoints.
+Prerender context construction, mounting, iframe/popup opening, POST submission and teardown have named entrypoints. `completePrerender` coordinates iframe swapping or popup loading removal after initialization, retaining the caller mount and custom shells. POST DOM/form work remains one browser operation; method calls use the created form's prototype from the mount document, and construction/submission share a cleanup guard so named controls cannot mask append, submit, or removal. Resource acquisition and user callbacks retain synchronous cancellation checkpoints.
 
 - **O:** `ConsumerRenderer.constructor`, `ConsumerRenderer.resolveContainer`, `ConsumerRenderer.createTemplateContext`, `ConsumerRenderer.submitBodyForm`.
 - **I:** `ConsumerRenderer.prerender`, `ConsumerRenderer.createTemplateContext.close`, `ConsumerRenderer.createTemplateContext.focus`, `ConsumerRenderer.createIframeElement`, `ConsumerRenderer.open`, `ConsumerRenderer.openIframe`, `ConsumerRenderer.openPopup`, `ConsumerRenderer.completePrerender`, `ConsumerRenderer.focus`, `ConsumerRenderer.resize`, `ConsumerRenderer.show`, `ConsumerRenderer.hide`, `ConsumerRenderer.destroy`.
@@ -248,7 +248,7 @@ Evidence: [host](#evidence-host), [consumer-origin-policy.test](../packages/forg
 
 ### [core/host/props-runtime.ts](../packages/forgeframe/src/core/host/props-runtime.ts)
 
-Stable built-in reference construction is separate from consumer snapshot commitment and subscriber notification. Bootstrap schema relaxation is a supplied-data operation; subscribers are invoked only after reconciliation. Notification observes promise/thenable failures without awaiting user work, preserving acknowledgement and event order.
+Stable built-in reference construction is separate from consumer snapshot commitment and subscriber notification. Bootstrap schema relaxation is a supplied-data operation; stale custom props use own-key membership so inherited names cannot retain an old value; subscribers are invoked only after reconciliation. Notification observes promise/thenable failures without awaiting user work, preserving acknowledgement and event order.
 
 The rejection callback in `HostPropsRuntime.notifyPropsHandlers` is an **O** callback boundary: it logs one observer failure and does not mutate prop state.
 
@@ -368,7 +368,7 @@ Evidence: [props](#evidence-props), typecheck.
 
 ### [props/normalize.ts](../packages/forgeframe/src/props/normalize.ts)
 
-Fallback precedence selection, schema probing/conversion, decoration, output-contract decisions and snapshot writes are named responsibilities. Alias traversal and output equality retain cohesive cycle-aware algorithms. Schema validation loops and host decoration are contract operations with explicit supplied values; integrations expose normalization and delivery order. Query/body integrations invoke custom converters as definition methods, preserving their receiver; `serializePropParameter` only encodes values without a custom converter.
+Fallback precedence selection, schema probing/conversion, decoration, output-contract decisions and snapshot writes are named responsibilities. Alias traversal and output equality retain cohesive cycle-aware algorithms. Canonical/alias reads and schema/custom validation treat only own snapshot values as supplied; host reconciliation also uses own membership for stale-key removal. Schema validation loops and host decoration are contract operations with explicit supplied values; integrations expose normalization and delivery order. Query/body integrations invoke custom converters as definition methods, preserving their receiver; `serializePropParameter` only encodes values without a custom converter.
 
 - **O:** `resolvePropDefinition`, `hasOwn`, `schemaOutputMatchesInput`, `getCompiledPropDefinitions`, `materializePropAliases`, `invokeUserNormalizationCallback`, `readSuppliedProp`, `selectNormalizationFallback`, `probeSchemaDefault`, `validateNormalizationOutput`, `recordNormalizedValue`, `validateSchemaInputs`, `validateCustomProps`, `decorateHostProp`, `shouldSendPropToHost`, `serializePropParameter`.
 - **I:** `normalizeProps`, `normalizeConsumerProps`, `resolveNormalizationFallback`, `parseExplicitFallback`, `decorateNormalizedValue`, `normalizePropValue`, `normalizePropsInternal`, `validateProps`, `validateConsumerProps`, `validateNormalizedProps`, `validatePropsInternal`, `getPropsForHost`, `propsToQueryParams`, `propsToBodyParams`.
@@ -430,6 +430,8 @@ Evidence: [props](#evidence-props); typecheck.
 
 Scalar schema validation stays cohesive: string trimming/constraints, number bounds/integer checks and Date bounds are algorithms, not workflows. Builder exceptions keep clone/set/return local.
 
+Number validation rejects nonfinite values before JSON transport can change them to null.
+
 - **O:** `StringSchema._validate`, `NumberSchema._validate`, `DateSchema._validate`, `BooleanSchema._validate`, `FunctionSchema._validate`, `AnySchema.constructor`, `AnySchema._validate`.
 - **M:** `StringSchema._clone`, `StringSchema.min`, `StringSchema.max`, `StringSchema.length`, `StringSchema.pattern`, `StringSchema.email`, `StringSchema.url`, `StringSchema.uuid`, `StringSchema.trim`, `StringSchema.nonempty`, `NumberSchema._clone`, `NumberSchema.min`, `NumberSchema.max`, `NumberSchema.int`, `NumberSchema.positive`, `NumberSchema.nonnegative`, `NumberSchema.negative`, `DateSchema._clone`, `DateSchema.min`, `DateSchema.max`, `BooleanSchema._clone`, `FunctionSchema._clone`, `AnySchema._clone`.
 - **Retained rationale —** `StringSchema._clone`, `StringSchema.min`, `StringSchema.max`, `StringSchema.length`, `StringSchema.pattern`, `StringSchema.email`, `StringSchema.url`, `StringSchema.uuid`, `StringSchema.trim`, `StringSchema.nonempty`, `NumberSchema._clone`, `NumberSchema.min`, `NumberSchema.max`, `NumberSchema.int`, `NumberSchema.positive`, `NumberSchema.nonnegative`, `NumberSchema.negative`, `DateSchema._clone`, `DateSchema.min`, `DateSchema.max`, `BooleanSchema._clone`, `FunctionSchema._clone`, `AnySchema._clone`: Immutable fluent construction stays local: clone existing schema state, set the selected constraint, return the same typed builder contract. One-line shortcuts retain the fluent vocabulary; an extra wrapper would add indirection.
@@ -447,10 +449,10 @@ Evidence: [props](#evidence-props); typecheck.
 
 ### [props/serialize.ts](../packages/forgeframe/src/props/serialize.ts)
 
-DOTIFY pair decoding and path reconstruction are distinct operations. Recursive wire conversion, escaping, reserved-key checks and malformed fallback remain cohesive codec algorithms.
+DOTIFY pair decoding and path reconstruction are distinct operations. Recursive wire conversion, escaping, reserved-key checks and malformed fallback remain cohesive codec algorithms. BASE64 and DOTIFY register nested callbacks while encoding JSON values, retaining custom `toJSON()` behavior. After wrapper decoding, the recursive bridge reconstructs callbacks and Date values together, preserving the existing wire formats and transport-owned batch boundary. The encoding closures only delegate function retention to the supplied bridge.
 
 - **O:** `isSafeObjectKey`, `isPlainObject`, `encodeDotNotationPath`, `encodeDotNotationValue`, `createDotNotationPair`, `createDotNotationEmptyObjectPair`, `defineDataProperty`, `toDotNotation`, `fromDotNotation`, `decodeDotNotationPair`, `assignDotNotationPath`, `decodeDotNotationPath`, `isDotifyEncoded`, `serializeProps`, `serializeValue`, `deserializeProps`, `deserializeValue`, `isBase64Encoded`.
-- **O callbacks:** `fromDotNotation.callback@161`, `decodeDotNotationPath.callback@240`.
+- **O callbacks:** `encodeDotNotationValue.callback@74`, `serializeValue.callback@331`, `fromDotNotation.callback@170`, `decodeDotNotationPath.callback@249`.
 
 Evidence: [utilities](#evidence-utilities); typecheck.
 
@@ -612,10 +614,10 @@ Evidence: [utilities](#evidence-utilities); typecheck.
 
 ### [utils/wire-value.ts](../packages/forgeframe/src/utils/wire-value.ts)
 
-Date framing and recursive JSON replacer/reviver behaviour are codec operations. Retain recursion and malformed Date handling together.
+Date framing and recursive JSON replacer/reviver behaviour are codec operations. The optional internal function encoder extends the existing replacer for prop codecs while callers without that encoder retain ordinary JSON function omission. Retain recursion and malformed Date handling together.
 
 - **O:** `isObjectRecord`, `hasOwnKey`, `encodeDateWireValue`, `isDateWireValue`, `decodeDateWireValue`, `stringifyWireValue`, `stringifyWireValue.wireValueReplacer`, `parseWireValue`.
-- **O callbacks:** `parseWireValue.callback@85`.
+- **O callbacks:** `parseWireValue.callback@92`.
 
 Evidence: [utilities](#evidence-utilities); typecheck.
 

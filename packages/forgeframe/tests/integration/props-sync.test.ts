@@ -80,6 +80,83 @@ describe("Props sync integration", () => {
 		vi.restoreAllMocks();
 	});
 
+	it("removes inherited-name custom props from both host snapshots", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+		const definitions = {
+			toString: prop.string().optional(),
+			constructor: prop.string().optional(),
+			hasOwnProperty: prop.string().optional(),
+		};
+		const Component = create({
+			tag: "integration-inherited-prop-keys",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const instance = Component({});
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			definitions,
+		);
+		await rendering;
+		const close = hostProps.close;
+		await instance.updateProps({
+			toString: "first",
+			constructor: "second",
+			hasOwnProperty: "third",
+		});
+		expect(hostProps.toString).toBe("first");
+		await instance.updateProps({
+			toString: undefined,
+			constructor: undefined,
+			hasOwnProperty: undefined,
+		});
+		for (const key of ["toString", "constructor", "hasOwnProperty"]) {
+			expect(Object.hasOwn(hostProps, key)).toBe(false);
+			expect(Object.hasOwn(hostProps.consumer.props, key)).toBe(false);
+		}
+		expect(hostProps.close).toBe(close);
+	});
+
+	it.each([Infinity, -Infinity])(
+		"rejects %s updates without changing either snapshot",
+		async (value) => {
+			harness = createIframeIntegrationHarness();
+			const container = document.createElement("div");
+			document.body.appendChild(container);
+			const definitions = { amount: prop.number() };
+			const Component = create({
+				tag: "integration-finite-numbers",
+				url: "https://host.example.com/widget",
+				props: definitions,
+			});
+			const invalid = Component({ amount: value });
+			await expect(invalid.render(container)).rejects.toThrow(
+				"Expected finite number",
+			);
+			expect(container.querySelector("iframe")).toBeNull();
+			const instance = Component({ amount: 42 });
+			const rendering = instance.render(container);
+			const { hostProps } = await harness.bootstrapIframeHost(
+				container,
+				definitions,
+			);
+			await rendering;
+			const onProps = vi.fn();
+			hostProps.onProps(onProps);
+			await expect(instance.updateProps({ amount: value })).rejects.toThrow(
+				"Expected finite number",
+			);
+			expect(hostProps.amount).toBe(42);
+			expect(hostProps.consumer.props.amount).toBe(42);
+			expect(onProps).not.toHaveBeenCalled();
+			await instance.updateProps({ amount: 84 });
+			expect(hostProps.amount).toBe(84);
+		},
+	);
+
 	it("should reject queued and subsequent prop updates when the instance closes", async () => {
 		harness = createIframeIntegrationHarness();
 		const container = document.createElement("div");

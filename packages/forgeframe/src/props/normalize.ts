@@ -322,8 +322,8 @@ function readSuppliedProp<P>(
 	key: string,
 	alias?: string,
 ): unknown {
-	if (key in props) return props[key as keyof P];
-	return alias && alias in props ? props[alias as keyof P] : undefined;
+	if (hasOwn(props, key)) return props[key as keyof P];
+	return alias && hasOwn(props, alias) ? props[alias as keyof P] : undefined;
 }
 
 type NormalizationFallback<P> =
@@ -642,7 +642,6 @@ function validateSchemaInputs<P extends Record<string, unknown>>(
 			continue;
 		}
 
-		const propKey = key as keyof P;
 		const shouldValidateSchema =
 			(!options.schemaKeys || options.schemaKeys.has(key)) &&
 			!options.schemaValidatedKeys?.has(key);
@@ -652,7 +651,7 @@ function validateSchemaInputs<P extends Record<string, unknown>>(
 			hasOwn(options.schemaInputProps, key);
 		let value: unknown = hasSchemaInput
 			? options.schemaInputProps?.[key]
-			: props[propKey];
+			: readSuppliedProp(props, key);
 		const normalizedOutputSchema =
 			options.validateNormalizedOutput &&
 			definition.outputSchema &&
@@ -709,7 +708,8 @@ function validateCustomProps<P extends Record<string, unknown>>(
 ): void {
 	for (const { key, definition } of compiledDefinitions) {
 		if (validationKeys && !validationKeys.has(key)) continue;
-		if (definition.validate) definition.validate({ value: props[key], props });
+		if (definition.validate)
+			definition.validate({ value: readSuppliedProp(props, key), props });
 	}
 }
 

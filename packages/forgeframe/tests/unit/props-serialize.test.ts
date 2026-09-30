@@ -38,6 +38,43 @@ afterEach(() => {
 });
 
 describe("Props serialization behavior", () => {
+	it.each([PROP_SERIALIZATION.BASE64, PROP_SERIALIZATION.DOTIFY])(
+		"preserves encoded callbacks returned by toJSON in %s",
+		(serialization) => {
+			const { messenger, bridge } = createBridgeWithMessenger();
+			const callback = () => 42;
+			const date = new Date("2026-01-02T03:04:05.678Z");
+			class CustomValue {
+				toJSON() {
+					return { callback, date };
+				}
+			}
+			const definitions = { config: { schema: prop.object(), serialization } };
+			const serialized = JSON.parse(
+				JSON.stringify(
+					serializeProps(
+						{ config: { custom: new CustomValue() } },
+						definitions,
+						bridge,
+					),
+				),
+			);
+			const restored = deserializeProps<{
+				config: { custom: { callback: () => Promise<number>; date: Date } };
+			}>(
+				serialized,
+				definitions,
+				messenger,
+				bridge,
+				window,
+				"https://consumer.example.com",
+			);
+			expect(typeof restored.config.custom.callback).toBe("function");
+			expect(restored.config.custom.date).toEqual(date);
+			expect(bridge.localFunctionCount).toBe(1);
+		},
+	);
+
 	it("should round-trip Date props through the default serializer", () => {
 		const { messenger, bridge } = createBridgeWithMessenger();
 		const publishedAt = new Date("2026-01-02T03:04:05.678Z");

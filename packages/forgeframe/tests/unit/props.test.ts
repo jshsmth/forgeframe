@@ -65,6 +65,52 @@ describe("Props Normalization", () => {
 		},
 	});
 
+	it.each(["toString", "constructor", "hasOwnProperty"])(
+		"uses own values and defaults for %s",
+		(key) => {
+			const definitions = { [key]: prop.string().optional() };
+			const omitted = normalizeProps({}, definitions, createContext());
+			expect(Object.hasOwn(omitted, key)).toBe(true);
+			expect(omitted[key]).toBeUndefined();
+			expect(() => validateProps({}, definitions)).not.toThrow();
+			expect(
+				normalizeProps(
+					{},
+					{ [key]: prop.string().default("fallback") },
+					createContext(),
+				)[key],
+			).toBe("fallback");
+			expect(
+				normalizeProps({ [key]: "supplied" }, definitions, createContext())[
+					key
+				],
+			).toBe("supplied");
+		},
+	);
+
+	it("ignores inherited aliases while retaining explicit undefined precedence", () => {
+		const definitions = {
+			label: {
+				schema: prop.string().optional(),
+				alias: "toString",
+				default: "fallback",
+			},
+		};
+		expect(normalizeProps({}, definitions, createContext()).label).toBe(
+			"fallback",
+		);
+		expect(
+			normalizeProps({ toString: "alias" }, definitions, createContext()).label,
+		).toBe("alias");
+		expect(
+			normalizeProps(
+				{ label: undefined, toString: "alias" },
+				definitions,
+				createContext(),
+			).label,
+		).toBe("fallback");
+	});
+
 	it("should merge user props with defaults", () => {
 		const definitions: PropsDefinition<{ name: string; count: number }> = {
 			name: prop.string().default("default-name"),

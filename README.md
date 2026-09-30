@@ -412,7 +412,7 @@ All schemas support these base methods:
 | Type | Factory | Methods |
 |------|---------|---------|
 | String | `prop.string()` | `.min()`, `.max()`, `.length()`, `.email()`, `.url()`, `.uuid()`, `.pattern()`, `.trim()`, `.nonempty()` |
-| Number | `prop.number()` | `.min()`, `.max()`, `.int()`, `.positive()`, `.negative()`, `.nonnegative()` |
+| Finite number | `prop.number()` | `.min()`, `.max()`, `.int()`, `.positive()`, `.negative()`, `.nonnegative()` |
 | Date | `prop.date()` | `.min()`, `.max()` |
 | Boolean | `prop.boolean()` | - |
 | Function | `prop.function<T>()` | - |
@@ -446,6 +446,8 @@ const MyComponent = ForgeFrame.create({
 ```
 
 Note: ForgeFrame runs schema validation synchronously. Schemas with async `~standard.validate` are not supported.
+
+`prop.number()` rejects `NaN`, `Infinity`, and `-Infinity`. Nonfinite initial values and updates fail validation before delivery, preventing JSON transport from silently converting them to `null`. This tightens previously accepted nonfinite inputs.
 
 ### Advanced Prop Definitions
 
@@ -483,9 +485,9 @@ const SecureWidget = ForgeFrame.create({
 | `sendToHost` | Skip sending the prop to the host when set to `false` |
 | `sameDomain` | Only deliver the prop after the loaded host is verified to be same-origin. It is not included in the initial bootstrap payload |
 | `trustedDomains` | Only send the prop to matching host domains |
-| `serialization` | Choose how object props are transferred: `JSON` (default), `BASE64`, or `DOTIFY` |
+| `serialization` | Choose how object props are transferred: `JSON` (default), `BASE64`, or `DOTIFY`; all three bridge nested callbacks and preserve `Date` values |
 | `queryParam` / `bodyParam` | Include the prop in the host page's initial HTTP request |
-| `alias` | Accept a backwards-compatible input name. Alias links through other defined props resolve transitively; an explicitly supplied canonical key wins at that level |
+| `alias` | Accept a backwards-compatible input name. Alias links through other defined props resolve transitively; an explicitly supplied canonical key wins at that level. Only own input properties count as supplied values |
 | `outputSchema` | Validate the normalized value again at consumer and host trust boundaries without transforming it |
 
 Wrapped `default` and `value` fallbacks are schema inputs. ForgeFrame validates
@@ -594,6 +596,7 @@ const Checkout = ForgeFrame.create({
 
 - `queryParam`: appends to the URL query string before any `#fragment`, preserving existing query parameters and fragment text.
 - `bodyParam`: sends values in a hidden form `POST` for initial load (iframe and popup).
+- Custom POST field names may include `submit`, `remove`, and `appendChild`; these names do not interfere with submission or cleanup.
 - `bodyParam` only affects the initial navigation; later `updateProps()` uses postMessage.
 - Object values are JSON-stringified. Function and `undefined` values are skipped.
 - Never put credentials, bearer tokens, session identifiers, or sensitive personal data in `queryParam`; URLs commonly leak through browser history, referrers, analytics, and server logs.

@@ -299,7 +299,10 @@ export class HostPropsRuntime<
 		nextHostProps: Record<string, unknown>,
 	): void {
 		for (const key of Object.keys(previousProps)) {
-			if (HOST_PROPS_BUILTIN_KEYS.has(key) || key in nextHostProps) {
+			if (
+				HOST_PROPS_BUILTIN_KEYS.has(key) ||
+				Object.hasOwn(nextHostProps, key)
+			) {
 				continue;
 			}
 

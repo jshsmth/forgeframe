@@ -5,7 +5,7 @@
  * bridge, including async results and thrown errors.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { create, prop } from "@/index";
+import { create, PROP_SERIALIZATION, prop } from "@/index";
 import type { PropsDefinition } from "@/types";
 import {
 	createIframeIntegrationHarness,
@@ -44,6 +44,105 @@ describe("Function prop bridge integration", () => {
 		harness = null;
 		vi.restoreAllMocks();
 	});
+
+	it.each([PROP_SERIALIZATION.BASE64, PROP_SERIALIZATION.DOTIFY])(
+		"bridges nested callbacks across %s bootstrap and updates",
+		async (serialization) => {
+			harness = createIframeIntegrationHarness();
+			const container = document.createElement("div");
+			document.body.appendChild(container);
+			const definitions = {
+				config: {
+					schema: prop.object().shape({
+						onComplete: prop.function<() => number>(),
+						list: prop.array().of(prop.function<() => number>()),
+						date: prop.date(),
+					}),
+					serialization,
+				},
+				label: prop.string().optional(),
+			};
+			const Component = create({
+				tag: `integration-nested-callback-${serialization}`,
+				url: "https://host.example.com/widget",
+				props: definitions,
+			});
+			const date = new Date("2026-01-02T03:04:05.678Z");
+			const instance = Component({
+				config: { onComplete: () => 42, list: [() => 7], date },
+			});
+			const rendering = instance.render(container);
+			const { hostProps } = await harness.bootstrapIframeHost(
+				container,
+				definitions,
+			);
+			await rendering;
+			await expect(hostProps.config.onComplete()).resolves.toBe(42);
+			await expect(hostProps.config.list[0]?.()).resolves.toBe(7);
+			expect(hostProps.config.date).toEqual(date);
+			const cached = hostProps.config.onComplete;
+			await instance.updateProps({ label: "unrelated" });
+			await expect(cached()).resolves.toBe(42);
+			await expect(
+				instance.updateProps({
+					config: {
+						onComplete: () => 99,
+						list: [],
+						date: new Date(Number.NaN),
+					},
+				}),
+			).rejects.toThrow("Validation failed");
+			await expect(cached()).resolves.toBe(42);
+			await instance.updateProps({
+				config: { onComplete: () => 84, list: [() => 14], date },
+			});
+			await expect(hostProps.config.onComplete()).resolves.toBe(84);
+			await expect(hostProps.config.list[0]?.()).resolves.toBe(14);
+			expect(hostProps.config.date).toEqual(date);
+		},
+	);
+
+	it.each([PROP_SERIALIZATION.BASE64, PROP_SERIALIZATION.DOTIFY])(
+		"retains live callbacks after failed %s encoding and recovers",
+		async (serialization) => {
+			harness = createIframeIntegrationHarness();
+			const container = document.createElement("div");
+			document.body.appendChild(container);
+			const definitions = {
+				config: {
+					schema: prop.object<{ onComplete: () => number; failure?: object }>(),
+					serialization,
+				},
+			};
+			const Component = create({
+				tag: `integration-encoding-recovery-${serialization}`,
+				url: "https://host.example.com/widget",
+				props: definitions,
+			});
+			const instance = Component({ config: { onComplete: () => 42 } });
+			const rendering = instance.render(container);
+			const { hostProps } = await harness.bootstrapIframeHost(
+				container,
+				definitions,
+			);
+			await rendering;
+			const cached = hostProps.config.onComplete;
+			class FailingValue {
+				toJSON() {
+					throw new Error("encoding failed");
+				}
+			}
+			await expect(
+				instance.updateProps({
+					config: { onComplete: () => 99, failure: new FailingValue() },
+				}),
+			).rejects.toThrow("encoding failed");
+			await expect(cached()).resolves.toBe(42);
+			await expect(hostProps.config.onComplete()).resolves.toBe(42);
+			await instance.updateProps({ config: { onComplete: () => 84 } });
+			await expect(hostProps.config.onComplete()).resolves.toBe(84);
+		},
+	);
 
 	it("should report unserializable callback results without waiting for a message timeout", async () => {
 		harness = createIframeIntegrationHarness();

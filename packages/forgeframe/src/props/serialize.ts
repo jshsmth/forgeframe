@@ -19,7 +19,6 @@ import {
 	decodeDateWireValue,
 	encodeDateWireValue,
 	isDateWireValue,
-	parseWireValue,
 	stringifyWireValue,
 } from "../utils/wire-value";
 import { BUILTIN_PROP_DEFINITIONS } from "./definitions";
@@ -67,16 +66,25 @@ function encodeDotNotationPath(
  * Encodes a DOTIFY value segment.
  * @internal
  */
-function encodeDotNotationValue(value: unknown): string {
-	return encodeURIComponent(stringifyWireValue(value));
+function encodeDotNotationValue(
+	value: unknown,
+	bridge: FunctionBridge,
+): string {
+	return encodeURIComponent(
+		stringifyWireValue(value, (fn) => bridge.serialize(fn)),
+	);
 }
 
 /**
  * Creates a DOTIFY key/value pair for a path.
  * @internal
  */
-function createDotNotationPair(path: string[], value: unknown): string {
-	return `${encodeDotNotationPath(path)}=${encodeDotNotationValue(value)}`;
+function createDotNotationPair(
+	path: string[],
+	value: unknown,
+	bridge: FunctionBridge,
+): string {
+	return `${encodeDotNotationPath(path)}=${encodeDotNotationValue(value, bridge)}`;
 }
 
 /**
@@ -115,6 +123,7 @@ function defineDataProperty(
  */
 function toDotNotation(
 	obj: Record<string, unknown>,
+	bridge: FunctionBridge,
 	path: string[] = [],
 ): string {
 	const entries = Object.entries(obj);
@@ -134,9 +143,9 @@ function toDotNotation(
 		const nextPath = [...path, key];
 
 		if (isPlainObject(value)) {
-			parts.push(toDotNotation(value, nextPath));
+			parts.push(toDotNotation(value, bridge, nextPath));
 		} else {
-			parts.push(createDotNotationPair(nextPath, value));
+			parts.push(createDotNotationPair(nextPath, value, bridge));
 		}
 	}
 
@@ -184,7 +193,7 @@ function decodeDotNotationPair(
 		value = {};
 	} else {
 		try {
-			value = parseWireValue(decodeURIComponent(encodedValue));
+			value = JSON.parse(decodeURIComponent(encodedValue));
 		} catch {
 			value = decodeURIComponent(encodedValue);
 		}
@@ -319,7 +328,7 @@ function serializeValue(
 
 	if (serialization === PROP_SERIALIZATION.BASE64) {
 		if (typeof value === "object") {
-			const json = stringifyWireValue(value);
+			const json = stringifyWireValue(value, (fn) => bridge.serialize(fn));
 			return {
 				__type__: "base64",
 				__value__: btoa(encodeURIComponent(json)),
@@ -331,7 +340,7 @@ function serializeValue(
 		if (typeof value === "object" && value !== null && !Array.isArray(value)) {
 			return {
 				__type__: "dotify",
-				__value__: toDotNotation(value as Record<string, unknown>),
+				__value__: toDotNotation(value as Record<string, unknown>, bridge),
 			};
 		}
 	}
@@ -409,7 +418,12 @@ function deserializeValue(
 	if (isBase64Encoded(value)) {
 		try {
 			const json = decodeURIComponent(atob(value.__value__));
-			return parseWireValue(json);
+			return deserializeFunctions(
+				JSON.parse(json),
+				bridge,
+				consumerWin,
+				consumerDomain,
+			);
 		} catch {
 			return value;
 		}
@@ -417,7 +431,12 @@ function deserializeValue(
 
 	if (isDotifyEncoded(value)) {
 		try {
-			return fromDotNotation(value.__value__);
+			return deserializeFunctions(
+				fromDotNotation(value.__value__),
+				bridge,
+				consumerWin,
+				consumerDomain,
+			);
 		} catch {
 			return value;
 		}
