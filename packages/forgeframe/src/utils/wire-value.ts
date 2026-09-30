@@ -196,31 +196,65 @@ export function stringifyWireValue(
 	value: unknown,
 	encodeFunction?: (fn: (...args: unknown[]) => unknown) => unknown,
 ): string {
-	const escapedRecords = new WeakSet<object>();
-	return JSON.stringify(value, function wireValueReplacer(key, jsonValue) {
-		const holder = this as Record<string, unknown>;
-		const originalValue = key === "" ? value : holder[key];
-		if (encodeFunction && Array.isArray(holder)) {
-			assertDefinedArrayEntry(jsonValue, [key]);
-		}
+	const paths = new WeakMap<object, string[]>();
+	const generatedMarkerPaths = new Set<string>();
+	const json = JSON.stringify(
+		value,
+		function wireValueReplacer(key, jsonValue) {
+			const holder = this as Record<string, unknown>;
+			const holderPath = paths.get(holder);
+			const path = holderPath ? [...holderPath, key] : [];
+			const originalValue = holderPath ? holder[key] : value;
+			if (encodeFunction && Array.isArray(holder)) {
+				assertDefinedArrayEntry(jsonValue, path);
+			}
 
-		if (originalValue instanceof Date)
-			return encodeDateWireValue(originalValue);
-		if (
-			encodeFunction &&
-			isObjectRecord(jsonValue) &&
-			!Array.isArray(jsonValue) &&
-			!escapedRecords.has(jsonValue) &&
-			needsRecordEscape(jsonValue)
-		) {
-			const record = { ...jsonValue };
-			escapedRecords.add(record);
-			return escapeWireRecord(record);
-		}
-		return typeof jsonValue === "function" && encodeFunction
-			? encodeFunction(jsonValue)
-			: jsonValue;
-	});
+			let encoded = jsonValue;
+			if (originalValue instanceof Date) {
+				encoded = encodeDateWireValue(originalValue);
+				generatedMarkerPaths.add(JSON.stringify(path));
+			} else if (typeof jsonValue === "function" && encodeFunction) {
+				encoded = encodeFunction(jsonValue);
+				generatedMarkerPaths.add(JSON.stringify(path));
+			}
+			if (isObjectRecord(encoded)) paths.set(encoded, path);
+			return encoded;
+		},
+	);
+	if (!encodeFunction || json === undefined) return json;
+
+	// Native JSON conversion runs user encoders once. Escape the resulting
+	// records after nested omission/conversion can no longer change their shape.
+	return JSON.stringify(
+		escapeConvertedRecords(JSON.parse(json), [], generatedMarkerPaths),
+	);
+}
+
+/** Preserves codec-generated markers while escaping indistinguishable ordinary data. */
+function escapeConvertedRecords(
+	value: unknown,
+	path: string[],
+	generatedMarkerPaths: ReadonlySet<string>,
+): unknown {
+	if (!isObjectRecord(value)) return value;
+	if (Array.isArray(value)) {
+		return value.map((entry, index) =>
+			escapeConvertedRecords(
+				entry,
+				[...path, String(index)],
+				generatedMarkerPaths,
+			),
+		);
+	}
+	const record = Object.fromEntries(
+		Object.entries(value).map(([key, entry]) => [
+			key,
+			escapeConvertedRecords(entry, [...path, key], generatedMarkerPaths),
+		]),
+	);
+	return generatedMarkerPaths.has(JSON.stringify(path))
+		? record
+		: escapeWireRecord(record);
 }
 
 /**

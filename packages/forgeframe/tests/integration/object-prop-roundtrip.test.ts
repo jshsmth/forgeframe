@@ -102,4 +102,73 @@ describe("Ordinary object prop round trips", () => {
 			},
 		);
 	});
+	describe.each([
+		{ serialization: PROP_SERIALIZATION.BASE64, nested: false },
+		{ serialization: PROP_SERIALIZATION.BASE64, nested: true },
+		{ serialization: PROP_SERIALIZATION.DOTIFY, nested: true },
+	])("$serialization / nested=$nested", ({ serialization, nested }) => {
+		it.each(["convert", "omit"])(
+			"escapes a record after custom encoders %s its marker shape",
+			async (kind) => {
+				harness = createIframeIntegrationHarness();
+				const container = document.createElement("div");
+				document.body.append(container);
+				let encoderCalls = 0;
+				const expected = {
+					__type__: "function",
+					__id__: "ordinary",
+					__name__: "ordinary",
+				};
+				const makeRecord = () =>
+					kind === "convert"
+						? {
+								...expected,
+								__type__: {
+									toJSON: () => {
+										encoderCalls++;
+										return "function";
+									},
+								},
+							}
+						: {
+								...expected,
+								extra: {
+									toJSON: () => {
+										encoderCalls++;
+										return undefined;
+									},
+								},
+							};
+				const wrap = (record: unknown) =>
+					nested ? { items: [record] } : record;
+				const definitions = {
+					record: {
+						schema: prop.object<Record<string, unknown>>(),
+						serialization,
+					},
+				};
+				const Component = create({
+					tag: "encoded-marker-record",
+					url: "https://host.example.com/widget",
+					props: definitions,
+				});
+				const instance = Component({
+					record: wrap(makeRecord()) as Record<string, unknown>,
+				});
+				const rendering = instance.render(container);
+				const { hostProps } = await harness.bootstrapIframeHost(
+					container,
+					definitions,
+				);
+				await rendering;
+				expect(hostProps.record).toEqual(wrap(expected));
+				expect(encoderCalls).toBe(1);
+				await instance.updateProps({
+					record: wrap(makeRecord()) as Record<string, unknown>,
+				});
+				expect(hostProps.record).toEqual(wrap(expected));
+				expect(encoderCalls).toBe(2);
+			},
+		);
+	});
 });
