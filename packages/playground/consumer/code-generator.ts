@@ -20,7 +20,16 @@ function generatePropSchemaCode(
 ): string {
 	const { required, default: defaultValue } = options;
 
-	let code = `prop.${(type || "string").toLowerCase()}()`;
+	const kind = (type || "string").toLowerCase();
+	const supported = [
+		"string",
+		"number",
+		"boolean",
+		"function",
+		"array",
+		"object",
+	];
+	let code = `prop.${supported.includes(kind) ? kind : "string"}()`;
 
 	if (defaultValue !== undefined) {
 		code += `.default(${JSON.stringify(defaultValue)})`;
@@ -38,28 +47,33 @@ export function generateCode(
 	context: RenderContext,
 	iframeStyle: IframeStyle,
 ): string {
-	const propsEntries = Object.entries(config.props || {})
-		.map(([key, val]) => {
+	const propsEntries = [
+		...Object.entries(config.props || {}).map(([key, val]) => {
 			const v = val as Record<string, unknown>;
 			const schemaCode = generatePropSchemaCode(v.type as string, {
 				required: v.required as boolean,
 				default: v.default,
 			});
-			return `    ${key}: ${schemaCode}`;
-		})
-		.join(",\n");
+			return `    ${JSON.stringify(key)}: ${schemaCode}`;
+		}),
+		"    onGreet: prop.function().optional()",
+	].join(",\n");
 
 	// Generate instance prop values based on config
 	const instancePropsEntries = Object.entries(config.props || {})
 		.map(([key, val]) => {
 			const v = val as Record<string, unknown>;
 			const value = currentPropValues[key] ?? v.default ?? getDefaultValue(v);
-			return `  ${key}: ${JSON.stringify(value)}`;
+			const literal =
+				typeof value === "function"
+					? "(...args) => console.log(...args)"
+					: JSON.stringify(value);
+			return `  ${JSON.stringify(key)}: ${literal}`;
 		})
 		.join(",\n");
 
 	const styleEntries = Object.entries(config.style || {})
-		.map(([key, val]) => `    ${key}: ${JSON.stringify(val)}`)
+		.map(([key, val]) => `    ${JSON.stringify(key)}: ${JSON.stringify(val)}`)
 		.join(",\n");
 
 	const styleStr = styleEntries ? `  style: {\n${styleEntries}\n  },` : "";
@@ -103,7 +117,7 @@ ${styleStr}
       background: ${JSON.stringify(ms.boxBackground || "#ffffff")},
       borderRadius: ${JSON.stringify(ms.borderRadius || "8px")},
       boxShadow: ${JSON.stringify(ms.boxShadow || "0 20px 60px rgba(0, 0, 0, 0.3)")},
-      border: '1px solid ${ms.borderColor || "#e0e0e0"}',
+      border: ${JSON.stringify(`1px solid ${ms.borderColor || "#e0e0e0"}`)},
       overflow: 'hidden',
     });
 
@@ -115,7 +129,7 @@ ${styleStr}
       alignItems: 'center',
       padding: '0.75rem 1rem',
       background: ${JSON.stringify(ms.headerBackground || "#fafafa")},
-      borderBottom: '1px solid ${ms.borderColor || "#e0e0e0"}',
+      borderBottom: ${JSON.stringify(`1px solid ${ms.borderColor || "#e0e0e0"}`)},
     });
 
     const title = doc.createElement('span');
@@ -144,7 +158,7 @@ ${propsStr}
 
 // Create and render component
 const myComponent = MyComponent({
-${instancePropsEntries},
+${instancePropsEntries ? `${instancePropsEntries},` : ""}
   onGreet: (msg) => console.log('Greeting:', msg),
   onClose: () => myComponent.close(),
   onError: (err) => console.error(err),
@@ -171,7 +185,7 @@ ${propsStr}
 
 // Create and render component
 const myComponent = MyComponent({
-${instancePropsEntries},
+${instancePropsEntries ? `${instancePropsEntries},` : ""}
   onGreet: (msg) => console.log('Greeting:', msg),
   onClose: () => myComponent.close(),
   onError: (err) => console.error(err),

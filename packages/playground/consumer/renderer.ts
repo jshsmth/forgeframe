@@ -1,7 +1,9 @@
 /**
  * Component rendering for ForgeFrame Playground
  */
+
 import ForgeFrame, { type PropSchema, prop } from "forgeframe";
+import { requireValue } from "../require-value";
 import { elements } from "./elements";
 import { log, setButtonsEnabled, setStatus } from "./logger";
 import {
@@ -87,7 +89,7 @@ export function buildPropsSchema(config: PlaygroundConfig) {
 export function createModalTemplate(config: PlaygroundConfig) {
 	const cacheKey = `${config.tag}-modal-${JSON.stringify(config.modalStyle || {})}`;
 	if (componentCache.has(cacheKey)) {
-		return componentCache.get(cacheKey)!;
+		return requireValue(componentCache.get(cacheKey));
 	}
 
 	const ms = config.modalStyle || {};
@@ -235,7 +237,7 @@ export async function renderComponent() {
 
 	// Sync prop values from inputs before render
 	elements.propsBar.querySelectorAll("input[data-prop]").forEach((input) => {
-		const propName = (input as HTMLInputElement).dataset.prop!;
+		const propName = requireValue((input as HTMLInputElement).dataset.prop);
 		const propDef = config.props?.[propName] as
 			| Record<string, unknown>
 			| undefined;

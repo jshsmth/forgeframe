@@ -1,6 +1,7 @@
 /**
  * Dynamic props bar for ForgeFrame Playground
  */
+import { requireValue } from "../require-value";
 import { elements } from "./elements";
 import { log } from "./logger";
 import {
@@ -30,9 +31,60 @@ export function getDefaultValue(propDef: Record<string, unknown>): unknown {
 			return 0;
 		case "boolean":
 			return false;
+		case "array":
+			return [];
+		case "object":
+			return {};
+		case "function":
+			return (...args: unknown[]) =>
+				log(`Callback: ${args.map(String).join(", ")}`, "info");
 		default:
 			return "";
 	}
+}
+
+function escapeHtml(value: string): string {
+	return value.replace(/[&<>"']/g, (character) => {
+		const entities: Record<string, string> = {
+			"&": "&amp;",
+			"<": "&lt;",
+			">": "&gt;",
+			'"': "&quot;",
+			"'": "&#39;",
+		};
+		return entities[character];
+	});
+}
+
+function parsePropInput(
+	input: HTMLInputElement,
+	type: string,
+	previous: unknown,
+): unknown {
+	if (type === "function") return previous;
+	if (type === "boolean") {
+		if (input.value !== "true" && input.value !== "false")
+			throw new Error("Expected true or false");
+		return input.value === "true";
+	}
+	if (type === "number") {
+		const value = Number(input.value);
+		if (!input.value.trim() || !Number.isFinite(value))
+			throw new Error("Expected a finite number");
+		return value;
+	}
+	if (type === "array" || type === "object") {
+		const value: unknown = JSON.parse(input.value);
+		if (
+			type === "array"
+				? !Array.isArray(value)
+				: !value || typeof value !== "object" || Array.isArray(value)
+		) {
+			throw new Error(`Expected a JSON ${type}`);
+		}
+		return value;
+	}
+	return input.value;
 }
 
 export function renderPropsBar(config: PlaygroundConfig) {
@@ -47,7 +99,7 @@ export function renderPropsBar(config: PlaygroundConfig) {
 
 	// Remove props that are no longer in config
 	for (const key of Object.keys(currentPropValues)) {
-		if (!(key in props)) {
+		if (!Object.hasOwn(props, key)) {
 			deletePropValue(key);
 		}
 	}
@@ -60,13 +112,16 @@ export function renderPropsBar(config: PlaygroundConfig) {
 			const type = ((propDef.type as string) || "").toLowerCase();
 			const value = currentPropValues[key] ?? getDefaultValue(propDef);
 			const inputType = type === "number" ? "number" : "text";
+			const displayValue =
+				typeof value === "object" ? JSON.stringify(value) : String(value);
+			const safeKey = escapeHtml(key);
 
 			return `
         <div class="prop-item">
-          <label>${key}</label>
-          <input type="${inputType}" data-prop="${key}" value="${value}" />
-          <button data-update-prop="${key}">Set</button>
-          ${!isRendered ? `<button class="btn-remove-prop" data-remove-prop="${key}" title="Remove prop">&times;</button>` : ""}
+          <label>${safeKey}</label>
+          <input type="${inputType}" data-prop="${safeKey}" value="${escapeHtml(displayValue)}" ${type === "function" ? "readonly" : ""} />
+          <button data-update-prop="${safeKey}">Set</button>
+          ${!isRendered ? `<button class="btn-remove-prop" data-remove-prop="${safeKey}" title="Remove prop">&times;</button>` : ""}
         </div>
       `;
 		})
@@ -97,29 +152,31 @@ export function renderPropsBar(config: PlaygroundConfig) {
 		.querySelectorAll("button[data-update-prop]")
 		.forEach((btn) => {
 			btn.addEventListener("click", async () => {
-				const propName = (btn as HTMLButtonElement).dataset.updateProp!;
-				const input = elements.propsBar.querySelector(
-					`input[data-prop="${propName}"]`,
-				) as HTMLInputElement;
+				const propName = requireValue(
+					(btn as HTMLButtonElement).dataset.updateProp,
+				);
+				const input = (btn as HTMLElement)
+					.closest(".prop-item")
+					?.querySelector("input") as HTMLInputElement;
 				if (!input) return;
 
 				const propDef = props[propName] as Record<string, unknown>;
-				let value: unknown = input.value;
-
-				const type = ((propDef.type as string) || "").toLowerCase();
-				if (type === "number") {
-					value = parseFloat(input.value) || 0;
-				} else if (type === "boolean") {
-					value = input.value === "true";
-				}
-
-				setPropValue(propName, value);
-
-				if (instance) {
-					await instance.updateProps({
-						[propName]: value,
-					} as Partial<DynamicProps>);
-					log(`Updated ${propName} to: ${value}`, "info");
+				try {
+					const type = ((propDef.type as string) || "").toLowerCase();
+					const value = parsePropInput(
+						input,
+						type,
+						currentPropValues[propName],
+					);
+					if (instance) {
+						await instance.updateProps({
+							[propName]: value,
+						} as Partial<DynamicProps>);
+						log(`Updated ${propName} to: ${input.value}`, "info");
+					}
+					setPropValue(propName, value);
+				} catch (error) {
+					log(`Could not update ${propName}: ${String(error)}`, "error");
 				}
 			});
 		});
@@ -127,18 +184,21 @@ export function renderPropsBar(config: PlaygroundConfig) {
 	// Update prop values on input change
 	elements.propsBar.querySelectorAll("input[data-prop]").forEach((input) => {
 		input.addEventListener("change", () => {
-			const propName = (input as HTMLInputElement).dataset.prop!;
+			const propName = requireValue((input as HTMLInputElement).dataset.prop);
 			const propDef = props[propName] as Record<string, unknown>;
-			let value: unknown = (input as HTMLInputElement).value;
-
-			const type = ((propDef.type as string) || "").toLowerCase();
-			if (type === "number") {
-				value = parseFloat((input as HTMLInputElement).value) || 0;
-			} else if (type === "boolean") {
-				value = (input as HTMLInputElement).value === "true";
+			try {
+				const type = ((propDef.type as string) || "").toLowerCase();
+				setPropValue(
+					propName,
+					parsePropInput(
+						input as HTMLInputElement,
+						type,
+						currentPropValues[propName],
+					),
+				);
+			} catch (error) {
+				log(`Could not update ${propName}: ${String(error)}`, "error");
 			}
-
-			setPropValue(propName, value);
 		});
 	});
 
@@ -175,12 +235,12 @@ export function renderPropsBar(config: PlaygroundConfig) {
 			const name = newPropName?.value.trim();
 			const type = newPropType?.value || "string";
 
-			if (!name) {
-				log("Prop name is required", "error");
+			if (!name || ["__proto__", "constructor", "prototype"].includes(name)) {
+				log("A non-reserved prop name is required", "error");
 				return;
 			}
 
-			if (props[name]) {
+			if (Object.hasOwn(props, name)) {
 				log(`Prop "${name}" already exists`, "error");
 				return;
 			}
@@ -202,7 +262,9 @@ export function renderPropsBar(config: PlaygroundConfig) {
 			.querySelectorAll("button[data-remove-prop]")
 			.forEach((btn) => {
 				btn.addEventListener("click", () => {
-					const propName = (btn as HTMLButtonElement).dataset.removeProp!;
+					const propName = requireValue(
+						(btn as HTMLButtonElement).dataset.removeProp,
+					);
 					removePropFromConfig(propName);
 					log(`Removed prop: ${propName}`, "info");
 					onConfigChange?.();

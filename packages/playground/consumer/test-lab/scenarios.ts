@@ -1,4 +1,5 @@
 import ForgeFrame, { prop } from "forgeframe";
+import { requireValue } from "../../require-value";
 import {
 	runCheckoutE2EScenario,
 	runCommonActionsScenario,
@@ -275,7 +276,7 @@ async function runBridgeScenario(sandbox: HTMLElement): Promise<TestResult[]> {
 	try {
 		await instance.render(container);
 		await waitFor(() => typeof instance.exports?.multiply === "function");
-		const product = await instance.exports!.multiply(6, 7);
+		const product = await requireValue(instance.exports).multiply(6, 7);
 
 		results.push(
 			assertResult(
@@ -358,7 +359,7 @@ async function runPropsScenario(sandbox: HTMLElement): Promise<TestResult[]> {
 	try {
 		await instance.render(container);
 		const iframe = container.querySelector("iframe");
-		const renderedUrl = new URL(iframe!.src);
+		const renderedUrl = new URL(requireValue(iframe).src);
 		results.push(
 			assertResult(
 				"Initial query transport applies confidentiality policy",
@@ -406,7 +407,9 @@ async function runControlsScenario(
 
 	try {
 		await instance.render(container);
-		const iframe = container.querySelector<HTMLIFrameElement>("iframe")!;
+		const iframe = requireValue(
+			container.querySelector<HTMLIFrameElement>("iframe"),
+		);
 
 		await instance.resize({ width: "90%", height: 360 });
 		results.push(
@@ -551,7 +554,7 @@ async function runErrorsScenario(sandbox: HTMLElement): Promise<TestResult[]> {
 
 		let remoteError: Error | undefined;
 		try {
-			await instance.exports!.explode();
+			await requireValue(instance.exports).explode();
 		} catch (error) {
 			remoteError = error instanceof Error ? error : new Error(String(error));
 		}
@@ -566,8 +569,12 @@ async function runErrorsScenario(sandbox: HTMLElement): Promise<TestResult[]> {
 			assertResult(
 				"Remote stack locations are not exposed",
 				Boolean(remoteError?.stack) &&
-					!remoteError!.stack!.includes("host/main.ts") &&
-					!remoteError!.stack!.includes("exportInitialData"),
+					!requireValue(requireValue(remoteError).stack).includes(
+						"host/main.ts",
+					) &&
+					!requireValue(requireValue(remoteError).stack).includes(
+						"exportInitialData",
+					),
 				remoteError?.stack?.split("\n").slice(0, 2).join(" | ") ??
 					"no local stack available",
 			),

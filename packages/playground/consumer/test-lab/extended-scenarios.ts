@@ -1,4 +1,5 @@
 import ForgeFrame, { prop } from "forgeframe";
+import { requireValue } from "../../require-value";
 import type { TestResult } from "./types";
 
 const HOST_URL = import.meta.env.VITE_HOST_URL || "https://localhost:5174/";
@@ -100,7 +101,7 @@ export async function runConfigurationScenario(
 	try {
 		const currentWindowSupported = await Component.canRenderTo(window);
 		const foreignWindowSupported = await Component.canRenderTo(
-			foreignFrame.contentWindow!,
+			requireValue(foreignFrame.contentWindow),
 		);
 		results.push(
 			assertResult(
@@ -112,7 +113,9 @@ export async function runConfigurationScenario(
 
 		await instance.renderTo(window, container);
 		await waitFor(() => instance.exports?.observed);
-		const iframe = container.querySelector<HTMLIFrameElement>("iframe")!;
+		const iframe = requireValue(
+			container.querySelector<HTMLIFrameElement>("iframe"),
+		);
 		const renderedUrl = new URL(iframe.src);
 
 		results.push(
@@ -166,7 +169,10 @@ export async function runConfigurationScenario(
 			await expectFailure(
 				"Cross-window renderTo fails explicitly",
 				() =>
-					crossWindowInstance.renderTo(foreignFrame.contentWindow!, container),
+					crossWindowInstance.renderTo(
+						requireValue(foreignFrame.contentWindow),
+						container,
+					),
 				"Cross-window renderTo is not supported",
 			),
 		);
@@ -384,8 +390,10 @@ export async function runHostControlsScenario(
 	try {
 		await instance.render(container);
 		await waitFor(() => instance.exports?.runControls);
-		const iframe = container.querySelector<HTMLIFrameElement>("iframe")!;
-		const controlsPromise = instance.exports!.runControls();
+		const iframe = requireValue(
+			container.querySelector<HTMLIFrameElement>("iframe"),
+		);
+		const controlsPromise = requireValue(instance.exports).runControls();
 		await waitFor(() => iframe.style.display === "none");
 		const wasHidden = iframe.style.visibility === "hidden";
 		const controlResult = await controlsPromise;
@@ -425,7 +433,7 @@ export async function runHostControlsScenario(
 			),
 		);
 
-		await instance.exports!.requestClose();
+		await requireValue(instance.exports).requestClose();
 		await waitFor(() => container.querySelectorAll("iframe").length === 0);
 		results.push(
 			assertResult(
@@ -497,9 +505,9 @@ export async function runTransportScenario(
 		results.push(
 			assertResult(
 				"Blocked and consumer-only props never reach the host",
-				!("blockedValue" in trustInstance.exports!.observed) &&
-					!("privateValue" in trustInstance.exports!.observed),
-				`host keys: ${Object.keys(trustInstance.exports!.observed).join(", ")}`,
+				!("blockedValue" in requireValue(trustInstance.exports).observed) &&
+					!("privateValue" in requireValue(trustInstance.exports).observed),
+				`host keys: ${Object.keys(requireValue(trustInstance.exports).observed).join(", ")}`,
 			),
 		);
 	} catch (error) {
@@ -538,7 +546,9 @@ export async function runTransportScenario(
 	try {
 		await postInstance.render(postContainer);
 		await waitFor(() => postInstance.exports?.observed);
-		const iframe = postContainer.querySelector<HTMLIFrameElement>("iframe")!;
+		const iframe = requireValue(
+			postContainer.querySelector<HTMLIFrameElement>("iframe"),
+		);
 		results.push(
 			assertResult(
 				"POST body props do not leak into the URL",
@@ -609,8 +619,9 @@ export async function runReliabilityScenario(
 		await first.render(firstContainer);
 		countRenderUrlCalls = false;
 		await waitFor(() => first.exports?.ready);
-		const firstFrame =
-			firstContainer.querySelector<HTMLIFrameElement>("iframe")!;
+		const firstFrame = requireValue(
+			firstContainer.querySelector<HTMLIFrameElement>("iframe"),
+		);
 
 		results.push(
 			assertResult(
@@ -622,7 +633,7 @@ export async function runReliabilityScenario(
 		);
 
 		await first.updateProps({ label: "first-updated" });
-		const updatedFirstState = await first.exports!.readState();
+		const updatedFirstState = await requireValue(first.exports).readState();
 		results.push(
 			assertResult(
 				"A live host export observes the latest prop state",
@@ -654,8 +665,8 @@ export async function runReliabilityScenario(
 			]);
 			await waitFor(() => alpha.exports?.ready && beta.exports?.ready);
 			const [alphaInitial, betaInitial] = await Promise.all([
-				alpha.exports!.readState(),
-				beta.exports!.readState(),
+				requireValue(alpha.exports).readState(),
+				requireValue(beta.exports).readState(),
 			]);
 			results.push(
 				assertResult(
@@ -673,8 +684,8 @@ export async function runReliabilityScenario(
 				beta.updateProps({ label: "beta-updated" }),
 			]);
 			const [alphaUpdated, betaUpdated] = await Promise.all([
-				alpha.exports!.readState(),
-				beta.exports!.readState(),
+				requireValue(alpha.exports).readState(),
+				requireValue(beta.exports).readState(),
 			]);
 			results.push(
 				assertResult(
@@ -686,7 +697,7 @@ export async function runReliabilityScenario(
 			);
 
 			await alpha.close();
-			const survivingState = await beta.exports!.readState();
+			const survivingState = await requireValue(beta.exports).readState();
 			results.push(
 				assertResult(
 					"Closing one instance leaves its peer fully operational",
@@ -775,7 +786,9 @@ export async function runCommonActionsScenario(
 	try {
 		await instance.render(container);
 		await waitFor(() => instance.exports?.ready);
-		const iframe = container.querySelector<HTMLIFrameElement>("iframe")!;
+		const iframe = requireValue(
+			container.querySelector<HTMLIFrameElement>("iframe"),
+		);
 		results.push(
 			assertResult(
 				"A normal component renders and exposes its ready API",
@@ -785,7 +798,7 @@ export async function runCommonActionsScenario(
 		);
 
 		await instance.updateProps({ label: "updated", count: 7 });
-		const snapshot = await instance.exports!.getSnapshot();
+		const snapshot = await requireValue(instance.exports).getSnapshot();
 		results.push(
 			assertResult(
 				"A normal prop update is immediately available to host actions",
@@ -794,7 +807,7 @@ export async function runCommonActionsScenario(
 			),
 		);
 
-		const total = await instance.exports!.addToCount(5);
+		const total = await requireValue(instance.exports).addToCount(5);
 		results.push(
 			assertResult(
 				"A consumer can call a host method and receive its return value",
@@ -803,7 +816,7 @@ export async function runCommonActionsScenario(
 			),
 		);
 
-		const notified = await instance.exports!.notifyConsumer(
+		const notified = await requireValue(instance.exports).notifyConsumer(
 			"common-action-complete",
 		);
 		results.push(
@@ -901,7 +914,7 @@ export async function runRedirectScenario(
 		);
 
 		await instance.updateProps({ label: "after-redirect", count: 9 });
-		const snapshot = await instance.exports!.getSnapshot();
+		const snapshot = await requireValue(instance.exports).getSnapshot();
 		results.push(
 			assertResult(
 				"Prop updates target the verified post-redirect origin",
@@ -910,8 +923,8 @@ export async function runRedirectScenario(
 			),
 		);
 
-		const total = await instance.exports!.addToCount(3);
-		const notified = await instance.exports!.notifyConsumer(
+		const total = await requireValue(instance.exports).addToCount(3);
+		const notified = await requireValue(instance.exports).notifyConsumer(
 			"redirect-callback-complete",
 		);
 		results.push(
@@ -1009,7 +1022,7 @@ export async function runTimeoutRecoveryScenario(
 	try {
 		await recovered.render(recoveryContainer);
 		await waitFor(() => recovered.exports?.ready);
-		const state = await recovered.exports!.readState();
+		const state = await requireValue(recovered.exports).readState();
 		results.push(
 			assertResult(
 				"A fresh component succeeds immediately after the timeout",
@@ -1077,7 +1090,9 @@ export async function runStressScenario(
 				),
 			);
 			const states = await Promise.all(
-				entries.map(({ instance }) => instance.exports!.readState()),
+				entries.map(({ instance }) =>
+					requireValue(instance.exports).readState(),
+				),
 			);
 			updatedCount += states.filter(
 				(state, index) =>
@@ -1304,7 +1319,7 @@ export async function runCheckoutE2EScenario(
 		);
 
 		await instance.updateProps({ status: "confirming" });
-		const receipt = await instance.exports!.submitPayment(
+		const receipt = await requireValue(instance.exports).submitPayment(
 			"tok_browser_success",
 		);
 		results.push(

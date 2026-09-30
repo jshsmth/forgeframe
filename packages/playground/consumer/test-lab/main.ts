@@ -1,3 +1,4 @@
+import { requireValue } from "../../require-value";
 import { runScenario } from "./scenarios";
 import type { ScenarioId, TestResult } from "./types";
 import {
@@ -18,8 +19,9 @@ const scenario = SCENARIOS.find((entry) => entry.id === scenarioId);
 if (!scenario) {
 	document.title = "ForgeFrame Browser Test Lab";
 	renderOverview();
-	const runAllButton =
-		document.querySelector<HTMLButtonElement>("#run-all-scenarios")!;
+	const runAllButton = requireValue(
+		document.querySelector<HTMLButtonElement>("#run-all-scenarios"),
+	);
 	const automaticScenarios = SCENARIOS.filter(
 		(entry) => entry.autoRun !== false,
 	);
@@ -58,7 +60,9 @@ if (!scenario) {
 } else {
 	document.title = `${scenario.title} · ForgeFrame Test Lab`;
 	renderScenario(scenario);
-	const runButton = document.querySelector<HTMLButtonElement>("#run-scenario")!;
+	const runButton = requireValue(
+		document.querySelector<HTMLButtonElement>("#run-scenario"),
+	);
 	const execute = async () => {
 		setRunning(true);
 		const sandbox = getSandbox();
