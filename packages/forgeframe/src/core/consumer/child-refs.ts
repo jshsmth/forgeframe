@@ -32,31 +32,37 @@ export function buildNestedHostRefs<
 
 	for (const [name, component] of Object.entries(nestedComponents)) {
 		const nestedOptions = getComponentOptions(component);
-		if (!nestedOptions) {
-			throw new Error(
-				`Nested component "${name}" is missing component metadata`,
-			);
-		}
-
-		if (typeof nestedOptions.url !== "string") {
-			throw new Error(
-				`Nested component "${name}" must use a static string URL for protocol-v1 compatibility.`,
-			);
-		}
-
-		refs[name] = {
-			tag: nestedOptions.tag,
-			url: nestedOptions.url,
-			props: nestedOptions.props as
-				| PropsDefinition<Record<string, unknown>>
-				| undefined,
-			dimensions:
-				typeof nestedOptions.dimensions === "function"
-					? undefined
-					: nestedOptions.dimensions,
-			defaultContext: nestedOptions.defaultContext,
-		};
+		refs[name] = createNestedHostRef(name, nestedOptions);
 	}
 
 	return Object.keys(refs).length > 0 ? refs : undefined;
+}
+
+/** Constructs a wire reference from supplied metadata; lookup belongs to the caller. */
+function createNestedHostRef(
+	name: string,
+	nestedOptions: ReturnType<typeof getComponentOptions>,
+): HostComponentRef {
+	if (!nestedOptions) {
+		throw new Error(`Nested component "${name}" is missing component metadata`);
+	}
+
+	if (typeof nestedOptions.url !== "string") {
+		throw new Error(
+			`Nested component "${name}" must use a static string URL for protocol-v1 compatibility.`,
+		);
+	}
+
+	return {
+		tag: nestedOptions.tag,
+		url: nestedOptions.url,
+		props: nestedOptions.props as
+			| PropsDefinition<Record<string, unknown>>
+			| undefined,
+		dimensions:
+			typeof nestedOptions.dimensions === "function"
+				? undefined
+				: nestedOptions.dimensions,
+		defaultContext: nestedOptions.defaultContext,
+	};
 }

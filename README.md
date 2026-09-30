@@ -1257,6 +1257,8 @@ Then open `http://localhost:5173`. The `/tests` page contains browser scenarios 
 
 ### Architecture and ownership
 
+Read the [architecture guide](docs/architecture.md) for state ownership and render/bootstrap, props, callback, and React flows. The [IOSP review record](docs/iosp-review.md) classifies runtime callables and links their test evidence.
+
 - `packages/forgeframe/src/index.ts` defines the public package exports. Other source barrels are internal; the package exposes no subpath imports.
 - `core/component.ts` owns component factories and instance tracking. `core/consumer.ts` coordinates rendering, the prop pipeline, and transport; `core/host/` owns host bootstrap and `hostProps`.
 - `communication/` owns request/response messaging and callback bridging. Transports retain their peer window directly and validate browser-provided sources and origins.

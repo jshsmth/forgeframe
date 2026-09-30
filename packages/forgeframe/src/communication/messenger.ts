@@ -340,113 +340,137 @@ export class Messenger {
 	 */
 	private setupListener(): void {
 		this.listener = (event: MessageEvent) => {
-			if (event.source === this.win) return;
-
-			// Security: Validate origin before processing any message
-			if (!this.isOriginTrusted(event.origin)) {
-				// Silently ignore messages from untrusted origins
-				return;
-			}
-
-			const message = deserializeMessage(event.data);
-			if (!message) return;
-
-			if (message.source.uid !== this.channelUid) {
-				return;
-			}
-
-			const sourceWin = event.source;
-			if (
-				!sourceWin ||
-				typeof (sourceWin as { postMessage?: unknown }).postMessage !==
-					"function"
-			) {
-				return;
-			}
-
-			this.handleMessage(message, sourceWin as Window, event.origin);
+			const admitted = this.readTrustedMessage(event);
+			if (admitted)
+				void this.handleMessage(
+					admitted.message,
+					admitted.sourceWin,
+					event.origin,
+				);
 		};
-
 		this.win.addEventListener("message", this.listener);
 	}
 
-	/**
-	 * Processes a received message.
-	 * @internal
-	 */
+	/** Admission ordering prevents parsing or dispatching traffic from untrusted origins. */
+	private readTrustedMessage(
+		event: MessageEvent,
+	): { message: Message; sourceWin: Window } | null {
+		if (event.source === this.win) return null;
+		if (!this.isOriginTrusted(event.origin)) return null;
+		const message = deserializeMessage(event.data);
+		if (!message || message.source.uid !== this.channelUid) return null;
+		const sourceWin = event.source;
+		if (
+			!sourceWin ||
+			typeof (sourceWin as { postMessage?: unknown }).postMessage !== "function"
+		)
+			return null;
+		return { message, sourceWin: sourceWin as Window };
+	}
+
+	/** Routes an admitted message to one request/response responsibility. */
 	private async handleMessage(
 		message: Message,
 		sourceWin: Window,
 		origin: string,
 	): Promise<void> {
 		if (message.type === MESSAGE_TYPE.RESPONSE) {
-			const pending = this.pending.get(message.id);
-			if (pending) {
-				if (!isPendingResponseSourceMatch(pending, sourceWin, origin)) {
-					return;
-				}
-
-				this.pending.delete(message.id);
-				clearTimeout(pending.timeout);
-
-				if (message.error) {
-					const error = new Error(message.error.message);
-					pending.deferred.reject(error);
-				} else {
-					pending.deferred.resolve(message.data);
-				}
-			}
+			this.settlePendingResponse(message, sourceWin, origin);
 			return;
 		}
+		if (message.type === MESSAGE_TYPE.REQUEST)
+			await this.handleRequest(message, sourceWin, origin);
+	}
 
-		if (message.type === MESSAGE_TYPE.REQUEST) {
-			const handler = this.handlers.get(message.name);
-			if (!handler) {
-				return;
-			}
+	/** Settles a correlated request only after window and origin verification. */
+	private settlePendingResponse(
+		message: Message,
+		sourceWin: Window,
+		origin: string,
+	): void {
+		const pending = this.pending.get(message.id);
+		if (!pending || !isPendingResponseSourceMatch(pending, sourceWin, origin))
+			return;
+		this.pending.delete(message.id);
+		clearTimeout(pending.timeout);
+		if (message.error)
+			pending.deferred.reject(new Error(message.error.message));
+		else pending.deferred.resolve(message.data);
+	}
 
-			let responseData: unknown;
-			let responseError: Error | undefined;
+	private async handleRequest(
+		message: Message,
+		sourceWin: Window,
+		origin: string,
+	): Promise<void> {
+		const handler = this.handlers.get(message.name);
+		if (!handler) return;
+		let responseData: unknown;
+		let responseError: Error | undefined;
+		try {
+			responseData = await this.executeRequest(
+				handler,
+				message.data,
+				sourceWin,
+				origin,
+			);
+		} catch (error) {
+			responseError = normalizeResponseError(error);
+		}
+		const serialized = this.serializeResponse(
+			message,
+			responseData,
+			responseError,
+		);
+		this.postResponse(sourceWin, origin, serialized);
+	}
 
-			try {
-				const verifiedSource = {
-					uid: this.channelUid,
-					domain: origin,
-					window: sourceWin,
-				};
-				responseData = await handler(message.data, verifiedSource);
-			} catch (err) {
-				responseError = err instanceof Error ? err : new Error(String(err));
-			}
+	/** Invokes user code with browser-verified metadata, preserving synchronous throw timing. */
+	private executeRequest(
+		handler: MessageHandler,
+		data: unknown,
+		sourceWin: Window,
+		origin: string,
+	): unknown {
+		return handler(data, {
+			uid: this.channelUid,
+			domain: origin,
+			window: sourceWin,
+		});
+	}
 
-			const source = { uid: this.channelUid, domain: this.domain };
-			let serializedResponse: string;
-			try {
-				serializedResponse = serializeMessage(
-					createResponseMessage(
-						message.id,
-						responseData,
-						source,
-						responseError,
-					),
-				);
-			} catch {
-				// The peer is still reachable when only the handler result is invalid.
-				serializedResponse = serializeMessage(
-					createResponseMessage(
-						message.id,
-						undefined,
-						source,
-						new Error(`Could not serialize response for "${message.name}"`),
-					),
-				);
-			}
+	/** An invalid handler result still produces the existing serializable error response. */
+	private serializeResponse(
+		message: Message,
+		data: unknown,
+		error?: Error,
+	): string {
+		const source = { uid: this.channelUid, domain: this.domain };
+		try {
+			return serializeMessage(
+				createResponseMessage(message.id, data, source, error),
+			);
+		} catch {
+			return serializeMessage(
+				createResponseMessage(
+					message.id,
+					undefined,
+					source,
+					new Error(`Could not serialize response for "${message.name}"`),
+				),
+			);
+		}
+	}
 
-			try {
-				sourceWin.postMessage(serializedResponse, origin);
-			} catch {
-				// Window might be closed
-			}
+	private postResponse(
+		sourceWin: Window,
+		origin: string,
+		serialized: string,
+	): void {
+		try {
+			sourceWin.postMessage(serialized, origin);
+		} catch {
+			/* Window might be closed. */
 		}
 	}
 
@@ -482,4 +506,9 @@ export class Messenger {
 	isDestroyed(): boolean {
 		return this.destroyed;
 	}
+}
+
+/** Preserves Error instances and the existing conversion for non-Error throws. */
+function normalizeResponseError(error: unknown): Error {
+	return error instanceof Error ? error : new Error(String(error));
 }

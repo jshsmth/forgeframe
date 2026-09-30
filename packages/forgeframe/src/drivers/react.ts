@@ -1,11 +1,17 @@
 import type { ContextType } from "../constants";
-import { PROP_RESET } from "../core/consumer/props-pipeline";
 import type {
 	ConsumerPropsInput,
 	ConsumerPropsUpdate,
 	ForgeFrameComponent,
 	ForgeFrameComponentInstance,
 } from "../types/runtime";
+import { isCurrentSyncState, mountReactInstance } from "./react/lifecycle";
+import {
+	drainPropUpdates,
+	enqueuePropSnapshot,
+	type ReactPropSyncState,
+	snapshotProps,
+} from "./react/prop-sync";
 
 /**
  * Minimal React-like interface for driver compatibility.
@@ -143,34 +149,6 @@ type FullReactComponentProps<
 		? ConsumerPropsInput<P, I, SchemaInputs>
 		: ConsumerPropsUpdate<P, I, SchemaInputs>);
 
-/**
- * Performs a shallow equality check for prop objects.
- * @internal
- */
-function shallowEqualProps(
-	prev: Record<string, unknown>,
-	next: Record<string, unknown>,
-): boolean {
-	const prevKeys = Object.keys(prev);
-	const nextKeys = Object.keys(next);
-
-	if (prevKeys.length !== nextKeys.length) {
-		return false;
-	}
-
-	for (const key of prevKeys) {
-		if (!Object.hasOwn(next, key)) {
-			return false;
-		}
-
-		if (!Object.is(prev[key], next[key])) {
-			return false;
-		}
-	}
-
-	return true;
-}
-
 /** Reports React driver errors without allowing observer failures to break lifecycle work. @internal */
 function reportReactError(
 	callback: ((error: Error) => void) | undefined,
@@ -195,74 +173,6 @@ function reportReactError(
 	} catch (callbackError) {
 		console.error("Error in React onError callback:", callbackError);
 	}
-}
-
-/** A committed React prop snapshot waiting to be synchronized. @internal */
-interface ReactPropUpdate {
-	desired: Record<string, unknown>;
-	payload: Record<string, unknown>;
-	retryOnFailure: boolean;
-}
-
-/** Per-instance state for serializing React prop updates. @internal */
-interface ReactPropSyncState<
-	P extends Record<string, unknown>,
-	X,
-	I extends Record<string, unknown>,
-	SchemaInputs extends Record<string, unknown>,
-> {
-	instance: ForgeFrameComponentInstance<P, X, I, SchemaInputs>;
-	comparableProps: Record<string, unknown> | null;
-	knownKeys: Set<string>;
-	queue: ReactPropUpdate[];
-	renderReady: boolean;
-	draining: boolean;
-	active: boolean;
-}
-
-/** Prevents a completed or failed instance from retaining further prop work. @internal */
-function deactivatePropSyncState<
-	P extends Record<string, unknown>,
-	X,
-	I extends Record<string, unknown>,
-	SchemaInputs extends Record<string, unknown>,
->(state: ReactPropSyncState<P, X, I, SchemaInputs>): void {
-	state.active = false;
-	state.queue.length = 0;
-}
-
-/** Creates a shallow, stable snapshot of the component props for one React commit. @internal */
-function snapshotProps(
-	props: Record<string, unknown>,
-): Record<string, unknown> {
-	return { ...props };
-}
-
-/**
- * Builds a self-contained update payload, resetting every previously observed missing key.
- * @internal
- */
-function buildPropUpdate(
-	desired: Record<string, unknown>,
-	knownKeys: Set<string>,
-): ReactPropUpdate {
-	const payload = snapshotProps(desired);
-
-	for (const key of Object.keys(desired)) {
-		knownKeys.add(key);
-	}
-
-	for (const key of knownKeys) {
-		if (!Object.hasOwn(desired, key)) {
-			payload[key] = PROP_RESET;
-		}
-	}
-
-	return {
-		desired,
-		payload,
-		retryOnFailure: false,
-	};
 }
 
 /**
@@ -319,9 +229,6 @@ export interface ReactComponentType<P, E = unknown> {
 /**
  * Creates a React component wrapper for a ForgeFrame cross-domain component.
  *
- * @typeParam P - The props type defined in the ForgeFrame component
- * @typeParam X - The export type for data shared from the host component
- *
  * @param Component - The ForgeFrame component to wrap
  * @param options - Configuration options including the React instance
  * @typeParam P - The canonical props type defined by the ForgeFrame component
@@ -342,6 +249,9 @@ export interface ReactComponentType<P, E = unknown> {
  * - Ref forwarding to the container element
  *
  * The component automatically cleans up the cross-domain connection when unmounted.
+ * Committed prop changes synchronize in order after rendering. Omitted previously
+ * observed props reset to their fallbacks; explicit `undefined` remains supplied data.
+ * Changing `context` remounts the instance with an independent update queue.
  *
  * @example
  * ```tsx
@@ -416,61 +326,13 @@ export function createReactComponent<
 		const onCloseRef = useRef<typeof onClose>(onClose);
 		const [error, setError] = useState<Error | null>(null);
 
-		const isCurrentSyncState = (
-			state: ReactPropSyncState<P, X, I, SchemaInputs>,
-		): boolean =>
-			state.active &&
-			instanceRef.current === state.instance &&
-			propSyncRef.current === state;
-
-		const drainPropUpdates = async (
-			state: ReactPropSyncState<P, X, I, SchemaInputs>,
-		): Promise<void> => {
-			if (state.draining || !state.renderReady || !isCurrentSyncState(state)) {
-				return;
-			}
-
-			state.draining = true;
-
-			try {
-				while (state.queue.length > 0 && isCurrentSyncState(state)) {
-					const update = state.queue[0];
-					if (!update) {
-						return;
-					}
-
-					try {
-						await state.instance.updateProps(
-							update.payload as ConsumerPropsUpdate<P, I, SchemaInputs>,
-						);
-					} catch (err) {
-						if (!isCurrentSyncState(state)) {
-							return;
-						}
-
-						state.queue.shift();
-						if (update.retryOnFailure) {
-							state.queue.unshift({
-								...update,
-								retryOnFailure: false,
-							});
-						}
-						state.comparableProps = null;
-						reportReactError(onErrorRef.current ?? undefined, err as Error);
-						continue;
-					}
-
-					if (!isCurrentSyncState(state)) {
-						return;
-					}
-
-					state.queue.shift();
-					state.comparableProps = update.desired;
-				}
-			} finally {
-				state.draining = false;
-			}
-		};
+		const refs = { instanceRef, propSyncRef };
+		const isCurrent = (state: ReactPropSyncState<P, X, I, SchemaInputs>) =>
+			isCurrentSyncState(state, refs);
+		const onDriverError = (err: Error) =>
+			reportReactError(onErrorRef.current ?? undefined, err);
+		const drain = (state: ReactPropSyncState<P, X, I, SchemaInputs>) =>
+			drainPropUpdates(state, isCurrent, onDriverError);
 
 		useEffect(() => {
 			onRenderedRef.current = onRendered;
@@ -487,100 +349,32 @@ export function createReactComponent<
 			const initialProps = snapshotProps(
 				componentProps as Record<string, unknown>,
 			);
-			let instance: ForgeFrameComponentInstance<P, X, I, SchemaInputs>;
-			try {
-				instance = createInstance(
-					initialProps as ConsumerPropsInput<P, I, SchemaInputs>,
-				);
-			} catch (err) {
-				const constructionError =
-					err instanceof Error ? err : new Error(String(err));
-				setError(constructionError);
-				reportReactError(onErrorRef.current ?? undefined, constructionError);
-				return;
-			}
-			const syncState: ReactPropSyncState<P, X, I, SchemaInputs> = {
-				instance,
-				comparableProps: initialProps,
-				knownKeys: new Set(Object.keys(initialProps)),
-				queue: [],
-				renderReady: false,
-				draining: false,
-				active: true,
-			};
-
-			instanceRef.current = instance;
-			propSyncRef.current = syncState;
-
-			const unsubscribeRendered = instance.event.once("rendered", () => {
-				return onRenderedRef.current?.();
-			});
-			const unsubscribeClose = instance.event.once("close", () => {
-				deactivatePropSyncState(syncState);
-				return onCloseRef.current?.();
-			});
-			const unsubscribeError = instance.event.on("error", (err: Error) => {
-				reportReactError(onErrorRef.current ?? undefined, err);
-			});
-
-			instance.render(container, context).then(
-				() => {
-					if (!isCurrentSyncState(syncState)) {
-						return;
-					}
-
-					syncState.renderReady = true;
-					void drainPropUpdates(syncState);
+			return mountReactInstance(
+				createInstance,
+				initialProps,
+				container,
+				context,
+				refs,
+				{
+					onRendered: () => onRenderedRef.current?.(),
+					onClose: () => onCloseRef.current?.(),
+					onError: onDriverError,
+					setError,
 				},
-				(err: Error) => {
-					if (!isCurrentSyncState(syncState)) {
-						return;
-					}
-
-					deactivatePropSyncState(syncState);
-					setError(err);
-					reportReactError(onErrorRef.current ?? undefined, err);
+				(state) => {
+					void drain(state);
 				},
 			);
-
-			return () => {
-				deactivatePropSyncState(syncState);
-				instance.close().catch(() => undefined);
-				unsubscribeRendered();
-				unsubscribeClose();
-				unsubscribeError();
-
-				if (instanceRef.current === instance) {
-					instanceRef.current = null;
-				}
-				if (propSyncRef.current === syncState) {
-					propSyncRef.current = null;
-				}
-			};
 		}, [context]);
 
 		useEffect(() => {
 			const syncState = propSyncRef.current;
-			if (!syncState || !isCurrentSyncState(syncState)) return;
+			if (!syncState || !isCurrent(syncState)) return;
 
 			const nextProps = snapshotProps(
 				componentProps as Record<string, unknown>,
 			);
-			const pendingUpdate = syncState.queue.at(-1);
-			const prevProps = pendingUpdate?.desired ?? syncState.comparableProps;
-			const nextPropsRecord = nextProps as Record<string, unknown>;
-			if (
-				prevProps &&
-				shallowEqualProps(prevProps as Record<string, unknown>, nextPropsRecord)
-			) {
-				if (pendingUpdate) {
-					pendingUpdate.retryOnFailure = true;
-				}
-				return;
-			}
-
-			syncState.queue.push(buildPropUpdate(nextProps, syncState.knownKeys));
-			void drainPropUpdates(syncState);
+			if (enqueuePropSnapshot(syncState, nextProps)) void drain(syncState);
 		});
 
 		useEffect(() => {

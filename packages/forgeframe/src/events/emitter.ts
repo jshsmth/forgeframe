@@ -112,23 +112,30 @@ export class EventEmitter implements EventEmitterInterface {
 		const handlers = this.listeners.get(event);
 		if (!handlers) return;
 
-		for (const handler of handlers) {
-			try {
-				const result = handler(data);
-				// Handle async handlers - catch promise rejections
-				if (
-					result &&
-					typeof result === "object" &&
-					"catch" in result &&
-					typeof result.catch === "function"
-				) {
-					(result as Promise<unknown>).catch((err: unknown) => {
-						console.error(`Error in async event handler for "${event}":`, err);
-					});
-				}
-			} catch (err) {
-				console.error(`Error in event handler for "${event}":`, err);
+		for (const handler of handlers) this.invokeHandler(event, handler, data);
+	}
+
+	/** Executes one observer while isolating both synchronous and asynchronous failures. */
+	private invokeHandler<T>(
+		event: string,
+		handler: EventHandler,
+		data?: T,
+	): void {
+		try {
+			const result = handler(data);
+			// Handle async handlers - catch promise rejections
+			if (
+				result &&
+				typeof result === "object" &&
+				"catch" in result &&
+				typeof result.catch === "function"
+			) {
+				(result as Promise<unknown>).catch((err: unknown) => {
+					console.error(`Error in async event handler for "${event}":`, err);
+				});
 			}
+		} catch (err) {
+			console.error(`Error in event handler for "${event}":`, err);
 		}
 	}
 

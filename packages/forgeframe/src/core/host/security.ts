@@ -14,32 +14,19 @@ import {
 	getOpener,
 	isIframe,
 	isPopup,
-	matchDomain,
 } from "../../window/helpers";
 import type { HostSecurityContext } from "./types";
 
 export const CONSUMER_WINDOW_RESOLUTION_ERROR =
 	"Could not resolve consumer window";
-export const CONSUMER_ORIGIN_VERIFICATION_ERROR =
-	"Could not verify consumer origin";
+export { CONSUMER_ORIGIN_VERIFICATION_ERROR } from "./consumer-origin-policy";
 
-function assertAllowedConsumerDomain(
-	allowedConsumerDomains: DomainMatcher,
-	consumerDomain: string,
-	tag: string,
-): void {
-	if (!consumerDomain) {
-		throw new Error(
-			`${CONSUMER_ORIGIN_VERIFICATION_ERROR} for component "${tag}"`,
-		);
-	}
-
-	if (!matchDomain(allowedConsumerDomains, consumerDomain)) {
-		throw new Error(
-			`Consumer domain "${consumerDomain}" is not allowed for component "${tag}"`,
-		);
-	}
-}
+import {
+	assertVerifiedConsumerContext,
+	selectConsumerSecurityContext,
+	selectObservedConsumerContext,
+	validateMessagingConsumerContext,
+} from "./consumer-origin-policy";
 
 export function resolveConsumerWindow(hostWindow: Window = window): Window {
 	if (isIframe(hostWindow)) {
@@ -101,35 +88,10 @@ export function resolveConsumerSecurityContext(options: {
 	allowedConsumerDomains?: DomainMatcher;
 	tag: string;
 }): HostSecurityContext {
-	const verifiedConsumerDomain = getVerifiedConsumerOrigin(
-		options.consumerWindow,
+	return selectConsumerSecurityContext(
+		options,
+		getVerifiedConsumerOrigin(options.consumerWindow),
 	);
-
-	if (verifiedConsumerDomain) {
-		if (options.allowedConsumerDomains) {
-			assertAllowedConsumerDomain(
-				options.allowedConsumerDomains,
-				verifiedConsumerDomain,
-				options.tag,
-			);
-		}
-
-		return {
-			consumerDomain: verifiedConsumerDomain,
-			consumerDomainVerified: true,
-		};
-	}
-
-	if (options.allowedConsumerDomains) {
-		throw new Error(
-			`${CONSUMER_ORIGIN_VERIFICATION_ERROR} for component "${options.tag}"`,
-		);
-	}
-
-	return {
-		consumerDomain: options.claimedConsumerDomain,
-		consumerDomainVerified: false,
-	};
 }
 
 /** Selects an exact messaging target; the bootstrap response verifies it. */
@@ -142,28 +104,18 @@ export function resolveMessagingConsumerContext(options: {
 	const consumerDomain =
 		getAccessibleConsumerOrigin(options.consumerWindow) ??
 		options.claimedConsumerDomain;
-	let origin: URL;
-	try {
-		origin = new URL(consumerDomain);
-	} catch {
-		throw new Error(CONSUMER_ORIGIN_VERIFICATION_ERROR);
-	}
-	if (
-		!["http:", "https:"].includes(origin.protocol) ||
-		origin.origin !== consumerDomain
-	) {
-		throw new Error(CONSUMER_ORIGIN_VERIFICATION_ERROR);
-	}
-	if (options.allowedConsumerDomains) {
-		assertAllowedConsumerDomain(
-			options.allowedConsumerDomains,
-			consumerDomain,
-			options.tag,
-		);
-	}
-	return { consumerDomain, consumerDomainVerified: false };
+	return validateMessagingConsumerContext(
+		consumerDomain,
+		options.allowedConsumerDomains,
+		options.tag,
+	);
 }
 
+/**
+ * Re-observes the consumer origin and enforces verified identity plus the allowlist.
+ * An origin-change callback runs before the allowlist check, allowing obsolete
+ * transport trust to be removed even when the newly observed origin is rejected.
+ */
 export function reassertAllowedConsumerDomain(options: {
 	consumerWindow: Window;
 	consumerDomain: string;
@@ -172,35 +124,20 @@ export function reassertAllowedConsumerDomain(options: {
 	tag: string;
 	onConsumerDomainChange?: (previousDomain: string, nextDomain: string) => void;
 }): HostSecurityContext {
-	const verifiedConsumerDomain = getVerifiedConsumerOrigin(
-		options.consumerWindow,
+	const context = selectObservedConsumerContext(
+		getVerifiedConsumerOrigin(options.consumerWindow),
+		options,
 	);
-	let consumerDomain = options.consumerDomain;
-	let consumerDomainVerified = options.consumerDomainVerified;
-
-	if (verifiedConsumerDomain) {
-		if (verifiedConsumerDomain !== consumerDomain) {
-			options.onConsumerDomainChange?.(consumerDomain, verifiedConsumerDomain);
-		}
-
-		consumerDomain = verifiedConsumerDomain;
-		consumerDomainVerified = true;
-	}
-
-	if (!consumerDomainVerified) {
-		throw new Error(
-			`${CONSUMER_ORIGIN_VERIFICATION_ERROR} for component "${options.tag}"`,
+	if (context.consumerDomain !== options.consumerDomain) {
+		options.onConsumerDomainChange?.(
+			options.consumerDomain,
+			context.consumerDomain,
 		);
 	}
-
-	assertAllowedConsumerDomain(
+	assertVerifiedConsumerContext(
+		context,
 		options.allowedConsumerDomains,
-		consumerDomain,
 		options.tag,
 	);
-
-	return {
-		consumerDomain,
-		consumerDomainVerified,
-	};
+	return context;
 }

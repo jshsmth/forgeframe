@@ -98,11 +98,8 @@ export class CleanupManager {
 	 * @public
 	 */
 	async cleanup(): Promise<void> {
-		if (this.cleaned) return;
-		this.cleaned = true;
-
-		const tasks = this.tasks.reverse();
-		this.tasks = [];
+		const tasks = this.takeCleanupTasks();
+		if (!tasks) return;
 
 		for (const task of tasks) {
 			try {
@@ -111,5 +108,13 @@ export class CleanupManager {
 				console.error("Error in cleanup task:", err);
 			}
 		}
+	}
+	/** Claims the pending LIFO batch exactly once before any user task runs. */
+	private takeCleanupTasks(): CleanupTask[] | null {
+		if (this.cleaned) return null;
+		this.cleaned = true;
+		const tasks = this.tasks.reverse();
+		this.tasks = [];
+		return tasks;
 	}
 }

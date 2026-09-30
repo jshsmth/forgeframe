@@ -153,59 +153,70 @@ function toDotNotation(
  */
 function fromDotNotation(str: string): Record<string, unknown> {
 	const result: Record<string, unknown> = {};
-
-	if (!str) return result;
-	if (str === DOTIFY_EMPTY_OBJECT_PAYLOAD) return result;
-
-	const pairs = str.split("&");
-
-	for (const pair of pairs) {
-		const separatorIndex = pair.indexOf("=");
-		if (separatorIndex === -1) continue;
-
-		const path = pair.slice(0, separatorIndex);
-		const encodedValue = pair.slice(separatorIndex + 1);
-		if (!path || encodedValue === undefined) continue;
-
-		const isEmptyObjectPath = path.startsWith(DOTIFY_EMPTY_OBJECT_PATH_PREFIX);
-		let value: unknown;
-		if (isEmptyObjectPath) {
-			if (encodedValue !== "1") {
-				throw new Error("Invalid empty-object DOTIFY entry");
-			}
-			value = {};
-		} else {
-			try {
-				value = parseWireValue(decodeURIComponent(encodedValue));
-			} catch {
-				value = decodeURIComponent(encodedValue);
-			}
-		}
-
-		const keys = decodeDotNotationPath(path);
+	if (!str || str === DOTIFY_EMPTY_OBJECT_PAYLOAD) return result;
+	for (const pair of str.split("&")) {
+		const entry = decodeDotNotationPair(pair);
+		if (!entry) continue;
+		const keys = decodeDotNotationPath(entry.path);
 		if (keys.some((key) => !isSafeObjectKey(key))) continue;
+		assignDotNotationPath(result, keys, entry.value);
+	}
+	return result;
+}
 
-		let current = result;
+/** Decodes one framed pair; malformed wrappers retain their existing fallback. */
+function decodeDotNotationPair(
+	pair: string,
+): { path: string; value: unknown } | null {
+	const separatorIndex = pair.indexOf("=");
+	if (separatorIndex === -1) return null;
 
-		for (let i = 0; i < keys.length - 1; i++) {
-			const key = keys[i];
-			const existing = current[key];
-			if (
-				!Object.hasOwn(current, key) ||
-				typeof existing !== "object" ||
-				existing === null ||
-				Array.isArray(existing)
-			) {
-				current[key] = {};
-			}
-			current = current[key] as Record<string, unknown>;
+	const path = pair.slice(0, separatorIndex);
+	const encodedValue = pair.slice(separatorIndex + 1);
+	if (!path || encodedValue === undefined) return null;
+
+	const isEmptyObjectPath = path.startsWith(DOTIFY_EMPTY_OBJECT_PATH_PREFIX);
+	let value: unknown;
+	if (isEmptyObjectPath) {
+		if (encodedValue !== "1") {
+			throw new Error("Invalid empty-object DOTIFY entry");
 		}
-
-		const leafKey = keys[keys.length - 1];
-		defineDataProperty(current, leafKey, value);
+		value = {};
+	} else {
+		try {
+			value = parseWireValue(decodeURIComponent(encodedValue));
+		} catch {
+			value = decodeURIComponent(encodedValue);
+		}
 	}
 
-	return result;
+	return { path, value };
+}
+
+/** Reconstructs one safe path without invoking prototype setters at its leaf. */
+function assignDotNotationPath(
+	result: Record<string, unknown>,
+	keys: string[],
+	value: unknown,
+): void {
+	let current = result;
+
+	for (let i = 0; i < keys.length - 1; i++) {
+		const key = keys[i];
+		const existing = current[key];
+		if (
+			!Object.hasOwn(current, key) ||
+			typeof existing !== "object" ||
+			existing === null ||
+			Array.isArray(existing)
+		) {
+			current[key] = {};
+		}
+		current = current[key] as Record<string, unknown>;
+	}
+
+	const leafKey = keys[keys.length - 1];
+	defineDataProperty(current, leafKey, value);
 }
 
 /**

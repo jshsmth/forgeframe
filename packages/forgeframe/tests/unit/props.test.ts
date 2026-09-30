@@ -14,7 +14,36 @@ import {
 } from "@/props/normalize";
 import { prop } from "@/props/prop";
 import { isStandardSchema } from "@/props/schema";
-import type { PropContext, PropsDefinition } from "@/types";
+import type { PropContext, PropDefinition, PropsDefinition } from "@/types";
+
+describe("Parameter callback compatibility", () => {
+	it.each(["queryParam", "bodyParam"] as const)(
+		"preserves the prop definition receiver for %s converters",
+		(parameter) => {
+			const definition: PropDefinition<string, { name: string }> = {
+				alias: "wire",
+				queryParam({ value }) {
+					expect(this).toBe(definition);
+					return `${this.alias}:${value}`;
+				},
+				bodyParam({ value }) {
+					expect(this).toBe(definition);
+					return `${this.alias}:${value}`;
+				},
+			};
+			const definitions: PropsDefinition<{ name: string }> = {
+				name: definition,
+			};
+			const toParams =
+				parameter === "queryParam" ? propsToQueryParams : propsToBodyParams;
+			expect(
+				toParams({ name: "Ada" }, definitions, "https://host.example").get(
+					"name",
+				),
+			).toBe("wire:Ada");
+		},
+	);
+});
 
 describe("Props Normalization", () => {
 	const createContext = <P extends Record<string, unknown>>(
@@ -63,6 +92,26 @@ describe("Props Normalization", () => {
 		const result = normalizeProps({}, definitions, createContext());
 
 		expect(result.timestamp).toBe(12345);
+	});
+
+	it("invokes computed values and function defaults without a receiver", () => {
+		function computedValue(this: unknown): string {
+			expect(this).toBeUndefined();
+			return "computed";
+		}
+		function defaultValue(this: unknown): string {
+			expect(this).toBeUndefined();
+			return "default";
+		}
+		const definitions: PropsDefinition<{ computed: string; fallback: string }> =
+			{
+				computed: { value: computedValue },
+				fallback: { default: defaultValue },
+			};
+		expect(normalizeProps({}, definitions, createContext())).toMatchObject({
+			computed: "computed",
+			fallback: "default",
+		});
 	});
 
 	it("should handle computed values", () => {

@@ -84,7 +84,17 @@ export class HostPropsRuntime<
 
 		const hostConsumerProps = filterReservedHostPropKeys(deserializedProps);
 
-		this.hostProps = {
+		this.hostProps = this.createHostProps(hostConsumerProps, payload.children);
+
+		return this.hostProps;
+	}
+
+	/** Constructs the host API surface; callbacks defer control work until invoked. */
+	private createHostProps(
+		hostConsumerProps: RemoteValue<P>,
+		children: WindowNamePayload<P>["children"],
+	): HostProps<P> {
+		return {
 			...hostConsumerProps,
 			uid: this.options.uid,
 			tag: this.options.tag,
@@ -105,10 +115,8 @@ export class HostPropsRuntime<
 			},
 			getPeerInstances: (options) =>
 				this.options.controls.getPeerInstances(options),
-			children: this.buildNestedComponents(payload.children),
+			children: this.buildNestedComponents(children),
 		};
-
-		return this.hostProps;
 	}
 
 	exposeHostProps(): void {
@@ -149,6 +157,10 @@ export class HostPropsRuntime<
 		this.hostProps.consumer.props = this.consumerProps;
 	}
 
+	/**
+	 * Completes bootstrap using any newer acknowledged props received while it was pending.
+	 * The selected snapshot is validated against the current host definitions.
+	 */
 	applyBootstrap(data: HostBootstrapData): void {
 		const children = this.buildNestedComponents(data.children);
 		// An acknowledged PROPS update can arrive before this response. Preserve
@@ -159,6 +171,11 @@ export class HostPropsRuntime<
 		this.pendingBootstrapProps = null;
 	}
 
+	/**
+	 * Validates and commits a wire snapshot before notifying subscribers and emitting props.
+	 * Stale custom keys are removed while built-in controls keep their identity.
+	 * Validation failure preserves the current prop snapshot and emits an error.
+	 */
 	applySerializedProps(serializedProps: SerializedProps): { success: true } {
 		try {
 			const previousProps = this.consumerProps;
@@ -167,21 +184,13 @@ export class HostPropsRuntime<
 			validateNormalizedProps(nextProps as P, this.propDefinitions);
 			const nextHostProps = filterReservedHostPropKeys(nextProps);
 
-			this.removeStaleHostProps(previousProps, nextHostProps);
-			this.consumerProps = nextProps;
-			Object.assign(this.hostProps, nextHostProps);
-			this.hostProps.consumer.props = this.consumerProps;
-			if (!this.initialized) {
-				this.pendingBootstrapProps = serializedProps;
-			}
-
-			for (const handler of this.propsHandlers) {
-				try {
-					handler(nextProps);
-				} catch (error) {
-					console.error("Error in props handler:", error);
-				}
-			}
+			this.commitHostProps(
+				previousProps,
+				nextProps,
+				nextHostProps,
+				serializedProps,
+			);
+			this.notifyPropsHandlers(nextProps);
 
 			this.options.event.emit(EVENT.PROPS, nextProps);
 
@@ -192,6 +201,32 @@ export class HostPropsRuntime<
 			console.error("Error deserializing props:", propsError);
 			this.options.event.emit(EVENT.ERROR, propsError);
 			throw propsError;
+		}
+	}
+
+	private commitHostProps(
+		previousProps: RemoteValue<P>,
+		nextProps: RemoteValue<P>,
+		nextHostProps: Record<string, unknown>,
+		serializedProps: SerializedProps,
+	): void {
+		this.removeStaleHostProps(previousProps, nextHostProps);
+		this.consumerProps = nextProps;
+		Object.assign(this.hostProps, nextHostProps);
+		this.hostProps.consumer.props = this.consumerProps;
+		if (!this.initialized) {
+			this.pendingBootstrapProps = serializedProps;
+		}
+	}
+
+	/** Observer failures do not interrupt subsequent observers or lifecycle events. */
+	private notifyPropsHandlers(nextProps: RemoteValue<P>): void {
+		for (const handler of this.propsHandlers) {
+			try {
+				handler(nextProps);
+			} catch (error) {
+				console.error("Error in props handler:", error);
+			}
 		}
 	}
 
@@ -231,28 +266,7 @@ export class HostPropsRuntime<
 			return propDefinitions;
 		}
 
-		let hasDeferredSameDomainProp = false;
-		const bootstrapDefinitions = {
-			...propDefinitions,
-		} as HostPropsDefinition<P, SchemaInputs>;
-
-		for (const [key, definition] of Object.entries(propDefinitions)) {
-			if (
-				!definition ||
-				isStandardSchema(definition) ||
-				!definition.sameDomain
-			) {
-				continue;
-			}
-
-			hasDeferredSameDomainProp = true;
-			bootstrapDefinitions[key as keyof P] = {
-				...(definition as PropDefinition<unknown, P>),
-				required: false,
-			} as HostPropsDefinition<P, SchemaInputs>[keyof P];
-		}
-
-		return hasDeferredSameDomainProp ? bootstrapDefinitions : propDefinitions;
+		return relaxSameDomainBootstrapDefinitions(propDefinitions);
 	}
 
 	private buildNestedComponents(
@@ -290,4 +304,31 @@ export class HostPropsRuntime<
 			delete (this.hostProps as Record<string, unknown>)[key];
 		}
 	}
+}
+
+/** Relaxes only deferred same-domain definitions after the caller verifies the context. */
+function relaxSameDomainBootstrapDefinitions<
+	P extends Record<string, unknown>,
+	SchemaInputs,
+>(
+	propDefinitions: HostPropsDefinition<P, SchemaInputs>,
+): HostPropsDefinition<P, SchemaInputs> {
+	let hasDeferredSameDomainProp = false;
+	const bootstrapDefinitions = {
+		...propDefinitions,
+	} as HostPropsDefinition<P, SchemaInputs>;
+
+	for (const [key, definition] of Object.entries(propDefinitions)) {
+		if (!definition || isStandardSchema(definition) || !definition.sameDomain) {
+			continue;
+		}
+
+		hasDeferredSameDomainProp = true;
+		bootstrapDefinitions[key as keyof P] = {
+			...(definition as PropDefinition<unknown, P>),
+			required: false,
+		} as HostPropsDefinition<P, SchemaInputs>[keyof P];
+	}
+
+	return hasDeferredSameDomainProp ? bootstrapDefinitions : propDefinitions;
 }

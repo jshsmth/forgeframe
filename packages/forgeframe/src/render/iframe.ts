@@ -4,6 +4,10 @@ import type {
 	IframeStyles,
 } from "../types/utility";
 import { normalizeDimensionToCSS } from "../utils/dimension";
+import {
+	encodeIframeAttribute,
+	encodeIframeStyle,
+} from "./iframe-configuration";
 
 /**
  * Configuration options for creating an iframe.
@@ -366,12 +370,8 @@ function applyStyles(iframe: HTMLIFrameElement, style: IframeStyles): void {
 	for (const [key, value] of Object.entries(style)) {
 		if (value === undefined) continue;
 
-		// Convert camelCase to kebab-case for CSS properties
-		const cssValue = typeof value === "number" ? `${value}px` : value;
-		iframe.style.setProperty(
-			key.replace(/([A-Z])/g, "-$1").toLowerCase(),
-			cssValue,
-		);
+		const encoded = encodeIframeStyle(key, value);
+		iframe.style.setProperty(encoded.property, encoded.value);
 	}
 }
 
@@ -385,16 +385,8 @@ function applyAttributes(
 	attributes: IframeAttributes,
 ): void {
 	for (const [key, value] of Object.entries(attributes)) {
-		if (value === undefined) continue;
-
-		if (typeof value === "boolean") {
-			if (value) {
-				iframe.setAttribute(key, "");
-			}
-			continue;
-		}
-
-		iframe.setAttribute(key, value);
+		const encoded = encodeIframeAttribute(value);
+		if (encoded !== undefined) iframe.setAttribute(key, encoded);
 	}
 }
 

@@ -37,3 +37,12 @@ export function resolveComponentHostUrl(
 
 	return resolved;
 }
+
+/** Appends serialized parameters with the existing URL-string semantics. @internal */
+export function appendComponentQuery(
+	baseUrl: string,
+	queryString: string,
+): string {
+	if (!queryString) return baseUrl;
+	return `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}${queryString}`;
+}

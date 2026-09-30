@@ -101,39 +101,34 @@ export class FunctionBridge {
 	/**
 	 * Serializes a local function to a transferable reference.
 	 *
+	 * @remarks
+	 * A retained function reuses its ID until eviction or batch reconciliation removes
+	 * it. Serialization also records that identity in the current batch.
+	 *
 	 * @param fn - The function to serialize
 	 * @param name - Optional name for debugging
 	 * @returns A function reference that can be sent across domains
 	 */
 	serialize(fn: CallableFunction, name?: string): FunctionRef {
+		return createFunctionRef(
+			this.retainLocalFunction(fn),
+			name || fn.name || "anonymous",
+		);
+	}
+
+	/** Reconciles the retained identity, capacity and current batch as one registry operation. */
+	private retainLocalFunction(fn: CallableFunction): string {
 		const existingId = this.localFunctionIds.get(fn);
 		if (existingId && this.localFunctions.get(existingId) === fn) {
 			this.currentBatchIds.add(existingId);
-			return {
-				__type__: "function",
-				__id__: existingId,
-				__name__: name || fn.name || "anonymous",
-			};
+			return existingId;
 		}
-
-		// Evict oldest entries if at capacity
-		if (this.localFunctions.size >= MAX_FUNCTIONS) {
-			const oldestKey = this.localFunctions.keys().next().value;
-			if (oldestKey) {
-				this.removeLocal(oldestKey);
-			}
-		}
-
+		this.evictOldestLocal();
 		const id = generateShortUID();
 		this.localFunctions.set(id, fn);
 		this.localFunctionIds.set(fn, id);
 		this.currentBatchIds.add(id);
-
-		return {
-			__type__: "function",
-			__id__: id,
-			__name__: name || fn.name || "anonymous",
-		};
+		return id;
 	}
 
 	/**
@@ -142,6 +137,7 @@ export class FunctionBridge {
 	 * @remarks
 	 * The returned function, when called, will invoke the original function
 	 * in the remote window via postMessage and return the result.
+	 * A cached wrapper is reused only when ID, target window and target origin all match.
 	 *
 	 * @param ref - The function reference to deserialize
 	 * @param targetWin - The window containing the original function
@@ -154,39 +150,58 @@ export class FunctionBridge {
 		targetDomain: string,
 	): CallableFunction {
 		const cacheKey = `${ref.__id__}`;
+		const cached = this.findRemoteWrapper(cacheKey, targetWin, targetDomain);
+		if (cached) return cached;
+		this.evictOldestRemote(cacheKey);
+		const wrapper = this.createRemoteWrapper(ref, targetWin, targetDomain);
+		this.remoteFunctions.set(cacheKey, { wrapper, targetWin, targetDomain });
+		return wrapper;
+	}
+
+	/** A remote ID is reusable only for the same browser window and verified origin. */
+	private findRemoteWrapper(
+		cacheKey: string,
+		targetWin: Window,
+		targetDomain: string,
+	): CallableFunction | undefined {
 		const cached = this.remoteFunctions.get(cacheKey);
-		if (
-			cached &&
+		return cached &&
 			cached.targetWin === targetWin &&
 			cached.targetDomain === targetDomain
-		) {
-			return cached.wrapper;
-		}
+			? cached.wrapper
+			: undefined;
+	}
 
-		// Evict oldest entries if at capacity
-		if (!cached && this.remoteFunctions.size >= MAX_FUNCTIONS) {
-			const oldestKey = this.remoteFunctions.keys().next().value;
-			if (oldestKey) {
-				this.remoteFunctions.delete(oldestKey);
-			}
-		}
+	private evictOldestRemote(cacheKey: string): void {
+		if (
+			this.remoteFunctions.has(cacheKey) ||
+			this.remoteFunctions.size < MAX_FUNCTIONS
+		)
+			return;
+		const oldestKey = this.remoteFunctions.keys().next().value;
+		if (oldestKey) this.remoteFunctions.delete(oldestKey);
+	}
 
-		const wrapper = async (...args: unknown[]): Promise<unknown> => {
-			return this.messenger.send(targetWin, targetDomain, MESSAGE_NAME.CALL, {
+	/** Keeps local registry capacity policy separate from reference construction. */
+	private evictOldestLocal(): void {
+		if (this.localFunctions.size < MAX_FUNCTIONS) return;
+		const oldestKey = this.localFunctions.keys().next().value;
+		if (oldestKey) this.removeLocal(oldestKey);
+	}
+
+	private createRemoteWrapper(
+		ref: FunctionRef,
+		targetWin: Window,
+		targetDomain: string,
+	): CallableFunction {
+		const wrapper = async (...args: unknown[]): Promise<unknown> =>
+			this.messenger.send(targetWin, targetDomain, MESSAGE_NAME.CALL, {
 				id: ref.__id__,
 				args,
 			});
-		};
-
 		Object.defineProperty(wrapper, "name", {
 			value: ref.__name__,
 			configurable: true,
-		});
-
-		this.remoteFunctions.set(cacheKey, {
-			wrapper,
-			targetWin,
-			targetDomain,
 		});
 		return wrapper;
 	}
@@ -261,8 +276,9 @@ export class FunctionBridge {
 	 * Finishes the current batch and removes functions not in this batch.
 	 *
 	 * @remarks
-	 * This cleans up function references from previous prop updates that
-	 * are no longer needed, preventing memory leaks.
+	 * Pass `true` when serialization or delivery failed to preserve previous
+	 * references. This does not roll back newly registered functions or capacity
+	 * eviction; it skips stale-reference removal and clears the batch marker set.
 	 *
 	 * @param keepPrevious - If true, keeps previous batch functions (default: false)
 	 */
@@ -273,12 +289,15 @@ export class FunctionBridge {
 		}
 
 		// Remove functions not in the current batch
-		for (const id of this.localFunctions.keys()) {
-			if (!this.currentBatchIds.has(id)) {
-				this.removeLocal(id);
-			}
-		}
+		for (const id of this.staleLocalIds()) this.removeLocal(id);
 		this.currentBatchIds.clear();
+	}
+
+	/** Determines stale references without mutating either registry. */
+	private staleLocalIds(): string[] {
+		return [...this.localFunctions.keys()].filter(
+			(id) => !this.currentBatchIds.has(id),
+		);
 	}
 
 	/**
@@ -443,4 +462,9 @@ export function deserializeFunctions(
 	}
 
 	return obj;
+}
+
+/** Frames one retained local identity without accessing the bridge registry. */
+function createFunctionRef(id: string, name: string): FunctionRef {
+	return { __type__: "function", __id__: id, __name__: name };
 }

@@ -1,6 +1,11 @@
 import type { StandardSchemaV1Issue, StandardSchemaV1Result } from "../schema";
 import type { InferUnionSchemaInput, InferUnionSchemaOutput } from "./base";
-import { PropSchema, validateSchemaSync } from "./base";
+import {
+	PropSchema,
+	selectSchemaPresence,
+	validateSchemaPresence,
+	validateSchemaSync,
+} from "./base";
 
 /**
  * Schema for literal value props.
@@ -123,27 +128,18 @@ export class UnionSchema<
 	protected _validateInput(
 		value: unknown,
 	): StandardSchemaV1Result<InferUnionSchemaOutput<S>> {
-		if (value === null) {
-			if (this._nullable) {
-				return { value: null as InferUnionSchemaOutput<S> };
-			}
-
-			return this._validate(value);
-		}
-
-		if (value === undefined) {
-			if (this._default !== undefined) {
-				return { value: this._getDefaultValue() as InferUnionSchemaOutput<S> };
-			}
-
-			if (this._optional) {
-				return { value: undefined as InferUnionSchemaOutput<S> };
-			}
-
-			return this._validate(value);
-		}
-
-		return this._validate(value);
+		return validateSchemaPresence(
+			selectSchemaPresence(
+				value,
+				this._optional,
+				this._nullable,
+				this._default !== undefined,
+				true,
+			),
+			value,
+			() => this._getDefaultValue(),
+			(input) => this._validate(input),
+		);
 	}
 
 	/** @internal */

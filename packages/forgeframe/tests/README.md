@@ -14,19 +14,23 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `consumer-lifecycle.test.ts`: Consumer handshake, lifecycle messaging, open/close guards, and update validation.
 - `consumer-renderer.test.ts`: Renderer ownership of iframe/popup resources, templates, and teardown.
 - `consumer-transport.test.ts`: Direct consumer transport behavior for trust rotation, failed prop sync cleanup, handshake waiting, and async init error forwarding.
+- `consumer-origin-policy.test.ts`: Trust decisions from supplied origin evidence, messaging-origin validation, and changed-origin selection.
 - `emitter.test.ts`: Event emitter subscription semantics, once/off behavior, and async error isolation.
 - `host-branch-coverage.test.ts`: Host branch/edge-path coverage for deferred init, failure capture, and guard paths.
 - `host-lifecycle.test.ts`: Host lifecycle message handling, hostProps synchronization, and consumer window resolution.
 - `host-transport.test.ts`: Direct host transport behavior for deferred init scheduling, trust updates, props routing, and teardown.
 - `host-security.test.ts`: Host allowlist enforcement and deferred-init security gating.
 - `iframe.test.ts`: Iframe creation, reserved-attribute guards, visibility, and sizing helpers.
+- `iframe-configuration.test.ts`: Pure CSS and boolean/string attribute encoding rules.
 - `index-side-effect-free.test.ts`: Public entrypoint import stays side-effect-free until `initHost()` is called explicitly in ForgeFrame-shaped host windows.
 - `index-node-smoke.test.ts`: Public entrypoint imports and component definitions without browser globals.
 - `messenger.test.ts`: Cross-window messenger request/response flow, filtering, trust checks, and teardown behavior.
 - `messenger-routing.test.ts`: Multi-instance channel routing and function bridge response isolation.
 - `popup.test.ts`: Popup open/close/focus/resize helpers and close/popup-block detection.
+- `popup-layout.test.ts`: Popup geometry and polling backoff from supplied screen dimensions.
 - `package-contract.test.ts`: ESM package exports, documentation claims, and release checks.
 - `prop-schema.test.ts`: `prop` schema builder behavior and Standard Schema compliance checks.
+- `prop-update.test.ts`: Isolated patch/reset merging and validation-key bookkeeping.
 - `props-serialize.test.ts`: BASE64/DOTIFY serialization round-trips and malformed wrapper fallback behavior.
 - `props-alias-materialization.test.ts`: Pure alias-chain resolution, precedence, reset propagation, explicit clearing, and cycle safety.
 - `props-alias-updates.test.ts`: Consumer update-pipeline alias precedence, validation rollback, and materialized-value preservation.
@@ -35,6 +39,7 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `react-driver-lifecycle.test.ts`: React driver lifecycle integration, remount isolation, cleanup, and error forwarding.
 - `react-driver-prop-sync.test.ts`: Render-gated FIFO prop synchronization, omission resets, failure recovery, and retries.
 - `react-driver.test.ts`: React driver component factory wiring and hook-level integration expectations.
+- `react-prop-queue.test.ts`: Queue acknowledgement, explicitly requested retries, and reset payload rules without mounting React.
 - `schema-backward-compat.test.ts`: Backward compatibility coverage for legacy Standard Schema shapes.
 - `schema-contract.test.ts`: Contract coverage against real schema libraries (Zod and Valibot).
 - `schema-path-format.test.ts`: Error path formatting behavior for mixed key/index Standard Schema segments.

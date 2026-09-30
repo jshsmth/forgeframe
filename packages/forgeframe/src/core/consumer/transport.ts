@@ -116,33 +116,12 @@ export class ConsumerTransport<
 	 * Builds trusted domains used to initialize messenger security checks.
 	 */
 	private buildTrustedDomains(): DomainMatcher | undefined {
-		const domains: Array<string | RegExp> = [];
-
-		if (typeof this.options.url === "string") {
-			const hostOrigin = this.resolveUrlOrigin(this.options.url);
-			if (hostOrigin) {
-				if (!this.options.domain) {
-					domains.push(hostOrigin);
-				}
-				this.dynamicUrlTrustedOrigin = hostOrigin;
-			}
-		}
-
-		if (this.options.domain) {
-			if (typeof this.options.domain === "string") {
-				domains.push(this.options.domain);
-			} else if (Array.isArray(this.options.domain)) {
-				domains.push(...this.options.domain);
-			} else if (this.options.domain instanceof RegExp) {
-				domains.push(this.options.domain);
-			}
-		}
-
-		if (domains.length === 0) {
-			return undefined;
-		}
-
-		return domains.length === 1 ? domains[0] : domains;
+		const hostOrigin =
+			typeof this.options.url === "string"
+				? this.resolveUrlOrigin(this.options.url)
+				: null;
+		if (hostOrigin) this.dynamicUrlTrustedOrigin = hostOrigin;
+		return collectTrustedDomains(this.options.domain, hostOrigin);
 	}
 
 	/**
@@ -461,10 +440,46 @@ export class ConsumerTransport<
 	}
 
 	/**
+	 * Clears render-owned window and origin bookkeeping after resource teardown.
+	 * The caller remains responsible for closing windows and destroying transport resources.
+	 */
+	resetHostWindow(): void {
+		this.hostWindow = null;
+		this.openedHostDomain = null;
+		this.activeHostDomain = null;
+		this.dynamicUrlTrustedOrigin = null;
+	}
+
+	/**
 	 * Destroys transport resources.
 	 */
 	destroy(): void {
 		this.messenger.destroy();
 		this.bridge.destroy();
 	}
+}
+
+/** Selects configured matchers or the static URL origin from supplied data. */
+function collectTrustedDomains(
+	configuredDomain: DomainMatcher | undefined,
+	hostOrigin: string | null,
+): DomainMatcher | undefined {
+	const domains: Array<string | RegExp> = [];
+	if (hostOrigin && !configuredDomain) domains.push(hostOrigin);
+
+	if (configuredDomain) {
+		if (typeof configuredDomain === "string") {
+			domains.push(configuredDomain);
+		} else if (Array.isArray(configuredDomain)) {
+			domains.push(...configuredDomain);
+		} else if (configuredDomain instanceof RegExp) {
+			domains.push(configuredDomain);
+		}
+	}
+
+	if (domains.length === 0) {
+		return undefined;
+	}
+
+	return domains.length === 1 ? domains[0] : domains;
 }
