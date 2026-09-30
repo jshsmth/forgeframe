@@ -5,6 +5,7 @@
  * bridge, including async results and thrown errors.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { deserializeMessage } from "@/communication/protocol";
 import { create, PROP_SERIALIZATION, prop } from "@/index";
 import type { PropsDefinition } from "@/types";
 import {
@@ -40,9 +41,152 @@ describe("Function prop bridge integration", () => {
 	let harness: IframeIntegrationHarness | null = null;
 
 	afterEach(async () => {
+		vi.useRealTimers();
 		await harness?.cleanup();
 		harness = null;
 		vi.restoreAllMocks();
+	});
+
+	it.each([
+		["JSON", undefined],
+		["BASE64", PROP_SERIALIZATION.BASE64],
+		["DOTIFY", PROP_SERIALIZATION.DOTIFY],
+	] as const)(
+		"enforces callback capacity atomically across %s updates",
+		async (_label, serialization) => {
+			harness = createIframeIntegrationHarness();
+			const container = document.createElement("div");
+			document.body.append(container);
+			const definitions = {
+				callbacks: {
+					schema: prop.record(prop.function<() => number>()),
+					serialization,
+				},
+			};
+			const Component = create({
+				tag: "integration-callback-capacity",
+				url: "https://host.example.com/widget",
+				props: definitions,
+			});
+			const callbacks = Object.fromEntries(
+				Array.from({ length: 500 }, (_, index) => [`c${index}`, () => index]),
+			);
+			const instance = Component({ callbacks });
+			const rendering = instance.render(container);
+			const { hostProps } = await harness.bootstrapIframeHost(
+				container,
+				definitions,
+			);
+			await rendering;
+			const cached = hostProps.callbacks.c0;
+			if (!cached) throw new Error("Missing initial callback");
+			await expect(cached()).resolves.toBe(0);
+			await expect(hostProps.callbacks.c499?.()).resolves.toBe(499);
+			const oversized = Object.fromEntries(
+				Array.from({ length: 501 }, (_, index) => [
+					`c${index}`,
+					() => index + 1000,
+				]),
+			);
+			const rejected = instance.updateProps({ callbacks: oversized });
+			const replacement = Object.fromEntries(
+				Array.from({ length: 500 }, (_, index) => [
+					`c${index}`,
+					() => index + 500,
+				]),
+			);
+			const recovered = instance.updateProps({ callbacks: replacement });
+			await expect(rejected).rejects.toThrow("500 distinct callback limit");
+			await recovered;
+			await expect(hostProps.callbacks.c0?.()).resolves.toBe(500);
+			await expect(hostProps.callbacks.c499?.()).resolves.toBe(999);
+			await expect(cached()).rejects.toThrow("not found");
+		},
+	);
+
+	it("delivers an omitted callback default without invoking the callback during normalization", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const callback = vi.fn(() => 42);
+		const definitions = {
+			callback: prop.function<() => number>().default(() => callback),
+		};
+		const Component = create({
+			tag: "integration-callback-default",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const instance = Component({});
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost<
+			{ callback: () => number },
+			{ callback?: () => number }
+		>(container, definitions);
+		await rendering;
+		expect(callback).not.toHaveBeenCalled();
+		await expect(hostProps.callback()).resolves.toBe(42);
+		expect(callback).toHaveBeenCalledOnce();
+	});
+
+	it("preserves installed callbacks after a dropped acknowledgement and recovers a full pool", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const definitions = {
+			callbacks: prop.record(prop.function<() => number>()),
+		};
+		const Component = create({
+			tag: "integration-dropped-callback-ack",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const callbacks = Object.fromEntries(
+			Array.from({ length: 500 }, (_, index) => [`c${index}`, () => index]),
+		);
+		const instance = Component({ callbacks });
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			definitions,
+		);
+		await rendering;
+		const cached = hostProps.callbacks.c0;
+		if (!cached) throw new Error("Missing initial callback");
+		const forward = harness.consumerWindow.postMessage.bind(
+			harness.consumerWindow,
+		);
+		const post = vi
+			.spyOn(harness.consumerWindow, "postMessage")
+			.mockImplementation((data, origin) => {
+				const message = deserializeMessage(data);
+				if (message?.type === "response") return;
+				forward(data, origin);
+			});
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		const replacement = Object.fromEntries(
+			Array.from({ length: 500 }, (_, index) => [
+				`c${index}`,
+				() => index + 500,
+			]),
+		);
+		const failed = expect(
+			instance.updateProps({ callbacks: replacement }),
+		).rejects.toThrow("timed out");
+		await vi.advanceTimersByTimeAsync(10001);
+		await failed;
+		await expect(cached()).resolves.toBe(0);
+		await expect(hostProps.callbacks.c0?.()).resolves.toBe(500);
+		await expect(
+			instance.updateProps({ callbacks: { fresh: () => 1001 } }),
+		).rejects.toThrow("recovery pool is full");
+		await expect(hostProps.callbacks.c499?.()).resolves.toBe(999);
+		post.mockRestore();
+		await instance.updateProps({ callbacks: replacement });
+		await expect(hostProps.callbacks.c0?.()).resolves.toBe(500);
+		await expect(cached()).rejects.toThrow("not found");
+		await instance.updateProps({ callbacks: { fresh: () => 1001 } });
+		await expect(hostProps.callbacks.fresh?.()).resolves.toBe(1001);
 	});
 
 	it.each([

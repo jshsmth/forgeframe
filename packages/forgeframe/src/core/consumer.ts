@@ -901,7 +901,7 @@ export class ConsumerComponent<
 	 */
 	private setupMessageHandlers(): void {
 		this.transport.setupMessageHandlers({
-			onBootstrap: (source) =>
+			onBootstrap: (source, resetLocalReferences) =>
 				this.propsPipeline.readCurrentProps((props) => {
 					this.assertPropsUpdateActive();
 					const propsForHost = getPropsForHost(
@@ -914,6 +914,7 @@ export class ConsumerComponent<
 						props: this.transport.serializePropsForHost(
 							propsForHost as Record<string, unknown>,
 							this.options.props as PropsDefinition<Record<string, unknown>>,
+							{ resetLocalReferences },
 						),
 						children: buildNestedHostRefs(this.options, props),
 					};

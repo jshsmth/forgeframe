@@ -254,10 +254,13 @@ export abstract class PropSchema<T, I = T> implements StandardSchemaV1<I, T> {
 	/**
 	 * Sets a default value for this prop.
 	 *
-	 * @param value - Default value or a factory that returns the default value.
+	 * @param value - Non-callable default value or a factory that returns the default value.
+	 * Function defaults must use a factory, for example `.default(() => callback)`.
 	 * @returns A cloned schema that uses the default when input is `undefined`.
 	 */
-	default(value: T | (() => T)): PropSchema<T, I | undefined> {
+	default(
+		value: Exclude<T, (...args: never[]) => unknown> | (() => T),
+	): PropSchema<T, I | undefined> {
 		const clone = this._clone();
 		clone._default = value;
 		return clone as PropSchema<T, I | undefined>;

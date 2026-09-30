@@ -56,6 +56,9 @@ assert.equal(typeof createReactComponent, 'function');
 assert.equal(isHost(), false);
 assert.equal(initHost(), null);
 assert.deepEqual(prop.string().trim()['~standard'].validate(' value '), { value: 'value' });
+const callback = () => 42;
+assert.deepEqual(prop.function().default(() => callback)['~standard'].validate(undefined), { value: callback });
+assert.ok(prop.function().default(() => 42)['~standard'].validate(undefined).issues);
 assert.equal(create({ tag: 'installed-package', url: 'https://example.com/widget' }).isHost(), false);
 `,
 	);
@@ -65,7 +68,7 @@ assert.equal(create({ tag: 'installed-package', url: 'https://example.com/widget
 		`import ForgeFrame, { prop, type HostProps, type RemoteValue } from 'forgeframe';
 const Component = ForgeFrame.create({
  tag: 'typed-package', url: 'https://example.com/widget',
- props: { count: prop.number().default(1), callback: prop.function<(n: number) => string>() },
+ props: { count: prop.number().default(1), callback: prop.function<(n: number) => string>(), defaultedCallback: prop.function<() => number>().default(() => () => 42) },
 });
 const instance = Component({ callback: n => String(n) });
 void instance.updateProps({ count: 2 });
@@ -76,6 +79,13 @@ const remoteResult: Promise<number> = exports.nested.method();
 void result; void remoteResult;
 `,
 	);
+	const readme = readFileSync(resolve(repoRoot, "README.md"), "utf8");
+	const componentSection = readme.split("### 1. Define a Component")[1];
+	const readmeExample = componentSection?.match(
+		/```typescript\r?\n([\s\S]*?)```/,
+	)?.[1];
+	assert.ok(readmeExample, "Missing README Define a Component example");
+	writeFileSync(resolve(directory, "readme-consumer.mts"), readmeExample);
 	run(process.execPath, [
 		resolve(repoRoot, "node_modules/typescript/bin/tsc"),
 		"--ignoreConfig",
@@ -90,6 +100,7 @@ void result; void remoteResult;
 		"--target",
 		"ES2022",
 		"consumer.mts",
+		"readme-consumer.mts",
 	]);
 	console.log(
 		`Installed forgeframe@${version}: ESM runtime and NodeNext consumer types passed`,

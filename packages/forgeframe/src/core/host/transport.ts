@@ -158,8 +158,14 @@ export class HostTransport {
 
 	private async sendExportBatch<T>(exports: T): Promise<void> {
 		this.bridge.startBatch();
+		let serialized: unknown;
 		try {
-			const serialized = serializeFunctions(exports, this.bridge);
+			serialized = serializeFunctions(exports, this.bridge);
+		} catch (error) {
+			this.bridge.abortBatch();
+			throw error;
+		}
+		try {
 			await this.sendMessage(MESSAGE_NAME.EXPORT, serialized);
 			this.bridge.finishBatch();
 		} catch (error) {

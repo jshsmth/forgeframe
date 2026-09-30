@@ -32,6 +32,96 @@ describe("Host controls and routing integration", () => {
 		vi.restoreAllMocks();
 	});
 
+	it("rejects oversized exports without replacing acknowledged exports", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const definitions = { label: prop.string() };
+		const Component = create({
+			tag: "integration-export-capacity",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const instance = Component({ label: "exporter" });
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			definitions,
+		);
+		await rendering;
+		const methods = Object.fromEntries(
+			Array.from({ length: 500 }, (_, index) => [`m${index}`, () => index]),
+		);
+		await harness.withHostGlobalsAsync(() => hostProps.export(methods));
+		const first = instance.exports as Record<string, () => Promise<number>>;
+		await expect(first.m0?.()).resolves.toBe(0);
+		const oversized = Object.fromEntries(
+			Array.from({ length: 501 }, (_, index) => [
+				`m${index}`,
+				() => index + 1000,
+			]),
+		);
+		await expect(
+			harness.withHostGlobalsAsync(() => hostProps.export(oversized)),
+		).rejects.toThrow("500 distinct callback limit");
+		expect(instance.exports).toBe(first);
+		await expect(first.m0?.()).resolves.toBe(0);
+		await expect(first.m499?.()).resolves.toBe(499);
+		await harness.withHostGlobalsAsync(() =>
+			hostProps.export({ next: () => 42 }),
+		);
+		const next = instance.exports as { next: () => Promise<number> };
+		await expect(next.next()).resolves.toBe(42);
+		await expect(first.m0?.()).rejects.toThrow("not found");
+	});
+
+	it("preserves held peer methods when discovery exceeds cumulative relay capacity", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const definitions = { label: prop.string() };
+		const Component = create({
+			tag: "integration-peer-capacity",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const requester = Component({ label: "requester" });
+		const sibling = Component({ label: "sibling" });
+		const initial = () => 42;
+		sibling.exports = { initial };
+		const rendering = requester.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			definitions,
+		);
+		await rendering;
+		const peers = await harness.withHostGlobalsAsync(() =>
+			hostProps.getPeerInstances(),
+		);
+		const held = peers[0]?.exports as { initial: () => Promise<number> };
+		await expect(held.initial()).resolves.toBe(42);
+		sibling.exports = {
+			initial,
+			...Object.fromEntries(
+				Array.from({ length: 500 }, (_, index) => [`m${index}`, () => index]),
+			),
+		};
+		await expect(
+			harness.withHostGlobalsAsync(() => hostProps.getPeerInstances()),
+		).rejects.toThrow("500 distinct callback limit");
+		await expect(held.initial()).resolves.toBe(42);
+		sibling.exports = { initial, next: () => 7 };
+		const recovered = await harness.withHostGlobalsAsync(() =>
+			hostProps.getPeerInstances(),
+		);
+		const methods = recovered[0]?.exports as {
+			initial: () => Promise<number>;
+			next: () => Promise<number>;
+		};
+		await expect(methods.initial()).resolves.toBe(42);
+		await expect(methods.next()).resolves.toBe(7);
+	});
+
 	it("should deliver host builtins through the real iframe messaging pipeline", async () => {
 		harness = createIframeIntegrationHarness();
 
