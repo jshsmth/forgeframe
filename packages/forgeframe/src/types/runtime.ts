@@ -242,12 +242,26 @@ type ContextualWrappedPropDefinition<
 	}) => void;
 };
 
-/** A concise schema entry whose output can be checked by the same schema. @internal */
+/**
+ * A concise schema entry whose output can be checked by the same schema.
+ * Only expose Standard Schema metadata for contextual typing so library methods
+ * such as Zod's `validate` do not conflict with wrapped prop callbacks.
+ * @internal
+ */
 type ContextualDirectSchema<Schema extends StandardSchemaV1> = [
 	InferOutput<Schema>,
 ] extends [InferInput<Schema>]
-	? Schema
+	? Pick<Schema, "~standard">
 	: never;
+
+/** Prevents contextual inference from widening an unsafe direct schema. @internal */
+type SafeDirectPropsDefinition<D extends InferablePropsDefinition> = {
+	[K in keyof D]: D[K] extends StandardSchemaV1<infer Input, infer Output>
+		? [Output] extends [Input]
+			? unknown
+			: never
+		: unknown;
+};
 
 /** Contextual callback types inferred from each entry's schema. @internal */
 type ContextualPropsDefinition<S extends ContextualSchemaMap> = {
@@ -261,7 +275,9 @@ export type InferredComponentOptions<
 	D extends InferablePropsDefinition,
 	ContextualSchemas extends ContextualSchemaMap = InferContextualSchemas<D>,
 > = Omit<ComponentOptions<InferPropsDefinition<D>>, "props"> & {
-	props: D & ContextualPropsDefinition<ContextualSchemas>;
+	props: D &
+		ContextualPropsDefinition<ContextualSchemas> &
+		SafeDirectPropsDefinition<D>;
 };
 
 /** Arguments accepted by a component factory based on required input keys. @internal */
