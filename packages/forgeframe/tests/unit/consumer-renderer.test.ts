@@ -213,6 +213,51 @@ describe("ConsumerRenderer submitBodyForm", () => {
 		expect(document.body.querySelector("form")).toBeNull();
 	});
 
+	it("removes the transient form when native submission throws", () => {
+		const renderer = createRenderer();
+		const failure = new Error("submission failed");
+		vi.spyOn(HTMLFormElement.prototype, "submit").mockImplementation(() => {
+			throw failure;
+		});
+		expect(() =>
+			renderer.submitBodyForm(
+				"target",
+				"https://host.example/widget",
+				new URLSearchParams({
+					submit: "token",
+					remove: "cleanup",
+					appendChild: "field",
+					extra: "last",
+				}),
+			),
+		).toThrow(failure);
+		expect(document.querySelector("form")).toBeNull();
+	});
+
+	it("submits through the mount document's form prototype", () => {
+		const iframe = document.createElement("iframe");
+		document.body.appendChild(iframe);
+		const doc = iframe.contentDocument;
+		if (!doc) throw new Error("Missing iframe document");
+		const mount = doc.createElement("div");
+		doc.body.appendChild(mount);
+		const renderer = createRenderer();
+		renderer.container = mount;
+		const prototype = Object.getPrototypeOf(
+			doc.createElement("form"),
+		) as HTMLFormElement;
+		const submit = vi
+			.spyOn(prototype, "submit")
+			.mockImplementation(() => undefined);
+		renderer.submitBodyForm(
+			"target",
+			"https://host.example/widget",
+			new URLSearchParams({ submit: "abc" }),
+		);
+		expect(submit).toHaveBeenCalledTimes(1);
+		expect(doc.querySelector("form")).toBeNull();
+	});
+
 	it("should throw when no document root is available for form submission", () => {
 		const renderer = createRenderer();
 		const fakeDocument = {

@@ -345,20 +345,22 @@ export class ConsumerRenderer<
 		form.action = actionUrl;
 		form.target = target;
 		form.style.display = "none";
+		const formPrototype = Object.getPrototypeOf(form) as HTMLFormElement;
 
-		for (const [key, value] of params.entries()) {
-			const input = doc.createElement("input");
-			input.type = "hidden";
-			input.name = key;
-			input.value = value;
-			form.appendChild(input);
-		}
-
-		root.appendChild(form);
 		try {
-			form.submit();
+			for (const [key, value] of params.entries()) {
+				const input = doc.createElement("input");
+				input.type = "hidden";
+				input.name = key;
+				input.value = value;
+				formPrototype.appendChild.call(form, input);
+			}
+
+			root.appendChild(form);
+			// Named form controls can shadow methods on the form instance.
+			formPrototype.submit.call(form);
 		} finally {
-			form.remove();
+			formPrototype.remove.call(form);
 		}
 	}
 

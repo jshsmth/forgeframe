@@ -184,7 +184,7 @@ export class StringSchema extends PropSchema<string> {
  * Schema for number props with optional validation constraints.
  *
  * @remarks
- * Number schemas reject `NaN` and can enforce inclusive range constraints or
+ * Number schemas reject nonfinite values and can enforce inclusive range constraints or
  * integer-only values.
  *
  * @public
@@ -201,6 +201,9 @@ export class NumberSchema extends PropSchema<number> {
 	protected _validate(value: unknown): StandardSchemaV1Result<number> {
 		if (typeof value !== "number" || Number.isNaN(value)) {
 			return { issues: [{ message: `Expected number, got ${typeof value}` }] };
+		}
+		if (!Number.isFinite(value)) {
+			return { issues: [{ message: "Expected finite number" }] };
 		}
 		if (this._int && !Number.isInteger(value)) {
 			return { issues: [{ message: "Expected integer" }] };

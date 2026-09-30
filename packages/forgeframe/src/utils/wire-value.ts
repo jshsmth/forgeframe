@@ -64,15 +64,22 @@ export function decodeDateWireValue(value: DateWireValue): Date {
 
 /**
  * Stringifies a value while preserving Date instances through JSON transport.
+ *
+ * @param encodeFunction - Optional prop-codec encoder; omitted callbacks keep JSON behavior.
  * @internal
  */
-export function stringifyWireValue(value: unknown): string {
+export function stringifyWireValue(
+	value: unknown,
+	encodeFunction?: (fn: (...args: unknown[]) => unknown) => unknown,
+): string {
 	return JSON.stringify(value, function wireValueReplacer(key, jsonValue) {
 		const holder = this as Record<string, unknown>;
 		const originalValue = key === "" ? value : holder[key];
 
-		return originalValue instanceof Date
-			? encodeDateWireValue(originalValue)
+		if (originalValue instanceof Date)
+			return encodeDateWireValue(originalValue);
+		return typeof jsonValue === "function" && encodeFunction
+			? encodeFunction(jsonValue)
 			: jsonValue;
 	});
 }

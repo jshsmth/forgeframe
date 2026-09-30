@@ -238,6 +238,21 @@ describe("prop.number()", () => {
 		expect(result).toHaveProperty("issues");
 	});
 
+	it.each([Infinity, -Infinity])(
+		"should reject nonfinite number %s",
+		(value) => {
+			for (const schema of [
+				prop.number(),
+				prop.number().positive(),
+				prop.number().negative(),
+			]) {
+				expect(schema["~standard"].validate(value)).toEqual({
+					issues: [{ message: "Expected finite number" }],
+				});
+			}
+		},
+	);
+
 	it("should validate min", () => {
 		const schema = prop.number().min(10);
 		expect(schema["~standard"].validate(5)).toHaveProperty("issues");
