@@ -47,6 +47,12 @@ jobs:
       - name: Build and validate published types
         run: npm run build && npm run typecheck:package
 
+      - name: Build playground
+        run: npm run build:playground
+
+      - name: Install and validate packed package
+        run: npm run test:package
+
       - name: Audit dependency tree
         run: npm audit
 

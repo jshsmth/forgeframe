@@ -76,8 +76,7 @@ Imagine a payment company (like Stripe) wants to let merchants embed a checkout 
 - [Templates (Advanced)](#templates-advanced)
 - [React Integration (Optional)](#react-integration-optional)
 - [Advanced Features](#advanced-features)
-- [Secure bootstrap migration](#secure-bootstrap-migration)
-- [Migrating from 0.0.15 to 0.1.0](#migrating-from-0015-to-010)
+- [Migrating from pre-v1 to v1](#migrating-from-pre-v1-to-v1)
 - [API Reference](#api-reference)
 - [TypeScript](#typescript)
 - [Browser Support](#browser-support)
@@ -410,6 +409,10 @@ All schemas support these base methods:
 ### Schema Types
 
 Shaped object schemas validate own fields. An omitted field is treated as `undefined`, so optional fields and defaults work even for names such as `constructor` and `toString`; inherited values are not supplied as schema inputs.
+
+Arrays sent as props or exports require defined entries after normalization. `undefined` entries and sparse holes are rejected instead of silently becoming `null`, including in nested arrays. Use `prop.string().nullable()` with `null`, or an item default such as `prop.array().of(prop.string().default('fallback'))`. Standalone schema validation still accepts optional array entries; props excluded by `sendToHost`, `sameDomain`, or `trustedDomains` retain their local values.
+
+Ordinary normalized prop arrays are checked before opening the host or committing an update, so a rejected update preserves the previous snapshot. Values produced by `hostDecorate` or custom `toJSON()` encoders (including computed encoder properties) are checked during delivery; those failures retain the existing transport-failure behavior. A non-callable `toJSON` field is ordinary data. DOTIFY traverses plain objects directly and invokes JSON encoders only on encoded leaves. Literal and enum rejection messages format arbitrary inputs without invoking their JSON encoders, allowing later union branches to validate them.
 
 `prop.string().url()` requires a parseable absolute HTTP(S) URL and preserves the supplied string. It composes with `.pattern()` and `.trim()`; trimming changes the returned string only when requested.
 
@@ -1021,7 +1024,7 @@ await initHost(secureProps, [
 
 The host verifies the consumer through a response from the expected parent/opener window and exact origin. This works with `no-referrer` and after full-page host navigation. An invalid origin or a consumer that cannot complete the verified handshake prevents initialization.
 
-Public API removals or behavioral changes are documented in GitHub release notes. Pre-1.0 releases may include breaking changes, so pin an exact version for production integrations and review release notes before upgrading.
+ForgeFrame 1.x follows semantic versioning for its public API. Review the migration guide and GitHub release notes before upgrading from a pre-v1 release; upgrade consumer and host bundles together when adopting changed wire behavior.
 
 ### Eligibility Checks
 
@@ -1075,54 +1078,59 @@ Each child tag must be registered in the host bundle before `hostProps` is initi
 
 ---
 
-## Secure bootstrap migration
+## Migrating from pre-v1 to v1
 
-The secure bootstrap uses wire protocol version 2. Consumer props and child metadata are delivered only after verifying the loaded host window and origin; they are no longer carried in `window.name`. Initial props therefore arrive asynchronously:
-
-```typescript
-const host = initHost(propDefinitions, allowedConsumerDomains);
-if (!host) throw new Error('This page must be opened by ForgeFrame');
-await host.ready;
-const props = host.hostProps;
-```
-
-Update every host startup path to await `ready`, including hosts that share a component definition and initialize automatically. Upgrade both the consumer and host bundles. If staging the upgrade, update hosts first: current hosts can still read legacy consumer payloads, but current consumers reject older hosts that cannot complete the secure bootstrap. The redirect protection requires the consumer upgrade too.
-
-After a failed bootstrap, a successful same-page `initHost()` retry also refreshes the shared component factory's `hostProps` reference and controls.
-
-Iframe resizing now also updates ForgeFrame's default clipping wrapper. Custom container/prerender templates remain responsible for their own layout.
-
----
-
-## Migrating from 0.0.15 to 0.1.0
-
-Version 0.1.0 keeps ForgeFrame's existing iframe/popup model, but makes several previously permissive or ambiguous behaviors explicit. Ordinary integrations using an HTTP(S) URL, a matching domain policy, standard props, and `await instance.render(container)` should upgrade without code changes.
+This guide covers the published `0.2.0` release and earlier `0.x` integrations. Install `forgeframe@1.0.0` in both consumer and host projects, rebuild their bundles, and exercise create/render, prop updates, callbacks, exports, reconnects, and teardown before releasing them. The public package remains a single ESM entrypoint: import from `forgeframe`; internal source paths are not public APIs. Global script-tag or CommonJS consumers must use an ESM-aware build.
 
 ### Upgrade checklist
 
-Before upgrading, check the integration for these less-common patterns:
+1. Await host readiness before reading initial props, children, or shared-factory `hostProps`:
 
-- `autoResize` configuration or an `AutoResizeOptions` type import.
-- `render()` or `renderTo()` calls without a container, or `updateProps()` calls made before rendering finishes.
-- Computed component URLs that are not HTTP(S) or do not match `domain`.
-- `name`, `src`, or `srcdoc` inside custom iframe `attributes`.
-- Sensitive or server-required `queryParam` / `bodyParam` props whose delivery depends on `sendToHost`, `sameDomain`, or `trustedDomains`.
-- Nested components that are not also imported or defined by the host bundle.
-- Consumer diagnostics that depend on receiving the host's remote `Error.stack`.
+   ```typescript
+   import { initHost } from 'forgeframe';
 
-If none of these apply, the upgrade should be drop-in for the normal create, render, callback, prop-update, export, resize, and close flows.
+   const host = initHost(propDefinitions, allowedConsumerDomains);
+   if (!host) throw new Error('This page must be opened by ForgeFrame');
+   await host.ready;
+   const props = host.hostProps;
+   ```
 
-| Area | Change in 0.1.0 | Migration action |
-|------|-----------------|------------------|
-| Component URLs | Only HTTP(S) URLs are accepted, and `domain` is enforced against the resolved host origin. | Ensure every static or computed URL uses HTTP(S) and matches `domain`. |
-| Rendering | `render()` and `renderTo()` require a container. Concurrent `render()` calls share one operation, and `updateProps()` rejects while rendering is in progress. | Always pass a container and await `render()` before updating props. |
-| Initial query/body props | `sendToHost`, `sameDomain`, and `trustedDomains` now apply to `queryParam` and `bodyParam`; `sameDomain` values are withheld from the initial request. | Check any server bootstrap fields and never place secrets in the URL. |
-| Iframe attributes | ForgeFrame owns `name`, `src`, and `srcdoc`. | Remove those keys from custom `attributes`; configure navigation with `url`. |
-| Auto-resize | The unused `autoResize` option and exported `AutoResizeOptions` type were removed, along with the internal content-dimension helper. | Remove `autoResize` and `AutoResizeOptions` imports; use `instance.resize()` or host-driven sizing. |
-| Nested components | Hosts resolve child factories from their local component registry so executable schemas are preserved. | Import or define child components in the host bundle before `initHost()`. Keep child URLs static for protocol-v1 compatibility. |
-| Remote errors | Error messages still cross the bridge, but remote stack traces do not. | Do not depend on a remote `Error.stack`; collect host-side diagnostics locally. |
+   Apply this to every host startup path, including hosts that also define the shared component. After a failed bootstrap, `initHost()` can retry on the same page; a successful retry refreshes the factory's props and controls.
 
-Version 0.1.0 used wire protocol version 1 and retained legacy nested-component metadata for staged upgrades. For the current protocol, also follow the secure bootstrap migration above. Upgrade both sides together where practical. If upgrading separately, ensure the host bundle registers every nested child before switching the consumer, and do not rely on newly callable host exports until both sides are current.
+2. Remove `undefined` array entries and sparse holes from deliverable props and exports. Use `null` with a nullable item schema or a defined item default. For example, replace `prop.array().of(prop.string().optional())` plus `[undefined]` with `prop.array().of(prop.string().nullable())` plus `[null]`, or with `prop.array().of(prop.string().default('fallback'))`. Item defaults run before transport admission. Standalone schema validation and props withheld by delivery policy still allow optional entries.
+3. Check number props for `NaN` or infinities; `prop.number()` admits only finite values. Check URL schemas for absolute HTTP(S) URLs; `.url()` composes with `.pattern()` and preserves input spelling unless `.trim()` is requested.
+4. Review callbacks and host exports as asynchronous remote calls. Await their returned promises, including nested methods. For generic or overloaded callbacks, declare promise-returning signatures and use async implementations. Callback arguments/results must be JSON-compatible; convert Dates to ISO strings. Props and `hostProps.export()` preserve Dates and bridge functions explicitly.
+5. Run your host with its intended consumer origin allowlist. `domain` controls consumer trust in the host; `allowedConsumerDomains` controls host trust in consumers. They serve different sides of the integration.
+
+### API, configuration, and behavior changes
+
+| Area | v1 contract | Required action |
+|------|-------------|-----------------|
+| Array transport | Deliverable normalized arrays reject undefined entries and holes, including nested arrays, before opening a host or committing an update. Arrays produced by host decorators or custom JSON encoders are checked during delivery. | Supply defined entries or item defaults. Admission failures preserve the previous snapshot; delivery failures keep the committed consumer snapshot, as other transport failures do. |
+| Ordinary object records | Objects resembling function, Date, BASE64, DOTIFY, or escaped-record markers remain ordinary data, including when extra undefined fields disappear on the wire. | Upgrade both bundles to use the record escaping codec. Do not construct or interpret internal wire wrappers yourself. |
+| Schema inputs and outputs | Explicit undefined differs from omission. Defaults/decorators run in definition order; own properties supply schema fields. Normalized values are revalidated at trust boundaries without applying transforms again. Type-changing input schemas require a validation-only `outputSchema`, including for local props. | Match definitions and host schemas to normalized outputs. Give type-changing schemas an `outputSchema` that validates without transforming. Model alternate input keys through the component input generic. |
+| Component URLs | Static and computed destinations must resolve to HTTP(S) and match `domain`. Relative URLs resolve against the document base; rendered updates cannot change the host origin. | Use valid destinations and an explicit trust policy; create a new instance when switching origins. |
+| Runtime configuration | Options must be an object; tags are lowercase strings; URLs are strings or functions; contexts are iframe or popup; timeouts are finite numbers from 0 through 2147483647 ms. | Correct invalid JavaScript configuration instead of relying on coercion or browser timer overflow. |
+| Rendering and updates | `render()` and `renderTo()` require a container; cross-window render targets are unsupported. Concurrent renders share one operation. Updates serialize in FIFO order and reject while rendering. | Pass a container, await render, and await updates. Close old instances before replacing them. |
+| Initial query/POST props | `sendToHost`, `sameDomain`, and `trustedDomains` govern delivery. Same-domain-only values are withheld from the initial navigation request. Custom converters retain their definition receiver. | Verify server bootstrap fields; keep secrets out of URLs and deliver protected data after verified bootstrap. |
+| Iframe configuration | ForgeFrame owns `name`, `src`, and `srcdoc`; resizing updates the default clipping wrapper. | Remove those custom attributes and use `url`. Custom templates remain responsible for their own layout. |
+| Nested components | Children are resolved through factories registered in the host bundle, preserving executable schemas rather than shipping them as JSON. Child URLs must be static strings. | Import or define every child before `initHost()`; remove computed child URLs. |
+| Removed earlier options | The unused `autoResize` option and `AutoResizeOptions` export are absent. | Remove them; use explicit consumer or host resizing. |
+| Server rendering | Package imports and component declarations are safe without browser globals. `isHost()`/`isEmbedded()` return false, `initHost()` returns null, and `getHostProps()` returns undefined. | Keep instance creation and rendering in browser lifecycle code. |
+| Remote errors | Messages cross the bridge; remote stack traces do not. Invalid message envelopes are ignored. | Capture detailed diagnostics in the originating window; do not depend on remote stacks. |
+| React adapter | Committed props synchronize per mounted instance; removed keys reset to their fallback. Obsolete or failed work cannot overwrite a newer mount. | Pass committed values and handle update errors through the adapter's error callback. Avoid mutating existing prop objects in place. |
+
+### Bootstrap and data formats
+
+v1 continues to use bootstrap protocol 2. Only channel metadata persists in `window.name`; props and child references arrive through a handshake that verifies the expected window and exact origin. This prevents a redirected host from reading props through the window name and supports reconnection after reload or navigation.
+
+Upgrade both bundles together where possible. For staged upgrades, deploy hosts first: v1 hosts retain the legacy consumer reader for this migration, while v1 consumers require secure bootstrap and reject older hosts that cannot complete it. This reader remains intentionally bounded to host startup; the consumer must also be upgraded to obtain redirect protection. Marker-shaped records use a new escaped-record envelope, and DOTIFY uses prefixed, JSON-framed path arrays. Do not share such payloads with older decoders. No persisted application data needs conversion unless your application has stored internal ForgeFrame transport payloads; regenerate those from original application values with v1.
+
+### Development and release tooling
+
+Run `npm ci` with a supported Node version, then `npm run release:check` and `npm run test:browser`. The release check validates lint/formatting, types, coverage, library and playground builds, emitted declarations, dependency audit, package contents, and a clean installed-package runtime/type smoke check. Browser checks run Chromium, Firefox, and WebKit separately.
+
+The old `release:patch`, `release:minor`, and `release:major` helpers are absent. Use `version:patch`, `version:minor`, or `version:major` for metadata preparation, commit the validated source, then explicitly tag and publish using the release workflow below. Versioning does not create commits or tags, and GitHub release creation does not publish to npm.
 
 ---
 
@@ -1291,7 +1299,7 @@ Then open `http://localhost:5173`. The `/tests` page contains browser scenarios 
 
 The playground displays cross-window prop values, identity fields, and log messages as text. When building a host UI, use `textContent` for received strings rather than interpolating them into HTML.
 
-Read the [architecture guide](docs/architecture.md) for state ownership and render/bootstrap, props, callback, and React flows. The [IOSP review record](docs/iosp-review.md) classifies runtime callables and links their test evidence.
+Read the [architecture guide](https://github.com/jshsmth/ForgeFrame/blob/main/docs/architecture.md) for state ownership and render/bootstrap, props, callback, and React flows. The [IOSP review record](https://github.com/jshsmth/ForgeFrame/blob/main/docs/iosp-review.md) classifies runtime callables and links their test evidence.
 
 - `packages/forgeframe/src/index.ts` defines the public package exports. Other source barrels are internal; the package exposes no subpath imports.
 - `core/component.ts` owns component factories and instance tracking. `core/consumer.ts` coordinates rendering, the prop pipeline, and transport; `core/host/` owns host bootstrap and `hostProps`.
@@ -1305,7 +1313,7 @@ Development uses TypeScript 7 and Biome with its default formatting and recommen
 
 For VS Code, use the official Biome extension (`biomejs.biome`) for supported files and the TypeScript 7 language-service extension (`TypeScriptTeam.native-preview`) for native compiler editor support. Other editors should use their Biome and TypeScript 7 LSP integrations. The compiler upgrade is development tooling; it does not require consumers to upgrade to TypeScript 7.
 
-Biome retains its recommended warning severities. Existing non-null assertions in unit tests, browser scenarios, and playground DOM bindings remain warnings: replacing them with optional chaining could silently skip assertions or actions. Intentional React effect signatures, prototype-safety fixtures, and CSS precedence overrides have local suppressions with explanations.
+Biome retains its recommended severities. Tests and playground bindings use explicit value guards so missing fixtures or elements fail instead of silently skipping assertions or actions. Intentional React effect signatures, prototype-safety fixtures, and CSS precedence overrides have local suppressions with explanations.
 
 | Command | What it checks |
 |---------|----------------|
@@ -1319,7 +1327,8 @@ Biome retains its recommended warning severities. Existing non-null assertions i
 | `npm run test:browser` | Cross-origin iframe and popup regressions in Chromium, Firefox, and WebKit |
 | `npm run build && npm run typecheck:package` | ESM output and emitted declarations under NodeNext resolution |
 | `npm run build:playground` | Consumer and host production builds |
-| `npm run release:check` | Lint, types, tests once with coverage, builds, dependency audit, and package dry run; does not publish |
+| `npm run test:package` | Pack and install the built library in an isolated project; verify ESM imports and NodeNext consumer types |
+| `npm run release:check` | Lint, types, tests once with coverage, builds, dependency audit, package dry run, and installed-package checks; does not publish |
 
 See the [test index](https://github.com/jshsmth/ForgeFrame/blob/main/packages/forgeframe/tests/README.md) for suite selection and single-file commands. jsdom checks do not replace browser testing of cross-origin navigation, popup blockers, or visual behavior. `npm audit` requires registry access; an audit service failure leaves the release check incomplete even when local checks pass.
 

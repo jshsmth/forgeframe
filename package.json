@@ -19,7 +19,7 @@
 		"test:run": "npm run test:run -w forgeframe",
 		"test:coverage": "npm run test:coverage -w forgeframe",
 		"typecheck:package": "tsc --ignoreConfig --noEmit --skipLibCheck false --module NodeNext --moduleResolution NodeNext --target ES2022 packages/forgeframe/dist/index.d.ts",
-		"release:check": "npm run lint && npm run typecheck && npm run test:coverage && npm run build && npm run typecheck:package && npm run build:playground && npm audit && npm pack --dry-run -w forgeframe",
+		"release:check": "npm run lint && npm run typecheck && npm run test:coverage && npm run build && npm run typecheck:package && npm run build:playground && npm audit && npm pack --dry-run -w forgeframe && npm run test:package",
 		"release": "npm publish -w forgeframe",
 		"version:patch": "npm version patch -w forgeframe --no-git-tag-version",
 		"version:minor": "npm version minor -w forgeframe --no-git-tag-version",
@@ -27,7 +27,8 @@
 		"format": "biome format --write .",
 		"format:check": "biome format .",
 		"check:ci": "biome ci .",
-		"test:browser": "npm run test:browser -w forgeframe"
+		"test:browser": "npm run test:browser -w forgeframe",
+		"test:package": "node packages/forgeframe/scripts/check-package.mjs"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.14",
