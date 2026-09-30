@@ -1080,7 +1080,7 @@ Each child tag must be registered in the host bundle before `hostProps` is initi
 
 ## Migrating from pre-v1 to v1
 
-This guide covers the published `0.2.0` release and earlier `0.x` integrations. Install `forgeframe@1.0.0` in both consumer and host projects, rebuild their bundles, and exercise create/render, prop updates, callbacks, exports, reconnects, and teardown before releasing them. The public package remains a single ESM entrypoint: import from `forgeframe`; internal source paths are not public APIs. Global script-tag or CommonJS consumers must use an ESM-aware build.
+This guide covers the published `0.2.0` release and earlier `0.x` integrations. The stable v1 release starts at `1.0.1`: npm permanently reserves `1.0.0` from an earlier publication that was removed. Install `forgeframe@1.0.1` in both consumer and host projects, rebuild their bundles, and exercise create/render, prop updates, callbacks, exports, reconnects, and teardown before releasing them. The public package remains a single ESM entrypoint: import from `forgeframe`; internal source paths are not public APIs. Global script-tag or CommonJS consumers must use an ESM-aware build.
 
 ### Upgrade checklist
 
@@ -1345,9 +1345,9 @@ Edit the root `README.md` for documentation changes. The library build copies it
 
 Version preparation and publication are separate:
 
-1. Run `npm run version:patch`, `version:minor`, or `version:major` to update workspace metadata and the lockfile only. For an explicit version, use `npm version 1.0.0 -w forgeframe --no-git-tag-version`. These commands do not commit, tag, publish, or push.
+1. Run `npm run version:patch`, `version:minor`, or `version:major` to update workspace metadata and the lockfile only. For an explicit version, use `npm version 1.0.1 -w forgeframe --no-git-tag-version`. These commands do not commit, tag, publish, or push.
 2. Run `npm run release:check` and `npm run test:browser`, review the changes, and commit the intended release source and metadata. Verify hosted CI for that commit before releasing.
-3. Create the matching Git tag, such as `v1.0.0`, on that commit. Keep the working tree clean so the published files match the tagged source.
+3. Create the matching Git tag, such as `v1.0.1`, on that commit. Keep the working tree clean so the published files match the tagged source.
 4. Run `npm run release` to publish. The publishable workspace owns `prepublishOnly`, so both this command and `npm publish -w forgeframe` run the full checks before publication.
 5. Push the release commit and its specific tag explicitly. The GitHub workflow requires the tag to match the package version, validates it, and creates release notes; it does not publish to npm. Manual workflow runs must select the matching tag.
 
