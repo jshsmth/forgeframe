@@ -44,7 +44,29 @@ export function deserializeMessage(data: unknown): Message | null {
 		const json = data.slice(PROTOCOL_PREFIX.length);
 		const message = JSON.parse(json) as Message;
 
-		if (!message.id || !message.type || !message.name || !message.source) {
+		if (
+			!message ||
+			typeof message !== "object" ||
+			Array.isArray(message) ||
+			typeof message.id !== "string" ||
+			!message.id ||
+			(message.type !== MESSAGE_TYPE.REQUEST &&
+				message.type !== MESSAGE_TYPE.RESPONSE) ||
+			typeof message.name !== "string" ||
+			!message.name ||
+			!message.source ||
+			typeof message.source !== "object" ||
+			Array.isArray(message.source) ||
+			typeof message.source.uid !== "string" ||
+			!message.source.uid ||
+			typeof message.source.domain !== "string" ||
+			!message.source.domain ||
+			(message.error !== undefined &&
+				(!message.error ||
+					typeof message.error !== "object" ||
+					Array.isArray(message.error) ||
+					typeof message.error.message !== "string"))
+		) {
 			return null;
 		}
 

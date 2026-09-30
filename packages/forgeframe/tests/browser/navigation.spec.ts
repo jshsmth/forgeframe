@@ -113,6 +113,19 @@ test.beforeAll(async () => {
 			await host.ready; window.received = host.hostProps; window.ready = true;
 			</script>`,
 				);
+			if (req.url === "/record-props") {
+				return respond(
+					res,
+					`<!doctype html><script type="module">
+				import {initHost,prop} from '/library.js';
+				const host = initHost({record:prop.object()}, ['${consumerOrigin}']);
+				await host.ready;
+				window.received = host.hostProps;
+				await host.hostProps.export({record:host.hostProps.record});
+				window.ready = true;
+				</script>`,
+				);
+			}
 			if (req.url === "/early-update") {
 				return respond(
 					res,
@@ -1137,7 +1150,7 @@ for (const context of ["iframe", "popup"] as const) {
 				reviewWindow.armed = false;
 				reviewWindow.instance = create({
 					tag: "reconnect-queued-update",
-					url: hostOrigin + "/host",
+					url: `${hostOrigin}/host`,
 					domain: hostOrigin,
 					props: {
 						count: {
@@ -1272,4 +1285,106 @@ for (const context of ["iframe", "popup"] as const) {
 			).toEqual({});
 		}
 	});
+}
+
+for (const context of ["iframe", "popup"] as const) {
+	for (const serialization of ["json", "base64", "dotify"] as const) {
+		test(`${context} preserves marker-shaped records through ${serialization} props and exports`, async ({
+			page,
+		}) => {
+			await page.goto(consumerOrigin);
+			const opening =
+				context === "popup"
+					? page.waitForEvent("popup")
+					: Promise.resolve(page);
+			await page.evaluate(
+				async ({ hostOrigin, context, serialization }) => {
+					const libraryUrl = "/library.js";
+					const { create, prop }: typeof import("../../src/index") =
+						await import(libraryUrl);
+					const Component = create({
+						tag: "marker-record-browser",
+						url: `${hostOrigin}/record-props`,
+						props: { record: { schema: prop.object(), serialization } },
+					});
+					const record = {
+						callback: {
+							__type__: "function",
+							__id__: "ordinary-id",
+							__name__: "ordinary-name",
+							optional: undefined,
+						},
+						date: {
+							__forgeframe_wire_type__: "date",
+							__forgeframe_wire_value__: null,
+							optional: undefined,
+						},
+						encoded: {
+							__type__: "base64",
+							__value__: "JTdCJTIyZGVjb2RlZCUyMiUzQXRydWUlN0Q=",
+							optional: undefined,
+						},
+						escaped: {
+							__forgeframe_wire_type__: "record",
+							__forgeframe_wire_value__: { original: true },
+						},
+					};
+					const instance = Component({ record });
+					(window as unknown as { instance: typeof instance }).instance =
+						instance;
+					await instance.render("#mount", context);
+				},
+				{ hostOrigin, context, serialization },
+			);
+			const hostPage = await opening;
+			const host =
+				context === "popup"
+					? hostPage
+					: page
+							.frames()
+							.find((frame) => frame.url() === `${hostOrigin}/record-props`);
+			if (!host) throw new Error("Missing host");
+			await host.waitForFunction(
+				() => (window as unknown as { ready: boolean }).ready === true,
+			);
+			const expected = {
+				callback: {
+					__type__: "function",
+					__id__: "ordinary-id",
+					__name__: "ordinary-name",
+				},
+				date: {
+					__forgeframe_wire_type__: "date",
+					__forgeframe_wire_value__: null,
+				},
+				encoded: {
+					__type__: "base64",
+					__value__: "JTdCJTIyZGVjb2RlZCUyMiUzQXRydWUlN0Q=",
+				},
+				escaped: {
+					__forgeframe_wire_type__: "record",
+					__forgeframe_wire_value__: { original: true },
+				},
+			};
+			expect(
+				await host.evaluate(
+					() =>
+						(window as unknown as { received: { record: object } }).received
+							.record,
+				),
+			).toEqual(expected);
+			expect(
+				await page.evaluate(
+					() =>
+						(window as unknown as { instance: { exports: object } }).instance
+							.exports,
+				),
+			).toEqual({ record: expected });
+			await page.evaluate(() =>
+				(
+					window as unknown as { instance: { close(): Promise<void> } }
+				).instance.close(),
+			);
+		});
+	}
 }

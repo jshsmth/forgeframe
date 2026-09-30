@@ -9,6 +9,7 @@
  */
 
 import type { HostProps } from "../types/runtime";
+import { hasBrowserWindow } from "../utils/browser";
 import { isForgeFrameWindow } from "../window/name-payload";
 import { getHost as getActiveHost } from "./host/bootstrap";
 
@@ -38,6 +39,7 @@ export { HostComponent } from "./host/component";
  * @public
  */
 export function isHost(): boolean {
+	if (!hasBrowserWindow()) return false;
 	return getActiveHost() !== null || isForgeFrameWindow();
 }
 
@@ -63,7 +65,7 @@ export function isHost(): boolean {
  * @public
  */
 export function isEmbedded(): boolean {
-	return getActiveHost() !== null || isForgeFrameWindow();
+	return isHost();
 }
 
 /**
@@ -91,5 +93,6 @@ export function isEmbedded(): boolean {
 export function getHostProps<P extends Record<string, unknown>>():
 	| HostProps<P>
 	| undefined {
+	if (!hasBrowserWindow()) return undefined;
 	return (window as unknown as { hostProps?: HostProps<P> }).hostProps;
 }

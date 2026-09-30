@@ -771,7 +771,7 @@ describe("prop.record()", () => {
 		const input = Object.create(null) as Record<string, unknown>;
 		// biome-ignore lint/suspicious/noProto: Exercise an own __proto__ data property to verify prototype-safe handling.
 		input.__proto__ = "proto-value";
-		input["constructor"] = "ctor-value";
+		Reflect.set(input, "constructor", "ctor-value");
 		input.prototype = "prototype-value";
 
 		const result = schema["~standard"].validate(input);
@@ -873,6 +873,31 @@ describe("prop.enum()", () => {
 // ============================================================================
 
 describe("prop.union()", () => {
+	it.each([prop.literal("ok"), prop.enum(["ok"])])(
+		"continues past rejection without serializing circular objects or calling toJSON",
+		(branch) => {
+			const circular: { self?: unknown } = {};
+			circular.self = circular;
+			const custom = {
+				toJSON: () => {
+					throw new Error("unexpected serialization");
+				},
+			};
+			const schema = prop.union(branch, prop.any());
+			expect(schema["~standard"].validate(circular)).toEqual({
+				value: circular,
+			});
+			expect(schema["~standard"].validate(custom)).toEqual({ value: custom });
+			expect(branch["~standard"].validate(circular)).toHaveProperty("issues");
+		},
+	);
+	it.each([prop.literal("ok"), prop.enum(["ok"])])(
+		"continues past a rejected literal or enum for a BigInt input",
+		(branch) => {
+			const schema = prop.union(branch, prop.any());
+			expect(schema["~standard"].validate(1n)).toEqual({ value: 1n });
+		},
+	);
 	it("should validate any matching branch", () => {
 		const schema = prop.union(prop.string(), prop.number());
 		expect(schema["~standard"].validate("hello")).toEqual({ value: "hello" });

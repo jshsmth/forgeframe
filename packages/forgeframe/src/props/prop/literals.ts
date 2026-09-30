@@ -7,6 +7,20 @@ import {
 	validateSchemaSync,
 } from "./base";
 
+/** Formats rejected input without invoking user serialization code. */
+function formatRejectedValue(value: unknown): string {
+	if (
+		value === null ||
+		typeof value === "string" ||
+		typeof value === "number" ||
+		typeof value === "boolean"
+	) {
+		return JSON.stringify(value);
+	}
+	if (typeof value === "bigint") return `${value}n`;
+	return typeof value;
+}
+
 /**
  * Schema for literal value props.
  *
@@ -35,7 +49,7 @@ export class LiteralSchema<
 			return {
 				issues: [
 					{
-						message: `Expected ${JSON.stringify(this._value)}, got ${JSON.stringify(value)}`,
+						message: `Expected ${JSON.stringify(this._value)}, got ${formatRejectedValue(value)}`,
 					},
 				],
 			};
@@ -78,7 +92,7 @@ export class EnumSchema<T extends string | number> extends PropSchema<T> {
 			return {
 				issues: [
 					{
-						message: `Expected one of [${this._values.map((v) => JSON.stringify(v)).join(", ")}], got ${JSON.stringify(value)}`,
+						message: `Expected one of [${this._values.map((v) => JSON.stringify(v)).join(", ")}], got ${formatRejectedValue(value)}`,
 					},
 				],
 			};

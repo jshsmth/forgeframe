@@ -3,6 +3,7 @@
  *
  * Covers component registration, instance lifecycle, dynamic option materialization, and host detection/eligibility behavior.
  */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { ConsumerExports } from "@/communication/types";
@@ -22,8 +23,9 @@ import { getSiblingInstances } from "@/core/consumer/siblings";
 import { clearHostInstance, getHostProps, initHost, isHost } from "@/core/host";
 import * as hostSecurity from "@/core/host/security";
 import { prop } from "@/props/prop";
-import type { PropContext } from "@/types";
+import type { ComponentOptions, PropContext } from "@/types";
 import { buildWindowName } from "@/window/name-payload";
+import { requireValue } from "../require-value";
 
 const VALID_EXPORTS: ConsumerExports = {
 	init: MESSAGE_NAME.INIT,
@@ -64,6 +66,54 @@ function getConsumerInternals(instance: unknown): ConsumerInternals {
 }
 
 describe("Component Creation", () => {
+	it.each([
+		{ url: 123 },
+		{ url: {} },
+		{ tag: ["valid-tag"] },
+		{ defaultContext: "unsupported" },
+		{ timeout: Infinity },
+		{ timeout: NaN },
+		{ timeout: -1 },
+		{ timeout: "1000" },
+		{ timeout: 2147483648 },
+	])(
+		"rejects invalid JavaScript configuration before registration: %j",
+		(patch) => {
+			const options = {
+				tag: "invalid-runtime-options",
+				url: "https://example.com",
+				...patch,
+			};
+			expect(() =>
+				create(options as unknown as ComponentOptions<Record<string, unknown>>),
+			).toThrow();
+			expect(getComponent("invalid-runtime-options")).toBeUndefined();
+		},
+	);
+	it("rejects an invalid render context without allocating resources and permits retry", async () => {
+		const Component = create({
+			tag: "invalid-render-context",
+			url: "https://example.com",
+		});
+		const instance = Component({});
+		const container = document.createElement("div");
+		document.body.append(container);
+		await expect(
+			instance.render(
+				container,
+				"unsupported" as unknown as typeof CONTEXT.IFRAME,
+			),
+		).rejects.toThrow("Render context");
+		expect(container.children).toHaveLength(0);
+		vi.spyOn(getConsumerInternals(instance), "waitForHost").mockResolvedValue(
+			undefined,
+		);
+		await expect(
+			instance.render(container, CONTEXT.IFRAME),
+		).resolves.toBeUndefined();
+		await instance.close();
+		container.remove();
+	});
 	afterEach(() => {
 		clearComponents();
 	});
@@ -1741,7 +1791,10 @@ describe("Component Instance", () => {
 			}),
 		});
 
-		const refs = buildNestedHostRefs(getComponentOptions(ParentComponent)!, {});
+		const refs = buildNestedHostRefs(
+			requireValue(getComponentOptions(ParentComponent)),
+			{},
+		);
 
 		expect(refs?.ChildComponent).toEqual({
 			tag: "child-component-meta",
@@ -1770,8 +1823,11 @@ describe("Component Instance", () => {
 		});
 
 		expect(() =>
-			buildNestedHostRefs(getComponentOptions(ParentComponent)!, {}),
-		).toThrow("must use a static string URL for protocol-v1 compatibility");
+			buildNestedHostRefs(
+				requireValue(getComponentOptions(ParentComponent)),
+				{},
+			),
+		).toThrow("must use a static string URL");
 	});
 });
 

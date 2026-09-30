@@ -16,7 +16,7 @@ The starting point passed 878 tests in 48 suites and 13 Chromium tests. Each wav
 
 | Evidence group | Suites |
 | --- | --- |
-| <a id="evidence-props"></a>props | [props.test](../packages/forgeframe/tests/unit/props.test.ts), [prop-schema.test](../packages/forgeframe/tests/unit/prop-schema.test.ts), [schema.test](../packages/forgeframe/tests/unit/schema.test.ts), [schema-contract.test](../packages/forgeframe/tests/unit/schema-contract.test.ts), [schema-backward-compat.test](../packages/forgeframe/tests/unit/schema-backward-compat.test.ts), [schema-path-format.test](../packages/forgeframe/tests/unit/schema-path-format.test.ts), [props-alias-materialization.test](../packages/forgeframe/tests/unit/props-alias-materialization.test.ts), [props-alias-updates.test](../packages/forgeframe/tests/unit/props-alias-updates.test.ts), [props-alias-sync.test](../packages/forgeframe/tests/integration/props-alias-sync.test.ts), [props-sync.test](../packages/forgeframe/tests/integration/props-sync.test.ts) |
+| <a id="evidence-props"></a>props | [props.test](../packages/forgeframe/tests/unit/props.test.ts), [prop-schema.test](../packages/forgeframe/tests/unit/prop-schema.test.ts), [schema.test](../packages/forgeframe/tests/unit/schema.test.ts), [schema-contract.test](../packages/forgeframe/tests/unit/schema-contract.test.ts), [schema-interoperability.test](../packages/forgeframe/tests/unit/schema-interoperability.test.ts), [schema-path-format.test](../packages/forgeframe/tests/unit/schema-path-format.test.ts), [props-alias-materialization.test](../packages/forgeframe/tests/unit/props-alias-materialization.test.ts), [props-alias-updates.test](../packages/forgeframe/tests/unit/props-alias-updates.test.ts), [props-alias-sync.test](../packages/forgeframe/tests/integration/props-alias-sync.test.ts), [props-sync.test](../packages/forgeframe/tests/integration/props-sync.test.ts) |
 | <a id="evidence-messaging"></a>messaging | [bridge.test](../packages/forgeframe/tests/unit/bridge.test.ts), [messenger.test](../packages/forgeframe/tests/unit/messenger.test.ts), [messenger-routing.test](../packages/forgeframe/tests/unit/messenger-routing.test.ts), [protocol.test](../packages/forgeframe/tests/unit/protocol.test.ts), [function-prop-bridge.test](../packages/forgeframe/tests/integration/function-prop-bridge.test.ts), [host-controls-routing.test](../packages/forgeframe/tests/integration/host-controls-routing.test.ts) |
 | <a id="evidence-render"></a>render | [consumer-renderer.test](../packages/forgeframe/tests/unit/consumer-renderer.test.ts), [iframe.test](../packages/forgeframe/tests/unit/iframe.test.ts), [popup.test](../packages/forgeframe/tests/unit/popup.test.ts), [render-templates.test](../packages/forgeframe/tests/unit/render-templates.test.ts), [body-param-bootstrap.test](../packages/forgeframe/tests/integration/body-param-bootstrap.test.ts), [popup-host-handshake.test](../packages/forgeframe/tests/integration/popup-host-handshake.test.ts) |
 | <a id="evidence-consumer"></a>consumer | [component.test](../packages/forgeframe/tests/unit/component.test.ts), [component-clone.test](../packages/forgeframe/tests/unit/component-clone.test.ts), [component-instance-index.test](../packages/forgeframe/tests/unit/component-instance-index.test.ts), [consumer-lifecycle.test](../packages/forgeframe/tests/unit/consumer-lifecycle.test.ts), [consumer-branch-coverage.test](../packages/forgeframe/tests/unit/consumer-branch-coverage.test.ts), [consumer-transport.test](../packages/forgeframe/tests/unit/consumer-transport.test.ts), [consumer-host-handshake.test](../packages/forgeframe/tests/integration/consumer-host-handshake.test.ts), [host-controls-routing.test](../packages/forgeframe/tests/integration/host-controls-routing.test.ts) |
@@ -41,6 +41,10 @@ Compile-time evidence: [typecheck suite guidance](../packages/forgeframe/tests/R
 ### [communication/bridge.ts](../packages/forgeframe/src/communication/bridge.ts)
 
 Registry reconciliation, capacity eviction, reference framing and remote wrapper creation are separate responsibilities. Retain recursive object/array codecs and local ID reconciliation as cohesive algorithms; CALL and PEER_CALL invoke supplied functions after browser-source authorization. The call channel is supplied to the bridge so peer relay registries retain a lifetime independent of props/export batches. Reference guards require the complete own-property wire shape and preserve records with extra user fields.
+
+Ordinary marker-shaped records are escaped before JSON omission and restored as data, including nested escape markers, across JSON/BASE64/DOTIFY props and exports.
+
+Array encoding checks every position before mapping, rejecting undefined entries and sparse holes for both props and exports while leaving object-field omission and function/Date framing unchanged.
 
 - **O:** `isSafeObjectKey`, `FunctionBridge.retainLocalFunction`, `FunctionBridge.findRemoteWrapper`, `FunctionBridge.evictOldestRemote`, `FunctionBridge.evictOldestLocal`, `FunctionBridge.createRemoteWrapper`, `FunctionBridge.isFunctionRef`, `FunctionBridge.removeLocal`, `FunctionBridge.startBatch`, `FunctionBridge.staleLocalIds`, `FunctionBridge.clearRemote`, `FunctionBridge.localFunctionCount`, `FunctionBridge.remoteFunctionCount`, `serializeFunctions`, `deserializeFunctions`, `createFunctionRef`.
 - **I:** `FunctionBridge.constructor`, `FunctionBridge.serialize`, `FunctionBridge.deserialize`, `FunctionBridge.createRemoteWrapper.wrapper`, `FunctionBridge.setupCallHandler`, `FunctionBridge.finishBatch`, `FunctionBridge.destroy`.
@@ -160,6 +164,8 @@ Evidence: [consumer](#evidence-consumer), [prop-update.test](../packages/forgefr
 ### [core/consumer/props-pipeline.ts](../packages/forgeframe/src/core/consumer/props-pipeline.ts)
 
 Preparation, schema/decorator sequencing, validation, candidate construction and commitment are separate. Queue ownership stays in the pipeline; disconnected updates also install their entries before user callbacks, and render admission drains the captured settled tail. Deferred normalization and clone restoration retain validation evidence. Regression evidence includes [consumer-props-queue.test](../packages/forgeframe/tests/unit/consumer-props-queue.test.ts).
+
+Update admission now checks deliverable array values after URL/origin policy and before snapshot commitment. Render admission performs the same check before allocating resources. Delivery-time checks retain host-decorator/custom-encoder timing and the existing post-commit transport failure semantics.
 
 - **O:** `UserNormalizationCallbackFailure.constructor`, `buildPropsSnapshot`, `ConsumerPropsPipeline.restoreSnapshot`, `ConsumerPropsPipeline.adoptNormalizedState`, `ConsumerPropsPipeline.deferFailedNormalization`, `ConsumerPropsPipeline.createSnapshot`, `ConsumerPropsPipeline.preparePropPatch`, `ConsumerPropsPipeline.commitSnapshot`.
 - **I:** `prevalidateProvidedSchemaInputs`, `validateNormalizedSchemaValues`, `ConsumerPropsPipeline.constructor`, `ConsumerPropsPipeline.ensureSchemaValidated`, `ConsumerPropsPipeline.revalidateSchemaValues`, `ConsumerPropsPipeline.buildNextProps`, `ConsumerPropsPipeline.validateDeferredSnapshot`, `ConsumerPropsPipeline.normalizePatchedSnapshot`, `ConsumerPropsPipeline.validatePatchedSnapshot`, `ConsumerPropsPipeline.normalizeInputSnapshot`, `ConsumerPropsPipeline.revalidateSchemaInputs`, `ConsumerPropsPipeline.updateProps`, `ConsumerPropsPipeline.syncCurrentPropsToHost`, `ConsumerPropsPipeline.readCurrentProps`, `ConsumerPropsPipeline.queuePropsUpdate`, `ConsumerPropsPipeline.trackPendingUpdate`.
@@ -371,7 +377,7 @@ Evidence: [props](#evidence-props), typecheck.
 Fallback precedence selection, schema probing/conversion, decoration, output-contract decisions and snapshot writes are named responsibilities. Alias traversal and output equality retain cohesive cycle-aware algorithms. Canonical/alias reads and schema/custom validation treat only own snapshot values as supplied; host reconciliation also uses own membership for stale-key removal. Schema validation loops and host decoration are contract operations with explicit supplied values; integrations expose normalization and delivery order. Query/body integrations invoke custom converters as definition methods, preserving their receiver; `serializePropParameter` only encodes values without a custom converter.
 
 - **O:** `resolvePropDefinition`, `hasOwn`, `schemaOutputMatchesInput`, `getCompiledPropDefinitions`, `materializePropAliases`, `invokeUserNormalizationCallback`, `readSuppliedProp`, `selectNormalizationFallback`, `probeSchemaDefault`, `validateNormalizationOutput`, `recordNormalizedValue`, `validateSchemaInputs`, `validateCustomProps`, `decorateHostProp`, `shouldSendPropToHost`, `serializePropParameter`.
-- **I:** `normalizeProps`, `normalizeConsumerProps`, `resolveNormalizationFallback`, `parseExplicitFallback`, `decorateNormalizedValue`, `normalizePropValue`, `normalizePropsInternal`, `validateProps`, `validateConsumerProps`, `validateNormalizedProps`, `validatePropsInternal`, `getPropsForHost`, `propsToQueryParams`, `propsToBodyParams`.
+- **I:** `normalizeProps`, `normalizeConsumerProps`, `resolveNormalizationFallback`, `parseExplicitFallback`, `decorateNormalizedValue`, `normalizePropValue`, `normalizePropsInternal`, `validateProps`, `validateConsumerProps`, `validateNormalizedProps`, `validatePropsInternal`, `getPropsForHost`, `validatePropsForHostTransport`, `propsToQueryParams`, `propsToBodyParams`.
 - **O callbacks:** `getCompiledPropDefinitions.callback@154`, `materializePropAliases.callback@201`, `materializePropAliases.callback@203`, `resolveNormalizationFallback.callback@385`, `resolveNormalizationFallback.callback@397`, `decorateNormalizedValue.callback@462`.
 
 Evidence: [props](#evidence-props); typecheck.
@@ -417,7 +423,9 @@ Evidence: [props](#evidence-props); typecheck.
 
 Literal/enum constraint evaluation and ordered union probing are cohesive validation operations. Union presence uses the same free selector with union-specific null/undefined policy.
 
-- **O:** `LiteralSchema.constructor`, `LiteralSchema._validate`, `EnumSchema.constructor`, `EnumSchema._validate`, `UnionSchema.constructor`, `UnionSchema._validate`.
+`formatRejectedValue` formats primitive values or a type label without invoking arbitrary JSON serialization. Rejected cyclic objects, BigInts and custom encoders therefore cannot abort later union branches.
+
+- **O:** `formatRejectedValue`, `LiteralSchema.constructor`, `LiteralSchema._validate`, `EnumSchema.constructor`, `EnumSchema._validate`, `UnionSchema.constructor`, `UnionSchema._validate`.
 - **I:** `UnionSchema._validateInput`.
 - **M:** `LiteralSchema._clone`, `EnumSchema._clone`, `UnionSchema._clone`.
 - **O callbacks:** `EnumSchema._validate.callback@81`.
@@ -622,7 +630,9 @@ Evidence: [utilities](#evidence-utilities); typecheck.
 
 Date framing and recursive JSON replacer/reviver behaviour are codec operations. The optional internal function encoder extends the existing replacer for prop codecs while callers without that encoder retain ordinary JSON function omission. Retain recursion and malformed Date handling together.
 
-- **O:** `isObjectRecord`, `hasOwnKey`, `encodeDateWireValue`, `isDateWireValue`, `decodeDateWireValue`, `stringifyWireValue`, `stringifyWireValue.wireValueReplacer`, `parseWireValue`.
+`assertDefinedArrayEntries` checks normalized container values with cycle-safe traversal and without calling custom JSON encoders. `hasJsonEncoder` inspects descriptors without invoking computed properties. BASE64 encoder-bearing branches are deferred to the replacer; `isDotifyObjectBranch` mirrors DOTIFY traversal so only its encoded leaves may defer. Non-callable `toJSON` fields remain ordinary data. `assertDefinedArrayEntry` also guards bridge arrays, including holes, and prop-codec replacer values before JSON can convert them to null. Date framing ignores extra instance fields as before.
+
+- **O:** `needsRecordEscape`, `escapeWireRecord`, `isRecordWireValue`, `assertDefinedArrayEntry`, `assertDefinedArrayEntries`, `hasJsonEncoder`, `isDotifyObjectBranch`, `isObjectRecord`, `hasOwnKey`, `encodeDateWireValue`, `isDateWireValue`, `decodeDateWireValue`, `stringifyWireValue`, `stringifyWireValue.wireValueReplacer`, `parseWireValue`.
 - **O callbacks:** `parseWireValue.callback@92`.
 
 Evidence: [utilities](#evidence-utilities); typecheck.
@@ -656,7 +666,7 @@ Evidence: [utilities](#evidence-utilities); typecheck.
 **Contract only.** Types, re-exports or immutable declarations; no runtime callable body. Public exports and supported subpaths remain unchanged.
 Evidence: [utilities](#evidence-utilities), typecheck.
 
-## Final checks
+## Historical IOSP refactor checks
 
 | Check | Result |
 | --- | --- |
@@ -673,4 +683,4 @@ Evidence: [utilities](#evidence-utilities), typecheck.
 
 Added 20 tests across five new direct-rule suites and two existing boundary suites. The latter preserve unbound computed/default callbacks, bound query/body converter receivers, and synchronous message-handler failure timing. No test or coverage threshold was weakened. The package README mirror is produced by the existing library build.
 
-These are local results. Hosted CI, commits, PR creation, publishing and deployment are outside this internal refactor.
+These results record the earlier internal refactor and are not the current v1 release status. The v1 release gates now include all three browser engines and an installed-package smoke check; see the root README for the current commands.

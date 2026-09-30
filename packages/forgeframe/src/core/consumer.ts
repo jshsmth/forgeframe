@@ -18,6 +18,7 @@ import {
 	propsToQueryParams,
 } from "../props";
 import { EMPTY_PROP_DEFINITIONS } from "../props/definitions";
+import { validatePropsForHostTransport } from "../props/normalize";
 import type { PropsDefinition } from "../types/props";
 import type {
 	ComponentOptions,
@@ -268,7 +269,14 @@ export class ConsumerComponent<
 		context: ContextType | undefined,
 		pendingPropsUpdate: Promise<void> | null,
 	): Promise<void> {
-		this.renderer.context = context ?? this.options.defaultContext;
+		const resolvedContext = context ?? this.options.defaultContext;
+		if (
+			resolvedContext !== CONTEXT.IFRAME &&
+			resolvedContext !== CONTEXT.POPUP
+		) {
+			throw new Error('Render context must be "iframe" or "popup"');
+		}
+		this.renderer.context = resolvedContext;
 		if (pendingPropsUpdate) {
 			await pendingPropsUpdate;
 			this.assertRenderActive();
@@ -294,6 +302,12 @@ export class ConsumerComponent<
 
 		// Configuration/container guard failures remain retryable until rendering
 		// has begun and resources may need lifecycle cleanup.
+		validatePropsForHostTransport(
+			this.propsPipeline.props,
+			this.options.props,
+			new URL(baseUrl).origin,
+			new URL(baseUrl).origin === window.location.origin,
+		);
 		this.renderer.container = this.resolveContainer(container);
 
 		try {
@@ -490,6 +504,13 @@ export class ConsumerComponent<
 			resolveUrlOrigin: (url) => this.resolveUrlOrigin(url),
 			assertStableRenderedOrigin: (nextHostOrigin) =>
 				this.assertStableRenderedOrigin(nextHostOrigin),
+			validateTransportProps: (props, hostOrigin) =>
+				validatePropsForHostTransport(
+					props,
+					this.options.props,
+					hostOrigin ?? "",
+					hostOrigin === window.location.origin,
+				),
 			isRendered: () => this.rendered,
 			syncTrustedDomainForUrl: (url) => this.syncTrustedDomainForUrl(url),
 			shouldSendPropsToHost: () =>

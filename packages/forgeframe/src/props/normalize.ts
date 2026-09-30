@@ -7,12 +7,14 @@
  * types, and filtering props for sending to host components.
  */
 
+import { PROP_SERIALIZATION } from "../constants";
 import type {
 	PropContext,
 	PropDefinition,
 	PropsDefinition,
 } from "../types/props";
 import type { DomainMatcher } from "../types/utility";
+import { assertDefinedArrayEntries } from "../utils/wire-value";
 import { matchDomain } from "../window/helpers";
 import { BUILTIN_PROP_DEFINITIONS } from "./definitions";
 import {
@@ -744,15 +746,37 @@ export function getPropsForHost<P extends Record<string, unknown>, I = P>(
 
 		if (!shouldSendPropToHost(definition, hostDomain, isSameDomain)) continue;
 
-		(result as Record<string, unknown>)[key] = decorateHostProp(
-			value,
-			definition,
-			props,
-			key,
+		const decorated = decorateHostProp(value, definition, props, key);
+		assertDefinedArrayEntries(
+			decorated,
+			[key],
+			definition.serialization ?? PROP_SERIALIZATION.JSON,
 		);
+		(result as Record<string, unknown>)[key] = decorated;
 	}
 
 	return result;
+}
+
+/** Checks normalized deliverable values without invoking host decorators. @internal */
+export function validatePropsForHostTransport<
+	P extends Record<string, unknown>,
+	I = P,
+>(
+	props: P,
+	definitions: PropsDefinition<P, I>,
+	hostDomain: string,
+	isSameDomain: boolean,
+): void {
+	for (const { key, definition } of getCompiledPropDefinitions(definitions)) {
+		if (!shouldSendPropToHost(definition, hostDomain, isSameDomain)) continue;
+		if (definition.hostDecorate) continue;
+		assertDefinedArrayEntries(
+			props[key],
+			[key],
+			definition.serialization ?? PROP_SERIALIZATION.JSON,
+		);
+	}
 }
 
 /** Runs host decoration and checks that its result preserves the output contract. */

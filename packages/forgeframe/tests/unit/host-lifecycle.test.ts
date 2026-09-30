@@ -3,6 +3,7 @@
  *
  * Covers consumer control channels, props synchronization/subscriber behavior, and consumer window resolution rules.
  */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { type MessageHandler, Messenger } from "@/communication/messenger";
@@ -29,6 +30,7 @@ import { createDeferred } from "@/utils/promise";
 import * as helpers from "@/window/helpers";
 import { buildWindowName } from "@/window/name-payload";
 import type { WindowNamePayload } from "@/window/types";
+import { requireValue } from "../require-value";
 
 const VALID_EXPORTS: ConsumerExports = {
 	init: MESSAGE_NAME.INIT,
@@ -178,8 +180,8 @@ describe("Host lifecycle behavior", () => {
 		const host = initHost(definitions, undefined, { deferInit: true });
 
 		expect(host).not.toBeNull();
-		expect(host!.hostProps.label).toBeUndefined();
-		expect(host!.hostProps.secret).toBeUndefined();
+		expect(requireValue(host).hostProps.label).toBeUndefined();
+		expect(requireValue(host).hostProps.secret).toBeUndefined();
 	});
 
 	it("should clear the bootstrap window name after host initialization", async () => {
@@ -385,7 +387,9 @@ describe("Host lifecycle behavior", () => {
 		).messenger.handlers.get(MESSAGE_NAME.PROPS);
 
 		expect(propsHandler).toBeDefined();
-		expect(propsHandler!({ amount: 11 }, createMessageSource(window))).toEqual({
+		expect(
+			requireValue(propsHandler)({ amount: 11 }, createMessageSource(window)),
+		).toEqual({
 			success: true,
 		});
 		expect(host.hostProps.amount).toBe(11);
@@ -462,7 +466,7 @@ describe("Host lifecycle behavior", () => {
 		expect(propsHandler).toBeDefined();
 		expect(host.hostProps.secret).toBeUndefined();
 		expect(
-			propsHandler!(
+			requireValue(propsHandler)(
 				{ label: "visible", secret: "same-origin-only" },
 				createMessageSource(window, window.location.origin),
 			),
@@ -513,7 +517,10 @@ describe("Host lifecycle behavior", () => {
 		host.hostProps.onProps(throwingSubscriber);
 		host.hostProps.onProps(healthySubscriber);
 
-		const result = propsHandler!({ amount: 77 }, createMessageSource(window));
+		const result = requireValue(propsHandler)(
+			{ amount: 77 },
+			createMessageSource(window),
+		);
 
 		expect(result).toEqual({ success: true });
 		expect(throwingSubscriber).toHaveBeenCalled();
@@ -629,9 +636,9 @@ describe("Host lifecycle behavior", () => {
 		const circular: Record<string, unknown> = {};
 		circular.self = circular;
 
-		expect(() => propsHandler!(circular, createMessageSource(window))).toThrow(
-			"Circular reference detected in serialized props",
-		);
+		expect(() =>
+			requireValue(propsHandler)(circular, createMessageSource(window)),
+		).toThrow("Circular reference detected in serialized props");
 		expect(emitSpy).toHaveBeenCalledWith(EVENT.ERROR, expect.any(Error));
 		expect(consoleSpy).toHaveBeenCalledWith(
 			"Error deserializing props:",
@@ -659,7 +666,10 @@ describe("Host lifecycle behavior", () => {
 
 		expect(propsHandler).toBeDefined();
 		expect(() =>
-			propsHandler!({ amount: "bad-update" }, createMessageSource(window)),
+			requireValue(propsHandler)(
+				{ amount: "bad-update" },
+				createMessageSource(window),
+			),
 		).toThrow("Validation failed: amount: Expected number, got string");
 		expect(typedHost.hostProps.amount).toBe(10);
 		expect(typedHost.hostProps.consumer.props).toEqual({ amount: 10 });
@@ -695,7 +705,7 @@ describe("Host lifecycle behavior", () => {
 
 		expect(propsHandler).toBeDefined();
 		expect(() =>
-			propsHandler!({ amount: "42" }, createMessageSource(window)),
+			requireValue(propsHandler)({ amount: "42" }, createMessageSource(window)),
 		).toThrow("Invalid input: expected number, received string");
 		expect(typedHost.hostProps.amount).toBe(10);
 		expect(typedHost.hostProps.consumer.props).toEqual({ amount: 10 });

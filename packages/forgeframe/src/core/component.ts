@@ -8,6 +8,7 @@
  * creation, validation, and lifecycle management.
  */
 
+import { CONTEXT } from "../constants";
 import type { StandardSchemaV1 } from "../props/schema";
 import type {
 	HostPropsDefinition,
@@ -71,11 +72,21 @@ function validateComponentOptions<P, I, SchemaInputs>(
 function assertComponentShape<P, I, SchemaInputs>(
 	options: ComponentOptions<P, I, SchemaInputs>,
 ): void {
+	if (
+		typeof options !== "object" ||
+		options === null ||
+		Array.isArray(options)
+	) {
+		throw new Error("Component options must be an object");
+	}
 	if (!options.tag) {
 		throw new Error("Component tag is required");
 	}
 
-	if (!/^[a-z][a-z0-9-]*$/.test(options.tag)) {
+	if (
+		typeof options.tag !== "string" ||
+		!/^[a-z][a-z0-9-]*$/.test(options.tag)
+	) {
 		throw new Error(
 			`Invalid component tag "${options.tag}". Must start with lowercase letter and contain only lowercase letters, numbers, and hyphens.`,
 		);
@@ -83,6 +94,27 @@ function assertComponentShape<P, I, SchemaInputs>(
 
 	if (!options.url) {
 		throw new Error("Component url is required");
+	}
+	if (typeof options.url !== "string" && typeof options.url !== "function") {
+		throw new Error("Component url must be a string or a function");
+	}
+	if (
+		options.defaultContext !== undefined &&
+		options.defaultContext !== CONTEXT.IFRAME &&
+		options.defaultContext !== CONTEXT.POPUP
+	) {
+		throw new Error('Component defaultContext must be "iframe" or "popup"');
+	}
+	if (
+		options.timeout !== undefined &&
+		(typeof options.timeout !== "number" ||
+			!Number.isFinite(options.timeout) ||
+			options.timeout < 0 ||
+			options.timeout > 2147483647)
+	) {
+		throw new Error(
+			"Component timeout must be a finite number between 0 and 2147483647 milliseconds",
+		);
 	}
 
 	if (options.props) {

@@ -23,7 +23,7 @@ import { PopupOpenError } from "./render/popup";
  * Main ForgeFrame API object.
  *
  * @remarks
- * Provides a zoid-compatible interface for creating and managing
+ * Provides the public interface for creating and managing
  * cross-domain components. All methods and constants are accessible
  * through this object.
  *

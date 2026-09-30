@@ -19,6 +19,7 @@ import {
 	decodeDateWireValue,
 	encodeDateWireValue,
 	isDateWireValue,
+	needsRecordEscape,
 	stringifyWireValue,
 } from "../utils/wire-value";
 import { BUILTIN_PROP_DEFINITIONS } from "./definitions";
@@ -142,7 +143,7 @@ function toDotNotation(
 
 		const nextPath = [...path, key];
 
-		if (isPlainObject(value)) {
+		if (isPlainObject(value) && !needsRecordEscape(value)) {
 			parts.push(toDotNotation(value, bridge, nextPath));
 		} else {
 			parts.push(createDotNotationPair(nextPath, value, bridge));
@@ -340,7 +341,12 @@ function serializeValue(
 	}
 
 	if (serialization === PROP_SERIALIZATION.DOTIFY) {
-		if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+		if (
+			typeof value === "object" &&
+			value !== null &&
+			!Array.isArray(value) &&
+			!needsRecordEscape(value as Record<string, unknown>)
+		) {
 			return {
 				__type__: "dotify",
 				__value__: toDotNotation(value as Record<string, unknown>, bridge),

@@ -10,9 +10,12 @@
 import { MESSAGE_NAME } from "../constants";
 import { generateShortUID } from "../utils/uid";
 import {
+	assertDefinedArrayEntry,
 	decodeDateWireValue,
 	encodeDateWireValue,
+	escapeWireRecord,
 	isDateWireValue,
+	isRecordWireValue,
 } from "../utils/wire-value";
 import type { MessageHandler, Messenger } from "./messenger";
 import type { FunctionRef } from "./types";
@@ -377,6 +380,9 @@ export function serializeFunctions(
 		}
 		stack.add(obj);
 		try {
+			for (let index = 0; index < obj.length; index++) {
+				assertDefinedArrayEntry(obj[index], [String(index)]);
+			}
 			return obj.map((item) => serializeFunctions(item, bridge, stack));
 		} finally {
 			stack.delete(obj);
@@ -396,7 +402,7 @@ export function serializeFunctions(
 				if (!isSafeObjectKey(key)) continue;
 				result[key] = serializeFunctions(value, bridge, stack);
 			}
-			return result;
+			return escapeWireRecord(result);
 		} finally {
 			stack.delete(obj);
 		}
@@ -453,7 +459,10 @@ export function deserializeFunctions(
 		stack.add(obj);
 		try {
 			const result: Record<string, unknown> = {};
-			for (const [key, value] of Object.entries(obj)) {
+			const record = isRecordWireValue(obj)
+				? obj.__forgeframe_wire_value__
+				: obj;
+			for (const [key, value] of Object.entries(record)) {
 				if (!isSafeObjectKey(key)) continue;
 				result[key] = deserializeFunctions(
 					value,
