@@ -18,7 +18,7 @@
 			padding: 0;
 			background: #f5f5f5;
 			color: #333;
-			height: 100vh;
+			height: 100dvh;
 			display: flex;
 			flex-direction: column;
 		}
@@ -79,6 +79,9 @@
 			font-weight: 500;
 		}
 		.mode-toggle {
+			margin: 0;
+			padding: 0;
+			border: 0;
 			display: flex;
 		}
 		.mode-btn {
@@ -89,7 +92,9 @@
 			cursor: pointer;
 			font-size: 0.75rem;
 			font-weight: 500;
-			transition: all 0.15s;
+			transition:
+				background-color 0.15s,
+				color 0.15s;
 		}
 		.mode-btn:first-child {
 			border-radius: 4px 0 0 4px;
@@ -112,7 +117,7 @@
 		/* Main Grid: Code on left, Preview and Events on right */
 		.main {
 			display: grid;
-			grid-template-columns: 1fr 1fr;
+			grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 			grid-template-rows: 1fr 1fr;
 			gap: 1px;
 			background: #e0e0e0;
@@ -181,7 +186,9 @@
 			cursor: pointer;
 			font-size: 0.7rem;
 			font-weight: 500;
-			transition: all 0.15s;
+			transition:
+				background-color 0.15s,
+				color 0.15s;
 		}
 		.btn-render {
 			background: #217b38;
@@ -275,7 +282,8 @@
 			width: 80px;
 		}
 		.prop-item input:focus {
-			outline: none;
+			outline: 2px solid var(--diagnostic-accent);
+			outline-offset: 2px;
 			border-color: #c52d49;
 		}
 		.prop-item button {
@@ -343,7 +351,8 @@
 			width: 80px;
 		}
 		.add-prop-form input:focus {
-			outline: none;
+			outline: 2px solid var(--diagnostic-accent);
+			outline-offset: 2px;
 			border-color: #c52d49;
 		}
 		.add-prop-form select {
@@ -441,7 +450,7 @@
 			word-break: break-word;
 		}
 		.log-entry.success {
-			color: #218838;
+			color: #1e6b31;
 			background: #f0fff4;
 		}
 		.log-entry.success:nth-child(odd) {
@@ -461,6 +470,352 @@
 		.log-entry.info:nth-child(odd) {
 			background: #e8f0fa;
 		}
+		:root {
+			--diagnostic-accent: #c52d49;
+			--diagnostic-ink: #333;
+			--diagnostic-muted: #555;
+			--diagnostic-surface: #f5f5f5;
+			--diagnostic-line: #ddd;
+			--diagnostic-error: #a82030;
+		}
+		.header {
+			gap: 16px;
+			flex-wrap: wrap;
+		}
+		.header-controls {
+			justify-content: flex-end;
+			flex-wrap: wrap;
+			gap: 12px;
+		}
+		.header h1 {
+			flex-shrink: 0;
+		}
+		.header :is(button, a),
+		.main :is(button, summary) {
+			min-height: 32px;
+		}
+		.header :is(button, a):focus-visible,
+		.main :is(button, summary, [tabindex]):focus-visible {
+			outline: 2px solid var(--diagnostic-accent);
+			outline-offset: 3px;
+		}
+		.header a {
+			display: inline-flex;
+			align-items: center;
+		}
+		.header .mode-btn:disabled {
+			opacity: 0.45;
+			cursor: not-allowed;
+		}
+		.header .mode-group.disabled {
+			opacity: 1;
+			pointer-events: auto;
+		}
+		.main {
+			grid-template-areas: "code preview" "code events";
+			grid-template-rows: minmax(430px, 2fr) minmax(180px, 1fr);
+			min-height: 610px;
+		}
+		.main > .code-panel {
+			grid-area: code;
+			display: block;
+			min-width: 0;
+		}
+		.preview-panel {
+			grid-area: preview;
+			min-width: 0;
+		}
+		.events-panel {
+			grid-area: events;
+			min-width: 0;
+		}
+		.code-panel > summary {
+			cursor: pointer;
+			min-height: 40px;
+		}
+		.code-panel h2 {
+			display: inline;
+		}
+		.code-panel:not([open]) {
+			align-self: start;
+		}
+		.code-panel .code-preview {
+			height: calc(100% - 104px);
+		}
+		.code-toolbar {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: center;
+			gap: 8px;
+			padding: 8px 12px;
+			border-bottom: 1px solid #eee;
+		}
+		.code-toolbar p {
+			margin: 0;
+			font-size: 12px;
+			color: var(--diagnostic-muted);
+			flex: 1;
+		}
+		.code-toolbar button,
+		.panel-header button {
+			border: 1px solid var(--diagnostic-line);
+			padding: 6px 10px;
+			border-radius: 4px;
+			cursor: pointer;
+		}
+		#copy-status {
+			font-size: 12px;
+			color: var(--diagnostic-muted);
+		}
+		.component-controls {
+			flex-wrap: wrap;
+		}
+		.runtime-actions {
+			position: relative;
+			font-size: 12px;
+		}
+		.runtime-actions > summary {
+			cursor: pointer;
+			padding: 7px 8px;
+		}
+		.runtime-action-list {
+			display: flex;
+			gap: 4px;
+			padding: 8px;
+			background: #fff;
+			border: 1px solid var(--diagnostic-line);
+		}
+		.configuration-heading {
+			padding: 10px 12px 0;
+		}
+		.configuration-heading h2 {
+			margin: 0;
+			font-size: 13px;
+		}
+		.configuration-heading p {
+			margin: 5px 0;
+			max-width: 72ch;
+			font-size: 12px;
+			line-height: 1.5;
+			color: var(--diagnostic-muted);
+		}
+		#configuration-summary {
+			min-height: 3em;
+			padding: 6px 8px;
+			border-radius: 4px;
+		}
+		#configuration-summary.pending {
+			color: #795015;
+			background: #fff7ed;
+		}
+		.applied-config {
+			font-size: 12px;
+			color: var(--diagnostic-muted);
+		}
+		.applied-config summary {
+			cursor: pointer;
+			padding: 6px 0;
+		}
+		#running-props {
+			margin: 0;
+			max-height: 96px;
+			overflow: auto;
+			white-space: pre-wrap;
+			overflow-wrap: anywhere;
+		}
+		.props-bar {
+			flex-wrap: wrap;
+			align-items: flex-start;
+		}
+		.prop-item {
+			display: grid;
+			grid-template-columns: minmax(70px, 1fr) auto auto;
+			gap: 5px;
+			max-width: 100%;
+			min-width: 0;
+		}
+		.prop-item label {
+			grid-column: 1 / -1;
+			text-transform: none;
+		}
+		.prop-item input {
+			width: 100%;
+			min-width: 80px;
+			max-width: 220px;
+			min-height: 32px;
+		}
+		.prop-item button {
+			min-width: 32px;
+		}
+		.prop-applied,
+		.field-error {
+			grid-column: 1 / -1;
+			font-size: 11px;
+			line-height: 1.5;
+			overflow-wrap: anywhere;
+			max-width: 260px;
+		}
+		.prop-applied:empty {
+			display: none;
+		}
+		.prop-applied {
+			color: var(--diagnostic-muted);
+		}
+		.field-error {
+			color: var(--diagnostic-error);
+		}
+		.prop-item input[aria-invalid="true"],
+		.add-prop-form input[aria-invalid="true"] {
+			border-color: var(--diagnostic-error);
+		}
+		.prop-item.pending .prop-applied {
+			color: #795015;
+		}
+		.add-prop-container {
+			margin-left: 0;
+			padding-top: 18px;
+		}
+		.add-prop-form {
+			flex-wrap: wrap;
+			max-width: 100%;
+		}
+		.add-prop-form label {
+			font-size: 12px;
+		}
+		.add-prop-form input,
+		.add-prop-form select {
+			min-height: 32px;
+		}
+		.add-prop-form .field-error {
+			flex-basis: 100%;
+		}
+		.sr-only {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			padding: 0;
+			overflow: hidden;
+			clip-path: inset(50%);
+			white-space: nowrap;
+		}
+		.main ::selection {
+			background: #fbe4e9;
+			color: var(--diagnostic-ink);
+		}
+		.main input {
+			caret-color: var(--diagnostic-accent);
+		}
+		.main .panel-content {
+			scrollbar-color: #888 var(--diagnostic-surface);
+		}
+		.status-indicator,
+		.log-entry .time {
+			font-variant-numeric: tabular-nums;
+		}
+		@media (min-width: 901px) {
+			.preview-panel {
+				overflow: auto;
+			}
+			.preview-panel .configuration-heading {
+				flex-shrink: 0;
+			}
+			.preview-panel .props-bar {
+				flex-shrink: 0;
+				max-height: 160px;
+				overflow: auto;
+			}
+			.preview-panel #component-container {
+				flex: 1 0 200px;
+				min-height: 200px;
+			}
+		}
+		@media (max-width: 900px) {
+			body {
+				height: auto;
+				min-height: 100dvh;
+			}
+			.header {
+				padding: 12px 16px;
+			}
+			.header-controls {
+				justify-content: flex-start;
+				gap: 10px 16px;
+			}
+			.header-info {
+				flex-basis: 100%;
+			}
+			.main {
+				display: flex;
+				flex-direction: column;
+				gap: 12px;
+				background: var(--diagnostic-surface);
+				padding: 12px;
+			}
+			.main > .panel {
+				width: 100%;
+				border: 1px solid var(--diagnostic-line);
+				border-radius: 6px;
+			}
+			.preview-panel {
+				order: 0;
+				min-height: 560px;
+			}
+			.events-panel {
+				order: 1;
+			}
+			.code-panel {
+				order: 2;
+			}
+			.code-panel .code-preview {
+				height: auto;
+				max-height: 440px;
+			}
+			#event-log {
+				max-height: 340px;
+				min-height: 100px;
+			}
+			#component-container {
+				min-height: 340px;
+			}
+			.props-bar {
+				gap: 12px;
+			}
+			.prop-item {
+				flex: 1 1 140px;
+			}
+			.prop-item input {
+				font-size: 16px;
+				min-width: 0;
+			}
+			.main :is(button, summary),
+			.header :is(button, a),
+			.main .prop-item input,
+			.main .add-prop-form :is(input, select) {
+				min-height: 44px;
+			}
+			.main .btn-remove-prop {
+				min-width: 44px;
+			}
+			.add-prop-container {
+				padding-top: 0;
+				flex-basis: 100%;
+			}
+		}
+		@media (pointer: coarse) {
+			.main :is(button, summary),
+			.header :is(button, a) {
+				min-height: 44px;
+			}
+			.main .btn-remove-prop {
+				min-width: 44px;
+			}
+		}
+		@media (prefers-reduced-motion: reduce) {
+			.main button,
+			.header button {
+				transition: none;
+			}
+		}
 		</style>
 	</head>
 	<body>
@@ -468,26 +823,46 @@
 			<h1><span>Forge</span>Frame Playground</h1>
 			<div class="header-controls">
 				<div class="mode-group">
-					<span class="mode-label">Context</span>
-					<div class="mode-toggle">
-						<button type="button" class="mode-btn active" data-context="iframe">
+					<span class="mode-label">Next render</span>
+					<fieldset class="mode-toggle" aria-label="Render context">
+						<button
+							type="button"
+							class="mode-btn active"
+							aria-pressed="true"
+							data-context="iframe"
+						>
 							Iframe
 						</button>
-						<button type="button" class="mode-btn" data-context="popup">
+						<button
+							type="button"
+							class="mode-btn"
+							aria-pressed="false"
+							data-context="popup"
+						>
 							Popup
 						</button>
-					</div>
+					</fieldset>
 				</div>
 				<div class="mode-group" id="iframe-style-group">
 					<span class="mode-label">Style</span>
-					<div class="mode-toggle">
-						<button type="button" class="mode-btn active" data-style="embedded">
+					<fieldset class="mode-toggle" aria-label="Iframe presentation">
+						<button
+							type="button"
+							class="mode-btn active"
+							aria-pressed="true"
+							data-style="embedded"
+						>
 							Embedded
 						</button>
-						<button type="button" class="mode-btn" data-style="modal">
+						<button
+							type="button"
+							class="mode-btn"
+							aria-pressed="false"
+							data-style="modal"
+						>
 							Modal
 						</button>
-					</div>
+					</fieldset>
 				</div>
 				<div class="header-info" id="header-info">
 					<!-- Updated dynamically -->
@@ -499,17 +874,30 @@
 
 		<main class="main">
 			<!-- Left: Generated Code -->
-			<div class="panel">
-				<div class="panel-header">
-					<h2>Generated Code</h2>
+			<details class="panel code-panel" open>
+				<summary class="panel-header">
+					<h2>Generated code · next render</h2>
+				</summary>
+				<div class="code-toolbar">
+					<p>Use this draft to create a new instance.</p>
+					<button type="button" class="btn-secondary" id="btn-copy-code">
+						Copy code
+					</button><span
+						id="copy-status"
+						role="status"
+						aria-live="polite"
+					></span>
 				</div>
-				<div class="panel-content code-preview">
+				<section
+					class="panel-content code-preview"
+					aria-label="Generated TypeScript code"
+				>
 					<pre><code class="language-typescript" id="code-output"></code></pre>
-				</div>
-			</div>
+				</section>
+			</details>
 
 			<!-- Top Right: Component Preview -->
-			<div class="panel">
+			<div class="panel preview-panel">
 				<div class="component-controls">
 					<button type="button" class="btn-render" id="btn-render">
 						Render
@@ -517,20 +905,63 @@
 					<button type="button" class="btn-close" id="btn-close" disabled>
 						Close
 					</button>
-					<button type="button" class="btn-secondary" id="btn-focus" disabled>
-						Focus
-					</button>
-					<button type="button" class="btn-secondary" id="btn-show" disabled>
-						Show
-					</button>
-					<button type="button" class="btn-secondary" id="btn-hide" disabled>
-						Hide
-					</button>
+					<details class="runtime-actions">
+						<summary>Window controls</summary>
+						<div class="runtime-action-list">
+							<button
+								type="button"
+								class="btn-secondary"
+								id="btn-focus"
+								disabled
+							>
+								Focus
+							</button>
+							<button
+								type="button"
+								class="btn-secondary"
+								id="btn-show"
+								disabled
+							>
+								Show
+							</button>
+							<button
+								type="button"
+								class="btn-secondary"
+								id="btn-hide"
+								disabled
+							>
+								Hide
+							</button>
+						</div>
+					</details>
 					<div class="controls-spacer"></div>
 					<div class="status-indicator">
 						<span class="status-dot" id="status-dot"></span>
-						<span id="status-text">Ready</span>
+						<span
+							id="status-text"
+							role="status"
+							aria-live="polite"
+							aria-atomic="true"
+							>Ready</span
+						>
 					</div>
+				</div>
+				<div class="configuration-heading">
+					<h2>Draft props</h2>
+					<p id="draft-help">
+						Edit values for the next render. Apply sends a prop to the running
+						instance; mode changes take effect after Close and Render.
+					</p>
+					<p
+						id="configuration-summary"
+						role="status"
+						aria-live="polite"
+						aria-atomic="true"
+					></p>
+					<details class="applied-config">
+						<summary>Running props</summary>
+						<pre id="running-props"></pre>
+					</details>
 				</div>
 				<div class="props-bar" id="props-bar">
 					<!-- Dynamic props inputs generated from JSON config -->
@@ -543,19 +974,29 @@
 			</div>
 
 			<!-- Bottom Right: Events -->
-			<div class="panel">
+			<div class="panel events-panel">
 				<div class="panel-header">
 					<h2>Events</h2>
 					<button
 						type="button"
 						class="btn-secondary"
 						id="btn-clear-log"
-						style="padding: 0.2rem 0.4rem; font-size: 0.7rem;"
+						aria-label="Clear event history"
 					>
 						Clear
 					</button>
 				</div>
-				<div class="panel-content" id="event-log"></div>
+				<section
+					class="panel-content"
+					id="event-log"
+					aria-label="Event history"
+				></section>
+				<p
+					class="sr-only"
+					id="event-announcement"
+					role="status"
+					aria-live="polite"
+				></p>
 			</div>
 		</main>
 

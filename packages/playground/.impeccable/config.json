@@ -17,6 +17,12 @@
 				"files": ["assets/theme.css"],
 				"createdAt": "2026-10-01T06:30:26.199Z",
 				"reason": "User supplied and requested this theme, whose font-family is Open Sans; self-hosted for the demo."
+			},
+			{
+				"rule": "design-system-font",
+				"value": "sf mono",
+				"createdAt": "2026-10-01T09:36:28.249Z",
+				"reason": "Agent: existing diagnostic code and event-log monospace font; DESIGN.md explicitly preserves the original diagnostic interface."
 			}
 		]
 	}

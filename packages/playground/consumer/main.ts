@@ -6,6 +6,7 @@
 
 import { updateCodePreview } from "./code-generator";
 import { DEFAULT_CONFIG } from "./config";
+import { updateConfigurationStatus } from "./configuration-status";
 import { elements } from "./elements";
 import { clearLog, log } from "./logger";
 import {
@@ -40,6 +41,9 @@ setOnPropValuesChange(() => {
 // ============================================================================
 
 function updateIframeStyleVisibility() {
+	elements.styleButtons.forEach((button) => {
+		button.disabled = currentContext === "popup";
+	});
 	if (currentContext === "popup") {
 		elements.iframeStyleGroup.classList.add("disabled");
 	} else {
@@ -51,23 +55,30 @@ elements.contextButtons.forEach((btn) => {
 	btn.addEventListener("click", () => {
 		elements.contextButtons.forEach((b) => {
 			b.classList.remove("active");
+			b.setAttribute("aria-pressed", "false");
 		});
 		btn.classList.add("active");
+		btn.setAttribute("aria-pressed", "true");
 		setCurrentContext(btn.dataset.context as RenderContext);
 		updateIframeStyleVisibility();
 		updateCodePreview(currentConfig, currentContext, currentIframeStyle);
+		updateConfigurationStatus();
 		log(`Context changed to: ${currentContext}`, "info");
 	});
 });
 
 elements.styleButtons.forEach((btn) => {
 	btn.addEventListener("click", () => {
+		if (btn.disabled) return;
 		elements.styleButtons.forEach((b) => {
 			b.classList.remove("active");
+			b.setAttribute("aria-pressed", "false");
 		});
 		btn.classList.add("active");
+		btn.setAttribute("aria-pressed", "true");
 		setCurrentIframeStyle(btn.dataset.style as IframeStyle);
 		updateCodePreview(currentConfig, currentContext, currentIframeStyle);
+		updateConfigurationStatus();
 		log(`Iframe style changed to: ${currentIframeStyle}`, "info");
 	});
 });
@@ -99,13 +110,47 @@ elements.btnHide.addEventListener("click", () => {
 
 elements.btnClearLog.addEventListener("click", clearLog);
 
+document
+	.getElementById("btn-copy-code")
+	?.addEventListener("click", async () => {
+		const feedback = document.getElementById("copy-status");
+		try {
+			await navigator.clipboard.writeText(
+				elements.codeOutput.textContent ?? "",
+			);
+			if (feedback) feedback.textContent = "Copied.";
+		} catch {
+			const selection = window.getSelection();
+			const range = document.createRange();
+			range.selectNodeContents(elements.codeOutput);
+			selection?.removeAllRanges();
+			selection?.addRange(range);
+			if (feedback)
+				feedback.textContent =
+					"Code selected. Press Ctrl+C or Command+C to copy.";
+		}
+	});
+
 // ============================================================================
 // Initialize
 // ============================================================================
 
 function init() {
+	// Scrollable evidence regions need a keyboard focus target for arrow-key scrolling.
+	for (const region of document.querySelectorAll<HTMLElement>(
+		".code-preview, #event-log",
+	))
+		region.tabIndex = 0;
 	renderPropsBar(DEFAULT_CONFIG);
 	updateCodePreview(DEFAULT_CONFIG, currentContext, currentIframeStyle);
+	updateConfigurationStatus();
+	const narrowViewport = window.matchMedia("(max-width: 900px)");
+	const codePanel = document.querySelector<HTMLDetailsElement>(".code-panel");
+	const updateCodeDisclosure = () => {
+		if (codePanel) codePanel.open = !narrowViewport.matches;
+	};
+	updateCodeDisclosure();
+	narrowViewport.addEventListener("change", updateCodeDisclosure);
 
 	const headerInfo = document.getElementById("header-info");
 	if (headerInfo) {

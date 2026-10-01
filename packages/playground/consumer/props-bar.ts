@@ -3,6 +3,7 @@
  */
 import { HOST_PROPS_BUILTIN_KEYS } from "../../forgeframe/src/core/host/builtin-keys";
 import { requireValue } from "../require-value";
+import { updateConfigurationStatus } from "./configuration-status";
 import { elements } from "./elements";
 import { log } from "./logger";
 import {
@@ -10,6 +11,8 @@ import {
 	currentPropValues,
 	deletePropValue,
 	instance,
+	recordAppliedProp,
+	recordPropInputDraft,
 	removePropFromConfig,
 	setPropValue,
 } from "./state";
@@ -93,6 +96,40 @@ export function parsePropInput(
 	return input.value;
 }
 
+export function setPropInputError(
+	input: HTMLInputElement,
+	message: string,
+): void {
+	input.setAttribute("aria-invalid", String(Boolean(message)));
+	const error = input
+		.closest(".prop-item, .add-prop-form")
+		?.querySelector(".field-error");
+	if (error) error.textContent = message;
+}
+
+export function validatePropInput(
+	input: HTMLInputElement,
+	type: string,
+	previous: unknown,
+	showErrors = true,
+): unknown {
+	const key = input.dataset.prop;
+	try {
+		const value = parsePropInput(input, type, previous);
+		if (key) recordPropInputDraft(key, input.value, true);
+		setPropInputError(input, "");
+		return value;
+	} catch (error) {
+		if (key) recordPropInputDraft(key, input.value, false);
+		if (showErrors)
+			setPropInputError(
+				input,
+				`${error instanceof Error ? error.message : String(error)}. Correct this value and try again.`,
+			);
+		throw error;
+	}
+}
+
 export function renderPropsBar(config: PlaygroundConfig) {
 	const props = config.props || {};
 
@@ -113,21 +150,25 @@ export function renderPropsBar(config: PlaygroundConfig) {
 	const isRendered = instance !== null;
 
 	const propsHtml = Object.entries(props)
-		.map(([key, def]) => {
+		.map(([key, def], index) => {
 			const propDef = def as Record<string, unknown>;
 			const type = ((propDef.type as string) || "").toLowerCase();
 			const value = currentPropValues[key] ?? getDefaultValue(propDef);
 			const inputType = type === "number" ? "number" : "text";
 			const displayValue =
 				typeof value === "object" ? JSON.stringify(value) : String(value);
+			recordPropInputDraft(key, displayValue, true);
 			const safeKey = escapeHtml(key);
+			const inputId = `prop-input-${index}`;
 
 			return `
         <div class="prop-item">
-          <label>${safeKey}</label>
-          <input type="${inputType}" data-prop="${safeKey}" value="${escapeHtml(displayValue)}" ${type === "function" ? "readonly" : ""} />
-          <button data-update-prop="${safeKey}">Set</button>
-          ${!isRendered ? `<button class="btn-remove-prop" data-remove-prop="${safeKey}" title="Remove prop">&times;</button>` : ""}
+          <label for="${inputId}">${safeKey}</label>
+          <input id="${inputId}" type="${inputType}" data-prop="${safeKey}" value="${escapeHtml(displayValue)}" aria-describedby="draft-help ${inputId}-applied ${inputId}-error" ${type === "function" ? "readonly" : ""} />
+          <button type="button" data-update-prop="${safeKey}" aria-label="${isRendered ? "Apply" : "Save draft"} ${safeKey}">${isRendered ? "Apply" : "Save"}</button>
+          ${!isRendered ? `<button type="button" class="btn-remove-prop" data-remove-prop="${safeKey}" aria-label="Remove ${safeKey}">Remove</button>` : ""}
+          <span class="prop-applied" id="${inputId}-applied"></span>
+          <span class="field-error" id="${inputId}-error" aria-live="polite"></span>
         </div>
       `;
 		})
@@ -138,20 +179,22 @@ export function renderPropsBar(config: PlaygroundConfig) {
     <div class="add-prop-container">
       <button class="btn-add-prop" id="btn-add-prop">+ Add Prop</button>
       <div class="add-prop-form" id="add-prop-form" style="display: none;">
-        <input type="text" id="new-prop-name" placeholder="name" />
-        <select id="new-prop-type">
+        <label for="new-prop-name">Name</label><input type="text" id="new-prop-name" placeholder="Prop name" aria-describedby="new-prop-error" />
+        <label for="new-prop-type">Type</label><select id="new-prop-type">
           <option value="string">string</option>
           <option value="number">number</option>
           <option value="boolean">boolean</option>
         </select>
         <button id="btn-confirm-add">Add</button>
-        <button id="btn-cancel-add">&times;</button>
+        <button id="btn-cancel-add">Cancel</button>
+        <span class="field-error" id="new-prop-error" aria-live="polite"></span>
       </div>
     </div>
   `
 		: "";
 
 	elements.propsBar.innerHTML = propsHtml + addPropHtml;
+	updateConfigurationStatus();
 
 	// Bind update buttons
 	elements.propsBar
@@ -167,47 +210,66 @@ export function renderPropsBar(config: PlaygroundConfig) {
 				if (!input) return;
 
 				const propDef = props[propName] as Record<string, unknown>;
+				const targetInstance = instance;
+				const submittedText = input.value;
 				try {
 					const type = ((propDef.type as string) || "").toLowerCase();
-					const value = parsePropInput(
+					const value = validatePropInput(
 						input,
 						type,
 						currentPropValues[propName],
 					);
-					if (instance) {
-						await instance.updateProps({
+					if (targetInstance) {
+						(btn as HTMLButtonElement).disabled = true;
+						await targetInstance.updateProps({
 							[propName]: value,
 						} as Partial<DynamicProps>);
+						if (instance !== targetInstance) return;
+						recordAppliedProp(propName, value);
 						log(`Updated ${propName} to: ${input.value}`, "info");
 					}
-					setPropValue(propName, value);
+					if (input.value === submittedText) setPropValue(propName, value);
 					onPropValuesChange?.();
+					updateConfigurationStatus();
 				} catch (error) {
+					setPropInputError(
+						input,
+						`${String(error)}. Correct this value and try again.`,
+					);
 					log(`Could not update ${propName}: ${String(error)}`, "error");
+					updateConfigurationStatus();
+				} finally {
+					(btn as HTMLButtonElement).disabled = false;
 				}
 			});
 		});
 
-	// Update prop values on input change
+	// Update the draft while typing, before pointer-down can trigger a blur and move Apply.
 	elements.propsBar.querySelectorAll("input[data-prop]").forEach((input) => {
-		input.addEventListener("change", () => {
+		const updateDraft = (reportErrors: boolean) => {
 			const propName = requireValue((input as HTMLInputElement).dataset.prop);
 			const propDef = props[propName] as Record<string, unknown>;
 			try {
 				const type = ((propDef.type as string) || "").toLowerCase();
-				setPropValue(
-					propName,
-					parsePropInput(
-						input as HTMLInputElement,
-						type,
-						currentPropValues[propName],
-					),
+				const field = input as HTMLInputElement;
+				const value = validatePropInput(
+					field,
+					type,
+					currentPropValues[propName],
+					reportErrors,
 				);
+				setPropValue(propName, value);
+				setPropInputError(field, "");
 				onPropValuesChange?.();
+				updateConfigurationStatus();
 			} catch (error) {
-				log(`Could not update ${propName}: ${String(error)}`, "error");
+				updateConfigurationStatus();
+				if (reportErrors)
+					log(`Could not update ${propName}: ${String(error)}`, "error");
 			}
-		});
+		};
+		input.addEventListener("input", () => updateDraft(false));
+		input.addEventListener("change", () => updateDraft(true));
 	});
 
 	// Add prop button and form handlers (only when not rendered)
@@ -236,6 +298,8 @@ export function renderPropsBar(config: PlaygroundConfig) {
 				addPropForm.style.display = "none";
 				btnAddProp.style.display = "inline-flex";
 				if (newPropName) newPropName.value = "";
+				if (newPropName) setPropInputError(newPropName, "");
+				btnAddProp.focus();
 			}
 		});
 
@@ -248,11 +312,19 @@ export function renderPropsBar(config: PlaygroundConfig) {
 				HOST_PROPS_BUILTIN_KEYS.has(name) ||
 				["__proto__", "constructor", "prototype"].includes(name)
 			) {
+				setPropInputError(
+					newPropName,
+					"Enter a name that is not reserved for a host control.",
+				);
 				log("A non-reserved prop name is required", "error");
 				return;
 			}
 
 			if (Object.hasOwn(props, name)) {
+				setPropInputError(
+					newPropName,
+					`A prop named ${name} already exists. Choose another name.`,
+				);
 				log(`Prop "${name}" already exists`, "error");
 				return;
 			}
