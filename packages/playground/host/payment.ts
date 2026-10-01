@@ -131,11 +131,11 @@ function renderForm(props: HostProps<PaymentProps>): void {
 		);
 	}
 
-	/** Awaits merchant commitment before marking approval and requesting close. */
+	/** Requires a recorded acknowledgement for the submitted invoice before approval and close. */
 	async function reportApproval(digits: string): Promise<void> {
 		const result = approvedPaymentResult(props, collectReceiptEvidence(digits));
 		const acknowledgement = await props.onResult(result);
-		assertPaymentRecorded(acknowledgement);
+		assertPaymentRecorded(acknowledgement, result.receipt.invoiceId);
 		approved = true;
 		await props.close();
 	}

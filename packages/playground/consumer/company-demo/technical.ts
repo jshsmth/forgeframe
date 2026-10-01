@@ -79,9 +79,9 @@ const steps = [
 	{
 		title: "5. The payment window closes",
 		description:
-			"On approval, Harbor awaits the acknowledgement before calling close(). This observation comes from the consumer's destroy event after ForgeFrame cleanup. Cancellation can also close a window without a payment result.",
+			"On approval, Harbor validates that the acknowledgement records the submitted invoice before calling close(). This observation comes from the consumer's destroy event after ForgeFrame cleanup. Cancellation can also close a window without a payment result.",
 		source: "provider",
-		needle: "assertPaymentRecorded(acknowledgement);",
+		needle: "assertPaymentRecorded(acknowledgement, result.receipt.invoiceId);",
 		lines: 5,
 	},
 ] as const;

@@ -1,7 +1,6 @@
 import type {
 	DemoOutcome,
 	DemoReceipt,
-	PaymentAcknowledgement,
 	PaymentProps,
 	PaymentResult,
 } from "./contract";
@@ -41,10 +40,25 @@ export function approvedPaymentResult(
 	};
 }
 
-/** Rejects an unrecorded approval before the integration marks it paid and closes. */
+/**
+ * Validates an untrusted callback return before the provider approves and closes.
+ *
+ * @param expectedInvoiceId - The invoice in the submitted result, captured before awaiting the callback.
+ * @throws If the merchant did not acknowledge recording that exact invoice.
+ * @remarks Function schemas validate callability, not callback return payloads.
+ */
 export function assertPaymentRecorded(
-	acknowledgement: PaymentAcknowledgement,
+	acknowledgement: unknown,
+	expectedInvoiceId: string,
 ): void {
-	if (acknowledgement.status !== "recorded")
+	if (
+		typeof acknowledgement !== "object" ||
+		acknowledgement === null ||
+		Array.isArray(acknowledgement) ||
+		!("status" in acknowledgement) ||
+		acknowledgement.status !== "recorded" ||
+		!("invoiceId" in acknowledgement) ||
+		acknowledgement.invoiceId !== expectedInvoiceId
+	)
 		throw new Error("The clinic did not record the payment.");
 }

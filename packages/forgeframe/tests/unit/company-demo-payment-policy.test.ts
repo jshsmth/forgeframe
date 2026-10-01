@@ -341,12 +341,34 @@ describe("provider simulation rules", () => {
 		},
 	);
 
-	it("requires the merchant's recorded acknowledgement before closing an approval", () => {
+	it("requires a recorded acknowledgement for the expected invoice", () => {
 		expect(() =>
-			assertPaymentRecorded({ invoiceId: "PV-1042", status: "recorded" }),
+			assertPaymentRecorded(
+				{ invoiceId: "PV-1042", status: "recorded" },
+				"PV-1042",
+			),
 		).not.toThrow();
-		expect(() =>
-			assertPaymentRecorded({ invoiceId: "PV-1042", status: "declined" }),
-		).toThrow("The clinic did not record the payment.");
 	});
+
+	it.each([
+		["another invoice", { invoiceId: "PV-1043", status: "recorded" }],
+		["declined", { invoiceId: "PV-1042", status: "declined" }],
+		["unknown status", { invoiceId: "PV-1042", status: "approved" }],
+		["missing status", { invoiceId: "PV-1042" }],
+		["missing invoice", { status: "recorded" }],
+		["wrong invoice type", { invoiceId: 1042, status: "recorded" }],
+		["blank invoice", { invoiceId: "", status: "recorded" }],
+		["null", null],
+		["undefined", undefined],
+		["array", []],
+		["string", "recorded"],
+		["boolean", true],
+	])(
+		"rejects %s acknowledgements before approval",
+		(_name, acknowledgement) => {
+			expect(() => assertPaymentRecorded(acknowledgement, "PV-1042")).toThrow(
+				"The clinic did not record the payment.",
+			);
+		},
+	);
 });

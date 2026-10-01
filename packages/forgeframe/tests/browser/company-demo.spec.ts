@@ -108,6 +108,42 @@ test.beforeAll(async () => {
 		collect(fixture.consumerFiles, consumer);
 		collect(fixture.hostFiles, host);
 	}
+	// Use a deliberately faulty merchant with the real production payment host and bridge.
+	const library = await build({
+		configFile: fileURLToPath(new URL("../../vite.config.ts", import.meta.url)),
+		logLevel: "silent",
+		build: { write: false },
+	});
+	const bundled = Array.isArray(library) ? library[0] : library;
+	if (!("output" in bundled)) throw new Error("Unexpected watch build");
+	const chunk = bundled.output.find((entry) => entry.type === "chunk");
+	if (!chunk) throw new Error("Missing library fixture bundle");
+	consumerFiles.set("library.js", chunk.code);
+	consumerFiles.set(
+		"acknowledgement-fixture.html",
+		`<!doctype html><button id="open-payment" disabled>Open payment</button><div id="mount"></div>
+		<script type="module">
+		import {create,prop} from '/library.js';
+		window.acknowledgement = {status:'recorded',invoiceId:'PV-OTHER'};
+		window.results = 0;
+		window.paymentWindowClosed = false;
+		const payment = create({
+			tag:'acknowledgement-fixture',url:'${hostOrigin}/payment.html',domain:'${hostOrigin}',
+			dimensions:{width:480,height:740},
+			props:{invoiceId:prop.string(),amountCents:prop.number(),customer:prop.string(),
+				outcome:prop.enum(['success','decline']),onReady:prop.function(),onResult:prop.function()},
+			attributes:{title:'Harbor Pay demo payment form'}
+		});
+		const button = document.querySelector('#open-payment');
+		button.addEventListener('click',() => {
+			const instance = payment({invoiceId:'PV-1042',amountCents:17600,customer:'Demo customer',
+				outcome:'success',onReady:()=>{},onResult:()=>{window.results++;return window.acknowledgement;}});
+			instance.event.on('destroy',()=>{window.paymentWindowClosed=true;});
+			void instance.render(document.querySelector('#mount'),new URL(location.href).searchParams.get('context'));
+		});
+		button.disabled = false;
+		</script>`,
+	);
 });
 
 test.afterAll(async () => {
@@ -155,6 +191,62 @@ async function openPayment(
 }
 
 for (const context of ["iframe", "popup"] as const) {
+	test(`${context} rejects a mismatched acknowledgement without approving or closing`, async ({
+		page,
+	}) => {
+		const errors: string[] = [];
+		page.on("pageerror", (error) => errors.push(error.message));
+		await page.goto(
+			`${consumerOrigin}/acknowledgement-fixture.html?context=${context}`,
+		);
+		const opened = context === "popup" ? page.waitForEvent("popup") : null;
+		await page.getByRole("button", { name: "Open payment" }).click();
+		const provider = opened
+			? await opened
+			: page.frameLocator('iframe[title="Harbor Pay demo payment form"]');
+		if (context === "popup")
+			(provider as Page).on("pageerror", (error) => errors.push(error.message));
+		await provider.getByRole("button", { name: "Use demo details" }).click();
+		await provider
+			.getByRole("button", { name: "Pay $176.00", exact: true })
+			.click();
+		await expect(provider.locator("#payment-feedback")).toHaveText(
+			"The clinic could not confirm this payment. Close the window and try again from the invoice.",
+		);
+		await expect(
+			provider.getByRole("button", {
+				name: "Retry payment $176.00",
+				exact: true,
+			}),
+		).toBeEnabled();
+		expect(
+			await page.evaluate(() => Reflect.get(window, "paymentWindowClosed")),
+		).toBe(false);
+		expect(await page.evaluate(() => Reflect.get(window, "results"))).toBe(1);
+		await page.evaluate(() => {
+			Reflect.set(window, "acknowledgement", {
+				status: "recorded",
+				invoiceId: "PV-1042",
+			});
+		});
+		await provider
+			.getByRole("button", { name: "Retry payment $176.00", exact: true })
+			.click();
+		await expect
+			.poll(() =>
+				page.evaluate(() => Reflect.get(window, "paymentWindowClosed")),
+			)
+			.toBe(true);
+		expect(await page.evaluate(() => Reflect.get(window, "results"))).toBe(2);
+		if (context === "popup")
+			await expect.poll(() => (provider as Page).isClosed()).toBe(true);
+		else
+			await expect(
+				page.locator('iframe[title="Harbor Pay demo payment form"]'),
+			).toHaveCount(0);
+		expect(errors).toEqual([]);
+	});
+
 	test(`${context} rejects a malformed result before committing and permits payment retry`, async ({
 		page,
 	}) => {
@@ -510,6 +602,13 @@ test("technical view observes real callback arguments and returns without replac
 	);
 	await expect(page.locator("#step-source-label")).toContainText(
 		"acceptance.ts",
+	);
+	await page.locator('[data-step="4"]').click();
+	await expect(page.locator("#step-code")).toContainText(
+		"assertPaymentRecorded(acknowledgement, result.receipt.invoiceId);",
+	);
+	await expect(page.locator("#step-code")).toContainText(
+		"await props.close();",
 	);
 	if (reviewDir && testInfo.project.name === "chromium")
 		await page.screenshot({

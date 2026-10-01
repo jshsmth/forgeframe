@@ -32,8 +32,8 @@ export interface PaymentAcknowledgement {
  * callability. Function schemas do not validate invocation arguments; the
  * merchant validates the complete result before committing a receipt. Local
  * callbacks use their ordinary return types here; `HostProps<PaymentProps>`
- * presents them as asynchronous remote functions. The host awaits the result
- * acknowledgement before closing. No card number, expiry or CVC is delivered
+ * presents them as asynchronous remote functions. The host validates the returned
+ * acknowledgement against the submitted invoice before approving and closing. No card number, expiry or CVC is delivered
  * to the consumer.
  */
 export interface PaymentProps extends Record<string, unknown> {
