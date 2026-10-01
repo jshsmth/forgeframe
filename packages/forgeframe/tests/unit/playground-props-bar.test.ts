@@ -217,6 +217,57 @@ describe("playground prop editor", () => {
 			);
 		},
 	);
+	it("clears a rejected Apply error while typing an invalid draft and validates the new draft on change", async () => {
+		const config = {
+			tag: "rejected-editor",
+			url: "https://example.com",
+			props: { count: { type: "number", default: 0 } },
+		};
+		setCurrentConfig(config);
+		const target = create<Record<string, unknown>>({
+			tag: config.tag,
+			url: config.url,
+		})({ count: 0 });
+		setInstance(target);
+		recordRunningConfiguration("iframe", "embedded", { count: 0 });
+		const status = document.createElement("p");
+		status.id = "configuration-summary";
+		document.body.append(status);
+		const update = vi
+			.spyOn(target, "updateProps")
+			.mockRejectedValue(new Error("Submitted update rejected"));
+		renderPropsBar(config);
+		const input = elements.propsBar.querySelector("input[data-prop]");
+		const button = elements.propsBar.querySelector<HTMLButtonElement>(
+			"button[data-update-prop]",
+		);
+		if (!(input instanceof HTMLInputElement) || !button)
+			throw new Error("Missing prop controls");
+		input.value = "1";
+		input.dispatchEvent(new Event("input"));
+		button.click();
+		await vi.waitFor(() => expect(button.disabled).toBe(false));
+		const error = elements.propsBar.querySelector(".field-error");
+		expect(error?.textContent).toContain("Submitted update rejected");
+		expect(input.getAttribute("aria-invalid")).toBe("true");
+		const logCount = vi.mocked(log).mock.calls.length;
+		input.value = "";
+		input.dispatchEvent(new Event("input"));
+		expect(error?.textContent).toBe("");
+		expect(input.getAttribute("aria-invalid")).toBe("false");
+		expect(propInputDrafts.count).toEqual({ text: "", valid: false });
+		expect(currentPropValues.count).toBe(1);
+		expect(runningConfiguration?.props.count).toBe("0");
+		expect(status.textContent).toContain(
+			"Draft contains incomplete or invalid values",
+		);
+		expect(log).toHaveBeenCalledTimes(logCount);
+		input.dispatchEvent(new Event("change"));
+		expect(error?.textContent).toContain("Expected a finite number");
+		expect(error?.textContent).not.toContain("Submitted update rejected");
+		expect(input.getAttribute("aria-invalid")).toBe("true");
+		expect(update).toHaveBeenCalledTimes(1);
+	});
 	it("logs the submitted value after an update succeeds while preserving a newer draft", async () => {
 		const config = {
 			tag: "pending-editor",

@@ -126,6 +126,7 @@ export function validatePropInput(
 				input,
 				`${error instanceof Error ? error.message : String(error)}. Correct this value and try again.`,
 			);
+		else setPropInputError(input, "");
 		throw error;
 	}
 }
