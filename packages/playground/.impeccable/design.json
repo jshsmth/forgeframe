@@ -1,0 +1,604 @@
+{
+	"schemaVersion": 2,
+	"generatedAt": "2026-10-01T07:31:00Z",
+	"title": "Design System: ForgeFrame Playground",
+	"extensions": {
+		"colorMeta": {
+			"demo-navy": {
+				"role": "primary",
+				"displayName": "Demo Navy",
+				"tonalRamp": [
+					"oklch(15.0% 0.12803 262.21)",
+					"oklch(26.4% 0.12803 262.21)",
+					"oklch(37.9% 0.12803 262.21)",
+					"oklch(49.3% 0.12803 262.21)",
+					"oklch(60.7% 0.12803 262.21)",
+					"oklch(72.1% 0.12803 262.21)",
+					"oklch(83.6% 0.12803 262.21)",
+					"oklch(95.0% 0.12803 262.21)"
+				]
+			},
+			"demo-orange": {
+				"role": "primary",
+				"displayName": "Demo Orange",
+				"tonalRamp": [
+					"oklch(15.0% 0.16967 55.49)",
+					"oklch(26.4% 0.16967 55.49)",
+					"oklch(37.9% 0.16967 55.49)",
+					"oklch(49.3% 0.16967 55.49)",
+					"oklch(60.7% 0.16967 55.49)",
+					"oklch(72.1% 0.16967 55.49)",
+					"oklch(83.6% 0.16967 55.49)",
+					"oklch(95.0% 0.16967 55.49)"
+				]
+			},
+			"action-hover": {
+				"role": "primary",
+				"displayName": "Action Hover",
+				"tonalRamp": [
+					"oklch(15.0% 0.16093 53.27)",
+					"oklch(26.4% 0.16093 53.27)",
+					"oklch(37.9% 0.16093 53.27)",
+					"oklch(49.3% 0.16093 53.27)",
+					"oklch(60.7% 0.16093 53.27)",
+					"oklch(72.1% 0.16093 53.27)",
+					"oklch(83.6% 0.16093 53.27)",
+					"oklch(95.0% 0.16093 53.27)"
+				]
+			},
+			"surface": {
+				"role": "neutral",
+				"displayName": "Surface",
+				"tonalRamp": [
+					"oklch(15.0% 0.00397 286.33)",
+					"oklch(26.4% 0.00397 286.33)",
+					"oklch(37.9% 0.00397 286.33)",
+					"oklch(49.3% 0.00397 286.33)",
+					"oklch(60.7% 0.00397 286.33)",
+					"oklch(72.1% 0.00397 286.33)",
+					"oklch(83.6% 0.00397 286.33)",
+					"oklch(95.0% 0.00397 286.33)"
+				]
+			},
+			"white": {
+				"role": "neutral",
+				"displayName": "White",
+				"tonalRamp": [
+					"oklch(15.0% 0.00000 89.88)",
+					"oklch(26.4% 0.00000 89.88)",
+					"oklch(37.9% 0.00000 89.88)",
+					"oklch(49.3% 0.00000 89.88)",
+					"oklch(60.7% 0.00000 89.88)",
+					"oklch(72.1% 0.00000 89.88)",
+					"oklch(83.6% 0.00000 89.88)",
+					"oklch(95.0% 0.00000 89.88)"
+				]
+			},
+			"muted": {
+				"role": "neutral",
+				"displayName": "Muted",
+				"tonalRamp": [
+					"oklch(15.0% 0.00000 89.88)",
+					"oklch(26.4% 0.00000 89.88)",
+					"oklch(37.9% 0.00000 89.88)",
+					"oklch(49.3% 0.00000 89.88)",
+					"oklch(60.7% 0.00000 89.88)",
+					"oklch(72.1% 0.00000 89.88)",
+					"oklch(83.6% 0.00000 89.88)",
+					"oklch(95.0% 0.00000 89.88)"
+				]
+			},
+			"line": {
+				"role": "neutral",
+				"displayName": "Line",
+				"tonalRamp": [
+					"oklch(15.0% 0.01087 286.18)",
+					"oklch(26.4% 0.01087 286.18)",
+					"oklch(37.9% 0.01087 286.18)",
+					"oklch(49.3% 0.01087 286.18)",
+					"oklch(60.7% 0.01087 286.18)",
+					"oklch(72.1% 0.01087 286.18)",
+					"oklch(83.6% 0.01087 286.18)",
+					"oklch(95.0% 0.01087 286.18)"
+				]
+			},
+			"field-line": {
+				"role": "neutral",
+				"displayName": "Field Line",
+				"tonalRamp": [
+					"oklch(15.0% 0.02754 285.67)",
+					"oklch(26.4% 0.02754 285.67)",
+					"oklch(37.9% 0.02754 285.67)",
+					"oklch(49.3% 0.02754 285.67)",
+					"oklch(60.7% 0.02754 285.67)",
+					"oklch(72.1% 0.02754 285.67)",
+					"oklch(83.6% 0.02754 285.67)",
+					"oklch(95.0% 0.02754 285.67)"
+				]
+			},
+			"focus": {
+				"role": "neutral",
+				"displayName": "Focus",
+				"tonalRamp": [
+					"oklch(15.0% 0.15326 260.14)",
+					"oklch(26.4% 0.15326 260.14)",
+					"oklch(37.9% 0.15326 260.14)",
+					"oklch(49.3% 0.15326 260.14)",
+					"oklch(60.7% 0.15326 260.14)",
+					"oklch(72.1% 0.15326 260.14)",
+					"oklch(83.6% 0.15326 260.14)",
+					"oklch(95.0% 0.15326 260.14)"
+				]
+			},
+			"warm-surface": {
+				"role": "neutral",
+				"displayName": "Warm Surface",
+				"tonalRamp": [
+					"oklch(15.0% 0.01577 73.68)",
+					"oklch(26.4% 0.01577 73.68)",
+					"oklch(37.9% 0.01577 73.68)",
+					"oklch(49.3% 0.01577 73.68)",
+					"oklch(60.7% 0.01577 73.68)",
+					"oklch(72.1% 0.01577 73.68)",
+					"oklch(83.6% 0.01577 73.68)",
+					"oklch(95.0% 0.01577 73.68)"
+				]
+			},
+			"blue-tint": {
+				"role": "neutral",
+				"displayName": "Blue Tint",
+				"tonalRamp": [
+					"oklch(15.0% 0.01608 262.75)",
+					"oklch(26.4% 0.01608 262.75)",
+					"oklch(37.9% 0.01608 262.75)",
+					"oklch(49.3% 0.01608 262.75)",
+					"oklch(60.7% 0.01608 262.75)",
+					"oklch(72.1% 0.01608 262.75)",
+					"oklch(83.6% 0.01608 262.75)",
+					"oklch(95.0% 0.01608 262.75)"
+				]
+			},
+			"quiet-surface": {
+				"role": "neutral",
+				"displayName": "Quiet Surface",
+				"tonalRamp": [
+					"oklch(15.0% 0.00399 286.32)",
+					"oklch(26.4% 0.00399 286.32)",
+					"oklch(37.9% 0.00399 286.32)",
+					"oklch(49.3% 0.00399 286.32)",
+					"oklch(60.7% 0.00399 286.32)",
+					"oklch(72.1% 0.00399 286.32)",
+					"oklch(83.6% 0.00399 286.32)",
+					"oklch(95.0% 0.00399 286.32)"
+				]
+			},
+			"quiet-ink": {
+				"role": "neutral",
+				"displayName": "Quiet Ink",
+				"tonalRamp": [
+					"oklch(15.0% 0.00000 89.88)",
+					"oklch(26.4% 0.00000 89.88)",
+					"oklch(37.9% 0.00000 89.88)",
+					"oklch(49.3% 0.00000 89.88)",
+					"oklch(60.7% 0.00000 89.88)",
+					"oklch(72.1% 0.00000 89.88)",
+					"oklch(83.6% 0.00000 89.88)",
+					"oklch(95.0% 0.00000 89.88)"
+				]
+			},
+			"masthead-caption": {
+				"role": "neutral",
+				"displayName": "Masthead Caption",
+				"tonalRamp": [
+					"oklch(15.0% 0.03972 269.98)",
+					"oklch(26.4% 0.03972 269.98)",
+					"oklch(37.9% 0.03972 269.98)",
+					"oklch(49.3% 0.03972 269.98)",
+					"oklch(60.7% 0.03972 269.98)",
+					"oklch(72.1% 0.03972 269.98)",
+					"oklch(83.6% 0.03972 269.98)",
+					"oklch(95.0% 0.03972 269.98)"
+				]
+			},
+			"awaiting-bg": {
+				"role": "secondary",
+				"displayName": "Awaiting Bg",
+				"tonalRamp": [
+					"oklch(15.0% 0.01804 78.24)",
+					"oklch(26.4% 0.01804 78.24)",
+					"oklch(37.9% 0.01804 78.24)",
+					"oklch(49.3% 0.01804 78.24)",
+					"oklch(60.7% 0.01804 78.24)",
+					"oklch(72.1% 0.01804 78.24)",
+					"oklch(83.6% 0.01804 78.24)",
+					"oklch(95.0% 0.01804 78.24)"
+				]
+			},
+			"awaiting-ink": {
+				"role": "secondary",
+				"displayName": "Awaiting Ink",
+				"tonalRamp": [
+					"oklch(15.0% 0.09012 71.08)",
+					"oklch(26.4% 0.09012 71.08)",
+					"oklch(37.9% 0.09012 71.08)",
+					"oklch(49.3% 0.09012 71.08)",
+					"oklch(60.7% 0.09012 71.08)",
+					"oklch(72.1% 0.09012 71.08)",
+					"oklch(83.6% 0.09012 71.08)",
+					"oklch(95.0% 0.09012 71.08)"
+				]
+			},
+			"paid-bg": {
+				"role": "secondary",
+				"displayName": "Paid Bg",
+				"tonalRamp": [
+					"oklch(15.0% 0.04973 129.60)",
+					"oklch(26.4% 0.04973 129.60)",
+					"oklch(37.9% 0.04973 129.60)",
+					"oklch(49.3% 0.04973 129.60)",
+					"oklch(60.7% 0.04973 129.60)",
+					"oklch(72.1% 0.04973 129.60)",
+					"oklch(83.6% 0.04973 129.60)",
+					"oklch(95.0% 0.04973 129.60)"
+				]
+			},
+			"paid-ink": {
+				"role": "secondary",
+				"displayName": "Paid Ink",
+				"tonalRamp": [
+					"oklch(15.0% 0.14109 134.85)",
+					"oklch(26.4% 0.14109 134.85)",
+					"oklch(37.9% 0.14109 134.85)",
+					"oklch(49.3% 0.14109 134.85)",
+					"oklch(60.7% 0.14109 134.85)",
+					"oklch(72.1% 0.14109 134.85)",
+					"oklch(83.6% 0.14109 134.85)",
+					"oklch(95.0% 0.14109 134.85)"
+				]
+			},
+			"selection": {
+				"role": "neutral",
+				"displayName": "Selection",
+				"tonalRamp": [
+					"oklch(15.0% 0.11595 68.33)",
+					"oklch(26.4% 0.11595 68.33)",
+					"oklch(37.9% 0.11595 68.33)",
+					"oklch(49.3% 0.11595 68.33)",
+					"oklch(60.7% 0.11595 68.33)",
+					"oklch(72.1% 0.11595 68.33)",
+					"oklch(83.6% 0.11595 68.33)",
+					"oklch(95.0% 0.11595 68.33)"
+				]
+			},
+			"diagnostic-accent": {
+				"role": "primary",
+				"displayName": "Diagnostic Accent",
+				"tonalRamp": [
+					"oklch(15.0% 0.18686 16.23)",
+					"oklch(26.4% 0.18686 16.23)",
+					"oklch(37.9% 0.18686 16.23)",
+					"oklch(49.3% 0.18686 16.23)",
+					"oklch(60.7% 0.18686 16.23)",
+					"oklch(72.1% 0.18686 16.23)",
+					"oklch(83.6% 0.18686 16.23)",
+					"oklch(95.0% 0.18686 16.23)"
+				]
+			},
+			"diagnostic-ink": {
+				"role": "neutral",
+				"displayName": "Diagnostic Ink",
+				"tonalRamp": [
+					"oklch(15.0% 0.00000 89.88)",
+					"oklch(26.4% 0.00000 89.88)",
+					"oklch(37.9% 0.00000 89.88)",
+					"oklch(49.3% 0.00000 89.88)",
+					"oklch(60.7% 0.00000 89.88)",
+					"oklch(72.1% 0.00000 89.88)",
+					"oklch(83.6% 0.00000 89.88)",
+					"oklch(95.0% 0.00000 89.88)"
+				]
+			},
+			"diagnostic-muted": {
+				"role": "neutral",
+				"displayName": "Diagnostic Muted",
+				"tonalRamp": [
+					"oklch(15.0% 0.00000 89.88)",
+					"oklch(26.4% 0.00000 89.88)",
+					"oklch(37.9% 0.00000 89.88)",
+					"oklch(49.3% 0.00000 89.88)",
+					"oklch(60.7% 0.00000 89.88)",
+					"oklch(72.1% 0.00000 89.88)",
+					"oklch(83.6% 0.00000 89.88)",
+					"oklch(95.0% 0.00000 89.88)"
+				]
+			},
+			"diagnostic-surface": {
+				"role": "neutral",
+				"displayName": "Diagnostic Surface",
+				"tonalRamp": [
+					"oklch(15.0% 0.00000 89.88)",
+					"oklch(26.4% 0.00000 89.88)",
+					"oklch(37.9% 0.00000 89.88)",
+					"oklch(49.3% 0.00000 89.88)",
+					"oklch(60.7% 0.00000 89.88)",
+					"oklch(72.1% 0.00000 89.88)",
+					"oklch(83.6% 0.00000 89.88)",
+					"oklch(95.0% 0.00000 89.88)"
+				]
+			},
+			"diagnostic-line": {
+				"role": "neutral",
+				"displayName": "Diagnostic Line",
+				"tonalRamp": [
+					"oklch(15.0% 0.00000 89.88)",
+					"oklch(26.4% 0.00000 89.88)",
+					"oklch(37.9% 0.00000 89.88)",
+					"oklch(49.3% 0.00000 89.88)",
+					"oklch(60.7% 0.00000 89.88)",
+					"oklch(72.1% 0.00000 89.88)",
+					"oklch(83.6% 0.00000 89.88)",
+					"oklch(95.0% 0.00000 89.88)"
+				]
+			},
+			"scrollbar": {
+				"role": "neutral",
+				"displayName": "Native Scrollbar",
+				"tonalRamp": [
+					"oklch(15.0% 0.03632 285.42)",
+					"oklch(26.4% 0.03632 285.42)",
+					"oklch(37.9% 0.03632 285.42)",
+					"oklch(49.3% 0.03632 285.42)",
+					"oklch(60.7% 0.03632 285.42)",
+					"oklch(72.1% 0.03632 285.42)",
+					"oklch(83.6% 0.03632 285.42)",
+					"oklch(95.0% 0.03632 285.42)"
+				]
+			}
+		},
+		"typographyMeta": {
+			"headline": {
+				"displayName": "Headline",
+				"purpose": "Invoices workspace title."
+			},
+			"headline-mobile": {
+				"displayName": "Headline Mobile",
+				"purpose": "Invoices title at 650px and below."
+			},
+			"title": {
+				"displayName": "Title",
+				"purpose": "Selected invoice heading."
+			},
+			"title-mobile": {
+				"displayName": "Title Mobile",
+				"purpose": "Selected invoice heading at 650px and below."
+			},
+			"section": {
+				"displayName": "Section",
+				"purpose": "Integration workspace and provider identity headings."
+			},
+			"brand": {
+				"displayName": "Brand",
+				"purpose": "Clinic wordmark; provider H uses this size with its own weight."
+			},
+			"brand-mobile": {
+				"displayName": "Brand Mobile",
+				"purpose": "Clinic wordmark at 650px and below; mobile inspector heading also uses this size."
+			},
+			"provider-title": {
+				"displayName": "Provider Title",
+				"purpose": "Compact payment context heading."
+			},
+			"provider-title-compact": {
+				"displayName": "Provider Title Compact",
+				"purpose": "Payment context heading at 380px and below."
+			},
+			"provider-total": {
+				"displayName": "Provider Total",
+				"purpose": "Provider amount in sticky context."
+			},
+			"provider-total-compact": {
+				"displayName": "Provider Total Compact",
+				"purpose": "Provider amount at 380px and below."
+			},
+			"invoice-total": {
+				"displayName": "Invoice Total",
+				"purpose": "Selected invoice total with tabular numerals."
+			},
+			"body": {
+				"displayName": "Body",
+				"purpose": "Merchant and provider body copy."
+			},
+			"label": {
+				"displayName": "Label",
+				"purpose": "Provider field labels; metadata and status badges use the same size with local weights."
+			},
+			"control": {
+				"displayName": "Control",
+				"purpose": "Merchant/provider primary actions."
+			},
+			"input": {
+				"displayName": "Input",
+				"purpose": "Native provider form input text."
+			},
+			"supporting": {
+				"displayName": "Supporting",
+				"purpose": "Helper copy, visit metadata, services and inspector introduction."
+			},
+			"supporting-control": {
+				"displayName": "Supporting Control",
+				"purpose": "Disclosure summaries, selects and demo-fill shortcut."
+			},
+			"small": {
+				"displayName": "Small",
+				"purpose": "Simulation disclosures, timestamps and footnotes."
+			},
+			"subheading": {
+				"displayName": "Subheading",
+				"purpose": "Receipt and explanatory subheadings."
+			},
+			"source": {
+				"displayName": "Source",
+				"purpose": "Code and structured data."
+			},
+			"source-small": {
+				"displayName": "Source Small",
+				"purpose": "Source filenames with line-height 1.5."
+			},
+			"diagnostic-body": {
+				"displayName": "Diagnostic Body",
+				"purpose": "Original configuration editor and test lab."
+			},
+			"source-mobile": {
+				"displayName": "Source Mobile",
+				"purpose": "Code and structured data at 650px and below, retaining line-height 1.65."
+			}
+		},
+		"shadows": [
+			{
+				"name": "payment-dialog",
+				"value": "0 24px 80px rgb(0 20 70 / 0.25)",
+				"purpose": "Native payment modal elevation."
+			}
+		],
+		"motion": [
+			{
+				"name": "receipt-reveal",
+				"value": "220ms cubic-bezier(0.16, 1, 0.3, 1)",
+				"purpose": "Receipt moves from translateY(4px), opacity 0.6 to its resting state; disabled by prefers-reduced-motion."
+			}
+		],
+		"breakpoints": [
+			{
+				"name": "provider-compact",
+				"value": "380px"
+			},
+			{
+				"name": "invoice-stacked",
+				"value": "650px"
+			},
+			{
+				"name": "invoice-compact",
+				"value": "900px"
+			},
+			{
+				"name": "inspector-stacked",
+				"value": "1250px"
+			}
+		]
+	},
+	"components": [
+		{
+			"name": "Merchant primary",
+			"kind": "button",
+			"refersTo": "button-primary",
+			"description": "Take payment from the selected invoice.",
+			"html": "<button class=\"ds-primary\">Take payment</button>",
+			"css": ".ds-primary{font:14px/1.5 var(--demo-font, \"Open Sans\", system-ui, -apple-system, sans-serif);min-height:46px;border:0;border-radius:6px;padding:12px 22px;background:var(--demo-orange, #f68621);color:var(--demo-navy, #001e64);font-weight:600;cursor:pointer}.ds-primary:hover{background:var(--demo-action-hover, #e0751c)}.ds-primary:focus-visible{outline:3px solid var(--demo-focus, #144aa2);outline-offset:3px;}.ds-primary:disabled{opacity:.6;cursor:default}"
+		},
+		{
+			"name": "Provider primary",
+			"kind": "button",
+			"refersTo": "button-provider",
+			"description": "Submit a simulated payment.",
+			"html": "<button class=\"ds-provider\">Pay $176.00</button>",
+			"css": ".ds-provider{font:14px/1.5 var(--demo-font, \"Open Sans\", system-ui, -apple-system, sans-serif);width:100%;min-height:46px;border:0;border-radius:6px;padding:10px 16px;background:var(--demo-orange, #f68621);color:var(--demo-navy, #001e64);font-weight:600;cursor:pointer}.ds-provider:hover{background:var(--demo-action-hover, #e0751c)}.ds-provider:focus-visible{outline:3px solid var(--demo-focus, #144aa2);outline-offset:3px;}.ds-provider:disabled{opacity:.7;cursor:default}"
+		},
+		{
+			"name": "Quiet button",
+			"kind": "button",
+			"refersTo": "button-quiet",
+			"description": "Reset or return to a workspace region.",
+			"html": "<button class=\"ds-quiet\">Back to invoice</button>",
+			"css": ".ds-quiet{font:14px/1.5 var(--demo-font, \"Open Sans\", system-ui, -apple-system, sans-serif);min-height:44px;border:1px solid var(--demo-line, #d9d9e1);border-radius:6px;padding:8px 12px;background:var(--demo-white, #fff);color:var(--demo-navy, #001e64);cursor:pointer}.ds-quiet:hover{background:var(--demo-quiet, #f2f2f5)}.ds-quiet:focus-visible{outline:3px solid var(--demo-focus, #144aa2);outline-offset:3px;}.ds-quiet:disabled{opacity:.6;cursor:default}"
+		},
+		{
+			"name": "Provider demo-fill button",
+			"kind": "button",
+			"refersTo": "button-provider-text",
+			"description": "Populate the provider demo fields; first focus after readiness.",
+			"html": "<button class=\"ds-fill\">Use demo details</button>",
+			"css": ".ds-fill{font:14px/1.5 var(--demo-font, \"Open Sans\", system-ui, -apple-system, sans-serif);width:100%;min-height:44px;border:1px solid var(--demo-line, #d9d9e1);border-radius:6px;padding:8px 12px;background:var(--demo-info, #eef4ff);color:var(--demo-navy, #001e64);font-size:13px;font-weight:600;cursor:pointer}.ds-fill:focus-visible{outline:3px solid var(--demo-focus, #144aa2);outline-offset:3px;}.ds-fill:disabled{opacity:.7;cursor:default}"
+		},
+		{
+			"name": "Provider input",
+			"kind": "input",
+			"refersTo": "input-provider",
+			"description": "Native field with readable placeholder and read-only state.",
+			"html": "<label class=\"ds-label\" for=\"ds-card\">Card number</label><input class=\"ds-input\" id=\"ds-card\" placeholder=\"4242 4242 4242 4242\" inputmode=\"numeric\">",
+			"css": ".ds-label{font:14px/1.5 var(--demo-font, \"Open Sans\", system-ui, -apple-system, sans-serif);display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:var(--demo-navy, #001e64)}.ds-input{font:14px/1.5 var(--demo-font, \"Open Sans\", system-ui, -apple-system, sans-serif);display:block;width:100%;height:46px;border:1px solid var(--demo-field-line, #9c9caf);border-radius:6px;padding:10px 12px;background:var(--demo-white, #fff);color:var(--demo-navy, #001e64);font-size:16px;scroll-margin:175px 0 115px}.ds-input::placeholder{color:var(--demo-muted, #616161)}.ds-input:read-only{background:var(--demo-surface, #f7f7fa)}.ds-input:focus-visible{outline:3px solid var(--demo-focus, #144aa2);outline-offset:3px;}"
+		},
+		{
+			"name": "View switch",
+			"kind": "nav",
+			"refersTo": "view-switch",
+			"description": "Presentation modes of the same running application.",
+			"html": "<div class=\"ds-view\" role=\"group\" aria-label=\"Demo view\"><button aria-pressed=\"true\">Experience</button><button aria-pressed=\"false\">Technical</button></div>",
+			"css": ".ds-view{display:inline-flex;border-radius:7px;padding:3px;gap:3px;background:var(--demo-surface, #f7f7fa)}.ds-view button{font:14px/1.5 var(--demo-font, \"Open Sans\", system-ui, -apple-system, sans-serif);min-height:44px;border:0;border-radius:5px;padding:8px 14px;background:transparent;color:var(--demo-quiet-ink, #4d4d4d);font-weight:600;cursor:pointer}.ds-view button[aria-pressed=\"true\"]{background:var(--demo-navy, #001e64);color:var(--demo-white, #fff)}.ds-view button:focus-visible{outline:3px solid var(--demo-focus, #144aa2);outline-offset:3px;}"
+		},
+		{
+			"name": "Invoice status",
+			"kind": "chip",
+			"refersTo": "status-paid",
+			"description": "Explicit semantic invoice outcome; color accompanies text.",
+			"html": "<span class=\"ds-status\">Paid</span>",
+			"css": ".ds-status{font:14px/1.5 var(--demo-font, \"Open Sans\", system-ui, -apple-system, sans-serif);display:inline-flex;width:fit-content;border-radius:4px;padding:3px 8px;font-size:12px;font-weight:500;background:var(--demo-paid-bg, #e8fad7);color:var(--demo-paid-ink, #386f00)}"
+		},
+		{
+			"name": "Invoice detail surface",
+			"kind": "card",
+			"refersTo": "invoice-card",
+			"description": "A quiet container for invoice and receipt content.",
+			"html": "<article class=\"ds-card\"><h2>Invoice PV-1042</h2><p>Annual check-up</p></article>",
+			"css": ".ds-card{font:14px/1.5 var(--demo-font, \"Open Sans\", system-ui, -apple-system, sans-serif);border:1px solid var(--demo-line, #d9d9e1);border-radius:14px;background:var(--demo-white, #fff);color:var(--demo-navy, #001e64);padding:24px 28px;overflow:hidden}.ds-card h2{margin:0;font-size:22px;font-weight:650;letter-spacing:-.02em}.ds-card p{margin:4px 0 0;font-size:13px;color:var(--demo-muted, #616161)}@media(max-width:900px){.ds-card{padding:20px}}@media(max-width:650px){.ds-card{padding:16px}.ds-card h2{font-size:20px}.ds-card p{font-size:12px}}"
+		},
+		{
+			"name": "Selected invoice",
+			"kind": "custom",
+			"refersTo": "invoice-choice-selected",
+			"description": "A full-width selection row with amount and status.",
+			"html": "<button class=\"ds-invoice\" aria-pressed=\"true\"><span class=\"ds-pet\">Milo <span class=\"ds-amount\">$176.00</span></span><span class=\"ds-customer\">Alex Morgan · PV-1042</span><span class=\"ds-awaiting\">Awaiting payment</span></button>",
+			"css": ".ds-invoice{font:14px/1.5 var(--demo-font, \"Open Sans\", system-ui, -apple-system, sans-serif);display:block;width:100%;text-align:left;padding:16px 18px;background:var(--demo-white, #fff);border:0;border-bottom:1px solid var(--demo-line, #d9d9e1);color:var(--demo-navy, #001e64);cursor:pointer}.ds-invoice:hover{background:var(--demo-surface, #f7f7fa)}.ds-invoice[aria-pressed=\"true\"]{background:var(--demo-warm, #fff7ed)}.ds-invoice:focus-visible{outline:3px solid var(--demo-focus, #144aa2);outline-offset:3px;outline-offset:-4px}.ds-invoice:disabled{opacity:.6;cursor:default}.ds-pet{display:flex;justify-content:space-between;gap:8px;font-size:16px;font-weight:650}.ds-amount{font-size:14px;font-variant-numeric:tabular-nums}.ds-customer{display:block;margin:4px 0 8px;color:var(--demo-muted, #616161);font-size:12px}.ds-awaiting{display:inline-flex;border-radius:4px;padding:3px 8px;font-size:12px;font-weight:500;background:var(--demo-waiting-bg, #fdf5e9);color:var(--demo-waiting-ink, #795015)}"
+		},
+		{
+			"name": "Demo settings select",
+			"kind": "input",
+			"refersTo": "select-demo",
+			"description": "Native options with a consistent navy chevron; forced-color mode restores the browser indicator.",
+			"html": "<label class=\"ds-select-label\" for=\"ds-payment-mode\">Payment window</label><select id=\"ds-payment-mode\" class=\"ds-select\"><option>Modal iframe</option><option>Popup</option></select>",
+			"css": ".ds-select-label{display:block;font:12px/1.5 var(--demo-font, \"Open Sans\", system-ui, -apple-system, sans-serif);color:var(--demo-muted, #616161);margin-bottom:5px}.ds-select{min-height:44px;font:13px/1.5 var(--demo-font, \"Open Sans\", system-ui, -apple-system, sans-serif);-webkit-appearance:none;appearance:none;background:var(--demo-white, #fff);background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m3.5 6 4.5 4.5L12.5 6' fill='none' stroke='%23001e64' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 12px center;background-size:16px 16px;border:1px solid var(--demo-field-line, #9c9caf);border-radius:6px;padding:8px 40px 8px 12px;color:var(--demo-navy, #001e64)}.ds-select:focus-visible{outline:3px solid var(--demo-focus, #144aa2);outline-offset:3px}.ds-select:disabled{cursor:default;opacity:.6}@media(forced-colors:active){.ds-select{min-height:44px;-webkit-appearance:auto;appearance:auto;background-image:none}}"
+		}
+	],
+	"narrative": {
+		"northStar": "Pip Veterinary and Harbor Pay",
+		"overview": "The company demo uses the user-pinned navy and orange palette, self-hosted Open Sans and clear native controls. Pip Veterinary uses a crisp paw emblem beside its wordmark, with a small original puppy in the invoice-list care footer; Harbor Pay retains its own name and mark within the shared theme. Pale work areas and white invoice surfaces keep the staff task easy to scan.\n\nThis documents the company-demo visual system. The original configuration editor and test lab retain their system typography, rose accent and diagnostic status colors. Neither fictional company defines the ForgeFrame library brand.",
+		"keyCharacteristics": [
+			"Navy hierarchy with orange actions and selection.",
+			"Compact, bordered surfaces and familiar controls.",
+			"Crisp paw identity and a small decorative puppy in the care footer.",
+			"Readable stacked layouts with purposeful focus and scrolling."
+		],
+		"rules": [
+			{
+				"name": "The Scope Rule",
+				"body": "Apply demo tokens to the company and payment routes; preserve the original editor and test lab’s identity.",
+				"section": "colors"
+			}
+		],
+		"dos": [
+			"Do use navy lettering on orange primary actions.",
+			"Do retain readable labels, amount alignment and text alongside semantic status colors.",
+			"Do preserve native form validation, visible focus and state continuity between presentation modes.",
+			"Do keep the puppy compact and decorative in the care footer, using its recorded asset and prompt.",
+			"Do retain the diagnostic playground’s separate palette and system typography.",
+			"Do preserve at least 44px hit heights for compact controls and toolbar links.",
+			"Do keep provider context and actions reachable through natural scrolling and focus margins."
+		],
+		"donts": [
+			"Don't treat the demo theme as the library's global brand.",
+			"Don't substitute reference-company names, logos or imagery for the fictional demo identities.",
+			"Don't add ornamental navigation or animated backgrounds to the invoice task.",
+			"Don't make Technical navigation reset invoice, session or callback state.",
+			"Don't present local application observations as wire-protocol capture."
+		]
+	}
+}

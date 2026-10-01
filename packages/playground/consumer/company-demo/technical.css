@@ -1,0 +1,294 @@
+.technical-panel {
+	min-width: 0;
+	padding: 24px;
+	background: var(--demo-white);
+	border-left: 1px solid var(--demo-line);
+}
+.technical-heading {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	margin-bottom: 16px;
+}
+.technical-heading .quiet-button {
+	font-size: 12px;
+}
+.technical-invoice {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 16px;
+	background: var(--demo-info);
+	border-radius: 8px;
+}
+.technical-invoice strong {
+	font-size: 14px;
+}
+.technical-invoice p {
+	font-size: 12px;
+	margin-top: 4px;
+}
+.technical-invoice .primary-button {
+	padding: 10px 14px;
+	font-size: 12px;
+	flex-shrink: 0;
+}
+.technical-intro {
+	color: var(--demo-muted);
+	font-size: 13px;
+	padding: 16px 0;
+}
+.handoff-steps {
+	list-style: none;
+	counter-reset: step;
+	padding: 0;
+	margin: 0 0 20px;
+}
+.handoff-steps li {
+	counter-increment: step;
+}
+.handoff-steps button {
+	width: 100%;
+	min-height: 48px;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 10px 12px;
+	border: 1px solid transparent;
+	border-bottom-color: var(--demo-line);
+	border-radius: 0;
+	background: var(--demo-white);
+	color: var(--demo-navy);
+	text-align: left;
+}
+.handoff-steps button::before {
+	content: counter(step);
+	font-size: 12px;
+	color: var(--demo-muted);
+}
+.handoff-steps button > span {
+	flex: 1;
+	font-size: 13px;
+	font-weight: 600;
+}
+.handoff-steps small {
+	font-size: 11px;
+	color: var(--demo-muted);
+	white-space: nowrap;
+}
+.handoff-steps button[aria-pressed="true"] {
+	background: var(--demo-warm);
+	border-color: var(--demo-orange);
+	border-radius: 6px;
+}
+.step-evidence > p {
+	font-size: 12px;
+	color: var(--demo-muted);
+	margin-top: 8px;
+}
+#step-observed {
+	font-weight: 600;
+	color: var(--demo-navy);
+}
+.technical-json,
+.source-code {
+	max-width: 100%;
+	max-height: 260px;
+	overflow: auto;
+	white-space: pre;
+	margin: 12px 0;
+	padding: 16px;
+	border-radius: 8px;
+	font:
+		12px / 1.65 ui-monospace,
+		monospace;
+	tab-size: 2;
+}
+.technical-json {
+	background: var(--demo-quiet);
+	color: var(--demo-navy);
+}
+.source-code {
+	background: var(--demo-navy);
+	color: var(--demo-info);
+	max-height: 380px;
+}
+.source-code.step-code {
+	max-height: 240px;
+}
+.technical-panel .source-filename {
+	font:
+		11px / 1.5 ui-monospace,
+		monospace;
+	color: var(--demo-muted);
+	overflow-wrap: anywhere;
+}
+.technical-details {
+	border-top: 1px solid var(--demo-line);
+	margin-top: 20px;
+}
+.technical-details > summary {
+	padding: 14px 0;
+}
+.technical-details h3 {
+	margin-top: 12px;
+	font-size: 14px;
+}
+.connection-meta {
+	margin: 0;
+	padding: 8px 0;
+}
+.connection-meta div {
+	margin-bottom: 12px;
+}
+.connection-meta dt {
+	color: var(--demo-muted);
+	font-size: 11px;
+}
+.connection-meta dd {
+	margin: 4px 0 0;
+	font-size: 12px;
+	overflow-wrap: anywhere;
+}
+.callback-row {
+	display: flex;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 10px 0;
+	border-bottom: 1px solid var(--demo-line);
+	font-size: 12px;
+}
+.integration-events {
+	padding: 0 0 0 20px;
+	font-size: 12px;
+	max-height: 220px;
+	overflow: auto;
+}
+.integration-events li {
+	padding: 6px 0;
+}
+.integration-events time {
+	display: block;
+	color: var(--demo-muted);
+	font-size: 11px;
+}
+.source-tabs,
+.source-jumps {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin: 8px 0 12px;
+}
+.source-tabs button,
+.source-jumps button {
+	min-height: 44px;
+	padding: 8px 12px;
+	border: 1px solid var(--demo-line);
+	border-radius: 5px;
+	color: var(--demo-navy);
+	background: var(--demo-surface);
+	font-size: 12px;
+}
+.source-tabs button[aria-pressed="true"] {
+	background: var(--demo-navy);
+	color: var(--demo-white);
+	border-color: var(--demo-navy);
+}
+.technical-note {
+	font-size: 11px;
+	color: var(--demo-muted);
+	padding-top: 20px;
+}
+.is-technical .demo-layout {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 480px;
+	max-width: 1680px;
+	margin: 0 auto;
+}
+.is-technical #clinic-workspace {
+	min-width: 0;
+}
+.is-technical .clinic-header {
+	padding: 18px 24px;
+}
+.is-technical .clinic-main {
+	padding: 24px;
+}
+.is-technical .invoice-workspace {
+	grid-template-columns: 220px minmax(0, 1fr);
+	gap: 16px;
+}
+.is-technical .invoice-detail {
+	padding: 20px;
+}
+.is-technical .invoice-payment-action {
+	align-items: stretch;
+	flex-direction: column;
+	gap: 8px;
+}
+@media (max-width: 1250px) {
+	.is-technical .demo-layout {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	.is-technical .technical-panel {
+		grid-row: 1;
+		border-left: 0;
+		border-bottom: 1px solid var(--demo-line);
+	}
+	.is-technical .technical-invoice {
+		max-width: 700px;
+	}
+	.is-technical .handoff-steps,
+	.is-technical .step-evidence,
+	.is-technical .technical-details,
+	.is-technical .technical-note,
+	.is-technical .technical-intro {
+		max-width: 900px;
+	}
+	.is-technical .invoice-workspace {
+		grid-template-columns: 270px minmax(0, 1fr);
+	}
+}
+@media (max-width: 650px) {
+	.technical-panel {
+		padding: 20px 16px;
+	}
+	.technical-heading {
+		align-items: start;
+	}
+	.technical-heading h2 {
+		font-size: 17px;
+		padding-top: 8px;
+	}
+	.technical-heading .quiet-button {
+		max-width: 110px;
+	}
+	.technical-invoice {
+		flex-direction: column;
+		align-items: stretch;
+		padding: 14px;
+		gap: 10px;
+	}
+	.technical-invoice .primary-button {
+		width: 100%;
+	}
+	.technical-json,
+	.source-code {
+		padding: 12px;
+		font-size: 11px;
+	}
+	.is-technical .clinic-header {
+		padding: 12px 16px;
+	}
+	.is-technical .clinic-main {
+		padding: 16px;
+	}
+	.is-technical .invoice-workspace {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	.is-technical .invoice-detail {
+		padding: 18px;
+	}
+}

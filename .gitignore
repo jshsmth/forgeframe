@@ -27,3 +27,6 @@ coverage
 # Browser test output
 playwright-report
 test-results
+
+# Local design review captures
+packages/playground/.impeccable/review/

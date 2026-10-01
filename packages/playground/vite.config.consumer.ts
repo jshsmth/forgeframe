@@ -15,16 +15,24 @@ const forgeframePackageJson = JSON.parse(
 const shouldOpenBrowser = process.env.FORGEFRAME_PLAYGROUND_OPEN !== "0";
 const consumerOutDir = resolve(import.meta.dirname, "dist/consumer");
 
-function staticTestRoutes(): Plugin {
+function staticConsumerRoutes(): Plugin {
+	let outDir = consumerOutDir;
+	let write = true;
 	return {
-		name: "forgeframe-static-test-routes",
+		name: "forgeframe-static-consumer-routes",
 		apply: "build",
+		configResolved(config) {
+			outDir = resolve(config.root, config.build.outDir);
+			write = config.build.write;
+		},
 		closeBundle() {
-			const source = resolve(consumerOutDir, "index.html");
+			if (!write) return;
+			const source = resolve(outDir, "index.html");
 			const routeDirectories = [
-				resolve(consumerOutDir, "tests"),
+				resolve(outDir, "company"),
+				resolve(outDir, "tests"),
 				...TEST_SCENARIO_IDS.map((scenarioId) =>
-					resolve(consumerOutDir, "tests", scenarioId),
+					resolve(outDir, "tests", scenarioId),
 				),
 			];
 
@@ -41,7 +49,7 @@ export default defineConfig(({ command }) => {
 		command === "serve" && process.env.FORGEFRAME_SKIP_MKCERT !== "1";
 
 	return {
-		plugins: [...(shouldUseMkcert ? [mkcert()] : []), staticTestRoutes()],
+		plugins: [...(shouldUseMkcert ? [mkcert()] : []), staticConsumerRoutes()],
 		root: resolve(import.meta.dirname, "consumer"),
 		cacheDir: resolve(import.meta.dirname, "node_modules/.vite-consumer"),
 		define: {

@@ -1,0 +1,31 @@
+@font-face {
+	font-family: "Open Sans";
+	src: url("./open-sans-latin.woff2") format("woff2");
+	font-style: normal;
+	font-weight: 300 800;
+	font-display: swap;
+}
+
+:root {
+	--demo-font: "Open Sans", system-ui, -apple-system, sans-serif;
+	--demo-navy: #001e64;
+	--demo-orange: #f68621;
+	--demo-action-hover: #e0751c;
+	--demo-white: #fff;
+	--demo-muted: #616161;
+	--demo-line: #d9d9e1;
+	--demo-field-line: #9c9caf;
+	--demo-surface: #f7f7fa;
+	--demo-quiet: #f2f2f5;
+	--demo-quiet-ink: #4d4d4d;
+	--demo-focus: #144aa2;
+	--demo-warm: #fff7ed;
+	--demo-info: #eef4ff;
+	--demo-caption: #d9e3ff;
+	--demo-waiting-bg: #fdf5e9;
+	--demo-waiting-ink: #795015;
+	--demo-paid-bg: #e8fad7;
+	--demo-paid-ink: #386f00;
+	--demo-selection: #f9b971;
+	--demo-scrollbar: #9b9bb4;
+}

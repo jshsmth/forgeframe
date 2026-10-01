@@ -1,0 +1,23 @@
+{
+	"buildPath": "code",
+	"detector": {
+		"ignoreRules": [],
+		"ignoreFiles": [],
+		"ignoreValues": [
+			{
+				"rule": "cramped-padding",
+				"value": "*",
+				"files": ["consumer/index.html"],
+				"createdAt": "2026-10-01T06:21:34.590Z",
+				"reason": "Agent verified: panel headers, code blocks, controls and log entries own their padding; the wrapper intentionally spans these inset regions."
+			},
+			{
+				"rule": "overused-font",
+				"value": "open sans",
+				"files": ["assets/theme.css"],
+				"createdAt": "2026-10-01T06:30:26.199Z",
+				"reason": "User supplied and requested this theme, whose font-family is Open Sans; self-hosted for the demo."
+			}
+		]
+	}
+}

@@ -46,6 +46,12 @@ export default defineConfig(({ command }) => {
 		build: {
 			outDir: resolve(import.meta.dirname, "dist/host"),
 			emptyOutDir: true,
+			rolldownOptions: {
+				input: {
+					main: resolve(import.meta.dirname, "host/index.html"),
+					payment: resolve(import.meta.dirname, "host/payment.html"),
+				},
+			},
 		},
 	};
 });
