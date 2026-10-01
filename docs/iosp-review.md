@@ -1,18 +1,16 @@
-# Whole-package IOSP review
+# ForgeFrame callable reference
 
-This record covers all 66 original source modules and the six added internal modules (72 total). It records the final responsibility of each named runtime callable and callback. Type-only declarations, overload signatures and abstract methods have no runtime body; export/type barrels are explicitly accounted for below. Repetitive accessors and fluent builders share the stated rationale.
+This reference describes runtime responsibilities and the tests that exercise their boundaries. Type-only declarations, overload signatures and abstract methods have no runtime body; export/type barrels are explicitly accounted for below. Repetitive accessors and fluent builders share the stated rationale.
 
-Use [architecture and state ownership](architecture.md) to follow a workflow. Use this record when changing an individual callable. `callback@N` identifies an anonymous closure at source line N in its enclosing callable; named property arrows are listed by their enclosing name. Source line locators reflect this refactor and should be refreshed when changing the callable.
+Use [architecture and state ownership](architecture.md) to follow a workflow. Use this reference when changing an individual callable. `callback@N` identifies an anonymous closure at source line N in its enclosing callable; named property arrows are listed by their enclosing name. Refresh source line locators when changing the callable.
 
 - **O — operation:** one cohesive rule, transformation, state transition, supplied-callback boundary or platform action. Recursive codecs, traversals and validation algorithms may use local implementation helpers without becoming workflows.
 - **I — integration:** sequences package behaviour. Branches selecting the next action, current-instance/cancellation guards and passed-through values are control flow.
 - **M — retained small mixed helper:** listed with a specific locality/readability rationale. These are deliberate exceptions to avoid wrappers that only relocate a few statements.
 
-Pure policy consumes observed facts; integrations/adapters obtain browser evidence. State remains owned by the existing runtime. No runtime dependency, protocol/version change, generic workflow framework or automatic IOSP checker was introduced.
+Pure policy consumes observed facts; integrations/adapters obtain browser evidence. State remains owned by the existing runtime.
 
-## Validation evidence
-
-The starting point passed 878 tests in 48 suites and 13 Chromium tests. Each wave ran its affected suites and library/type-contract checks before the next wave. Final validation is recorded below after the whole-package review. Existing suites continue to exercise real consumer/host, browser and React boundaries; new direct tests supply data to isolated rules.
+## Boundary tests
 
 | Evidence group | Suites |
 | --- | --- |
@@ -25,16 +23,7 @@ The starting point passed 878 tests in 48 suites and 13 Chromium tests. Each wav
 | <a id="evidence-utilities"></a>utilities | [utils.test](../packages/forgeframe/tests/unit/utils.test.ts), [domain-pattern.test](../packages/forgeframe/tests/unit/domain-pattern.test.ts), [window-helpers.test](../packages/forgeframe/tests/unit/window-helpers.test.ts), [window-name-payload.test](../packages/forgeframe/tests/unit/window-name-payload.test.ts), [props-serialize.test](../packages/forgeframe/tests/unit/props-serialize.test.ts), [protocol.test](../packages/forgeframe/tests/unit/protocol.test.ts) |
 | <a id="evidence-contract"></a>contract | [package-contract.test](../packages/forgeframe/tests/unit/package-contract.test.ts), [index-node-smoke.test](../packages/forgeframe/tests/unit/index-node-smoke.test.ts), [index-side-effect-free.test](../packages/forgeframe/tests/unit/index-side-effect-free.test.ts), [component-node-runtime-transition.test](../packages/forgeframe/tests/unit/component-node-runtime-transition.test.ts), [version.test](../packages/forgeframe/tests/unit/version.test.ts) |
 
-Compile-time evidence: [typecheck suite guidance](../packages/forgeframe/tests/README.md) and `npm run typecheck` / `npm run typecheck:package`. Real browser evidence: [Chromium scenarios](../packages/forgeframe/tests/browser). Published contract review compares original exported declarations with the emitted declarations, allowing build-added `.js`/directory index import spelling.
-
-## Wave outcomes
-
-1. **Props and schemas:** isolated patch/reset/key bookkeeping; named preparation, validation, candidate construction and commitment; fallback selection/probing, schema conversion, decoration and output checks; separated presence/outer constraints from nested validation. Kept schema class members and fluent inference.
-2. **Messaging and serialization:** named admission, execution, response encoding and settlement; separated retained registry IDs/eviction, remote wrappers and function-reference framing; split DOTIFY decode/reconstruction while retaining codecs.
-3. **Browser rendering:** supplied-data popup geometry/backoff and iframe configuration encoding; distinct prerender mounting, iframe/popup opening, navigation/POST and teardown entrypoints. Kept browser-action timing and ownership.
-4. **Component and runtimes:** declaration policy and observed context, explicit lifecycle stages/state transitions, supplied-origin trust policy, host prop commitment/subscriber isolation and child/peer selection. Retained one registry/index per existing owner.
-5. **React:** moved comparison/reset/queue transitions/draining and instance coordination to internal modules. Kept unconditional hook order, callback refs, FIFO render gate, retries, remount isolation and ref cleanup.
-6. **Remainder:** reviewed events, cleanup, promises, dimensions, matching, UIDs, wire utilities, window traversal, exports and types. Isolated event invocation and LIFO task claiming; retained cohesive algorithms/platform operations.
+Compile-time checks and browser suites are described in the [test index](../packages/forgeframe/tests/README.md). Current validation commands are listed in the [root README](../README.md).
 
 ## Module and callable classifications
 
@@ -692,32 +681,3 @@ Evidence: [utilities](#evidence-utilities); typecheck.
 
 **Contract only.** Types, re-exports or immutable declarations; no runtime callable body. Public exports and supported subpaths remain unchanged.
 Evidence: [utilities](#evidence-utilities), typecheck.
-
-## Historical IOSP refactor checks
-
-| Check | Result |
-| --- | --- |
-| Root lint and `check:ci` | Pass; unchanged 77 existing warnings and one informational diagnostic; no new warnings |
-| Root typecheck | Pass for library, public type contracts, browser tests and playground |
-| Tests with coverage | 898 tests in 53 suites pass; thresholds unchanged |
-| Coverage | Statements 97.02%, branches 91.52%, functions 97.90%, lines 97.38% |
-| Chromium | All 13 browser tests pass, including iframe/popup reconnection, POST and CSP scenarios |
-| Library build and published-declaration typecheck | Pass |
-| Original declaration comparison | All 145 existing exported entries across the 20 reviewed public contract modules match, including schema class members and React/create inference signatures |
-| Playground production builds | Consumer and host builds pass |
-| `npm pack --dry-run -w forgeframe` | Pass; version remains 0.2.0 |
-| Patch whitespace | `git diff --check` passes |
-
-Added 20 tests across five new direct-rule suites and two existing boundary suites. The latter preserve unbound computed/default callbacks, bound query/body converter receivers, and synchronous message-handler failure timing. No test or coverage threshold was weakened. The package README mirror is produced by the existing library build.
-
-These results record the earlier internal refactor and are not the current v1 release status. The v1 release gates now include all three browser engines and an installed-package smoke check; see the root README for the current commands.
-
-## October consolidation audit boundaries
-
-`Messenger.send` encodes before pending-request registration and signals a delivery attempt before posting. Consumer prop and host export integrations abort bridge additions on pre-delivery failures and retain potentially delivered callbacks after posting. Delivery notification closures only record the attempt. Error catch paths delegate to `normalizeError`.
-
-`ConsumerRenderer.completePrerender` supplies a pure visibility observation callback to `swapPrerenderContent`, which checks it after loading content removal and before reveal. Explicit show/hide state stays renderer-owned. Factory teardown sequences `create.untrackInstance` before public destruction observers. Host validation selects delivered definitions without weakening same-domain checks. `isAsyncSchemaResult` recognizes asynchronous results across realms; BASE64 root omission follows native JSON conversion without changing framed wire formats.
-
-Evidence: component-clone, consumer-renderer, iframe-configuration, iframe, schema, props-sync, object-prop-roundtrip, function-prop-bridge and host-controls-routing regressions; navigation browser initialization-hide and CSS checks in all three engines.
-
-The residual browser-realm fixes keep Date framing and DOTIFY branch admission consistent across windows. Schema output equivalence accepts equivalent ordinary prototypes across realms while preserving null-prototype distinctions and class checks. `EventEmitter.off` remains an **O** listener-removal operation; its public generic now matches subscription types. Numeric iframe policy includes supported numeric shorthands, typography, shapes, counters and vendor forms; the browser test derives its expected declarations from native CSS admission rather than the library lookup.

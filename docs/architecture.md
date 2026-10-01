@@ -85,4 +85,4 @@ Operations implement cohesive policy, transformations, state transitions, or bro
 
 Pure policy should depend on supplied observations and neutral types/helpers. Browser reads and resource effects belong in browser operations or their coordinating runtime. Internal helpers stay inside the owning subsystem and are not added to root exports. Exported schema classes retain their existing members; use module-level helpers for decomposition.
 
-See [the complete classification record](iosp-review.md) and [the test index](../packages/forgeframe/tests/README.md) for entrypoints and evidence. Public contracts remain in the root README and typecheck suites.
+See [the callable reference](iosp-review.md) and [the test index](../packages/forgeframe/tests/README.md) for entrypoints and boundary tests. Public contracts remain in the root README and typecheck suites.

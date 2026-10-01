@@ -1326,7 +1326,7 @@ Then open `http://localhost:5173`. The `/tests` page contains browser scenarios 
 
 The playground displays cross-window prop values, identity fields, and log messages as text. When building a host UI, use `textContent` for received strings rather than interpolating them into HTML.
 
-Read the [architecture guide](https://github.com/jshsmth/ForgeFrame/blob/main/docs/architecture.md) for state ownership and render/bootstrap, props, callback, and React flows. The [IOSP review record](https://github.com/jshsmth/ForgeFrame/blob/main/docs/iosp-review.md) classifies runtime callables and links their test evidence.
+Read the [architecture guide](https://github.com/jshsmth/ForgeFrame/blob/main/docs/architecture.md) for state ownership and render/bootstrap, props, callback, and React flows. The [callable reference](https://github.com/jshsmth/ForgeFrame/blob/main/docs/iosp-review.md) classifies runtime responsibilities and links their boundary tests.
 
 - `packages/forgeframe/src/index.ts` defines the public package exports. Other source barrels are internal; the package exposes no subpath imports.
 - `core/component.ts` owns component factories and instance tracking. `core/consumer.ts` coordinates rendering, the prop pipeline, and transport; `core/host/` owns host bootstrap and `hostProps`.

@@ -18,6 +18,7 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `consumer-renderer.test.ts`: Renderer ownership of iframe/popup resources, loading completion, custom shell/control preservation, templates, form cleanup after submission failure, mount-document prototypes, and teardown.
 - `consumer-transport.test.ts`: Direct consumer transport behavior for trust rotation, failed prop sync cleanup, handshake waiting, and async init error forwarding.
 - `consumer-origin-policy.test.ts`: Trust decisions from supplied origin evidence, messaging-origin validation, and changed-origin selection.
+- `error.test.ts`: Unknown-error normalization preserves Error identity and ordinary coercion, with a stable fallback when coercion throws.
 - `emitter.test.ts`: Event emitter subscription semantics, once/off behavior, and async error isolation.
 - `host-branch-coverage.test.ts`: Host branch/edge-path coverage for deferred init, failure capture, and guard paths.
 - `host-lifecycle.test.ts`: Host lifecycle message handling, hostProps synchronization, and consumer window resolution.
@@ -49,6 +50,7 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `schema-contract.test.ts`: Contract coverage against real schema libraries (Zod and Valibot).
 - `schema-path-format.test.ts`: Error path formatting behavior for mixed key/index Standard Schema segments.
 - `schema.test.ts`: Standard Schema detection and schema-aware prop validation integration.
+- `realm-values.test.ts`: Cross-window Date and ordinary-record recognition, class/array rejection, and preservation of codec array values.
 - `render-templates.test.ts`: Render template DOM creation, styles, transitions, and prerender swap behavior.
 - `utils.test.ts`: UID, cleanup manager, and promise utility behavior.
 - `url.test.ts`: Relative URL resolution and query appending that preserves fragments, existing encoding, and duplicate parameters.
@@ -65,6 +67,7 @@ All unit tests and shared fixtures are strictly compiled by `npm run typecheck`,
 - `array-prop-transport.test.ts`: Consumer-side rejection of undefined/sparse array entries before opening or update commitment, recovery, nested values, item defaults, nullable entries, delivery-policy exclusions, custom encoders/host decorators, and export rejection without replacing acknowledged data.
 - `body-param-bootstrap.test.ts`: End-to-end iframe and popup `bodyParam` POST bootstrap coverage, including hidden-form submission and host initialization.
 - `consumer-host-handshake.test.ts`: End-to-end iframe happy path covering `create()`, `instance.render()`, `initHost()`, and the real INIT handshake, plus oversized bootstrap metadata rejection followed by a valid retry.
+- `cross-realm-props.test.ts`: Foreign-window Date and record inputs round-trip through props and exports across JSON, BASE64 and DOTIFY.
 - `function-prop-bridge.test.ts`: Capacity rejection/recovery across all codecs, omitted callback defaults, a genuinely dropped acknowledgement with receiver-installed callbacks, and real cross-window callback bridging from host `window.hostProps` back to consumer callbacks, including async results, thrown errors, BASE64/DOTIFY nested callback/Date bootstrap and updates, and retirement of replaced callbacks after acknowledged updates in all three serialization modes.
 - `host-controls-routing.test.ts`: Atomic export/peer-capacity rejection, held-reference recovery, and real host-builtins coverage for close/focus/resize/show/hide/error/export/peer lookup, plus spoofed-source rejection on consumer and host runtimes.
 - `object-prop-roundtrip.test.ts`: Ordinary BASE64/DOTIFY/function-shaped records retain user fields through bootstrap and updates in all three serialization modes, including direct and nested DOTIFY branches converted by custom JSON encoders.
@@ -95,6 +98,7 @@ The suite also renders two same-tag widgets concurrently against the same host o
 ## Type Tests (`packages/forgeframe/tests/typecheck`)
 
 - `component-inference.typecheck.ts`: Compile-time assertions for inferred and explicit schema-backed component props, third-party schemas, callbacks, and typed children.
+- `events.typecheck.ts`: Typed event handlers preserve compatible registration and removal contracts and reject incompatible explicit types.
 - `host.typecheck.ts`: Host initialization and host-prop schema input/output contracts.
 - `remote-values.typecheck.ts`: Promise-returning remote callbacks and exports, nested data shapes, and unchanged local callback inputs.
 - `prop-schema.typecheck.ts`: Prop builder inference, defaults, optionality, and composite schemas.
@@ -116,9 +120,6 @@ The suite also renders two same-tag widgets concurrently against the same host o
 - Run type assertions and all unit, integration, and browser fixture checks: `npm run typecheck:tests -w forgeframe`
 - Run integration fixture checks alone: `npx tsc -p packages/forgeframe/tests/integration/tsconfig.json --noEmit`
 
-See [the September 2026 test review](../../../docs/test-review.md) for the coverage assessment, regression checks, completed fixture migration, and test-quality decisions.
-
-
 ## Choosing useful additions
 
 Start with a supported public behavior or a reproduced failure and an agreed public seam. Use literal expected outcomes independent of the implementation. Prefer a real consumer/host or React DOM integration when the behavior crosses layers; adapt browser APIs at the environment boundary. Retain focused policy and resource fault-injection cases when they add distinct evidence, and remove superseded wiring assertions once public behavior is verified.
@@ -126,9 +127,3 @@ Start with a supported public behavior or a reproduced failure and an agreed pub
 Check both acceptance and rejection/recovery where meaningful. Keep schema inputs and normalized outputs explicit in fixtures, and run `typecheck:tests` as well as Vitest. Use a targeted regression probe to confirm a new test can detect the behavior being lost; restore the source before final validation. Coverage identifies candidates for inspection, while supported behavior and failure impact decide whether to add a test. Do not add casts, mocks, exclusions, or threshold changes merely to reach 100%.
 
 The installed-package check compiles the actual README Define a Component example under strict NodeNext resolution, and smoke-tests callback default behavior against the built package. Callback type fixtures require factory syntax after fluent chaining. Consumer transport tests verify that only a verified new bootstrap session releases a full recovery pool.
-
-## October consolidation regressions
-
-Public regressions cover instance/index cleanup after listener removal (including clones), acknowledged host hide during initial rendering, unitless CSS values and case-sensitive variables, callback capacity recovery after final protocol encoding failure in both directions, and remote errors for uncoercible thrown values. Shared required consumer-only definitions initialize and update successfully while invalid local inputs still reject. Cross-realm schema promises reject explicitly, including in nested builders. BASE64 root JSON omission removes stale host fields. `error.test.ts` verifies preserved Error identity, normal coercion and fallback conversion. The navigation browser regression checks initialization visibility and CSS behavior in Chromium, Firefox and WebKit.
-
-The residual audit adds public `events.typecheck.ts` assertions for typed removal and realm-value regressions for dates and ordinary records from another window. Browser cases exercise props/exports in every codec and compare supported numeric CSS declarations with direct native application; class-instance rejection remains covered.
