@@ -70,6 +70,9 @@ export class ConsumerRenderer<
 	/** Caller mount retained while templates replace the active container. */
 	private mountContainer: HTMLElement | null = null;
 
+	/** Explicit visibility requests remain separate from the loading placeholder. */
+	private hidden = false;
+
 	constructor(
 		private options: NormalizedOptions<P, SchemaInputs>,
 		private uid: string,
@@ -311,6 +314,7 @@ export class ConsumerRenderer<
 				this.container,
 				this.prerenderElement,
 				this.iframe,
+				() => !this.hidden,
 			);
 			this.prerenderElement = null;
 		} else if (this.context === CONTEXT.POPUP) {
@@ -396,8 +400,9 @@ export class ConsumerRenderer<
 	 * Shows iframe context.
 	 */
 	show(): void {
-		if (this.context === CONTEXT.IFRAME && this.iframe) {
-			showIframe(this.iframe);
+		if (this.context === CONTEXT.IFRAME) {
+			this.hidden = false;
+			if (this.iframe) showIframe(this.iframe);
 		}
 	}
 
@@ -405,8 +410,9 @@ export class ConsumerRenderer<
 	 * Hides iframe context.
 	 */
 	hide(): void {
-		if (this.context === CONTEXT.IFRAME && this.iframe) {
-			hideIframe(this.iframe);
+		if (this.context === CONTEXT.IFRAME) {
+			this.hidden = true;
+			if (this.iframe) hideIframe(this.iframe);
 		}
 	}
 

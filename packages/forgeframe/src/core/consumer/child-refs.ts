@@ -7,7 +7,6 @@
  * component references included in the consumer window payload.
  */
 
-import type { PropsDefinition } from "../../types/props";
 import type { HostComponentRef } from "../../window/types";
 import { getComponentOptions } from "../component-registry";
 import type { NormalizedOptions } from "./types";
@@ -54,9 +53,6 @@ function createNestedHostRef(
 	return {
 		tag: nestedOptions.tag,
 		url: nestedOptions.url,
-		props: nestedOptions.props as
-			| PropsDefinition<Record<string, unknown>>
-			| undefined,
 		dimensions:
 			typeof nestedOptions.dimensions === "function"
 				? undefined

@@ -1799,7 +1799,6 @@ describe("Component Instance", () => {
 		expect(refs?.ChildComponent).toEqual({
 			tag: "child-component-meta",
 			url: "https://example.com/child",
-			props: expect.any(Object),
 			dimensions: { width: 250, height: 140 },
 			defaultContext: CONTEXT.POPUP,
 		});

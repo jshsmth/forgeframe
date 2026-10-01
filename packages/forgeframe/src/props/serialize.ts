@@ -15,6 +15,7 @@ import {
 import type { Messenger } from "../communication/messenger";
 import { PROP_SERIALIZATION } from "../constants";
 import type { PropDefinition, PropsDefinition } from "../types/props";
+import { isDate, isPlainObject } from "../utils/realm-values";
 import {
 	decodeDateWireValue,
 	encodeDateWireValue,
@@ -38,19 +39,6 @@ const DOTIFY_EMPTY_OBJECT_PAYLOAD = "__forgeframe.dotify_empty_object__";
  */
 function isSafeObjectKey(key: string): boolean {
 	return !UNSAFE_OBJECT_KEYS.has(key);
-}
-
-/**
- * Returns true when a value is a plain object branch suitable for DOTIFY traversal.
- * @internal
- */
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-	if (value === null || typeof value !== "object" || Array.isArray(value)) {
-		return false;
-	}
-
-	const prototype = Object.getPrototypeOf(value);
-	return prototype === Object.prototype || prototype === null;
 }
 
 /**
@@ -334,7 +322,8 @@ export function serializeProps<P extends Record<string, unknown>, I = P>(
 
 		const definition = (allDefs as Record<string, PropDefinition>)[key];
 
-		result[key] = serializeValue(value, definition, bridge);
+		const serializedValue = serializeValue(value, definition, bridge);
+		if (serializedValue !== undefined) result[key] = serializedValue;
 	}
 
 	return result;
@@ -353,7 +342,7 @@ function serializeValue(
 		return bridge.serialize(value as (...args: unknown[]) => unknown);
 	}
 
-	if (value instanceof Date) {
+	if (isDate(value)) {
 		return encodeDateWireValue(value);
 	}
 
@@ -362,6 +351,7 @@ function serializeValue(
 	if (serialization === PROP_SERIALIZATION.BASE64) {
 		if (typeof value === "object") {
 			const json = stringifyWireValue(value, (fn) => bridge.serialize(fn));
+			if (json === undefined) return undefined;
 			return {
 				__type__: "base64",
 				__value__: btoa(encodeURIComponent(json)),

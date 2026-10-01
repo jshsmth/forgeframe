@@ -103,6 +103,8 @@ describe("Host branch coverage and edge paths", () => {
 			window.location.origin,
 			MESSAGE_NAME.INIT,
 			{ uid: "host-internal-uid", tag: "host-internal-component" },
+			undefined,
+			undefined,
 		);
 	});
 
@@ -185,6 +187,8 @@ describe("Host branch coverage and edge paths", () => {
 			window.location.origin,
 			MESSAGE_NAME.INIT,
 			{ uid: "host-internal-uid", tag: "host-internal-component" },
+			undefined,
+			undefined,
 		);
 		expect(eventSpy).toHaveBeenCalledWith(
 			EVENT.ERROR,

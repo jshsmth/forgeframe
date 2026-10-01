@@ -253,6 +253,13 @@ export function create<
 	const componentTag = options.tag;
 	let componentHostProps: HostProps<P> | undefined;
 
+	function untrackInstance(
+		instance: ConsumerComponent<P, X, I, SchemaInputs>,
+	): void {
+		removeTrackedInstance(instances, instance);
+		removeIndexedComponentInstance(instance.uid);
+	}
+
 	function trackInstance(
 		instance: ConsumerComponent<P, X, I, SchemaInputs>,
 	): ConsumerComponent<P, X, I, SchemaInputs> {
@@ -264,9 +271,7 @@ export function create<
 		indexComponentInstance(componentTag, instance);
 
 		instance.event.once("destroy", () => {
-			removeTrackedInstance(instances, instance);
-
-			removeIndexedComponentInstance(instance.uid);
+			untrackInstance(instance);
 		});
 
 		return instance;
@@ -280,6 +285,8 @@ export function create<
 				runtimeOptions,
 				props,
 				trackInstance,
+				undefined,
+				untrackInstance,
 			),
 		);
 	}

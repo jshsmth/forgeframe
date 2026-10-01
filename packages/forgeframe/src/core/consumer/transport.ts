@@ -234,16 +234,22 @@ export class ConsumerTransport<
 			{ finishBatch: false },
 		);
 
+		let deliveryAttempted = false;
 		try {
 			await this.messenger.send(
 				this.hostWindow,
 				hostDomain,
 				MESSAGE_NAME.PROPS,
 				serialized,
+				undefined,
+				() => {
+					deliveryAttempted = true;
+				},
 			);
 			this.bridge.finishBatch();
 		} catch (error) {
-			this.bridge.finishBatch(true);
+			if (deliveryAttempted) this.bridge.finishBatch(true);
+			else this.bridge.abortBatch();
 			throw error;
 		}
 	}

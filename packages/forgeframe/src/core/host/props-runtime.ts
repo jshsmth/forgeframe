@@ -20,6 +20,7 @@ import type {
 	HostProps,
 	RemoteValue,
 } from "../../types/runtime";
+import { normalizeError } from "../../utils/error";
 import { getDomain } from "../../window/helpers";
 import type {
 	HostBootstrapData,
@@ -141,19 +142,24 @@ export class HostPropsRuntime<
 		}
 	}
 
+	/** Validates retained props before reconciling newly consumer-only fields out of host state. */
 	applyHostConfiguration(
 		propDefinitions: HostPropsDefinition<P, SchemaInputs>,
 	): void {
+		const nextProps = this.filterConsumerOnlyProps(
+			this.consumerProps,
+			propDefinitions,
+		);
 		if (this.initialized)
 			validateNormalizedProps(
-				this.consumerProps as P,
+				nextProps as P,
 				this.getBootstrapValidationDefinitions(propDefinitions),
 			);
+		const nextHostProps = filterReservedHostPropKeys(nextProps);
 		this.propDefinitions = propDefinitions;
-		Object.assign(
-			this.hostProps,
-			filterReservedHostPropKeys(this.consumerProps),
-		);
+		this.removeStaleHostProps(this.consumerProps, nextHostProps);
+		this.consumerProps = nextProps;
+		Object.assign(this.hostProps, nextHostProps);
 		this.hostProps.consumer.props = this.consumerProps;
 	}
 
@@ -181,7 +187,10 @@ export class HostPropsRuntime<
 			const previousProps = this.consumerProps;
 			const nextProps = this.deserialize(serializedProps);
 
-			validateNormalizedProps(nextProps as P, this.propDefinitions);
+			validateNormalizedProps(
+				nextProps as P,
+				this.getDeliveredPropDefinitions(),
+			);
 			const nextHostProps = filterReservedHostPropKeys(nextProps);
 
 			this.commitHostProps(
@@ -196,8 +205,7 @@ export class HostPropsRuntime<
 
 			return { success: true };
 		} catch (error) {
-			const propsError =
-				error instanceof Error ? error : new Error(String(error));
+			const propsError = normalizeError(error);
 			console.error("Error deserializing props:", propsError);
 			this.options.event.emit(EVENT.ERROR, propsError);
 			throw propsError;
@@ -249,7 +257,7 @@ export class HostPropsRuntime<
 
 	private deserialize(serializedProps: SerializedProps): RemoteValue<P> {
 		return deserializeProps(
-			serializedProps,
+			this.filterConsumerOnlyProps(serializedProps),
 			this.propDefinitions,
 			this.options.getMessenger(),
 			this.options.getBridge(),
@@ -258,17 +266,51 @@ export class HostPropsRuntime<
 		) as RemoteValue<P>;
 	}
 
+	/** Filters wire or committed snapshots against the supplied delivery definitions. */
+	private filterConsumerOnlyProps<T extends Record<string, unknown>>(
+		props: T,
+		propDefinitions = this.propDefinitions,
+	): T {
+		const deliveredDefinitions =
+			this.getDeliveredPropDefinitions(propDefinitions);
+		const entries = Object.entries(props);
+		const deliveredEntries = entries.filter(
+			([key]) =>
+				!Object.hasOwn(propDefinitions, key) ||
+				Object.hasOwn(deliveredDefinitions, key),
+		);
+		return deliveredEntries.length === entries.length
+			? props
+			: (Object.fromEntries(deliveredEntries) as T);
+	}
+
 	private getBootstrapValidationDefinitions(
 		propDefinitions = this.propDefinitions,
 	): HostPropsDefinition<P, SchemaInputs> {
+		const deliveredDefinitions =
+			this.getDeliveredPropDefinitions(propDefinitions);
 		if (
 			!this.options.isConsumerDomainVerified() ||
 			this.options.getConsumerDomain() !== getDomain()
 		) {
-			return propDefinitions;
+			return deliveredDefinitions;
 		}
 
-		return relaxSameDomainBootstrapDefinitions(propDefinitions);
+		return relaxSameDomainBootstrapDefinitions(deliveredDefinitions);
+	}
+
+	/** Consumer-only definitions validate local input and are excluded from received snapshots. */
+	private getDeliveredPropDefinitions(
+		propDefinitions = this.propDefinitions,
+	): HostPropsDefinition<P, SchemaInputs> {
+		return Object.fromEntries(
+			Object.entries(propDefinitions).filter(
+				([, definition]) =>
+					!definition ||
+					isStandardSchema(definition) ||
+					definition.sendToHost !== false,
+			),
+		) as HostPropsDefinition<P, SchemaInputs>;
 	}
 
 	private buildNestedComponents(

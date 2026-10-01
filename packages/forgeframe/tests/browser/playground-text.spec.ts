@@ -95,7 +95,22 @@ test.beforeAll(async () => {
 				),
 			},
 		},
-		build: { write: false },
+		build: {
+			write: false,
+			rolldownOptions: {
+				input: {
+					main: fileURLToPath(
+						new URL("../../../playground/consumer/index.html", import.meta.url),
+					),
+					redirect: fileURLToPath(
+						new URL(
+							"../../../playground/consumer/redirect.html",
+							import.meta.url,
+						),
+					),
+				},
+			},
+		},
 	});
 	const consumerFiles = new Map(
 		output(consumer).map((entry) => [
@@ -107,7 +122,9 @@ test.beforeAll(async () => {
 		createServer((req, res) => {
 			const path = new URL(req.url ?? "/", "http://fixture.invalid").pathname;
 			const consumerFile = consumerFiles.get(
-				path === "/editor" ? "index.html" : path.slice(1),
+				path === "/editor" || path === "/tests" || path.startsWith("/tests/")
+					? "index.html"
+					: path.slice(1),
 			);
 			if (consumerFile !== undefined) {
 				res.setHeader(
@@ -278,4 +295,94 @@ test("playground Set applies an edit when blur refreshes the code preview", asyn
 	await page.locator("#btn-close").click();
 	await expect(page.locator("iframe")).toHaveCount(0);
 	await expect(page.locator("[data-remove-prop]")).toHaveCount(2);
+});
+
+test("playground test lab completes every automatic scenario and reruns cleanly", async ({
+	page,
+}) => {
+	test.setTimeout(120_000);
+	const pageErrors: string[] = [];
+	page.on("pageerror", (error) => pageErrors.push(error.message));
+	await page.goto(`${consumerOrigin}/tests`);
+	const run = page.getByRole("button", { name: "Run all automatic scenarios" });
+	await expect(page.locator(".scenario-card")).toHaveCount(18);
+	const expectedScenarios = [
+		"Lifecycle and re-entry",
+		"URL and iframe security",
+		"Function bridge",
+		"Props and delivery policy",
+		"Consumer controls",
+		"Nested components",
+		"Error transport",
+		"Configuration surface",
+		"Instances and peers",
+		"Host-initiated controls",
+		"POST and trust policy",
+		"Reliability and isolation",
+		"Common actions",
+		"Redirect journey",
+		"Timeout and recovery",
+		"Twenty-instance stress journey",
+		"Customer checkout journey",
+	];
+	let firstNames: string[] | undefined;
+	for (let iteration = 0; iteration < 2; iteration += 1) {
+		await run.click();
+		// Results report intermediate success too; wait for the runner to finish.
+		await expect(run).toBeEnabled({ timeout: 90_000 });
+		const failures = await page.locator(".result.fail").allTextContents();
+		expect(failures).toEqual([]);
+		await expect(page.locator(".result.pass")).toHaveCount(76);
+		const names = await page.locator(".result-name").allTextContents();
+		expect(
+			[...new Set(names.map((name) => name.split(": ")[0]))].sort(),
+		).toEqual(expectedScenarios.slice().sort());
+		if (firstNames) expect(names).toEqual(firstNames);
+		else firstNames = names;
+		await expect(page.locator(".result.skip .result-name")).toHaveText(
+			"POST and trust policy: POST body bootstrap requires a POST-capable host",
+		);
+		await expect(page.locator(".result.skip .result-detail")).toContainText(
+			"Skipped in production",
+		);
+		await expect(page.locator("body")).toHaveAttribute(
+			"data-test-status",
+			"passed",
+		);
+		await expect(page.locator("iframe")).toHaveCount(0);
+		await expect(page.locator("#scenario-sandbox")).toBeEmpty();
+	}
+	expect(pageErrors).toEqual([]);
+});
+
+test("playground popup scenario runs from a user click and cleans up", async ({
+	page,
+}) => {
+	const pageErrors: string[] = [];
+	page.on("pageerror", (error) => pageErrors.push(error.message));
+	await page.goto(`${consumerOrigin}/tests/popup`);
+	await expect(page.locator("#scenario-summary")).toHaveText(
+		"Click Run scenario to allow the popup",
+	);
+	await expect(page.locator("#run-scenario")).toBeEnabled();
+	expect(page.context().pages()).toHaveLength(1);
+	await expect(page.locator("#scenario-results")).toBeEmpty();
+	for (let iteration = 0; iteration < 2; iteration += 1) {
+		const opened = page.waitForEvent("popup");
+		await page.locator("#run-scenario").click();
+		const popup = await opened;
+		popup.on("pageerror", (error) => pageErrors.push(error.message));
+		await expect(page.locator("#run-scenario")).toBeEnabled();
+		expect(await page.locator(".result.fail").allTextContents()).toEqual([]);
+		await expect(page.locator(".result.pass")).toHaveCount(5);
+		await expect(page.locator(".result.skip")).toHaveCount(0);
+		await expect(page.locator("body")).toHaveAttribute(
+			"data-test-status",
+			"passed",
+		);
+		await expect.poll(() => popup.isClosed()).toBe(true);
+		await expect(page.locator("iframe")).toHaveCount(0);
+		await expect(page.locator("#scenario-sandbox")).toBeEmpty();
+	}
+	expect(pageErrors).toEqual([]);
 });

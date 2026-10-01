@@ -71,6 +71,8 @@ export interface IframeAttributes {
  *
  * @remarks
  * These styles are applied directly to the iframe's style property.
+ * Numeric dimensional values use pixels; unitless CSS values keep their numeric meaning.
+ * Custom property names preserve case and their values do not receive automatic units.
  * Common use cases include setting borders, shadows, border-radius, etc.
  *
  * @example

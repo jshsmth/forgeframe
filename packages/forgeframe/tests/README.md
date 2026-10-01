@@ -18,9 +18,10 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `consumer-renderer.test.ts`: Renderer ownership of iframe/popup resources, loading completion, custom shell/control preservation, templates, form cleanup after submission failure, mount-document prototypes, and teardown.
 - `consumer-transport.test.ts`: Direct consumer transport behavior for trust rotation, failed prop sync cleanup, handshake waiting, and async init error forwarding.
 - `consumer-origin-policy.test.ts`: Trust decisions from supplied origin evidence, messaging-origin validation, and changed-origin selection.
+- `error.test.ts`: Unknown-error normalization preserves Error identity and ordinary coercion, with a stable fallback when coercion throws.
 - `emitter.test.ts`: Event emitter subscription semantics, once/off behavior, and async error isolation.
 - `host-branch-coverage.test.ts`: Host branch/edge-path coverage for deferred init, failure capture, and guard paths.
-- `host-lifecycle.test.ts`: Host lifecycle message handling, hostProps synchronization, and consumer window resolution.
+- `host-lifecycle.test.ts`: Host lifecycle message handling, hostProps synchronization, consumer window resolution, consumer-only field discard in legacy bootstrap payloads, atomic late-configuration validation/reconciliation, built-in and snapshot identity, and pending-bootstrap removal persistence.
 - `host-transport.test.ts`: Direct host transport behavior for deferred init scheduling, trust updates, props routing, and teardown.
 - `host-security.test.ts`: Host allowlist enforcement and deferred-init security gating.
 - `iframe.test.ts`: Iframe creation, reserved-attribute guards, visibility, and sizing helpers.
@@ -49,6 +50,7 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `schema-contract.test.ts`: Contract coverage against real schema libraries (Zod and Valibot).
 - `schema-path-format.test.ts`: Error path formatting behavior for mixed key/index Standard Schema segments.
 - `schema.test.ts`: Standard Schema detection and schema-aware prop validation integration.
+- `realm-values.test.ts`: Cross-window Date and ordinary-record recognition, class/array rejection, and preservation of codec array values.
 - `render-templates.test.ts`: Render template DOM creation, styles, transitions, and prerender swap behavior.
 - `utils.test.ts`: UID, cleanup manager, and promise utility behavior.
 - `url.test.ts`: Relative URL resolution and query appending that preserves fragments, existing encoding, and duplicate parameters.
@@ -60,15 +62,18 @@ All unit tests and shared fixtures are strictly compiled by `npm run typecheck`,
 
 ## Integration Tests (`packages/forgeframe/tests/integration`)
 
+`consumer-host-handshake.test.ts` also covers parent bootstrap with a recursive Zod child schema and public host destruction followed by fresh initialization, prop synchronization, and working host controls. `prop-schema.test.ts` verifies enum constraints and diagnostics stay stable after the caller mutates the original values array.
+
 - `array-prop-transport.test.ts`: Consumer-side rejection of undefined/sparse array entries before opening or update commitment, recovery, nested values, item defaults, nullable entries, delivery-policy exclusions, custom encoders/host decorators, and export rejection without replacing acknowledged data.
 - `body-param-bootstrap.test.ts`: End-to-end iframe and popup `bodyParam` POST bootstrap coverage, including hidden-form submission and host initialization.
 - `consumer-host-handshake.test.ts`: End-to-end iframe happy path covering `create()`, `instance.render()`, `initHost()`, and the real INIT handshake, plus oversized bootstrap metadata rejection followed by a valid retry.
+- `cross-realm-props.test.ts`: Foreign-window Date and record inputs round-trip through props and exports across JSON, BASE64 and DOTIFY.
 - `function-prop-bridge.test.ts`: Capacity rejection/recovery across all codecs, omitted callback defaults, a genuinely dropped acknowledgement with receiver-installed callbacks, and real cross-window callback bridging from host `window.hostProps` back to consumer callbacks, including async results, thrown errors, BASE64/DOTIFY nested callback/Date bootstrap and updates, and retirement of replaced callbacks after acknowledged updates in all three serialization modes.
 - `host-controls-routing.test.ts`: Atomic export/peer-capacity rejection, held-reference recovery, and real host-builtins coverage for close/focus/resize/show/hide/error/export/peer lookup, plus spoofed-source rejection on consumer and host runtimes.
 - `object-prop-roundtrip.test.ts`: Ordinary BASE64/DOTIFY/function-shaped records retain user fields through bootstrap and updates in all three serialization modes, including direct and nested DOTIFY branches converted by custom JSON encoders.
 - `popup-host-handshake.test.ts`: End-to-end popup happy path and popup-blocked failure coverage through `render(..., 'popup')` and `initHost()`.
 - `props-alias-sync.test.ts`: End-to-end canonical host synchronization for initial, updated, and chained alias values.
-- `props-sync.test.ts`: Post-connect prop updates across the real messaging pipeline, including host snapshot replacement, stale inherited-name key removal, nonfinite update rejection/recovery, host-side rejection followed by a queued valid update, private prop filtering, and nonblocking/cancellable `onProps` subscriber delivery.
+- `props-sync.test.ts`: Post-connect prop updates across the real messaging pipeline, including host snapshot replacement, stale inherited-name key removal, nonfinite update rejection/recovery, host-side rejection followed by a queued valid update, private prop filtering, discard of stale consumer-only wire fields across JSON/BASE64/DOTIFY bootstrap and updates, private-field purge through late matching `create()`/`initHost()` with retained callbacks and subsequent updates, and nonblocking/cancellable `onProps` subscriber delivery.
 - `react-driver-dom.test.ts`: Real React DOM construction failures stay local to the wrapper and preserve sibling application content.
 - `react-host-sync.test.ts`: Real React DOM commits through the consumer/host handshake and messaging pipeline, covering updates before readiness, omitted prop defaults/removal, validation recovery, unmount cancellation/cleanup, wrapper styles/prop filtering, latest callbacks and DOM refs, equivalent-commit suppression, popup-to-iframe recovery, StrictMode replay, host error forwarding, and rejected lifecycle/error observer isolation.
 
@@ -86,9 +91,14 @@ Install the engines with `npx playwright install chromium firefox webkit`, then 
 
 The suite also renders two same-tag widgets concurrently against the same host origin, verifying independent prop snapshots and callbacks and continued operation after one peer closes.
 
+`playground-text.spec.ts` also runs the real `/tests` overview twice through its Run all button. It requires all 17 automatic scenarios, 76 passing assertions, the single documented production POST skip, no failures or uncaught page errors, and an empty sandbox after completion. It waits for the runner button to become enabled, since intermediate results can already say passed. The `/tests/popup` route must wait for a user click, complete all five assertions, close its window, and rerun successfully. POST transport remains exercised by the existing POST-capable navigation/integration fixtures.
+
+`react-journey.spec.ts` bundles real React/React DOM and the public ForgeFrame driver with a separate host origin. Normal and StrictMode journeys verify readiness, prop delivery, updated callback return values, validation rejection without replacing host state or retiring acknowledged callbacks, subsequent recovery, forwarded-ref cleanup, zero active instances, removal of embedded frames, and preservation of surrounding application content. Development React is intentional: an effect probe verifies StrictMode actually performs its setup/cleanup replay. The browser fixture itself is strictly typechecked; it does not add React to the published runtime dependencies.
+
 ## Type Tests (`packages/forgeframe/tests/typecheck`)
 
 - `component-inference.typecheck.ts`: Compile-time assertions for inferred and explicit schema-backed component props, third-party schemas, callbacks, and typed children.
+- `events.typecheck.ts`: Typed event handlers preserve compatible registration and removal contracts and reject incompatible explicit types.
 - `host.typecheck.ts`: Host initialization and host-prop schema input/output contracts.
 - `remote-values.typecheck.ts`: Promise-returning remote callbacks and exports, nested data shapes, and unchanged local callback inputs.
 - `prop-schema.typecheck.ts`: Prop builder inference, defaults, optionality, and composite schemas.
@@ -109,9 +119,6 @@ The suite also renders two same-tag widgets concurrently against the same host o
 - Run a single test file: `npm run test:run -w forgeframe -- tests/unit/<file>.test.ts`
 - Run type assertions and all unit, integration, and browser fixture checks: `npm run typecheck:tests -w forgeframe`
 - Run integration fixture checks alone: `npx tsc -p packages/forgeframe/tests/integration/tsconfig.json --noEmit`
-
-See [the September 2026 test review](../../../docs/test-review.md) for the coverage assessment, regression checks, completed fixture migration, and test-quality decisions.
-
 
 ## Choosing useful additions
 

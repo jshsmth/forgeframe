@@ -13,6 +13,46 @@ describe("Ordinary object prop round trips", () => {
 		harness = null;
 	});
 
+	it("omits BASE64 roots whose JSON encoder returns undefined during bootstrap and updates", async () => {
+		harness = createIframeIntegrationHarness();
+		let calls = 0;
+		class OmittedValue {
+			[key: string]: unknown;
+			toJSON() {
+				calls++;
+				return undefined;
+			}
+		}
+		const definitions = {
+			record: {
+				schema: prop.object().optional(),
+				serialization: PROP_SERIALIZATION.BASE64,
+			},
+		};
+		const Component = create({
+			tag: "omitted-base64-root",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const container = document.createElement("div");
+		document.body.append(container);
+		const instance = Component({ record: new OmittedValue() });
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			definitions,
+		);
+		await rendering;
+		expect(hostProps.record).toBeUndefined();
+		expect(calls).toBe(1);
+		await instance.updateProps({ record: { value: "visible" } });
+		expect(hostProps.record).toEqual({ value: "visible" });
+		await instance.updateProps({ record: new OmittedValue() });
+		expect(hostProps.record).toBeUndefined();
+		expect(Object.hasOwn(hostProps, "record")).toBe(false);
+		expect(calls).toBe(2);
+	});
+
 	describe.each([
 		PROP_SERIALIZATION.JSON,
 		PROP_SERIALIZATION.BASE64,

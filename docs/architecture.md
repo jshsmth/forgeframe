@@ -1,3 +1,13 @@
+---
+name: architecture
+title: ForgeFrame architecture
+desc: Consumer and host state ownership, transport contracts, and lifecycle flows.
+tags: []
+sources: []
+created: 2026-10-01T01:55:30Z
+updated: 2026-10-01T01:55:30Z
+---
+
 # ForgeFrame architecture
 
 ForgeFrame has two runtimes: the **consumer** is the outer embedding app; the **host** is the embedded iframe or popup. The public entrypoint is `packages/forgeframe/src/index.ts`. Importing it does not initialize a browser runtime. Without browser globals, host detection returns false, `initHost()` returns null, and `getHostProps()` returns undefined. The default `ForgeFrame` object delegates to the same named exports.
@@ -23,6 +33,14 @@ ForgeFrame has two runtimes: the **consumer** is the outer embedding app; the **
 
 ## Render and verified bootstrap
 
+Factory/index deregistration is owned by consumer teardown, independently of removable public event listeners. It occurs before destruction observers and propagates to clones. The retained public destroy listener also preserves synthetic event behavior.
+
+The renderer stores explicit iframe visibility independently of initial loading concealment. Prerender completion checks current visibility before revealing the iframe, so an acknowledged hide during initialization remains in force. CSS encoding preserves case-sensitive custom property names and unitless numeric values; dimensional numeric styles remain pixels.
+
+Nested child references contain only serializable component metadata. Executable prop definitions remain in the local component registry and never enter the parent's bootstrap response, including when a child uses a recursive third-party schema.
+
+The bootstrap owner supplies the host's teardown callback. Public host destruction releases the singleton and window accessor, while owner-initiated cleanup clears the singleton before destroying its resources. This preserves idempotence and allows a later initialization to use retained channel metadata without returning a destroyed host.
+
 1. `create()` validates the declaration and registers a factory. Calling the factory constructs and tracks a consumer instance; defining a matching component inside a host also configures host initialization.
 2. `render()` installs its render task before user callbacks can re-enter and captures the settled tail of previously admitted prop work. `performRender()` drains that work if present, rechecks cancellation, validates props and eligibility, and pins an absolute URL resolved against `document.baseURI` inside the URL-trust guard. It then resolves the container and sequences prerender/open/handshake/display stages. Newly requested updates remain rejected while rendering.
 3. `emitRenderStage()` checks cancellation after the event and after its prop callback. Resource creation and user templates also keep cancellation checks before advancing.
@@ -47,11 +65,19 @@ Legacy payload behaviour remains distinct. Do not relax its origin verification 
 - Queue entries are installed before decorators or validators can re-enter, including before a host is connected. The first update starts synchronously; subsequent entries run in FIFO order, with failures allowing later entries to continue. Host bootstrap and updates share the queue, preventing bridge batches from overlapping.
 - On the host, deserialize/validate/filter precede reconciliation. Stale custom keys are removed; built-ins remain protected. Subscribers are invoked after commitment and before the props event. Async failures are caught without awaiting subscriber work or delaying acknowledgement. A newer acknowledged update arriving during bootstrap takes precedence over the older bootstrap snapshot.
 
+The host discards fields with explicit consumer-only (`sendToHost: false`) definitions before decoding legacy/bootstrap or update snapshots, including values sent by stale consumers. They never enter host state or notifications; host validation excludes their definitions while consumer validation still requires their inputs. Undeclared fields retain their existing delivery behavior. Synchronous schema admission recognizes promises across realms, including inside composite schemas, default probes, and normalized-output checks. BASE64 root encoders returning undefined omit their prop; DOTIFY retains its own-field root traversal and JSON-encoded leaf behavior.
+
+Late host configuration filters the current consumer snapshot against the proposed definitions, validates retained values when initialized, and then removes stale custom host keys and commits both snapshots. Rejected validation leaves the prior definitions and state intact. Built-in controls and retained callbacks preserve identity; unchanged snapshots retain their reference, and configuration does not notify subscribers or emit a props event. A pending bootstrap still selects the latest acknowledged wire snapshot and filters it with the current definitions before commitment, preventing removed fields from returning.
+
+Neutral realm-value helpers recognize genuine Date internal branding and ordinary object prototypes across browser windows. Schemas, output comparisons, array admission and recursive codecs share that recognition. Class instances remain distinct from ordinary records, and invalid Date transport framing remains unchanged. Event handler removal carries the same generic data contract as registration, without changing listener identity or dispatch semantics.
+
 ## Messages and remote callbacks
 
 Admission rejects self/untrusted traffic before decoding, then checks channel identity and a usable event source. Responses additionally match the pending request's target window and expected origin. Requests receive browser-verified source metadata, rather than claimed envelope metadata.
 
 The request integration executes the handler, builds a response, and posts it. Serialization failures retain the serializable error response. Timeouts and teardown retain their rejection semantics.
+
+Messenger requests encode the full envelope before allocating a pending request and signal the delivery attempt immediately before posting. Prop/export batches abort newly registered callbacks when encoding fails before that boundary, and conservatively retain them after an attempted post. Unknown thrown values are normalized without allowing diagnostic coercion to throw, so callback errors always reach the response path.
 
 The bridge gives local functions stable IDs while retained and caches remote wrappers by ID/window/origin. Remote cache eviction remains bounded at 500 entries; local callable references are never evicted to admit another callback. Peer exports are serialized through a separate `PEER_CALL` relay bridge with the same source checks and bounded capacity. Held peer snapshots survive prop batches and repeated discovery; replacement exports still retire their original source functions. Reconnection clears old requester relay identities, and teardown clears both bridges. Each prop/export snapshot admits at most 500 distinct functions. New registrations are staged and callable during delivery; an acknowledged batch removes stale references, while bootstrap retains its existing serialization completion boundary. Pre-delivery serialization failures roll back only new registrations. Delivery failures conservatively retain previous and possibly delivered references in a pool capped at 1,000, rejecting additional registrations until an acknowledged retry using retained callbacks or a new session frees capacity. The verified new-session reset occurs inside queued bootstrap serialization after earlier updates settle. It releases callable registrations while keeping weak IDs, so callbacks already acknowledged by the new host retain their identities when re-registered; teardown clears both registrations and weak IDs. Peer discovery uses append transactions with a cumulative 500-reference bound; failed serialization rolls back additions without retiring held peer snapshots. Codec guards require the complete own-property shape of transport wrappers. Encoding escapes ordinary marker-shaped records (including the escaped-record marker itself). JSON-encoded leaves are converted once with native JSON semantics, then their final shapes are escaped. DOTIFY also escapes assembled object branches after leaf conversion, omits JSON-undefined leaves, and preserves branches emptied by omission; codec-generated function and Date markers retain their identities, and decoding restores their fields without interpreting the record as a function, Date, or encoded prop. Recursive serialization retains Date framing, cycle handling, unsafe-key filtering, and JSON/BASE64/DOTIFY behaviour. BASE64 and DOTIFY encode nested functions through the same bridge registry while retaining JSON `toJSON()` behavior; decoding reconstructs function references and Date wrappers together. These encoding callbacks participate in the transport-owned serialization batch.
 
@@ -63,10 +89,12 @@ Each mounted instance has isolated sync state. Commits produce shallow snapshots
 
 ## IOSP maintenance
 
+Enum construction snapshots the supplied values array so its diagnostics, membership set, and presence/default clones retain the same constraints after caller mutations.
+
 Popup sizing converts numbers, numeric strings, and `px` strings to pixels. Nonpixel CSS units use 500-pixel opening fallbacks or the current window size during resize; iframe CSS sizing preserves those units. Playground host displays and consumer logs construct dynamic content with DOM text properties, keeping peer-controlled strings out of HTML parsing while retaining static layouts and controls.
 
 Operations implement cohesive policy, transformations, state transitions, or browser actions. Integrations sequence package-owned behaviour. Calls to browser/runtime/schema APIs do not by themselves require extraction. Retain cohesive recursive algorithms and short local adapters; avoid an interface or wrapper without a useful responsibility.
 
 Pure policy should depend on supplied observations and neutral types/helpers. Browser reads and resource effects belong in browser operations or their coordinating runtime. Internal helpers stay inside the owning subsystem and are not added to root exports. Exported schema classes retain their existing members; use module-level helpers for decomposition.
 
-See [the complete classification record](iosp-review.md) and [the test index](../packages/forgeframe/tests/README.md) for entrypoints and evidence. Public contracts remain in the root README and typecheck suites.
+See [the callable reference](iosp-review.md) and [the test index](../packages/forgeframe/tests/README.md) for entrypoints and boundary tests. Public contracts remain in the root README and typecheck suites.

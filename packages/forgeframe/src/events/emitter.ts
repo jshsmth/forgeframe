@@ -57,7 +57,7 @@ export class EventEmitter implements EventEmitterInterface {
 		// biome-ignore lint/style/noNonNullAssertion: The set is created immediately above when absent.
 		this.listeners.get(event)!.add(handler as EventHandler);
 
-		return () => this.off(event, handler as EventHandler);
+		return () => this.off(event, handler);
 	}
 
 	/**
@@ -83,7 +83,7 @@ export class EventEmitter implements EventEmitterInterface {
 	 */
 	once<T = unknown>(event: string, handler: EventHandler<T>): () => void {
 		const onceHandler: EventHandler<T> = (data) => {
-			this.off(event, onceHandler as EventHandler);
+			this.off(event, onceHandler);
 			return handler(data);
 		};
 		return this.on(event, onceHandler);
@@ -142,6 +142,7 @@ export class EventEmitter implements EventEmitterInterface {
 	/**
 	 * Unsubscribes a handler from an event, or removes all handlers for the event.
 	 *
+	 * @typeParam T - The event data expected by the handler
 	 * @param event - The name of the event to unsubscribe from
 	 * @param handler - The specific handler to remove. If not provided, all handlers for the event are removed.
 	 *
@@ -160,7 +161,7 @@ export class EventEmitter implements EventEmitterInterface {
 	 *
 	 * @public
 	 */
-	off(event: string, handler?: EventHandler): void {
+	off<T = unknown>(event: string, handler?: EventHandler<T>): void {
 		if (!handler) {
 			this.listeners.delete(event);
 			return;
@@ -168,7 +169,7 @@ export class EventEmitter implements EventEmitterInterface {
 
 		const handlers = this.listeners.get(event);
 		if (handlers) {
-			handlers.delete(handler);
+			handlers.delete(handler as EventHandler);
 			if (handlers.size === 0) {
 				this.listeners.delete(event);
 			}

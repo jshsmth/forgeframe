@@ -893,6 +893,26 @@ describe("prop.literal()", () => {
 // ============================================================================
 
 describe("prop.enum()", () => {
+	it("keeps allowed values and fluent clones stable when the input array changes", () => {
+		const values: Array<"pending" | "active"> = ["pending"];
+		const schema = prop.enum(values);
+		values.splice(0, 1, "active");
+
+		for (const candidate of [
+			schema,
+			schema.optional(),
+			schema.nullable(),
+			schema.default("pending"),
+		]) {
+			expect(candidate["~standard"].validate("pending")).toEqual({
+				value: "pending",
+			});
+			expect(candidate["~standard"].validate("active")).toEqual({
+				issues: [{ message: 'Expected one of ["pending"], got "active"' }],
+			});
+		}
+	});
+
 	it("should validate string enum values", () => {
 		const schema = prop.enum(["pending", "active", "completed"] as const);
 		expect(schema["~standard"].validate("active")).toEqual({ value: "active" });

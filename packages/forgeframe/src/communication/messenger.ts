@@ -13,6 +13,7 @@ import {
 	compileWildcardDomainPattern,
 	testDomainRegExpStateless,
 } from "../utils/domain-pattern";
+import { normalizeError } from "../utils/error";
 import { createDeferred, type Deferred } from "../utils/promise";
 import { generateShortUID } from "../utils/uid";
 import {
@@ -239,6 +240,7 @@ export class Messenger {
 	 * @param name - The message name/type
 	 * @param data - Optional data payload
 	 * @param timeout - Timeout in milliseconds (default: 10000)
+	 * @param onDeliveryAttempt - Internal notification after encoding, immediately before posting
 	 * @returns Promise resolving to the response data
 	 * @throws Error if messenger is destroyed or timeout occurs
 	 */
@@ -248,6 +250,7 @@ export class Messenger {
 		name: string,
 		data?: T,
 		timeout = 10000,
+		onDeliveryAttempt?: () => void,
 	): Promise<R> {
 		if (this.destroyed) {
 			throw new Error("Messenger has been destroyed");
@@ -258,6 +261,8 @@ export class Messenger {
 			uid: this.channelUid,
 			domain: this.domain,
 		});
+		const serialized = serializeMessage(message);
+		if (this.destroyed) throw new Error("Messenger destroyed");
 
 		const deferred = createDeferred<R>();
 		const timeoutId = setTimeout(() => {
@@ -278,7 +283,8 @@ export class Messenger {
 		});
 
 		try {
-			targetWin.postMessage(serializeMessage(message), targetDomain);
+			onDeliveryAttempt?.();
+			targetWin.postMessage(serialized, targetDomain);
 		} catch (err) {
 			this.pending.delete(id);
 			clearTimeout(timeoutId);
@@ -415,7 +421,7 @@ export class Messenger {
 				origin,
 			);
 		} catch (error) {
-			responseError = normalizeResponseError(error);
+			responseError = normalizeError(error);
 		}
 		const serialized = this.serializeResponse(
 			message,
@@ -506,9 +512,4 @@ export class Messenger {
 	isDestroyed(): boolean {
 		return this.destroyed;
 	}
-}
-
-/** Preserves Error instances and the existing conversion for non-Error throws. */
-function normalizeResponseError(error: unknown): Error {
-	return error instanceof Error ? error : new Error(String(error));
 }

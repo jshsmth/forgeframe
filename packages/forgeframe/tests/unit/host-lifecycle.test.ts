@@ -132,6 +132,112 @@ afterEach(async () => {
 });
 
 describe("Host lifecycle behavior", () => {
+	it("reconciles late private fields only after replacement validation succeeds", () => {
+		const host = createHost({
+			payload: createPayload({
+				props: { amount: 10, local: "private", close: "wire value" },
+			}),
+		});
+		try {
+			const previous = host.hostProps.consumer.props;
+			const close = host.hostProps.close;
+			const privateDefinitions = {
+				local: { schema: prop.string(), required: true, sendToHost: false },
+				close: { schema: prop.string(), sendToHost: false },
+			};
+			expect(() =>
+				host.applyHostConfiguration({
+					...privateDefinitions,
+					amount: prop.number().min(100),
+				}),
+			).toThrow("Number must be >= 100");
+			expect(host.hostProps.consumer.props).toBe(previous);
+			expect(host.hostProps.local).toBe("private");
+			const propsHandler = requireValue(
+				(
+					host as unknown as {
+						messenger: { handlers: Map<string, DirectHandler> };
+					}
+				).messenger.handlers.get(MESSAGE_NAME.PROPS),
+			);
+			expect(
+				propsHandler(
+					{ amount: 11, local: "next", close: "wire value" },
+					createMessageSource(window),
+				),
+			).toEqual({ success: true });
+			expect(host.hostProps.local).toBe("next");
+			const definitions = { ...privateDefinitions, amount: prop.number() };
+			host.applyHostConfiguration(definitions);
+			expect(host.hostProps.consumer.props).toEqual({ amount: 11 });
+			expect(Object.hasOwn(host.hostProps, "local")).toBe(false);
+			expect(host.hostProps.close).toBe(close);
+			const filtered = host.hostProps.consumer.props;
+			host.applyHostConfiguration(definitions);
+			expect(host.hostProps.consumer.props).toBe(filtered);
+		} finally {
+			host.destroy();
+		}
+	});
+
+	it("does not restore purged acknowledged fields when pending bootstrap completes", async () => {
+		const bootstrap = createDeferred<{
+			props: { amount: number; local: string };
+		}>();
+		vi.spyOn(Messenger.prototype, "send").mockImplementation(
+			() => bootstrap.promise,
+		);
+		const host = createHost({
+			payload: createPayload({ protocolVersion: PROTOCOL_VERSION }),
+		});
+		try {
+			const propsHandler = requireValue(
+				(
+					host as unknown as {
+						messenger: { handlers: Map<string, DirectHandler> };
+					}
+				).messenger.handlers.get(MESSAGE_NAME.PROPS),
+			);
+			expect(
+				propsHandler(
+					{ amount: 42, local: "new private" },
+					createMessageSource(window),
+				),
+			).toEqual({ success: true });
+			host.applyHostConfiguration({
+				amount: prop.number(),
+				local: { schema: prop.string(), required: true, sendToHost: false },
+			});
+			expect(host.hostProps.consumer.props).toEqual({ amount: 42 });
+			bootstrap.resolve({ props: { amount: 10, local: "old private" } });
+			await host.ready;
+			expect(host.hostProps.consumer.props).toEqual({ amount: 42 });
+			expect(Object.hasOwn(host.hostProps, "local")).toBe(false);
+		} finally {
+			host.destroy();
+		}
+	});
+
+	it("discards consumer-only fields in legacy bootstrap payloads", () => {
+		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
+		const host = new HostComponent(
+			createPayload({ props: { amount: 10, local: 42 } }),
+			{
+				amount: prop.number(),
+				local: { schema: prop.string(), required: true, sendToHost: false },
+			},
+			undefined,
+			true,
+		);
+		try {
+			expect(host.hostProps.amount).toBe(10);
+			expect(host.hostProps.consumer.props).toEqual({ amount: 10 });
+			expect(Object.hasOwn(host.hostProps, "local")).toBe(false);
+		} finally {
+			host.destroy();
+		}
+	});
+
 	it("preserves the latest acknowledged update when an older bootstrap response arrives", async () => {
 		const bootstrap = createDeferred<{ props: { amount: number } }>();
 		vi.spyOn(Messenger.prototype, "send").mockImplementation(

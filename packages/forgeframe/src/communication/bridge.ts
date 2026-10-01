@@ -8,6 +8,7 @@
  */
 
 import { MESSAGE_NAME } from "../constants";
+import { isDate } from "../utils/realm-values";
 import { generateShortUID } from "../utils/uid";
 import {
 	assertDefinedArrayEntry,
@@ -414,7 +415,7 @@ export function serializeFunctions(
 		return bridge.serialize(obj as CallableFunction);
 	}
 
-	if (obj instanceof Date) {
+	if (isDate(obj)) {
 		return encodeDateWireValue(obj);
 	}
 

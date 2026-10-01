@@ -126,6 +126,29 @@ test.beforeAll(async () => {
 				</script>`,
 				);
 			}
+			if (req.url === "/hidden-on-ready") {
+				return respond(
+					res,
+					`<!doctype html><script type="module">
+				import {initHost} from '/library.js';
+				const host = initHost({}, ['${consumerOrigin}'], {deferInit:true});
+				await host.ready;
+				await host.hostProps.hide();
+				host.flushInit();
+				window.ready = true;
+				</script>`,
+				);
+			}
+			if (req.url === "/realm-values") {
+				return respond(
+					res,
+					`<!doctype html><script type="module">
+				import {initHost,prop} from '/library.js';
+				const host = initHost({createdAt:prop.date(), config:prop.object(), record:prop.record(prop.string())}, ['${consumerOrigin}']);
+				await host.ready; window.received = host.hostProps; window.ready = true;
+				</script>`,
+				);
+			}
 			if (req.url === "/early-update") {
 				return respond(
 					res,
@@ -369,6 +392,220 @@ async function prepareDelivery(
 		},
 		{ consumerOrigin, hostOrigin, attackerOrigin, context, method, scenario },
 	);
+}
+
+test("initial rendering preserves a host hide and configured CSS values", async ({
+	page,
+}) => {
+	await page.goto(consumerOrigin);
+	const result = await page.evaluate(async (hostOrigin) => {
+		const libraryUrl = "/library.js";
+		const { create } = await import(libraryUrl);
+		const instance = create({
+			tag: "initial-hidden-style",
+			url: `${hostOrigin}/hidden-on-ready`,
+			style: {
+				zIndex: 10,
+				lineHeight: 1.5,
+				"--brandColor": "red",
+				color: "var(--brandColor)",
+			},
+		})();
+		await instance.render("#mount");
+		const iframe = document.querySelector("iframe");
+		if (!iframe) throw new Error("Missing iframe");
+		const computed = getComputedStyle(iframe);
+		const hidden = {
+			display: iframe.style.display,
+			visibility: iframe.style.visibility,
+		};
+		await instance.show();
+		return {
+			hidden,
+			shown: {
+				display: iframe.style.display,
+				visibility: iframe.style.visibility,
+			},
+			zIndex: iframe.style.zIndex,
+			lineHeight: iframe.style.lineHeight,
+			variable: iframe.style.getPropertyValue("--brandColor"),
+			color: computed.color,
+		};
+	}, hostOrigin);
+	expect(result).toEqual({
+		hidden: { display: "none", visibility: "hidden" },
+		shown: { display: "", visibility: "visible" },
+		zIndex: "10",
+		lineHeight: "1.5",
+		variable: "red",
+		color: "rgb(255, 0, 0)",
+	});
+});
+
+test("numeric CSS declarations retain the browser's unitless meaning", async ({
+	page,
+}) => {
+	await page.goto(consumerOrigin);
+	const mismatches = await page.evaluate(async (hostOrigin) => {
+		const libraryUrl = "/library.js";
+		const { create } = await import(libraryUrl);
+		const declaration = document.createElement("iframe").style;
+		const names = new Set([
+			...Array.from(getComputedStyle(document.documentElement)),
+			...Object.keys(declaration),
+			...Object.getOwnPropertyNames(Object.getPrototypeOf(declaration)),
+		]);
+		const properties = [
+			...new Set(
+				[...names].map((name) =>
+					name
+						.replace(/([A-Z])/g, "-$1")
+						.toLowerCase()
+						.replace(/^(webkit|moz|ms)-/, "-$1-"),
+				),
+			),
+		].filter(
+			(name) =>
+				name !== "opacity" &&
+				CSS.supports(name, "1") &&
+				!CSS.supports(name, "1px"),
+		);
+		const styles = Object.fromEntries(
+			properties.map((property) => [property, 1]),
+		);
+		for (const property of properties) declaration.setProperty(property, "1");
+		const instance = create({
+			tag: "numeric-css-contract",
+			url: `${hostOrigin}/hidden-on-ready`,
+			style: styles,
+		})();
+		await instance.render("#mount");
+		const iframe = document.querySelector<HTMLIFrameElement>("#mount iframe");
+		if (!iframe) throw new Error("Missing iframe");
+		return properties.flatMap((property) => {
+			const expected = declaration.getPropertyValue(property);
+			const actual = iframe.style.getPropertyValue(property);
+			return actual === expected ? [] : [{ property, expected, actual }];
+		});
+	}, hostOrigin);
+	expect(mismatches).toEqual([]);
+});
+
+for (const serialization of ["json", "base64", "dotify"] as const) {
+	test(`${serialization} preserves foreign-window dates and ordinary records`, async ({
+		page,
+	}) => {
+		await page.goto(consumerOrigin);
+		await page.evaluate(
+			async ({ hostOrigin, serialization }) => {
+				const libraryUrl = "/library.js";
+				const { create, prop } = await import(libraryUrl);
+				const realm = document.createElement("iframe");
+				document.body.append(realm);
+				const foreign = realm.contentWindow as unknown as {
+					Date: DateConstructor;
+					Object: ObjectConstructor;
+				};
+				const createdAt = new foreign.Date("2026-01-02T03:04:05.678Z");
+				const record = foreign.Object.assign(new foreign.Object(), {
+					name: "initial",
+				});
+				const config = foreign.Object.assign(new foreign.Object(), {
+					nested: { createdAt },
+				});
+				const instance = create({
+					tag: "foreign-window-values",
+					url: `${hostOrigin}/realm-values`,
+					props: {
+						createdAt: { schema: prop.date(), serialization },
+						config: { schema: prop.object(), serialization },
+						record: { schema: prop.record(prop.string()), serialization },
+					},
+				})({ createdAt, config, record });
+				(
+					window as unknown as {
+						instance: import("../../src/types").ForgeFrameComponentInstance<
+							Record<string, unknown>,
+							{ createdAt: Date; record: Record<string, string> }
+						>;
+					}
+				).instance = instance;
+				await instance.render("#mount");
+			},
+			{ hostOrigin, serialization },
+		);
+		const hostFrame = page
+			.frames()
+			.find((frame) => frame.url() === `${hostOrigin}/realm-values`);
+		if (!hostFrame) throw new Error("Missing host frame");
+		expect(
+			await hostFrame.evaluate(() => {
+				const props = (
+					window as unknown as {
+						received: import("../../src/types").HostProps<{
+							createdAt: Date;
+							config: { nested: { createdAt: Date } };
+							record: Record<string, string>;
+						}>;
+					}
+				).received;
+				return {
+					date: props.createdAt instanceof Date,
+					nested: props.config.nested.createdAt instanceof Date,
+					iso: props.createdAt.toISOString(),
+					record: props.record,
+				};
+			}),
+		).toEqual({
+			date: true,
+			nested: true,
+			iso: "2026-01-02T03:04:05.678Z",
+			record: { name: "initial" },
+		});
+		await hostFrame.evaluate(async () => {
+			const realm = document.createElement("iframe");
+			document.body.append(realm);
+			const foreign = realm.contentWindow as unknown as {
+				Date: DateConstructor;
+				Object: ObjectConstructor;
+			};
+			const props = (
+				window as unknown as {
+					received: import("../../src/types").HostProps<
+						Record<string, unknown>
+					>;
+				}
+			).received;
+			await props.export({
+				createdAt: new foreign.Date("2026-02-03T04:05:06.789Z"),
+				record: foreign.Object.assign(new foreign.Object(), {
+					name: "exported",
+				}),
+			});
+		});
+		expect(
+			await page.evaluate(() => {
+				const exported = (
+					window as unknown as {
+						instance: import("../../src/types").ForgeFrameComponentInstance<
+							Record<string, unknown>,
+							{ createdAt: Date; record: Record<string, string> }
+						>;
+					}
+				).instance.exports;
+				if (!exported) throw new Error("Missing exports");
+				return {
+					date: exported.createdAt instanceof Date,
+					iso: exported.createdAt.toISOString(),
+					record: exported.record,
+				};
+			}),
+		).toEqual({
+			date: true,
+			iso: "2026-02-03T04:05:06.789Z",
+			record: { name: "exported" },
+		});
+	});
 }
 
 for (const context of ["iframe", "popup"] as const) {

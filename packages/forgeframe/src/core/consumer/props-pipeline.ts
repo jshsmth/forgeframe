@@ -4,6 +4,7 @@ import {
 	validateConsumerProps,
 } from "../../props/normalize";
 import type { PropContext } from "../../types/props";
+import { normalizeError } from "../../utils/error";
 import { createDeferred } from "../../utils/promise";
 import {
 	definedInputKeys,
@@ -596,9 +597,7 @@ export class ConsumerPropsPipeline<
 				void immediateUpdate.then(pending.resolve, pending.reject);
 				return immediateUpdate;
 			} catch (error) {
-				pending.reject(
-					error instanceof Error ? error : new Error(String(error)),
-				);
+				pending.reject(normalizeError(error));
 				throw error;
 			}
 		}

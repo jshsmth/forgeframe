@@ -1,0 +1,9 @@
+{
+	"exclude": {
+		"patterns": ["assets"]
+	},
+	"naming": {
+		"validate": ["ascii", "identifier"],
+		"allow": "-"
+	}
+}

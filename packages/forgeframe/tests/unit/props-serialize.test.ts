@@ -3,6 +3,7 @@
  *
  * Covers BASE64/DOTIFY round-trips, malformed wrapper fallback behavior, and undefined key omission in payload serialization.
  */
+import { runInNewContext } from "node:vm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FunctionBridge } from "@/communication/bridge";
 import type { Messenger } from "@/communication/messenger";
@@ -38,6 +39,74 @@ afterEach(() => {
 });
 
 describe("Props serialization behavior", () => {
+	it.each([
+		{ label: "Array.prototype", value: Array.prototype, expected: [] },
+		{
+			label: "null-prototype array",
+			value: Object.setPrototypeOf(["one"], null),
+			expected: ["one"],
+		},
+	])(
+		"preserves $label as an array in nested DOTIFY values",
+		({ value, expected }) => {
+			const { messenger, bridge } = createBridgeWithMessenger();
+			const definitions = {
+				config: {
+					schema: prop.object<{ nested: unknown[] }>(),
+					serialization: PROP_SERIALIZATION.DOTIFY,
+				},
+			};
+			const serialized = serializeProps<{ config: { nested: unknown[] } }>(
+				{ config: { nested: value } },
+				definitions,
+				bridge,
+			);
+			const restored = deserializeProps(
+				serialized,
+				definitions,
+				messenger,
+				bridge,
+				window,
+				window.location.origin,
+			);
+			expect(restored.config).toEqual({ nested: expected });
+		},
+	);
+
+	it("traverses foreign ordinary DOTIFY branches without invoking their JSON encoder", () => {
+		const { messenger, bridge } = createBridgeWithMessenger();
+		const foreign: {
+			value: Record<string, unknown>;
+			state: { calls: number };
+		} = runInNewContext(`(() => {
+			const state = { calls: 0 };
+			const value = { original: "own fields" };
+			Object.defineProperty(value, "toJSON", { value() { state.calls++; return { converted: "JSON fields" }; } });
+			return { value, state };
+		})()`);
+		const definitions = {
+			payload: {
+				schema: prop.object<{ nested: Record<string, unknown> }>(),
+				serialization: PROP_SERIALIZATION.DOTIFY,
+			},
+		};
+		const serialized = serializeProps(
+			{ payload: { nested: foreign.value } },
+			definitions,
+			bridge,
+		);
+		const restored = deserializeProps(
+			serialized,
+			definitions,
+			messenger,
+			bridge,
+			window,
+			"https://consumer.example.com",
+		);
+		expect(restored.payload).toEqual({ nested: { original: "own fields" } });
+		expect(foreign.state.calls).toBe(0);
+	});
+
 	it.each([PROP_SERIALIZATION.BASE64, PROP_SERIALIZATION.DOTIFY])(
 		"preserves encoded callbacks returned by toJSON in %s",
 		(serialization) => {

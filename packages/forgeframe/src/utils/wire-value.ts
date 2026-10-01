@@ -3,6 +3,7 @@
  */
 
 import { PROP_SERIALIZATION, type SerializationType } from "../constants";
+import { isDate, isPlainObject } from "./realm-values";
 
 interface DateWireValue {
 	__forgeframe_wire_type__: "date";
@@ -71,7 +72,7 @@ export function assertDefinedArrayEntries(
 	seen = new WeakSet<object>(),
 ): void {
 	if (typeof value !== "object" || value === null || seen.has(value)) return;
-	if (value instanceof Date) return;
+	if (isDate(value)) return;
 	// DOTIFY falls back to bridge encoding for arrays and marker-shaped roots.
 	const nodeEncoding =
 		encoding === PROP_SERIALIZATION.DOTIFY &&
@@ -112,10 +113,8 @@ export function assertDefinedArrayEntries(
 function isDotifyObjectBranch(value: unknown): boolean {
 	if (typeof value !== "object" || value === null || Array.isArray(value))
 		return false;
-	const prototype = Object.getPrototypeOf(value);
 	return (
-		(prototype === Object.prototype || prototype === null) &&
-		!needsRecordEscape(value as Record<string, unknown>)
+		isPlainObject(value) && !needsRecordEscape(value as Record<string, unknown>)
 	);
 }
 
@@ -161,7 +160,8 @@ export function encodeDateWireValue(value: Date): DateWireValue {
 export function isDateWireValue(value: unknown): value is DateWireValue {
 	if (
 		!isObjectRecord(value) ||
-		Object.getPrototypeOf(value) !== Object.prototype
+		!isPlainObject(value) ||
+		Object.getPrototypeOf(value) === null
 	) {
 		return false;
 	}
@@ -199,7 +199,7 @@ export function decodeDateWireValue(value: DateWireValue): Date {
 export function stringifyWireValue(
 	value: unknown,
 	encodeFunction?: (fn: (...args: unknown[]) => unknown) => unknown,
-): string {
+): string | undefined {
 	const paths = new WeakMap<object, string[]>();
 	const generatedMarkerPaths = new Set<string>();
 	const json = JSON.stringify(
@@ -214,7 +214,7 @@ export function stringifyWireValue(
 			}
 
 			let encoded = jsonValue;
-			if (originalValue instanceof Date) {
+			if (isDate(originalValue)) {
 				encoded = encodeDateWireValue(originalValue);
 				generatedMarkerPaths.add(JSON.stringify(path));
 			} else if (typeof jsonValue === "function" && encodeFunction) {

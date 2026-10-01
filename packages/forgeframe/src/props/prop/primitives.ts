@@ -1,3 +1,4 @@
+import { isDate } from "../../utils/realm-values";
 import type { StandardSchemaV1Result } from "../schema";
 import {
 	formatDateForMessage,
@@ -331,7 +332,7 @@ export class DateSchema extends PropSchema<Date> {
 
 	/** @internal */
 	protected _validate(value: unknown): StandardSchemaV1Result<Date> {
-		if (!(value instanceof Date)) {
+		if (!isDate(value)) {
 			return {
 				issues: [{ message: `Expected Date, got ${getValueKind(value)}` }],
 			};

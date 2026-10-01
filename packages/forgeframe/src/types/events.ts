@@ -57,7 +57,7 @@ export interface EventEmitterInterface {
 	 * @param event - Event name
 	 * @param handler - Handler to remove (optional, removes all if not provided)
 	 */
-	off(event: EventType | string, handler?: EventHandler): void;
+	off<T = unknown>(event: EventType | string, handler?: EventHandler<T>): void;
 
 	/**
 	 * Remove all event listeners.

@@ -1,81 +1,63 @@
 # ForgeFrame Agent Guide
 
-This file defines working conventions for autonomous coding agents in this repository.
+ForgeFrame provides cross-domain iframe and popup integrations. Keep changes
+focused and preserve public behavior unless the task explicitly changes it.
 
-## Mission
+## Find the relevant context
 
-- Keep `forgeframe` stable, type-safe, and secure for cross-domain iframe/popup integrations.
-- Prefer minimal, focused changes over broad refactors unless explicitly requested.
-- Preserve existing public behavior unless the task requires a breaking change.
+Project knowledge lives in the Plasma Wiki under `docs/`. Run
+`wiki map --path docs`, or read [docs/_index.md](docs/_index.md) if the CLI is
+unavailable. Open only the pages the task needs with `wiki search --path docs`
+and `wiki read --path docs`; use `wiki match --path docs` for regex searches.
 
-## Project Structure
+- Public API, usage, setup, and release commands: [README.md](README.md).
+- Subsystem changes, state ownership, and lifecycle ordering:
+  [architecture](docs/architecture.md).
+- IOSP review or callable changes: [callable reference](docs/iosp-review.md).
+  Update affected classifications and run their listed boundary tests.
+- Test selection and fixture conventions:
+  [test index](packages/forgeframe/tests/README.md).
 
-- `packages/forgeframe/src`: Core library source code.
-- `packages/forgeframe/tests`: Unit, integration, and typecheck suites for the library. See `packages/forgeframe/tests/README.md` for suite-specific guidance.
-- `packages/playground`: Consumer/host demo apps used for local validation.
-- `README.md`: Public usage and API documentation.
-- For subsystem changes, read [architecture and state ownership](docs/architecture.md). For IOSP review or refactoring, consult [callable classifications and test evidence](docs/iosp-review.md).
+Library code lives in `packages/forgeframe/src`; the consumer/host demos live in
+`packages/playground`. Use npm workspaces and the pinned tools from `npm ci`.
+Look up additional commands in the root `package.json` rather than duplicating
+them here.
 
-## Tooling and Standards
+## Preserve the contracts
 
-- Package manager: `npm` with workspaces.
-- Language: TypeScript 7 (`strict: true`).
-- Build: Vite + TypeScript declaration emit.
-- Lint and formatting: Biome (recommended rules and default formatting).
-- Test: Vitest (`jsdom` environment).
+- Preserve public types, wire formats, errors, origin/source checks, sandbox behavior,
+  callback identity, cancellation, acknowledgement, and cleanup ordering.
+- Keep state with its existing runtime. Pass browser observations into pure
+  policy; give changed callables one cohesive operation or an explicit sequence
+  of named operations. Keep recursive algorithms and useful local helpers together.
+- Keep types explicit at API boundaries. Use TSDoc for TypeScript API
+  documentation and Standard Schema for schema
+  interoperability. Add regression coverage at the appropriate public boundary
+  when behavior changes; preserve coverage thresholds.
+- Local test fixtures and playground servers are disposable validation surfaces.
+  Run and repair task-related checks as part of the authorized work.
 
-## Common Commands (Run from repo root)
+## Validate and finish
 
-- Install dependencies: `npm install`
-- Library dev playground: `npm run dev`
-- Playground split mode: `npm run dev:consumer` and `npm run dev:host`
-- Build library: `npm run build`
-- Build playground: `npm run build:playground`
-- Typecheck library: `npm run typecheck`
-- Check lint, formatting, and imports: `npm run lint`
-- Apply formatting and safe fixes: `npm run lint:fix`
-- Format files: `npm run format`
-- Check formatting: `npm run format:check`
-- Run non-writing CI checks: `npm run check:ci`
-- Run tests: `npm run test:run`
+For code changes, run `npm run lint`, `npm run typecheck`, and the affected
+tests. Use `npm run test:coverage` for the full unit/integration suite; it also
+runs the tests, so a second full test run is unnecessary. For cross-window or
+React lifecycle changes, run `npm run test:browser` across all three engines.
+For release preparation, run `npm run release:check` and the browser suite.
+Report local results and hosted CI separately; publish or announce only when
+the user requests it.
 
-## Change Workflow
+For documentation changes, validate links and run `npm run docs:check`.
+Edit the root README and run `npm run build` to refresh the package README
+mirror. Build outputs, declarations, coverage, and generated wiki surfaces
+belong to their generators.
 
-1. Identify the impacted package(s) and modules before editing.
-2. Implement changes in `packages/forgeframe/src` (or `packages/playground` for demo-only work).
-3. Add or update tests in the appropriate suite under `packages/forgeframe/tests` for behavior changes. See `packages/forgeframe/tests/README.md` when choosing between unit, integration, and typecheck coverage.
-4. Run relevant validation commands before finishing:
-   - `npm run lint`
-   - `npm run typecheck`
-   - `npm run test:run`
-5. Update `README.md` when public API or behavior changes.
+## Maintain the wiki
 
-## Coding Guidelines
-
-- Use ESM imports/exports.
-- Keep types explicit at API boundaries.
-- Use [TSDoc](https://tsdoc.org/) conventions for TypeScript documentation comments; prefer TSDoc over JSDoc.
-- Use [Standard Schema](https://standardschema.dev/schema) for schema definitions/interoperability where schema standards are needed.
-- Reuse existing module boundaries under `packages/forgeframe/src`; prefer the closest existing module before creating a new one.
-- Prefer small, composable functions and avoid unnecessary dependencies.
-- Maintain origin/sandbox safety checks for any cross-window messaging changes.
-
-## IOSP Review Checklist
-
-- Give each changed callable one cohesive operation or an explicit sequence of named operations. Keep helpers beside their owning subsystem.
-- Pass browser observations into pure policy; keep state in its existing runtime and preserve callback, cancellation, and commit order.
-- Preserve public types, wire formats, origin checks, and errors. Keep recursive algorithms and small local helpers together when extraction adds indirection.
-- Update the affected classifications in `docs/iosp-review.md`, explain any retained mixed helper, and run its listed boundary tests.
-
-## Files to Avoid Editing Unless Required
-
-- `node_modules/`
-- `dist/` outputs
-- `coverage/` outputs
-
-## Done Criteria
-
-- Code compiles and tests pass for affected areas.
-- Lint/typecheck pass for touched code.
-- Behavior is covered by the appropriate automated tests when feasible.
-- Documentation is updated for user-visible changes.
+Keep current architecture and callable knowledge on the existing topic pages.
+Author page bodies and descriptive metadata; let `wiki update --path docs` own
+`name`, timestamps, headings, and index link blocks above `***`. After changing
+pages or their locations, run `npm run docs:update`, then `npm run docs:check`.
+Rename with `git mv` and fix authored links. Setup and the pinned CLI version
+are documented in the README's **Project wiki** section. This repo uses the CLI
+and Markdown directly; it needs no Obsidian configuration or executable wiki hooks.
