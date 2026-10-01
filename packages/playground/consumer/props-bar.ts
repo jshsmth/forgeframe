@@ -232,10 +232,11 @@ export function renderPropsBar(config: PlaygroundConfig) {
 					onPropValuesChange?.();
 					updateConfigurationStatus();
 				} catch (error) {
-					setPropInputError(
-						input,
-						`${String(error)}. Correct this value and try again.`,
-					);
+					if (instance === targetInstance && input.value === submittedText)
+						setPropInputError(
+							input,
+							`${String(error)}. Correct this value and try again.`,
+						);
 					log(`Could not update ${propName}: ${String(error)}`, "error");
 					updateConfigurationStatus();
 				} finally {
