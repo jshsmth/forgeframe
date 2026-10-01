@@ -17,6 +17,10 @@ export function log(message: string, type: LogType = "default") {
 	text.textContent = message;
 	entry.append(timestamp, text);
 	elements.eventLog.appendChild(entry);
+	if (type === "error") {
+		const announcement = document.getElementById("event-announcement");
+		if (announcement) announcement.textContent = message;
+	}
 	elements.eventLog.scrollTop = elements.eventLog.scrollHeight;
 	console.log(`[${time}] ${message}`);
 }

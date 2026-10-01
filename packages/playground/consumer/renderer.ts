@@ -5,9 +5,10 @@
 import ForgeFrame, { type PropSchema, prop } from "forgeframe";
 import { requireValue } from "../require-value";
 import { getComponentDimensions } from "./config";
+import { updateConfigurationStatus } from "./configuration-status";
 import { elements } from "./elements";
 import { log, setButtonsEnabled, setStatus } from "./logger";
-import { parsePropInput, renderPropsBar } from "./props-bar";
+import { renderPropsBar, validatePropInput } from "./props-bar";
 import {
 	componentCache,
 	currentConfig,
@@ -17,6 +18,7 @@ import {
 	instance,
 	modalBody,
 	modalOverlay,
+	recordRunningConfiguration,
 	setInstance,
 	setModalBody,
 	setModalOverlay,
@@ -227,9 +229,10 @@ export async function renderComponent() {
 	}
 
 	const config = currentConfig;
+	const context = currentContext;
+	const iframeStyle = currentIframeStyle;
 
-	const modeLabel =
-		currentContext === "popup" ? "popup" : `iframe (${currentIframeStyle})`;
+	const modeLabel = context === "popup" ? "popup" : `iframe (${iframeStyle})`;
 
 	log(`Rendering as ${modeLabel}...`, "info");
 	setStatus("Rendering...", "idle");
@@ -247,16 +250,15 @@ export async function renderComponent() {
 			const type = ((definition?.type as string) || "").toLowerCase();
 			return [
 				name,
-				parsePropInput(input, type, currentPropValues[name]),
+				validatePropInput(input, type, currentPropValues[name]),
 			] as const;
 		});
 		for (const [name, value] of values) setPropValue(name, value);
 		// Use modal template only for iframe context with modal style
-		const useModal =
-			currentContext === "iframe" && currentIframeStyle === "modal";
+		const useModal = context === "iframe" && iframeStyle === "modal";
 		const Component = useModal
 			? createModalTemplate(config)
-			: createComponent(config, currentContext);
+			: createComponent(config, context);
 
 		// Build props object with current values + callbacks
 		const props: DynamicProps = {
@@ -286,6 +288,7 @@ export async function renderComponent() {
 			renderPropsBar(config);
 			setStatus("Closed", "idle");
 			setButtonsEnabled(false);
+			updateConfigurationStatus();
 			if (modalOverlay) {
 				modalOverlay.remove();
 				setModalOverlay(null);
@@ -334,7 +337,12 @@ export async function renderComponent() {
 
 		const container = useModal ? document.body : "#component-container";
 
-		await newInstance.render(container, currentContext);
+		await newInstance.render(container, context);
+		recordRunningConfiguration(
+			context,
+			iframeStyle,
+			Object.fromEntries(values),
+		);
 
 		setStatus("Rendered", "rendered");
 		setButtonsEnabled(true);
@@ -344,5 +352,9 @@ export async function renderComponent() {
 		log(`Render failed: ${err}`, "error");
 		setStatus("Failed", "error");
 		setInstance(null);
+		updateConfigurationStatus();
+		elements.propsBar
+			.querySelector<HTMLInputElement>("[aria-invalid='true']")
+			?.focus();
 	}
 }

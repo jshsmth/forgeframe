@@ -318,6 +318,10 @@ test("playground Set applies an edit when blur refreshes the code preview", asyn
 	await page
 		.locator('input[data-prop="name"]')
 		.fill('updated "quoted" <b>value</b>');
+	await expect(page.locator("#configuration-summary")).toContainText(
+		"Draft changes pending",
+	);
+	await expect(host.locator("#prop-name")).toHaveText("initial");
 	const bounds = await page
 		.locator('button[data-update-prop="name"]')
 		.boundingBox();
@@ -333,10 +337,171 @@ test("playground Set applies an edit when blur refreshes the code preview", asyn
 	await expect(page.locator("#code-output")).toContainText(
 		JSON.stringify('updated "quoted" <b>value</b>'),
 	);
+	await expect(page.locator("#configuration-summary")).toContainText(
+		"Draft matches the running instance",
+	);
+	await page.getByRole("button", { name: "Popup", exact: true }).click();
+	await expect(page.locator("#configuration-summary")).toContainText(
+		"Running: Iframe / embedded. Draft changes pending",
+	);
 	await expect(page.locator("[data-remove-prop]")).toHaveCount(0);
 	await page.locator("#btn-close").click();
 	await expect(page.locator("iframe")).toHaveCount(0);
 	await expect(page.locator("[data-remove-prop]")).toHaveCount(2);
+});
+
+test("playground labels controls, disables unavailable styles and reflows at mobile width", async ({
+	page,
+	browserName,
+}) => {
+	await page.route("https://**/*", (route) => route.abort());
+	await page.setViewportSize({ width: 390, height: 844 });
+	await page.goto(`${consumerOrigin}/editor`);
+	await expect(page.getByLabel("name", { exact: true })).toHaveValue("");
+	await expect(page.getByLabel("count", { exact: true })).toHaveValue("0");
+	await expect(page.locator(".code-panel")).not.toHaveAttribute("open");
+	expect(
+		await page.evaluate(() => document.documentElement.scrollWidth),
+	).toBeLessThanOrEqual(390);
+	const popup = page.getByRole("button", { name: "Popup", exact: true });
+	await popup.click();
+	await expect(popup).toHaveAttribute("aria-pressed", "true");
+	await expect(
+		page.getByRole("button", { name: "Embedded", exact: true }),
+	).toBeDisabled();
+	await expect(
+		page.getByRole("button", { name: "Modal", exact: true }),
+	).toBeDisabled();
+	await popup.focus();
+	await expect(popup).toBeFocused();
+	await page.keyboard.press("Tab");
+	// WebKit's native Tab navigation can skip links, depending on the platform.
+	// Both destinations must skip the disabled iframe styles.
+	const testRoutes = page.getByRole("link", { name: "Test routes" });
+	const nextControls =
+		browserName === "webkit"
+			? testRoutes.or(page.locator(".code-panel > summary"))
+			: testRoutes;
+	await expect(nextControls.and(page.locator(":focus"))).toHaveCount(1);
+	await page.getByRole("button", { name: "Iframe", exact: true }).click();
+	await expect(
+		page.getByRole("button", { name: "Embedded", exact: true }),
+	).toBeEnabled();
+	await page.getByLabel("name", { exact: true }).fill("Mobile test");
+	await page.locator("#btn-render").click();
+	await expect(page.locator("#status-text")).toHaveText("Rendered");
+	expect(
+		await page.evaluate(() => document.documentElement.scrollWidth),
+	).toBeLessThanOrEqual(390);
+	await page.locator("#btn-close").click();
+	await expect(page.locator("iframe")).toHaveCount(0);
+});
+
+test("playground shows field errors without changing applied values and permits recovery", async ({
+	page,
+}) => {
+	await page.route("https://**/*", (route) => route.abort());
+	await page.goto(`${consumerOrigin}/editor`);
+	await page.locator("#btn-render").click();
+	await expect(page.locator("#status-text")).toHaveText("Rendered");
+	const host = page
+		.frames()
+		.find((frame) => frame.url().startsWith(hostOrigin));
+	if (!host) throw new Error("Missing playground host");
+	const count = page.getByLabel("count", { exact: true });
+	await count.fill("");
+	await expect(count).toBeFocused();
+	await expect(page.locator("#configuration-summary")).toContainText(
+		"Draft contains incomplete or invalid values",
+	);
+	await expect(host.locator("#prop-count")).toHaveText("0");
+	await expect(page.locator("#prop-input-1-error")).toBeEmpty();
+	await count.fill("0");
+	await expect(page.locator("#configuration-summary")).toContainText(
+		"Draft matches the running instance",
+	);
+	await count.fill("");
+	await page.getByRole("button", { name: "Apply count", exact: true }).click();
+	await expect(count).toHaveAttribute("aria-invalid", "true");
+	await expect(page.locator("#prop-input-1-error")).toContainText(
+		"Expected a finite number",
+	);
+	await expect(host.locator("#prop-count")).toHaveText("0");
+	await count.fill("7");
+	await page.getByRole("button", { name: "Apply count", exact: true }).click();
+	await expect(count).toHaveAttribute("aria-invalid", "false");
+	await expect(page.locator("#prop-input-1-error")).toBeEmpty();
+	await expect(host.locator("#prop-count")).toHaveText("7");
+	await expect(page.locator("#running-props")).toContainText("count: 7");
+	await page.locator("#btn-close").click();
+});
+
+test("long applied values leave the desktop host visible and its controls reachable", async ({
+	page,
+}) => {
+	await page.route("https://**/*", (route) => route.abort());
+	await page.setViewportSize({ width: 1024, height: 768 });
+	await page.goto(`${consumerOrigin}/editor`);
+	await page.getByLabel("name", { exact: true }).fill("x".repeat(1000));
+	await page.locator("#btn-render").click();
+	await expect(page.locator("#status-text")).toHaveText("Rendered");
+	await page.locator(".applied-config > summary").click();
+	await page.locator(".runtime-actions > summary").click();
+	await expect
+		.poll(async () => (await page.locator("iframe").boundingBox())?.height ?? 0)
+		.toBeGreaterThan(150);
+	const host = page
+		.frames()
+		.find((frame) => frame.url().startsWith(hostOrigin));
+	if (!host) throw new Error("Missing playground host");
+	await host.locator("#btn-greet").click();
+	await expect(page.locator("#event-log")).toContainText("Host says: Hello!");
+	await page.locator("#btn-close").click();
+	await expect(page.locator("iframe")).toHaveCount(0);
+});
+
+test("test lab filters routes and stops safely between scenarios", async ({
+	page,
+}) => {
+	test.setTimeout(60_000);
+	await page.setViewportSize({ width: 390, height: 844 });
+	await page.goto(`${consumerOrigin}/tests`);
+	await page
+		.getByRole("searchbox", { name: "Find a scenario" })
+		.fill("timeout");
+	await expect(page.locator(".scenario-card:visible")).toHaveCount(1);
+	await page
+		.getByRole("searchbox", { name: "Find a scenario" })
+		.fill("nothing matches this");
+	await expect(page.locator("#catalog-empty")).toBeVisible();
+	await page.getByRole("searchbox", { name: "Find a scenario" }).fill("");
+	await expect(page.locator(".scenario-card:visible")).toHaveCount(18);
+	expect(
+		await page.evaluate(() => document.documentElement.scrollWidth),
+	).toBeLessThanOrEqual(390);
+	const run = page.getByRole("button", { name: "Run all automatic scenarios" });
+	await run.click();
+	await page.getByRole("button", { name: "Stop after this scenario" }).click();
+	await expect(run).toBeEnabled({ timeout: 45_000 });
+	await expect(page.locator("body")).toHaveAttribute(
+		"data-test-status",
+		"stopped",
+	);
+	await expect(page.locator("#sandbox-state")).toContainText(
+		"Stopped between scenarios",
+	);
+	await expect(page.locator("#scenario-sandbox")).toBeEmpty();
+	await expect(page.locator("iframe")).toHaveCount(0);
+	const names = await page.locator(".result-name").allTextContents();
+	expect(new Set(names.map((name) => name.split(": ")[0])).size).toBeLessThan(
+		17,
+	);
+	await page.getByRole("button", { name: "Failures only" }).click();
+	await expect(page.locator("#results-empty")).toHaveText(
+		"No failed assertions in the current results.",
+	);
+	await page.getByRole("button", { name: "All results" }).click();
+	await expect(page.locator(".result.pass").first()).toBeVisible();
 });
 
 test("playground test lab completes every automatic scenario and reruns cleanly", async ({
