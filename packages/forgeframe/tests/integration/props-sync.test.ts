@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { create, EVENT, prop } from "@/index";
+import { create, EVENT, PROP_SERIALIZATION, prop } from "@/index";
 import type { PropsDefinition } from "@/types";
 import {
 	createIframeIntegrationHarness,
@@ -113,6 +113,89 @@ describe("Props sync integration", () => {
 		harness = null;
 		vi.restoreAllMocks();
 	});
+
+	it.each([
+		PROP_SERIALIZATION.JSON,
+		PROP_SERIALIZATION.BASE64,
+		PROP_SERIALIZATION.DOTIFY,
+	])(
+		"discards consumer-only fields from a stale consumer's %s bootstrap and updates",
+		async (serialization) => {
+			harness = createIframeIntegrationHarness();
+			const container = document.createElement("div");
+			document.body.append(container);
+			// The stale consumer still sends fields the current host declares private.
+			const Component = create({
+				tag: "integration-stale-private-props",
+				url: "https://host.example.com/widget",
+				props: {
+					title: prop.string(),
+					local: { schema: z.unknown(), serialization },
+					constructor: z.unknown(),
+					extra: prop.string(),
+				},
+			});
+			const localValidator = vi.fn(() => {
+				throw new Error("Consumer-only validation must stay local");
+			});
+			const definitions = {
+				title: prop.string(),
+				local: {
+					schema: prop.string(),
+					required: true,
+					sendToHost: false,
+					validate: localValidator,
+				},
+				constructor: { schema: prop.string(), sendToHost: false },
+			};
+			const instance = Component({
+				title: "initial",
+				local: { private: "invalid for the host schema" },
+				constructor: 42,
+				extra: "undeclared initial",
+			});
+			const rendering = instance.render(container);
+			const { host, hostProps } = await harness.bootstrapIframeHost(
+				container,
+				definitions,
+			);
+			await rendering;
+			expect(hostProps.consumer.props).toEqual({
+				title: "initial",
+				extra: "undeclared initial",
+			});
+			for (const key of ["local", "constructor"]) {
+				expect(Object.hasOwn(hostProps, key)).toBe(false);
+			}
+			const snapshots: unknown[] = [];
+			const events: unknown[] = [];
+			hostProps.onProps((props) => {
+				snapshots.push(props);
+			});
+			host.event.on(EVENT.PROPS, (props) => {
+				events.push(props);
+			});
+			await instance.updateProps({
+				title: "updated",
+				local: "valid but private",
+				constructor: "also private",
+				extra: "undeclared update",
+			});
+			expect(hostProps.title).toBe("updated");
+			expect(hostProps.consumer.props).toEqual({
+				title: "updated",
+				extra: "undeclared update",
+			});
+			expect(snapshots).toEqual([
+				{ title: "updated", extra: "undeclared update" },
+			]);
+			expect(events).toEqual(snapshots);
+			for (const key of ["local", "constructor"]) {
+				expect(Object.hasOwn(hostProps, key)).toBe(false);
+			}
+			expect(localValidator).not.toHaveBeenCalled();
+		},
+	);
 
 	it("preserves host snapshots on host-side rejection and continues the queued update", async () => {
 		harness = createIframeIntegrationHarness();

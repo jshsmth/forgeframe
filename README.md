@@ -594,7 +594,7 @@ canonical key doubles as another prop's alias.
 a valid input can transform to `undefined`, its `outputSchema` must explicitly
 accept `undefined`; the host then treats that as a valid normalized result.
 
-Definitions with `sendToHost: false` validate consumer input only. Shared host definitions exclude these fields from bootstrap and update validation, so a required local prop does not prevent host initialization. Origin restrictions on delivered props continue to apply.
+Definitions with `sendToHost: false` validate consumer input only. Shared host definitions discard these fields from received bootstrap and update snapshots before decoding or validation, including fields sent by a stale consumer. A required local prop does not prevent host initialization, and discarded values never enter `hostProps`, `hostProps.consumer.props`, or prop notifications. Origin restrictions on delivered props continue to apply.
 
 Prefer inferred component and React-wrapper types. If you explicitly annotate
 an aliased component whose schema inputs differ from its host props, supply the

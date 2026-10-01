@@ -132,6 +132,26 @@ afterEach(async () => {
 });
 
 describe("Host lifecycle behavior", () => {
+	it("discards consumer-only fields in legacy bootstrap payloads", () => {
+		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
+		const host = new HostComponent(
+			createPayload({ props: { amount: 10, local: 42 } }),
+			{
+				amount: prop.number(),
+				local: { schema: prop.string(), required: true, sendToHost: false },
+			},
+			undefined,
+			true,
+		);
+		try {
+			expect(host.hostProps.amount).toBe(10);
+			expect(host.hostProps.consumer.props).toEqual({ amount: 10 });
+			expect(Object.hasOwn(host.hostProps, "local")).toBe(false);
+		} finally {
+			host.destroy();
+		}
+	});
+
 	it("preserves the latest acknowledged update when an older bootstrap response arrives", async () => {
 		const bootstrap = createDeferred<{ props: { amount: number } }>();
 		vi.spyOn(Messenger.prototype, "send").mockImplementation(

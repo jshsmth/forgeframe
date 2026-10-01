@@ -251,8 +251,18 @@ export class HostPropsRuntime<
 	}
 
 	private deserialize(serializedProps: SerializedProps): RemoteValue<P> {
+		const deliveredDefinitions = this.getDeliveredPropDefinitions();
+		// A stale or forged consumer can still send fields declared consumer-only.
+		// Discard them before decoding or exposing any part of the host snapshot.
+		const deliveredProps = Object.fromEntries(
+			Object.entries(serializedProps).filter(
+				([key]) =>
+					!Object.hasOwn(this.propDefinitions, key) ||
+					Object.hasOwn(deliveredDefinitions, key),
+			),
+		);
 		return deserializeProps(
-			serializedProps,
+			deliveredProps,
 			this.propDefinitions,
 			this.options.getMessenger(),
 			this.options.getBridge(),
@@ -276,7 +286,7 @@ export class HostPropsRuntime<
 		return relaxSameDomainBootstrapDefinitions(deliveredDefinitions);
 	}
 
-	/** Consumer-only definitions validate local input and do not require wire fields. */
+	/** Consumer-only definitions validate local input and are excluded from received snapshots. */
 	private getDeliveredPropDefinitions(
 		propDefinitions = this.propDefinitions,
 	): HostPropsDefinition<P, SchemaInputs> {

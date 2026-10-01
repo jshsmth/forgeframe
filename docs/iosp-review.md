@@ -263,6 +263,8 @@ Evidence: [host](#evidence-host), [consumer-origin-policy.test](../packages/forg
 
 Stable built-in reference construction is separate from consumer snapshot commitment and subscriber notification. Bootstrap schema relaxation is a supplied-data operation; stale custom props use own-key membership so inherited names cannot retain an old value; subscribers are invoked only after reconciliation. Notification observes promise/thenable failures without awaiting user work, preserving acknowledgement and event order.
 
+`HostPropsRuntime.deserialize` filters explicit consumer-only wire fields using the delivered definitions before invoking the codec. Its filter callback is an **O** admission predicate using own-key membership; undeclared fields keep their existing behavior. Legacy/bootstrap and live-update state, subscribers, and events all use the filtered snapshot. Consumer-only definitions remain absent from host validation, so required local inputs do not prevent initialization.
+
 The rejection callback in `HostPropsRuntime.notifyPropsHandlers` is an **O** callback boundary: it logs one observer failure and does not mutate prop state.
 
 - **O:** `filterReservedHostPropKeys`, `HostPropsRuntime.constructor`, `HostPropsRuntime.createHostProps.getConsumer`, `HostPropsRuntime.exposeHostProps.set`, `HostPropsRuntime.commitHostProps`, `HostPropsRuntime.notifyPropsHandlers`, `HostPropsRuntime.destroy`, `HostPropsRuntime.onProps`, `HostPropsRuntime.onProps.cancel`, `HostPropsRuntime.removeStaleHostProps`, `HostPropsRuntime.getDeliveredPropDefinitions`, `relaxSameDomainBootstrapDefinitions`.
