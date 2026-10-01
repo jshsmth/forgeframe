@@ -39,6 +39,216 @@ afterEach(() => {
 });
 
 describe("Props serialization behavior", () => {
+	it.each([PROP_SERIALIZATION.BASE64, PROP_SERIALIZATION.DOTIFY])(
+		"preserves native and foreign raw JSON values returned by encoders in %s",
+		(serialization) => {
+			const { messenger, bridge } = createBridgeWithMessenger();
+			const rawValues: object[] = runInNewContext(
+				"[JSON.rawJSON('42'), JSON.rawJSON('true'), JSON.rawJSON('\"raw\"')]",
+			);
+			if (!("rawJSON" in JSON) || typeof JSON.rawJSON !== "function") {
+				throw new Error("The test runtime must support native raw JSON");
+			}
+			rawValues.push(JSON.rawJSON("null"));
+			const encodings = vi.fn(() => ({ values: rawValues }));
+			class CustomValue {
+				toJSON() {
+					return encodings();
+				}
+			}
+			const definitions = { payload: { schema: prop.object(), serialization } };
+			const serialized = serializeProps<{ payload: Record<string, unknown> }>(
+				{ payload: { custom: new CustomValue() } },
+				definitions,
+				bridge,
+			);
+			expect(
+				deserializeProps(
+					serialized,
+					definitions,
+					messenger,
+					bridge,
+					window,
+					"https://consumer.example.com",
+				),
+			).toEqual({
+				payload: { custom: { values: [42, true, "raw", null] } },
+			});
+			expect(encodings).toHaveBeenCalledOnce();
+			bridge.destroy();
+		},
+	);
+
+	it.each([PROP_SERIALIZATION.BASE64, PROP_SERIALIZATION.DOTIFY])(
+		"captures encoded accessors once and preserves native JSON conversion in %s",
+		(serialization) => {
+			const { messenger, bridge } = createBridgeWithMessenger();
+			const date = new Date("2026-01-02T03:04:05.678Z");
+			const dateEncoder = vi.spyOn(date, "toJSON");
+			const callback = () => 42;
+			let reads = 0;
+			let encodings = 0;
+			class CustomValue {
+				#label = "original receiver";
+				toJSON() {
+					encodings++;
+					const items: unknown[] = [];
+					Object.defineProperty(items, "0", {
+						enumerable: true,
+						get() {
+							if (++reads > 1) throw new Error("Accessor read twice");
+							return date;
+						},
+					});
+					Object.freeze(items);
+					const symbol = Object(Symbol("boxed"));
+					Object.defineProperty(symbol, "date", {
+						enumerable: true,
+						value: date,
+					});
+					const alteredNumber = Object(9);
+					Object.setPrototypeOf(alteredNumber, null);
+					alteredNumber.valueOf = () => 9;
+					return {
+						label: this.#label,
+						items,
+						callback,
+						number: Object(7),
+						string: Object("boxed"),
+						boolean: Object(false),
+						symbol,
+						alteredNumber,
+					};
+				}
+			}
+			const definitions = { payload: { schema: prop.object(), serialization } };
+			const serialized = serializeProps<{ payload: Record<string, unknown> }>(
+				{ payload: { custom: new CustomValue() } },
+				definitions,
+				bridge,
+			);
+			const restored = deserializeProps(
+				serialized,
+				definitions,
+				messenger,
+				bridge,
+				window,
+				window.location.origin,
+			);
+			expect(reads).toBe(1);
+			expect(encodings).toBe(1);
+			expect(dateEncoder).toHaveBeenCalledTimes(2);
+			expect(restored.payload).toEqual({
+				custom: {
+					label: "original receiver",
+					items: [date],
+					callback: expect.any(Function),
+					number: 7,
+					string: "boxed",
+					boolean: false,
+					symbol: { date },
+					alteredNumber: 9,
+				},
+			});
+			expect(bridge.localFunctionCount).toBe(1);
+		},
+	);
+
+	it.each([PROP_SERIALIZATION.BASE64, PROP_SERIALIZATION.DOTIFY])(
+		"retains native cycle and boxed BigInt rejection in %s",
+		(serialization) => {
+			const { bridge } = createBridgeWithMessenger();
+			const definitions = { payload: { schema: prop.object(), serialization } };
+			const cyclic: Record<string, unknown> = {};
+			cyclic.self = cyclic;
+			class CustomValue {
+				toJSON() {
+					return cyclic;
+				}
+			}
+			expect(() =>
+				serializeProps<{ payload: Record<string, unknown> }>(
+					{ payload: { custom: new CustomValue() } },
+					definitions,
+					bridge,
+				),
+			).toThrow(TypeError);
+			expect(() =>
+				serializeProps<{ payload: Record<string, unknown> }>(
+					{ payload: { custom: Object(1n) } },
+					definitions,
+					bridge,
+				),
+			).toThrow(TypeError);
+		},
+	);
+
+	it("encodes the array entries captured during presence admission", () => {
+		const { messenger, bridge } = createBridgeWithMessenger();
+		let reads = 0;
+		const values: string[] = [];
+		Object.defineProperty(values, "0", {
+			enumerable: true,
+			get: () => (++reads === 1 ? "captured" : undefined),
+		});
+		const definitions = { payload: prop.array().of(prop.string()) };
+		const restored = deserializeProps(
+			JSON.parse(
+				JSON.stringify(
+					serializeProps({ payload: values }, definitions, bridge),
+				),
+			),
+			definitions,
+			messenger,
+			bridge,
+			window,
+			window.location.origin,
+		);
+		expect(reads).toBe(1);
+		expect(restored.payload).toEqual(["captured"]);
+	});
+
+	it.each(Object.values(PROP_SERIALIZATION))(
+		"preserves null-prototype arrays and ignores shadowed map methods through %s",
+		(serialization) => {
+			const { messenger, bridge } = createBridgeWithMessenger();
+			const shadowedMap = vi.fn(() => ["corrupted"]);
+			const shadowed = ["one", "two"];
+			Object.defineProperty(shadowed, "map", { value: shadowedMap });
+			const nullPrototype = ["three"];
+			Object.setPrototypeOf(nullPrototype, null);
+			const definitions = {
+				payload: {
+					schema: prop.object<{
+						shadowed: string[];
+						nullPrototype: string[];
+					}>(),
+					serialization,
+				},
+			};
+			const restored = deserializeProps(
+				JSON.parse(
+					JSON.stringify(
+						serializeProps(
+							{ payload: { shadowed, nullPrototype } },
+							definitions,
+							bridge,
+						),
+					),
+				),
+				definitions,
+				messenger,
+				bridge,
+				window,
+				window.location.origin,
+			);
+			expect(restored.payload).toEqual({
+				shadowed: ["one", "two"],
+				nullPrototype: ["three"],
+			});
+			expect(shadowedMap).not.toHaveBeenCalled();
+		},
+	);
 	it.each([
 		{ label: "Array.prototype", value: Array.prototype, expected: [] },
 		{

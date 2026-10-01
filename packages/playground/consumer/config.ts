@@ -1,7 +1,19 @@
 /**
  * Default configuration for ForgeFrame Playground
  */
-import type { PlaygroundConfig } from "./types";
+import type { PlaygroundConfig, RenderContext } from "./types";
+
+/** Selects the same configured dimensions for live rendering and copied examples. */
+export function getComponentDimensions(
+	config: PlaygroundConfig,
+	context: RenderContext,
+): PlaygroundConfig["dimensions"] {
+	if (context !== "popup") return config.dimensions;
+	return {
+		width: config.modalStyle?.width || 500,
+		height: config.modalStyle?.height || 400,
+	};
+}
 
 export const DEFAULT_CONFIG: PlaygroundConfig = {
 	tag: "playground-component",

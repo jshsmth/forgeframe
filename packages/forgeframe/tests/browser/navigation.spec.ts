@@ -394,6 +394,350 @@ async function prepareDelivery(
 	);
 }
 
+for (const provided of [false, true]) {
+	test(`unsupported rejected async schema stays handled with provided input ${provided}`, async ({
+		page,
+	}) => {
+		const pageErrors: string[] = [];
+		page.on("pageerror", (error) => pageErrors.push(error.message));
+		await page.goto(consumerOrigin);
+		const result = await page.evaluate(
+			async ({ hostOrigin, provided }) => {
+				const libraryUrl = "/library.js";
+				const { create, prop } = await import(libraryUrl);
+				const unhandled: string[] = [];
+				window.addEventListener("unhandledrejection", (event) => {
+					unhandled.push(String(event.reason));
+				});
+				const count = {
+					"~standard": {
+						version: 1,
+						vendor: "async-rejection-fixture",
+						validate: (value: unknown) =>
+							typeof value === "number"
+								? { value }
+								: Promise.reject(new Error("Rejected async schema")),
+					},
+				};
+				const Component = create({
+					tag: "rejected-async-schema",
+					url: `${hostOrigin}/delivery`,
+					props: { count, allowed: prop.string() },
+				});
+				const instance = Component({
+					allowed: "retry-value",
+					...(provided ? { count: "invalid" } : {}),
+				});
+				let error = "";
+				try {
+					await instance.render("#mount");
+				} catch (reason) {
+					error = (reason as Error).message;
+				}
+				await instance.updateProps({ count: 7 });
+				await instance.render("#mount");
+				await instance.close();
+				// Let the browser deliver any unobserved promise-rejection events.
+				await new Promise<void>((resolve) => setTimeout(resolve, 20));
+				return { error, unhandled, active: Component.instances.length };
+			},
+			{ hostOrigin, provided },
+		);
+		expect(result.error).toContain("uses an async schema");
+		expect(result.unhandled).toEqual([]);
+		expect(result.active).toBe(0);
+		expect(pageErrors).toEqual([]);
+		await expect(page.locator("iframe")).toHaveCount(0);
+	});
+}
+
+for (const loading of [undefined, "eager"] as const) {
+	test(`eager iframe with loading ${loading ?? "default"} preserves custom loading layout`, async ({
+		page,
+	}) => {
+		let releaseNavigation = () => {};
+		const navigationAllowed = new Promise<void>((resolve) => {
+			releaseNavigation = resolve;
+		});
+		await page.route(`${hostOrigin}/delivery**`, async (route) => {
+			await navigationAllowed;
+			await route.continue();
+		});
+		await page.goto(consumerOrigin);
+		await page.evaluate(
+			async ({ hostOrigin, loading }) => {
+				const libraryUrl = "/library.js";
+				const { create, prop } = await import(libraryUrl);
+				const sibling = document.createElement("div");
+				sibling.id = "following-content";
+				sibling.textContent = "Following content";
+				document.querySelector("#mount")?.after(sibling);
+				const instance = create({
+					tag: "eager-loading-layout",
+					url: `${hostOrigin}/delivery`,
+					timeout: 5000,
+					dimensions: { width: 320, height: 180 },
+					attributes: { loading },
+					style: { display: "block" },
+					containerTemplate: ({ container }: { container: HTMLElement }) =>
+						container,
+					prerenderTemplate: ({ doc }: { doc: Document }) => {
+						const loader = doc.createElement("div");
+						loader.id = "custom-loader";
+						loader.style.height = "180px";
+						loader.textContent = "Loading";
+						return loader;
+					},
+					props: { count: prop.number(), allowed: prop.string() },
+				})({ count: 7, allowed: "eager-value" });
+				(window as unknown as { outcome: Promise<void> }).outcome =
+					instance.render("#mount");
+			},
+			{ hostOrigin, loading },
+		);
+		const mount = page.locator("#mount");
+		const iframe = page.locator("iframe");
+		await expect(page.locator("#custom-loader")).toBeVisible();
+		await expect(iframe).toHaveCSS("display", "none");
+		expect((await mount.boundingBox())?.height).toBe(180);
+		const followingTop = (
+			await page.locator("#following-content").boundingBox()
+		)?.y;
+		releaseNavigation();
+		await page.evaluate(
+			() => (window as unknown as { outcome: Promise<void> }).outcome,
+		);
+		await expect(page.locator("#custom-loader")).toHaveCount(0);
+		await expect(iframe).toBeVisible();
+		await expect(iframe).toHaveCSS("display", "block");
+		expect((await mount.boundingBox())?.height).toBe(180);
+		expect((await page.locator("#following-content").boundingBox())?.y).toBe(
+			followingTop,
+		);
+	});
+}
+
+for (const method of ["GET", "POST"] as const) {
+	for (const display of ["block", "none"] as const) {
+		test(`lazy iframe ${method} initializes while concealed and retains configured display ${display}`, async ({
+			page,
+		}) => {
+			deliveryRequests.length = 0;
+			let releaseNavigation = () => {};
+			const navigationAllowed = new Promise<void>((resolve) => {
+				releaseNavigation = resolve;
+			});
+			let navigationRequested = false;
+			await page.route(`${hostOrigin}/delivery**`, async (route) => {
+				navigationRequested = true;
+				await navigationAllowed;
+				await route.continue();
+			});
+			await page.goto(consumerOrigin);
+			await page.evaluate(
+				async ({ hostOrigin, method, display }) => {
+					const libraryUrl = "/library.js";
+					const { create, prop } = await import(libraryUrl);
+					const parameter = method === "GET" ? "queryParam" : "bodyParam";
+					const instance = create({
+						tag: "lazy-iframe-styles",
+						url: `${hostOrigin}/delivery`,
+						timeout: 3000,
+						dimensions: { width: 320, height: 180 },
+						attributes: {
+							loading: "lazy",
+							style:
+								method === "GET"
+									? `display:${display} !important; visibility:hidden !important; opacity:0.25 !important; transition:transform 2s !important`
+									: undefined,
+						},
+						style:
+							method === "POST"
+								? {
+										display,
+										visibility: "hidden",
+										opacity: 0.25,
+										transition: "transform 2s",
+									}
+								: undefined,
+						props: {
+							count: { schema: prop.number(), [parameter]: true },
+							allowed: { schema: prop.string(), [parameter]: true },
+						},
+					})({ count: 7, allowed: "lazy-value" });
+					(window as unknown as { outcome: Promise<string> }).outcome = instance
+						.render("#mount")
+						.then(
+							() => "ready",
+							(error: Error) => error.message,
+						);
+				},
+				{ hostOrigin, method, display },
+			);
+			const iframe = page.locator("iframe");
+			await expect(iframe).toHaveCSS("visibility", "hidden");
+			await expect(iframe).toHaveCSS(
+				"display",
+				display === "none" ? "inline" : display,
+			);
+			await expect.poll(() => navigationRequested).toBe(true);
+			releaseNavigation();
+			expect(
+				await page.evaluate(
+					() => (window as unknown as { outcome: Promise<string> }).outcome,
+				),
+			).toBe("ready");
+			await expect(iframe).toHaveCSS("visibility", "hidden");
+			await expect(iframe).toHaveCSS("display", display);
+			await expect(iframe).toHaveCSS("opacity", "0.25");
+			await expect(iframe).toHaveCSS("transition-property", "transform");
+			await expect(iframe).toHaveCSS("transition-duration", "2s");
+			expect(
+				await iframe.evaluate((frame) =>
+					["display", "visibility", "opacity", "transition"].map((property) =>
+						(frame as HTMLIFrameElement).style.getPropertyPriority(property),
+					),
+				),
+			).toEqual(Array(4).fill(method === "GET" ? "important" : ""));
+			expect(deliveryRequests).toHaveLength(1);
+			expect(deliveryRequests[0].method).toBe(method);
+			const params = new URLSearchParams(
+				method === "GET"
+					? new URL(deliveryRequests[0].url, hostOrigin).search
+					: deliveryRequests[0].body,
+			);
+			expect(params.get("count")).toBe("7");
+			expect(params.get("allowed")).toBe("lazy-value");
+		});
+	}
+}
+
+test("lazy iframe applies a show requested before frame creation", async ({
+	page,
+}) => {
+	deliveryRequests.length = 0;
+	await page.goto(consumerOrigin);
+	const outcome = await page.evaluate(
+		async ({ hostOrigin }) => {
+			const libraryUrl = "/library.js";
+			const { create, prop, EVENT } = await import(libraryUrl);
+			const instance = create({
+				tag: "lazy-iframe-early-show",
+				url: `${hostOrigin}/delivery`,
+				timeout: 3000,
+				attributes: { loading: "lazy" },
+				style: {
+					display: "none",
+					visibility: "hidden",
+					opacity: 0.25,
+					transition: "transform 2s",
+				},
+				props: { count: prop.number(), allowed: prop.string() },
+			})({ count: 7, allowed: "early-show-value" });
+			instance.event.on(EVENT.PRERENDER, () => instance.show());
+			return instance.render("#mount").then(
+				() => "ready",
+				(error: Error) => error.message,
+			);
+		},
+		{ hostOrigin },
+	);
+	expect(outcome).toBe("ready");
+	const iframe = page.locator("iframe");
+	await expect(iframe).toHaveCSS("visibility", "visible");
+	await expect(iframe).toHaveCSS("display", "inline");
+	await expect(iframe).toHaveCSS("opacity", "0.25");
+	await expect(iframe).toHaveCSS("transition-property", "transform");
+	expect(deliveryRequests).toHaveLength(1);
+});
+
+for (const control of ["hide", "show"] as const) {
+	test(`lazy iframe ${control} during loading takes precedence over configured visibility`, async ({
+		page,
+	}) => {
+		await page.goto(consumerOrigin);
+		const result = await page.evaluate(
+			async ({ hostOrigin, control }) => {
+				const libraryUrl = "/library.js";
+				const { create, prop } = await import(libraryUrl);
+				const instance = create({
+					tag: "lazy-loading-control",
+					url: `${hostOrigin}/delivery`,
+					timeout: 3000,
+					dimensions: { width: 320, height: 180 },
+					attributes: { loading: "lazy" },
+					style: {
+						display: control === "show" ? "none" : "block",
+						visibility: "hidden",
+					},
+					props: { count: prop.number(), allowed: prop.string() },
+				})({ count: 1, allowed: "controls" });
+				instance.event.on("render", () => {
+					void instance[control]();
+				});
+				await instance.render("#mount");
+				const iframe = document.querySelector("iframe");
+				if (!iframe) throw new Error("Missing iframe");
+				const styles = {
+					display: iframe.style.display,
+					visibility: iframe.style.visibility,
+					opacity: iframe.style.opacity,
+					transition: iframe.style.transition,
+				};
+				await instance.close();
+				return {
+					styles,
+					remainingFrames: document.querySelectorAll("iframe").length,
+				};
+			},
+			{ hostOrigin, control },
+		);
+		expect(result).toEqual({
+			styles: {
+				display: control === "hide" ? "none" : "",
+				visibility: control === "hide" ? "hidden" : "visible",
+				opacity: "",
+				transition: "",
+			},
+			remainingFrames: 0,
+		});
+	});
+}
+
+test("lazy iframe cancellation before navigation removes loading content", async ({
+	page,
+}) => {
+	deliveryRequests.length = 0;
+	await page.goto(consumerOrigin);
+	const result = await page.evaluate(async (hostOrigin) => {
+		const libraryUrl = "/library.js";
+		const { create } = await import(libraryUrl);
+		const instance = create({
+			tag: "lazy-loading-cancellation",
+			url: `${hostOrigin}/delivery`,
+			attributes: { loading: "lazy" },
+			dimensions: { width: 320, height: 180 },
+		})();
+		instance.event.on("render", () => {
+			void instance.close();
+		});
+		const outcome = await instance.render("#mount").then(
+			() => "ready",
+			(error: Error) => error.message,
+		);
+		return {
+			outcome,
+			remainingElements: document.querySelector("#mount")?.childElementCount,
+		};
+	}, hostOrigin);
+	expect(result).toEqual({
+		outcome:
+			'Component "lazy-loading-cancellation" was closed before rendering completed',
+		remainingElements: 0,
+	});
+	expect(deliveryRequests).toEqual([]);
+});
+
 test("initial rendering preserves a host hide and configured CSS values", async ({
 	page,
 }) => {
@@ -1526,6 +1870,100 @@ for (const context of ["iframe", "popup"] as const) {
 
 for (const context of ["iframe", "popup"] as const) {
 	for (const serialization of ["json", "base64", "dotify"] as const) {
+		test(`${context} preserves arrays with altered prototypes or map methods through ${serialization}`, async ({
+			page,
+		}) => {
+			await page.goto(consumerOrigin);
+			const opening =
+				context === "popup"
+					? page.waitForEvent("popup")
+					: Promise.resolve(page);
+			await page.evaluate(
+				async ({ hostOrigin, context, serialization }) => {
+					const libraryUrl = "/library.js";
+					const { create, prop }: typeof import("../../src/index") =
+						await import(libraryUrl);
+					const Component = create({
+						tag: "array-method-browser",
+						url: `${hostOrigin}/record-props`,
+						props: { record: { schema: prop.object(), serialization } },
+					});
+					const values = Object.setPrototypeOf(["initial"], null);
+					const instance = Component({ record: { values } });
+					(window as unknown as { instance: typeof instance }).instance =
+						instance;
+					await instance.render("#mount", context);
+				},
+				{ hostOrigin, context, serialization },
+			);
+			const hostPage = await opening;
+			const host =
+				context === "popup"
+					? hostPage
+					: page
+							.frames()
+							.find((frame) => frame.url() === `${hostOrigin}/record-props`);
+			if (!host) throw new Error("Missing host");
+			await host.waitForFunction(
+				() => (window as unknown as { ready: boolean }).ready === true,
+			);
+			const read = () =>
+				host.evaluate(
+					() =>
+						(window as unknown as { received: { record: object } }).received
+							.record,
+				);
+			expect(await read()).toEqual({ values: ["initial"] });
+			await page.evaluate(async () => {
+				const values = ["updated"];
+				Object.defineProperty(values, "map", { value: () => ["corrupted"] });
+				await (
+					window as unknown as {
+						instance: { updateProps(props: object): Promise<void> };
+					}
+				).instance.updateProps({ record: { values } });
+			});
+			expect(await read()).toEqual({ values: ["updated"] });
+			await host.evaluate(async () => {
+				const values = ["exported"];
+				Object.defineProperty(values, "map", { value: () => ["corrupted"] });
+				await (
+					window as unknown as {
+						received: import("../../src/types").HostProps<
+							Record<string, unknown>
+						>;
+					}
+				).received.export({
+					values,
+					nested: Object.setPrototypeOf(["nested"], null),
+				});
+			});
+			expect(
+				await page.evaluate(
+					() =>
+						(window as unknown as { instance: { exports: object } }).instance
+							.exports,
+				),
+			).toEqual({ values: ["exported"], nested: ["nested"] });
+			expect(
+				await page.evaluate(async () => {
+					const instance = (
+						window as unknown as {
+							instance: import("../../src/types").ForgeFrameComponentInstance;
+						}
+					).instance;
+					let destroyed = false;
+					instance.event.on("destroy", () => {
+						destroyed = true;
+					});
+					const first = instance.close();
+					await instance.close();
+					const completed = destroyed;
+					await first;
+					return completed;
+				}),
+			).toBe(true);
+		});
 		test(`${context} preserves marker-shaped records through ${serialization} props and exports`, async ({
 			page,
 		}) => {

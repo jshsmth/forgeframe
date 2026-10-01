@@ -1,14 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearComponents, destroyAll } from "@/core/component";
 import { ConsumerComponent } from "@/core/consumer";
+import { HOST_PROPS_BUILTIN_KEYS } from "@/core/host/builtin-keys";
 import { elements } from "../../../playground/consumer/elements";
-import { renderPropsBar } from "../../../playground/consumer/props-bar";
+import { log } from "../../../playground/consumer/logger";
+import {
+	renderPropsBar,
+	setOnConfigChange,
+} from "../../../playground/consumer/props-bar";
 import {
 	createModalTemplate,
 	renderComponent,
 } from "../../../playground/consumer/renderer";
 import {
 	componentCache,
+	currentConfig,
 	currentPropValues,
 	resetPropValues,
 	setCurrentConfig,
@@ -36,6 +42,35 @@ afterEach(async () => {
 });
 
 describe("playground prop editor", () => {
+	it.each([...HOST_PROPS_BUILTIN_KEYS])(
+		"rejects reserved host-control name %s without changing configuration",
+		(name) => {
+			const config = {
+				tag: "reserved-editor",
+				url: "https://example.com",
+				props: {},
+			};
+			setCurrentConfig(config);
+			const changed = vi.fn();
+			setOnConfigChange(changed);
+			renderPropsBar(config);
+			const input =
+				elements.propsBar.querySelector<HTMLInputElement>("#new-prop-name");
+			if (!input) throw new Error("Missing Add Prop input");
+			input.value = name;
+			elements.propsBar
+				.querySelector<HTMLButtonElement>("#btn-confirm-add")
+				?.click();
+			expect(currentConfig.props).toEqual({});
+			expect(Object.hasOwn(currentPropValues, name)).toBe(false);
+			expect(changed).not.toHaveBeenCalled();
+			expect(log).toHaveBeenLastCalledWith(
+				"A non-reserved prop name is required",
+				"error",
+			);
+		},
+	);
+
 	it("preserves quoted names and HTML-like values as text", async () => {
 		const key = 'display"name';
 		const value = '<img src=x onerror="alert(1)">';

@@ -257,8 +257,50 @@ for (const context of ["iframe", "popup"] as const) {
 				),
 			)
 			.toBe(7);
+		const pageErrors: string[] = [];
+		page.on("pageerror", (error) => pageErrors.push(error.message));
+		popup?.on("pageerror", (error) => pageErrors.push(error.message));
+		await host.locator("#btn-close").click();
+		await expect(page.locator("#mount iframe")).toHaveCount(0);
+		if (popup) await expect.poll(() => popup.isClosed()).toBe(true);
+		expect(pageErrors).toEqual([]);
 	});
 }
+
+test("playground rejects reserved prop names and renders after a valid addition", async ({
+	page,
+}) => {
+	const errors: string[] = [];
+	page.on("pageerror", (error) => {
+		errors.push(error.message);
+	});
+	await page.route("https://**/*", (route) => route.abort());
+	await page.goto(`${consumerOrigin}/editor`);
+	await page.locator("#btn-add-prop").click();
+	for (const name of ["onError", "close"]) {
+		await page.locator("#new-prop-name").fill(name);
+		await page.locator("#btn-confirm-add").click();
+		await expect(page.locator(".log-entry.error .message").last()).toHaveText(
+			"A non-reserved prop name is required",
+		);
+		await expect(page.locator(`input[data-prop="${name}"]`)).toHaveCount(0);
+	}
+	await page.locator("#new-prop-name").fill("customName");
+	await page.locator("#btn-confirm-add").click();
+	await page.locator('input[data-prop="customName"]').fill("recovered");
+	await page.locator("#btn-render").click();
+	await expect(page.locator("#status-text")).toHaveText("Rendered");
+	const host = page
+		.frames()
+		.find((frame) => frame.url().startsWith(hostOrigin));
+	if (!host) throw new Error("Missing playground host");
+	expect(
+		await host.evaluate(() => Reflect.get(window, "hostProps").customName),
+	).toBe("recovered");
+	await page.locator("#btn-close").click();
+	await expect(page.locator("iframe")).toHaveCount(0);
+	expect(errors).toEqual([]);
+});
 
 test("playground Set applies an edit when blur refreshes the code preview", async ({
 	page,

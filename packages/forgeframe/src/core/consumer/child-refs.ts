@@ -31,7 +31,12 @@ export function buildNestedHostRefs<
 
 	for (const [name, component] of Object.entries(nestedComponents)) {
 		const nestedOptions = getComponentOptions(component);
-		refs[name] = createNestedHostRef(name, nestedOptions);
+		Object.defineProperty(refs, name, {
+			value: createNestedHostRef(name, nestedOptions),
+			enumerable: true,
+			writable: true,
+			configurable: true,
+		});
 	}
 
 	return Object.keys(refs).length > 0 ? refs : undefined;

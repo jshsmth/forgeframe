@@ -32,6 +32,67 @@ describe("Host controls and routing integration", () => {
 		vi.restoreAllMocks();
 	});
 
+	it.each([
+		["opacity", { opacity: 0.5 }, "0.5", ""],
+		["display", { display: "none" }, "", ""],
+		["visibility", { visibility: "hidden" }, "", ""],
+		["transition", { transition: "opacity 2s" }, "", "opacity 2s"],
+	] as const)(
+		"applies show requested before iframe creation with configured %s",
+		async (property, style, opacity, transition) => {
+			harness = createIframeIntegrationHarness();
+			const container = document.createElement("div");
+			document.body.append(container);
+			const instance = create({
+				tag: `integration-prerender-show-${property}`,
+				url: "https://host.example.com/widget",
+				attributes: { loading: "lazy" },
+				style,
+			})();
+			instance.event.on(EVENT.PRERENDER, () => instance.show());
+			const rendering = instance.render(container);
+			const { iframe } = await harness.bootstrapIframeHost(container);
+			await rendering;
+			expect(iframe.style.display).toBe("");
+			expect(iframe.style.visibility).toBe("visible");
+			expect(iframe.style.opacity).toBe(opacity);
+			expect(iframe.style.transition).toBe(transition);
+		},
+	);
+
+	it.each([
+		[["show", "hide"], "none", "hidden"],
+		[["hide", "show"], "", "visible"],
+		[["show", "hide", "show"], "", "visible"],
+	] as const)(
+		"preserves the last visibility request before iframe creation: %s",
+		async (controls, display, visibility) => {
+			harness = createIframeIntegrationHarness();
+			const container = document.createElement("div");
+			document.body.append(container);
+			const instance = create({
+				tag: `integration-prerender-controls-${controls.join("-")}`,
+				url: "https://host.example.com/widget",
+				style: {
+					display: "none",
+					visibility: "hidden",
+					opacity: 0.5,
+					transition: "opacity 2s",
+				},
+			})();
+			instance.event.on(EVENT.PRERENDER, () => {
+				for (const control of controls) void instance[control]();
+			});
+			const rendering = instance.render(container);
+			const { iframe } = await harness.bootstrapIframeHost(container);
+			await rendering;
+			expect(iframe.style.display).toBe(display);
+			expect(iframe.style.visibility).toBe(visibility);
+			expect(iframe.style.opacity).toBe("0.5");
+			expect(iframe.style.transition).toBe("opacity 2s");
+		},
+	);
+
 	it("preserves an acknowledged host hide while initial rendering completes", async () => {
 		harness = createIframeIntegrationHarness();
 		const container = document.createElement("div");
@@ -98,6 +159,79 @@ describe("Host controls and routing integration", () => {
 		const next = instance.exports as { next: () => Promise<number> };
 		await expect(next.next()).resolves.toBe(42);
 		await expect(first.m0?.()).rejects.toThrow("not found");
+	});
+
+	it("captures exported array entries once and rejects missing entries before replacing exports", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const Component = create<
+			Record<string, unknown>,
+			{ values: string[]; run: () => number }
+		>({
+			tag: "integration-export-array-accessors",
+			url: "https://host.example.com/widget",
+		});
+		const instance = Component();
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(container);
+		await rendering;
+		let reads = 0;
+		const values: string[] = [];
+		Object.defineProperty(values, "0", {
+			enumerable: true,
+			get: () => (++reads === 1 ? "captured" : undefined),
+		});
+		await hostProps.export({ values, run: () => 42 });
+		const previous = instance.exports;
+		if (!previous) throw new Error("Missing captured exports");
+		expect(reads).toBe(1);
+		expect(previous.values).toEqual(["captured"]);
+		const missing: unknown[] = [];
+		Object.defineProperty(missing, "0", { get: () => undefined });
+		await expect(
+			hostProps.export({ values: missing, run: () => 100 }),
+		).rejects.toThrow("undefined array entry");
+		expect(instance.exports).toBe(previous);
+		await expect(previous.run()).resolves.toBe(42);
+		await hostProps.export({ values: ["recovered"], run: () => 7 });
+		expect(instance.exports?.values).toEqual(["recovered"]);
+		await expect(instance.exports?.run()).resolves.toBe(7);
+		await expect(previous.run()).rejects.toThrow("not found");
+	});
+
+	it("rolls back peer registrations when final response encoding fails", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const Component = create({
+			tag: "integration-peer-message-encoding",
+			url: "https://host.example.com/widget",
+		});
+		const requester = Component();
+		const sibling = Component();
+		const initial = () => 42;
+		sibling.exports = { initial };
+		const rendering = requester.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(container);
+		await rendering;
+		const peers = await hostProps.getPeerInstances();
+		const held = peers[0]?.exports as { initial: () => Promise<number> };
+		const failedMethods = Object.fromEntries(
+			Array.from({ length: 499 }, (_, index) => [`m${index}`, () => index]),
+		);
+		sibling.exports = { initial, ...failedMethods, metadata: 1n };
+		await expect(hostProps.getPeerInstances()).rejects.toThrow(/serializ/i);
+		await expect(held.initial()).resolves.toBe(42);
+		sibling.exports = { initial, fresh: () => 7 };
+		const recovered = await hostProps.getPeerInstances();
+		const methods = recovered[0]?.exports as {
+			initial: () => Promise<number>;
+			fresh: () => Promise<number>;
+		};
+		await expect(methods.initial()).resolves.toBe(42);
+		await expect(methods.fresh()).resolves.toBe(7);
+		await expect(held.initial()).resolves.toBe(42);
 	});
 
 	it("recovers export callback capacity after final message encoding fails", async () => {

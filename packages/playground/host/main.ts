@@ -246,9 +246,9 @@ function renderEmbedded() {
 			setStatus("Reported error to consumer");
 		});
 
-		// Request close (calls consumer's onClose callback)
+		// Request close through the built-in control, including in copied examples.
 		document.getElementById("btn-close")?.addEventListener("click", () => {
-			hostProps.onClose();
+			void hostProps.close();
 		});
 
 		// Resize the iframe

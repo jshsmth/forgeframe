@@ -427,10 +427,18 @@ export function serializeFunctions(
 		}
 		stack.add(obj);
 		try {
-			for (let index = 0; index < obj.length; index++) {
-				assertDefinedArrayEntry(obj[index], [String(index)]);
+			const entries: unknown[] = [];
+			const length = obj.length;
+			for (let index = 0; index < length; index++) {
+				const entry = obj[index];
+				assertDefinedArrayEntry(entry, [String(index)]);
+				entries.push(entry);
 			}
-			return obj.map((item) => serializeFunctions(item, bridge, stack));
+			const result: unknown[] = [];
+			for (const entry of entries) {
+				result.push(serializeFunctions(entry, bridge, stack));
+			}
+			return result;
 		} finally {
 			stack.delete(obj);
 		}

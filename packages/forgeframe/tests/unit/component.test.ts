@@ -289,6 +289,18 @@ describe("Component Creation", () => {
 		).toThrow("Component url is required");
 	});
 
+	it.each(["onError", "close", "children"])(
+		"omits an undefined reserved definition for %s during declaration",
+		(key) => {
+			const Component = create<Record<string, unknown>>({
+				tag: `undefined-reserved-${key.toLowerCase()}`,
+				url: "https://example.com",
+				props: { [key]: undefined },
+			});
+			expect(() => Component()).not.toThrow();
+		},
+	);
+
 	it("should reject custom props that collide with hostProps built-ins", () => {
 		expect(() =>
 			create({

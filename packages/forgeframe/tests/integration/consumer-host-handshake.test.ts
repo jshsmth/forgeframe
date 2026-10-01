@@ -32,6 +32,43 @@ describe("Consumer/host handshake integration", () => {
 		vi.restoreAllMocks();
 	});
 
+	it.each([
+		{ names: ["__proto__"] },
+		{ names: ["__proto__", "constructor", "toString", "ordinary"] },
+	])(
+		"preserves own child names through bootstrap: $names",
+		async ({ names }) => {
+			harness = createIframeIntegrationHarness();
+			const Child = create({
+				tag: "own-name-child",
+				url: "https://host.example.com/child",
+			});
+			const Parent = create({
+				tag: "own-name-parent",
+				url: "https://host.example.com/widget",
+				children: () => Object.fromEntries(names.map((name) => [name, Child])),
+			});
+			const container = document.createElement("div");
+			document.body.append(container);
+			const instance = Parent();
+			const rendering = instance.render(container);
+			void rendering.catch(() => {});
+			const { hostProps } = await harness.bootstrapIframeHost(container);
+			await expect(rendering).resolves.toBeUndefined();
+			const children = hostProps.children;
+			expect(Object.keys(children ?? {})).toEqual(names);
+			expect(Object.getPrototypeOf(children)).toBe(Object.prototype);
+			for (const name of names) {
+				expect(Object.hasOwn(children ?? {}, name)).toBe(true);
+				expect(children?.[name]).toBe(Child);
+			}
+			await instance.updateProps({});
+			expect(hostProps.children).toBe(children);
+			await hostProps.close();
+			expect(container.querySelector("iframe")).toBeNull();
+		},
+	);
+
 	it("bootstraps a parent without serializing its child's recursive schema", async () => {
 		harness = createIframeIntegrationHarness();
 		const tree = z.object({

@@ -4,6 +4,7 @@
 
 import ForgeFrame, { type PropSchema, prop } from "forgeframe";
 import { requireValue } from "../require-value";
+import { getComponentDimensions } from "./config";
 import { elements } from "./elements";
 import { log, setButtonsEnabled, setStatus } from "./logger";
 import { parsePropInput, renderPropsBar } from "./props-bar";
@@ -204,18 +205,7 @@ export function createComponent(
 	// (unlike modals which can be cached since they append to body fresh each time)
 	const uniqueTag = `${config.tag}-${++componentSequence}`;
 
-	// For popup context, use modalStyle dimensions as fallback since '100%' doesn't work for popups
-	let dimensions = config.dimensions as {
-		width?: string | number;
-		height?: string | number;
-	};
-	if (context === "popup") {
-		const ms = config.modalStyle || {};
-		dimensions = {
-			width: ms.width || 500,
-			height: ms.height || 400,
-		};
-	}
+	const dimensions = getComponentDimensions(config, context);
 
 	const component = ForgeFrame.create<DynamicProps>({
 		tag: uniqueTag,

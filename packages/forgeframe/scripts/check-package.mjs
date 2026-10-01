@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
@@ -86,6 +93,19 @@ void result; void remoteResult;
 	)?.[1];
 	assert.ok(readmeExample, "Missing README Define a Component example");
 	writeFileSync(resolve(directory, "readme-consumer.mts"), readmeExample);
+	const reactSection = readme.split("## React Integration (Optional)")[1];
+	const reactExample = reactSection?.match(/```tsx\r?\n([\s\S]*?)```/)?.[1];
+	assert.ok(reactExample, "Missing README React Basic Usage example");
+	writeFileSync(resolve(directory, "readme-react.tsx"), reactExample);
+	// React is an optional adapter dependency; use the repository's pinned fixture runtime.
+	mkdirSync(resolve(directory, "node_modules/@types"), { recursive: true });
+	for (const dependency of ["react", "@types/react"]) {
+		symlinkSync(
+			resolve(repoRoot, "node_modules", dependency),
+			resolve(directory, "node_modules", dependency),
+			"dir",
+		);
+	}
 	run(process.execPath, [
 		resolve(repoRoot, "node_modules/typescript/bin/tsc"),
 		"--ignoreConfig",
@@ -99,8 +119,11 @@ void result; void remoteResult;
 		"NodeNext",
 		"--target",
 		"ES2022",
+		"--jsx",
+		"react-jsx",
 		"consumer.mts",
 		"readme-consumer.mts",
+		"readme-react.tsx",
 	]);
 	console.log(
 		`Installed forgeframe@${version}: ESM runtime and NodeNext consumer types passed`,

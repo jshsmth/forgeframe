@@ -286,6 +286,11 @@ its loading and host artifacts, and prevents any not-yet-opened iframe or popup
 from opening. The render promise rejects with
 `Component "<tag>" was closed before rendering completed`.
 
+Repeated or reentrant consumer `close()` calls wait for the same close operation,
+including instance deregistration and destruction notifications. Close events and
+cleanup run once. If failed rendering already started destruction, `close()` waits
+for that teardown to finish without emitting another close event.
+
 Relative component URLs use `document.baseURI`, including any `<base href>` in
 the consumer page. Rendering validates and pins the resolved absolute URL before
 loading callbacks run; that same destination is used for navigation and prop
@@ -297,6 +302,12 @@ the initial request.
 > **`Consumer`**
 
 Subscribe to lifecycle events for better control.
+
+Handlers run synchronously in registration order. Listeners added during an
+event wait for the next emission, so a `once()` handler can safely rearm itself.
+Removing listeners before their turn skips them in the current emission,
+including bulk removal. Cancelling and re-registering a listener defers the new
+registration until the next emission.
 
 ```typescript
 const instance = LoginForm({ /* props */ });
@@ -427,9 +438,13 @@ Peer discovery uses a separate relay registry with a cumulative **500-reference*
 
 Enum schemas retain the allowed values supplied at creation. Changing the original array does not change validation or the constraints retained by `.optional()`, `.nullable()`, and `.default()`.
 
+Object shapes and the item/branch arrays passed to `TupleSchema` and `UnionSchema` also retain their definitions at creation. Replacing or removing entries from the original containers does not change existing schemas or their clones.
+
 Shaped object schemas validate own fields. An omitted field is treated as `undefined`, so optional fields and defaults work even for names such as `constructor` and `toString`; inherited values are not supplied as schema inputs.
 
 Arrays sent as props or exports require defined entries after normalization. `undefined` entries and sparse holes are rejected instead of silently becoming `null`, including in nested arrays. Use `prop.string().nullable()` with `null`, or an item default such as `prop.array().of(prop.string().default('fallback'))`. Standalone schema validation still accepts optional array entries; props excluded by `sendToHost`, `sameDomain`, or `trustedDomains` retain their local values.
+
+Array transport reads indexed entries directly, including arrays with a null prototype or an overridden `map` method. Array methods do not determine the delivered values.
 
 Ordinary normalized prop arrays are checked before opening the host or committing an update, so a rejected update preserves the previous snapshot. Values produced by `hostDecorate` or custom `toJSON()` encoders (including computed encoder properties) are checked during delivery; those failures retain the existing consumer snapshot commitment. A non-callable `toJSON` field is ordinary data. DOTIFY traverses root own properties and nested plain objects directly, invoking JSON encoders only on encoded leaves. Use BASE64 when a root object's `toJSON()` should determine its delivered value; an encoder returning `undefined` omits that prop. Literal and enum rejection messages format arbitrary inputs without invoking their JSON encoders, allowing later union branches to validate them.
 
@@ -471,7 +486,7 @@ const MyComponent = ForgeFrame.create({
 });
 ```
 
-Note: ForgeFrame runs schema validation synchronously. Schemas with async `~standard.validate` are not supported.
+Note: ForgeFrame runs schema validation synchronously. Schemas with async `~standard.validate` are not supported. Their returned promises are observed so a rejected async validator does not leak an additional unhandled rejection.
 
 `prop.number()` rejects `NaN`, `Infinity`, and `-Infinity`. Nonfinite initial values and updates fail validation before delivery, preventing JSON transport from silently converting them to `null`. This tightens previously accepted nonfinite inputs.
 
@@ -609,7 +624,7 @@ the sixth generic.
 - `DOTIFY` safely preserves nested object keys that contain separators such as `.`, `&`, or `=`.
 - Ordinary objects with transport-like marker fields and additional user fields remain data in all three serialization modes.
 
-Date props and exports preserve genuine dates created in another browser window. Record schemas also accept ordinary dictionaries from another window while continuing to reject class instances. Numeric iframe styles use pixels for lengths and retain numbers for unitless CSS properties; custom property names remain case-sensitive.
+Date props and exports preserve genuine dates created in another browser window. Record schemas also accept ordinary dictionaries from another window while continuing to reject class instances. Numeric iframe styles use pixels for lengths and retain numbers for unitless CSS properties; custom property names remain case-sensitive. Loading concealment keeps lazy iframes in layout so they can initialize. After initialization, configured display, visibility, opacity and transition styles are restored without the default iframe fade overriding them; explicit show/hide requests take precedence over configured visibility.
 
 ### Passing Props via URL or POST Body (Advanced)
 
@@ -660,6 +675,9 @@ window.hostProps.onProps((newProps) => {
 ```
 
 Host subscribers are invoked in registration order after props are committed.
+New or re-registered subscribers wait for the next update, and subscriptions
+cancelled before their turn are skipped.
+An old cancellation handle cannot cancel a later registration of the same callback.
 Thrown errors and rejected promises are caught and logged. Async subscribers are
 not awaited, so their work does not delay other subscribers or update acknowledgements.
 
@@ -730,6 +748,8 @@ It reads channel metadata from `window.name`, requests initial props through ori
 Only channel metadata remains in `window.name`, allowing reloads and subsequent host documents to reconnect and receive the latest props. Browser policies that clear window names across sites can still prevent reconnection. `initHost()` returns `null` outside a ForgeFrame host window; handle that case if the page also supports standalone use.
 
 Calling the returned host's `destroy()` disposes its runtime and removes `window.hostProps`. When the channel metadata is still available, a later `initHost()` creates a fresh runtime; await its new `ready` promise before using props or controls.
+
+If configuration validation destroys or replaces the existing host, that `initHost()` call returns `null`. It leaves any replacement runtime's configuration and deferred initialization intact.
 
 Supported host boot patterns:
 
@@ -938,7 +958,7 @@ const LoginComponent = ForgeFrame.create({
 const Login = createReactComponent(LoginComponent, { React });
 
 function App() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<{ id: number; name: string } | null>(null);
 
   return (
     <div>
@@ -959,7 +979,7 @@ function App() {
 
 ### React Props
 
-The React component accepts all your component props plus:
+The React component accepts your component props alongside these wrapper props:
 
 | Prop | Type | Description |
 |------|------|-------------|
@@ -970,6 +990,11 @@ The React component accepts all your component props plus:
 | `className` | `string` | Container CSS class |
 | `style` | `CSSProperties` | Container inline styles |
 | `ref` | `React.Ref<HTMLDivElement>` | Access the wrapper's container element |
+
+These wrapper names are reserved by the React adapter and are not forwarded as
+custom component props. Use a distinct name, such as `onHostClose`, for a callback
+the host needs to receive; avoid requiring a reserved name in the component's
+custom prop definitions when using this adapter.
 
 Construction and render failures are reported through `onError` and shown inside the wrapper without removing sibling React content. Changing `context` creates a fresh instance and can recover from a render failure; changing the wrapper's React `key` explicitly remounts it. The container ref stays attached while the error is displayed.
 
@@ -1102,7 +1127,7 @@ const { children } = window.hostProps;
 children.CardField({ onValid: () => {} }).render('#card-container');
 ```
 
-Each child tag must be registered in the host bundle before `hostProps` is initialized. Current hosts resolve executable validators, defaults, decorators, and regular expressions from that local registry instead of reconstructing them from JSON. Child metadata arrives through the verified bootstrap response. Nested child URLs must remain static strings.
+Each child tag must be registered in the host bundle before `hostProps` is initialized. Current hosts resolve executable validators, defaults, decorators, and regular expressions from that local registry instead of reconstructing them from JSON. Child metadata arrives through the verified bootstrap response. Nested child URLs must remain static strings. Child names are preserved verbatim, including `__proto__`.
 
 ---
 
@@ -1192,6 +1217,7 @@ ForgeFrame.VERSION                // Library version
 
 `props` accepts direct Standard Schemas for concise definitions or full
 `PropDefinition` objects when transport, alias, and lifecycle options are needed.
+Undefined definition entries are treated as omitted; built-in defaults and delivery rules still apply.
 
 ```typescript
 interface ComponentOptions<P, I = P, SchemaInputs = I> {

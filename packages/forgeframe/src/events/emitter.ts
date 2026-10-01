@@ -31,7 +31,7 @@ export class EventEmitter implements EventEmitterInterface {
 	 * Internal storage for event listeners mapped by event name.
 	 * @internal
 	 */
-	private listeners = new Map<string, Set<EventHandler>>();
+	private listeners = new Map<string, Map<EventHandler, object>>();
 
 	/**
 	 * Subscribes a handler to a specific event.
@@ -51,11 +51,13 @@ export class EventEmitter implements EventEmitterInterface {
 	 * @public
 	 */
 	on<T = unknown>(event: string, handler: EventHandler<T>): () => void {
-		if (!this.listeners.has(event)) {
-			this.listeners.set(event, new Set());
+		let handlers = this.listeners.get(event);
+		if (!handlers) {
+			handlers = new Map();
+			this.listeners.set(event, handlers);
 		}
-		// biome-ignore lint/style/noNonNullAssertion: The set is created immediately above when absent.
-		this.listeners.get(event)!.add(handler as EventHandler);
+		if (!handlers.has(handler as EventHandler))
+			handlers.set(handler as EventHandler, {});
 
 		return () => this.off(event, handler);
 	}
@@ -98,6 +100,8 @@ export class EventEmitter implements EventEmitterInterface {
 	 *
 	 * @remarks
 	 * Handlers are invoked synchronously in the order they were registered.
+	 * Newly registered handlers wait for the next emission. A handler removed
+	 * before its turn is skipped.
 	 * If a handler throws an error, it is caught and logged to the console,
 	 * allowing subsequent handlers to still execute.
 	 *
@@ -112,7 +116,13 @@ export class EventEmitter implements EventEmitterInterface {
 		const handlers = this.listeners.get(event);
 		if (!handlers) return;
 
-		for (const handler of handlers) this.invokeHandler(event, handler, data);
+		for (const [handler, registration] of [...handlers]) {
+			if (
+				this.listeners.get(event) === handlers &&
+				handlers.get(handler) === registration
+			)
+				this.invokeHandler(event, handler, data);
+		}
 	}
 
 	/** Executes one observer while isolating both synchronous and asynchronous failures. */
