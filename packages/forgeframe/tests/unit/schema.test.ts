@@ -238,6 +238,41 @@ describe("validateWithSchema", () => {
 				["~standard"].validate({ name: "input" }),
 		).toThrow("Async schema validation is not supported");
 	});
+
+	it.each(["native", "foreign"])(
+		"observes rejected %s schema promises at top-level and nested boundaries",
+		async (realm) => {
+			const rejected = (): Promise<{ value: string }> =>
+				realm === "foreign"
+					? runInNewContext('Promise.reject(new Error("Async schema failure"))')
+					: Promise.reject(new Error("Async schema failure"));
+			const schema: StandardSchemaV1<unknown, string> = {
+				"~standard": {
+					version: 1,
+					vendor: "async-rejection",
+					validate: rejected,
+				},
+			};
+			expect(() => validateWithSchema(schema, "input", "name")).toThrow(
+				"uses an async schema",
+			);
+			const nested = prop.string();
+			const validate = vi
+				.spyOn(nested["~standard"], "validate")
+				.mockImplementation(rejected);
+			try {
+				expect(() =>
+					prop.object().shape({ name: nested })["~standard"].validate({
+						name: "input",
+					}),
+				).toThrow("Async schema validation is not supported");
+				// Vitest reports any unobserved rejection after this event-loop turn.
+				await new Promise<void>((resolve) => setTimeout(resolve, 0));
+			} finally {
+				validate.mockRestore();
+			}
+		},
+	);
 });
 
 // ============================================================================

@@ -73,6 +73,15 @@ export class ConsumerRenderer<
 	/** Explicit visibility requests remain separate from the loading placeholder. */
 	private hidden = false;
 
+	/** Explicit controls take precedence over configured visibility after loading. */
+	private visibilityRequested = false;
+
+	/** Caller styles temporarily changed by loading concealment and animation. */
+	private loadingFrameStyles: Record<
+		"display" | "visibility" | "opacity" | "transition",
+		{ value: string; priority: string }
+	> | null = null;
+
 	constructor(
 		private options: NormalizedOptions<P, SchemaInputs>,
 		private uid: string,
@@ -136,7 +145,8 @@ export class ConsumerRenderer<
 			assertActive();
 			this.iframe = createIframeElement(windowName);
 			assertActive();
-			hideIframe(this.iframe);
+			this.concealLoadingFrame(this.iframe);
+			if (this.visibilityRequested && !this.hidden) showIframe(this.iframe);
 		}
 
 		const prerenderContext = this.createTemplateContext(
@@ -159,6 +169,53 @@ export class ConsumerRenderer<
 		const containerEl = containerTemplateFn(templateContext);
 		assertActive();
 		this.mountPrerenderContent(mountContainer, containerEl, assertActive);
+	}
+
+	/** Saves caller styles and conceals loading frames according to navigation needs. */
+	private concealLoadingFrame(frame: HTMLIFrameElement): void {
+		const frameStyle = frame.style;
+		const capture = (property: string) => ({
+			value: frameStyle.getPropertyValue(property),
+			priority: frameStyle.getPropertyPriority(property),
+		});
+		this.loadingFrameStyles = {
+			display: capture("display"),
+			visibility: capture("visibility"),
+			opacity: capture("opacity"),
+			transition: capture("transition"),
+		};
+		if (frame.loading === "lazy") {
+			// Lazy navigation requires a layout box, even for a configured hidden frame.
+			if (frameStyle.display === "none") frameStyle.removeProperty("display");
+		} else {
+			// Eager frames must not add a second layout box beside the loading template.
+			frameStyle.display = "none";
+		}
+		frameStyle.visibility = "hidden";
+	}
+
+	/** Restores loading styles while retaining explicit visibility control precedence. */
+	private restoreLoadingFrameStyles(frame: HTMLIFrameElement): void {
+		if (!this.loadingFrameStyles) return;
+		for (const property of [
+			"display",
+			"visibility",
+			"opacity",
+			"transition",
+		] as const) {
+			if (
+				this.visibilityRequested &&
+				(property === "display" || property === "visibility")
+			)
+				continue;
+			const { value, priority } = this.loadingFrameStyles[property];
+			frame.style.setProperty(
+				property,
+				property === "visibility" && !value ? "visible" : value,
+				priority,
+			);
+		}
+		this.loadingFrameStyles = null;
 	}
 
 	/** Constructs template data without invoking user templates. */
@@ -314,9 +371,19 @@ export class ConsumerRenderer<
 				this.container,
 				this.prerenderElement,
 				this.iframe,
-				() => !this.hidden,
+				// The default reveal temporarily replaces these styles. Caller-styled
+				// frames become ready by restoring their styles without that reveal.
+				() =>
+					!this.hidden &&
+					Object.values(this.loadingFrameStyles ?? {}).every(
+						({ value }) => !value,
+					),
 			);
 			this.prerenderElement = null;
+			if (this.iframe && this.loadingFrameStyles) {
+				this.restoreLoadingFrameStyles(this.iframe);
+				if (this.hidden) hideIframe(this.iframe);
+			}
 		} else if (this.context === CONTEXT.POPUP) {
 			this.prerenderElement?.remove();
 			this.prerenderElement = null;
@@ -402,6 +469,7 @@ export class ConsumerRenderer<
 	show(): void {
 		if (this.context === CONTEXT.IFRAME) {
 			this.hidden = false;
+			this.visibilityRequested = true;
 			if (this.iframe) showIframe(this.iframe);
 		}
 	}
@@ -412,7 +480,12 @@ export class ConsumerRenderer<
 	hide(): void {
 		if (this.context === CONTEXT.IFRAME) {
 			this.hidden = true;
-			if (this.iframe) hideIframe(this.iframe);
+			this.visibilityRequested = true;
+			if (this.iframe) {
+				if (this.loadingFrameStyles && this.iframe.loading === "lazy")
+					this.iframe.style.visibility = "hidden";
+				else hideIframe(this.iframe);
+			}
 		}
 	}
 
@@ -441,5 +514,6 @@ export class ConsumerRenderer<
 
 		this.container = null;
 		this.mountContainer = null;
+		this.loadingFrameStyles = null;
 	}
 }

@@ -614,6 +614,43 @@ describe("prop.array()", () => {
 // ============================================================================
 
 describe("prop.tuple()", () => {
+	it.each(["null prototype", "shadowed iterator"])(
+		"snapshots indexed constructor items with a %s",
+		(arrayKind) => {
+			const items: [StringSchema, NumberSchema] = [
+				prop.string(),
+				prop.number(),
+			];
+			if (arrayKind === "null prototype") Object.setPrototypeOf(items, null);
+			else
+				Object.defineProperty(items, Symbol.iterator, {
+					value: () => [][Symbol.iterator](),
+				});
+
+			const schema = new TupleSchema(items);
+			expect(schema["~standard"].validate(["one", 2])).toEqual({
+				value: ["one", 2],
+			});
+			expect(schema.optional()["~standard"].validate(["one", 2])).toEqual({
+				value: ["one", 2],
+			});
+			expect(schema["~standard"].validate(["one", "two"])).toHaveProperty(
+				"issues",
+			);
+		},
+	);
+
+	it("snapshots constructor items before caller mutations or presence cloning", () => {
+		const items: PropSchema<string>[] = [prop.string().min(2)];
+		const schema = new TupleSchema(items);
+		const optional = schema.optional();
+		items[0] = prop.string().min(20);
+		items.push(prop.string());
+		for (const retained of [schema, optional, schema.nullable()]) {
+			expect(retained["~standard"].validate(["ok"])).toEqual({ value: ["ok"] });
+			expect(retained["~standard"].validate(["x"])).toHaveProperty("issues");
+		}
+	});
 	it("should validate fixed-length tuples", () => {
 		const schema = prop.tuple(prop.string(), prop.number());
 		expect(schema["~standard"].validate(["x", 1])).toEqual({ value: ["x", 1] });
@@ -654,6 +691,20 @@ describe("prop.tuple()", () => {
 // ============================================================================
 
 describe("prop.object()", () => {
+	it("snapshots shape constraints before caller mutations or presence cloning", () => {
+		const shape = { name: prop.string().min(2) };
+		const schema = prop.object().shape(shape).strict();
+		const optional = schema.optional();
+		shape.name = prop.string().min(20);
+		for (const retained of [schema, optional, schema.nullable()]) {
+			expect(retained["~standard"].validate({ name: "ok" })).toEqual({
+				value: { name: "ok" },
+			});
+			expect(retained["~standard"].validate({ name: "x" })).toHaveProperty(
+				"issues",
+			);
+		}
+	});
 	it.each(["toString", "constructor", "hasOwnProperty"])(
 		"treats omitted %s as missing in nested objects",
 		(key) => {
@@ -893,6 +944,35 @@ describe("prop.literal()", () => {
 // ============================================================================
 
 describe("prop.enum()", () => {
+	it.each(["null prototype", "shadowed iterator"])(
+		"snapshots indexed allowed values with a %s",
+		(arrayKind) => {
+			const values = ["pending", "active"] as const;
+			if (arrayKind === "null prototype") Object.setPrototypeOf(values, null);
+			else
+				Object.defineProperty(values, Symbol.iterator, {
+					value: () => ["corrupted"][Symbol.iterator](),
+				});
+
+			const schema = prop.enum(values);
+			for (const retained of [
+				schema,
+				schema.optional(),
+				schema.nullable(),
+				schema.default("pending"),
+			]) {
+				for (const value of ["pending", "active"])
+					expect(retained["~standard"].validate(value)).toEqual({ value });
+				expect(retained["~standard"].validate("corrupted")).toEqual({
+					issues: [
+						{
+							message: 'Expected one of ["pending", "active"], got "corrupted"',
+						},
+					],
+				});
+			}
+		},
+	);
 	it("keeps allowed values and fluent clones stable when the input array changes", () => {
 		const values: Array<"pending" | "active"> = ["pending"];
 		const schema = prop.enum(values);
@@ -950,6 +1030,45 @@ describe("prop.enum()", () => {
 // ============================================================================
 
 describe("prop.union()", () => {
+	it.each(["null prototype", "shadowed iterator"])(
+		"snapshots indexed constructor branches with a %s",
+		(arrayKind) => {
+			const branches: [StringSchema, NumberSchema] = [
+				prop.string().min(2),
+				prop.number(),
+			];
+			if (arrayKind === "null prototype") Object.setPrototypeOf(branches, null);
+			else
+				Object.defineProperty(branches, Symbol.iterator, {
+					value: () => [prop.any()][Symbol.iterator](),
+				});
+
+			const schema = new UnionSchema(branches);
+			for (const retained of [
+				schema,
+				schema.optional(),
+				schema.nullable(),
+				schema.default("ok"),
+			]) {
+				expect(retained["~standard"].validate("ok")).toEqual({ value: "ok" });
+				expect(retained["~standard"].validate(2)).toEqual({ value: 2 });
+				expect(retained["~standard"].validate("x")).toHaveProperty("issues");
+				expect(retained["~standard"].validate(true)).toHaveProperty("issues");
+			}
+		},
+	);
+	it("snapshots constructor branches before caller mutations or presence cloning", () => {
+		const branches: [PropSchema<string>, ...PropSchema<string>[]] = [
+			prop.string().min(2),
+		];
+		const schema = new UnionSchema(branches);
+		const optional = schema.optional();
+		branches[0] = prop.string().min(20);
+		for (const retained of [schema, optional, schema.nullable()]) {
+			expect(retained["~standard"].validate("ok")).toEqual({ value: "ok" });
+			expect(retained["~standard"].validate("x")).toHaveProperty("issues");
+		}
+	});
 	it.each([prop.literal("ok"), prop.enum(["ok"])])(
 		"continues past rejection without serializing circular objects or calling toJSON",
 		(branch) => {

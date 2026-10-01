@@ -119,7 +119,10 @@ function assertComponentShape<P, I, SchemaInputs>(
 
 	if (options.props) {
 		for (const key of Object.keys(options.props)) {
-			if (HOST_PROPS_BUILTIN_KEYS.has(key)) {
+			if (
+				HOST_PROPS_BUILTIN_KEYS.has(key) &&
+				options.props[key as keyof P] !== undefined
+			) {
 				throw new Error(
 					`Prop "${key}" is reserved by hostProps built-ins and cannot be defined as a custom prop`,
 				);

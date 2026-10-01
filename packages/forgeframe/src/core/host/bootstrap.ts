@@ -50,7 +50,8 @@ function readInitialPayload<P>(): WindowNamePayload<P> | null {
  * Await the returned host's `ready` promise before reading consumer props or
  * children. It rejects if the verified bootstrap or host schema validation fails.
  *
- * @returns The host runtime, or `null` outside a ForgeFrame host context.
+ * @returns The host runtime, or `null` outside a ForgeFrame host context or
+ * when validation destroys or replaces the runtime being configured.
  * @public
  */
 export function initHost<P extends Record<string, unknown>, SchemaInputs = P>(
@@ -60,8 +61,9 @@ export function initHost<P extends Record<string, unknown>, SchemaInputs = P>(
 ): HostComponent<P, SchemaInputs> | null {
 	if (!hasBrowserWindow()) return null;
 	if (hostInstance) {
+		const configuredHost = hostInstance;
 		try {
-			hostInstance.applyHostConfiguration(
+			configuredHost.applyHostConfiguration(
 				propDefinitions as
 					| HostPropsDefinition<
 							Record<string, unknown>,
@@ -70,7 +72,21 @@ export function initHost<P extends Record<string, unknown>, SchemaInputs = P>(
 					| undefined,
 				allowedConsumerDomains,
 			);
+		} catch (error) {
+			// A rejected replacement preserves the working runtime. Failed initial
+			// validation still invalidates a host whose bootstrap has not completed.
+			if (
+				hostInstance === configuredHost &&
+				!configuredHost.hasCompletedBootstrap()
+			)
+				clearHostInstance();
+			throw error;
+		}
+		// Validation may synchronously tear down or replace the configured runtime.
+		// The outer call must not flush or reconfigure its replacement.
+		if (hostInstance !== configuredHost) return null;
 
+		try {
 			if (allowedConsumerDomains) {
 				hostInstance.assertAllowedConsumerDomain(allowedConsumerDomains);
 			}

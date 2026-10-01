@@ -157,9 +157,14 @@ function getCompiledPropDefinitions<P extends Record<string, unknown>, I = P>(
 		return cached;
 	}
 
+	const suppliedDefinitions = Object.fromEntries(
+		Object.entries(definitions).filter(
+			([, definition]) => definition !== undefined,
+		),
+	);
 	const compiledDefinitions = Object.entries({
 		...BUILTIN_PROP_DEFINITIONS,
-		...definitions,
+		...suppliedDefinitions,
 	}).map(([key, def]) => {
 		const { isDirectSchema, definition } = resolvePropDefinition<P>(def);
 		return {
@@ -575,7 +580,8 @@ function normalizePropsInternal<P extends Record<string, unknown>, I = P>(
 			options,
 			shouldDeferCustomNormalization:
 				options.deferCustomNormalization === true &&
-				hasOwn(definitions, compiled.key),
+				hasOwn(definitions, compiled.key) &&
+				definitions[compiled.key as keyof P] !== undefined,
 		});
 	}
 	return result;

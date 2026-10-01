@@ -1,6 +1,7 @@
 /**
  * Code generation for ForgeFrame Playground
  */
+import { getComponentDimensions } from "./config";
 import { elements } from "./elements";
 import { getDefaultValue } from "./props-bar";
 import { currentPropValues } from "./state";
@@ -47,8 +48,11 @@ export function generateCode(
 	context: RenderContext,
 	iframeStyle: IframeStyle,
 ): string {
+	const customProps = Object.entries(config.props || {}).filter(
+		([key]) => key !== "onGreet" && key !== "onClose",
+	);
 	const propsEntries = [
-		...Object.entries(config.props || {}).map(([key, val]) => {
+		...customProps.map(([key, val]) => {
 			const v = val as Record<string, unknown>;
 			const schemaCode = generatePropSchemaCode(v.type as string, {
 				required: v.required as boolean,
@@ -60,7 +64,7 @@ export function generateCode(
 	].join(",\n");
 
 	// Generate instance prop values based on config
-	const instancePropsEntries = Object.entries(config.props || {})
+	const instancePropsEntries = customProps
 		.map(([key, val]) => {
 			const v = val as Record<string, unknown>;
 			const value = currentPropValues[key] ?? v.default ?? getDefaultValue(v);
@@ -168,8 +172,9 @@ await myComponent.render(document.body);`;
 	}
 
 	// Non-modal (embedded iframe or popup)
-	const dimensionsStr = config.dimensions
-		? `  dimensions: { width: ${JSON.stringify(config.dimensions.width)}, height: ${JSON.stringify(config.dimensions.height)} },`
+	const dimensions = getComponentDimensions(config, context);
+	const dimensionsStr = dimensions
+		? `  dimensions: { width: ${JSON.stringify(dimensions.width)}, height: ${JSON.stringify(dimensions.height)} },`
 		: "";
 
 	return `import ForgeFrame, { prop } from 'forgeframe';

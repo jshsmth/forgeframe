@@ -82,7 +82,11 @@ export class EnumSchema<T extends string | number> extends PropSchema<T> {
 
 	constructor(values: readonly T[]) {
 		super();
-		this._values = [...values];
+		const allowedValues: T[] = [];
+		for (let index = 0; index < values.length; index++) {
+			allowedValues.push(values[index]);
+		}
+		this._values = allowedValues;
 		this._valueSet = new Set(this._values);
 	}
 
@@ -135,7 +139,11 @@ export class UnionSchema<
 			throw new Error("prop.union() requires at least one schema");
 		}
 
-		this._schemas = schemas;
+		const branches: PropSchema<unknown, unknown>[] = [];
+		for (let index = 0; index < schemas.length; index++) {
+			branches.push(schemas[index]);
+		}
+		this._schemas = branches as unknown as S;
 	}
 
 	/** @internal */

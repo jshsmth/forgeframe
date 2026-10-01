@@ -123,7 +123,12 @@ export class TupleSchema<
 
 	constructor(schemas: S) {
 		super();
-		this._itemSchemas = schemas;
+		// Copy positions while retaining the caller's inferred tuple shape.
+		const items: PropSchema<unknown, unknown>[] = [];
+		for (let index = 0; index < schemas.length; index++) {
+			items.push(schemas[index]);
+		}
+		this._itemSchemas = items as unknown as S;
 	}
 
 	/** @internal */
@@ -263,7 +268,7 @@ export class ObjectSchema<
 		const clone = this._copyPresenceTo(
 			new ObjectSchema<InferObjectShape<S>, InferObjectInputShape<S>>(),
 		);
-		clone._shape = shape;
+		clone._shape = { ...shape };
 		clone._strict = this._strict;
 		return clone;
 	}

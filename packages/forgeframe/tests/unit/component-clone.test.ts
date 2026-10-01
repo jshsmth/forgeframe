@@ -12,6 +12,7 @@ import {
 import { ConsumerComponent } from "@/core/consumer";
 import { getSiblingInstances } from "@/core/consumer/siblings";
 import { prop } from "@/props/prop";
+import { CleanupManager } from "@/utils/cleanup";
 
 type CloneInternals = {
 	options: {
@@ -36,6 +37,111 @@ describe("Component clone", () => {
 	afterEach(async () => {
 		await destroyAll();
 		clearComponents();
+	});
+	it("delivers rearmed once listeners on the next resize", async () => {
+		const Component = create({
+			tag: "rearmed-resize",
+			url: "https://example.com",
+		});
+		const instance = Component();
+		const persistent = vi.fn();
+		instance.event.on("resize", persistent);
+		const sizes: unknown[] = [];
+		const rearm = (dimensions: unknown) => {
+			sizes.push(dimensions);
+			// Bound a broken live-Set traversal so the regression fails without hanging.
+			if (sizes.length < 3) instance.event.once("resize", rearm);
+		};
+		instance.event.once("resize", rearm);
+
+		await instance.resize({ width: 401 });
+		expect(sizes).toEqual([{ width: 401 }]);
+		await instance.resize({ width: 402 });
+		expect(sizes).toEqual([{ width: 401 }, { width: 402 }]);
+		expect(persistent).toHaveBeenCalledTimes(2);
+	});
+
+	it.each(["direct", "reentrant"])(
+		"waits for destruction when close is requested again (%s)",
+		async (mode) => {
+			const Component = create({
+				tag: "concurrent-close",
+				url: "https://example.com",
+			});
+			const instance = Component();
+			const destroyed = vi.fn();
+			instance.event.on("destroy", destroyed);
+			let reentrant: Promise<void> | undefined;
+			if (mode === "reentrant")
+				instance.event.on("close", () => {
+					reentrant = instance.close();
+				});
+			const first = instance.close();
+			try {
+				await (mode === "direct" ? instance.close() : reentrant);
+				expect(Component.instances).toHaveLength(0);
+				expect(destroyed).toHaveBeenCalledTimes(1);
+			} finally {
+				await first;
+			}
+		},
+	);
+
+	it("waits for already-started render-failure destruction before close resolves", async () => {
+		const failure = new Error("Expected template failure");
+		const Component = create({
+			tag: "close-during-failed-render",
+			url: "https://example.com",
+			prerenderTemplate: () => {
+				throw failure;
+			},
+		});
+		const instance = Component();
+		const mount = document.createElement("div");
+		document.body.appendChild(mount);
+		const destroyed = vi.fn();
+		const closed = vi.fn();
+		instance.event.on("destroy", destroyed);
+		instance.event.on("close", closed);
+		let releaseCleanup = () => {};
+		let markCleanupStarted = () => {};
+		const cleanupAllowed = new Promise<void>((resolve) => {
+			releaseCleanup = resolve;
+		});
+		const cleanupStarted = new Promise<void>((resolve) => {
+			markCleanupStarted = resolve;
+		});
+		const originalCleanup = CleanupManager.prototype.cleanup;
+		const cleanup = vi
+			.spyOn(CleanupManager.prototype, "cleanup")
+			.mockImplementationOnce(async function (this: CleanupManager) {
+				markCleanupStarted();
+				await cleanupAllowed;
+				await originalCleanup.call(this);
+			});
+		const renderOutcome = instance
+			.render(mount)
+			.catch((error: unknown) => error);
+		try {
+			await cleanupStarted;
+			const closeCompleted = vi.fn();
+			const closing = instance.close().then(closeCompleted);
+			await Promise.resolve();
+			await Promise.resolve();
+			expect(closeCompleted).not.toHaveBeenCalled();
+			releaseCleanup();
+			await closing;
+			await destroyAll();
+			expect(Component.instances).toHaveLength(0);
+			expect(destroyed).toHaveBeenCalledOnce();
+			expect(closed).not.toHaveBeenCalled();
+			expect(await renderOutcome).toBe(failure);
+		} finally {
+			releaseCleanup();
+			await renderOutcome;
+			cleanup.mockRestore();
+			mount.remove();
+		}
 	});
 
 	it("should preserve the normalized props snapshot", () => {

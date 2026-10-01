@@ -202,26 +202,65 @@ export function stringifyWireValue(
 ): string | undefined {
 	const paths = new WeakMap<object, string[]>();
 	const generatedMarkerPaths = new Set<string>();
+	const proxies = new WeakMap<object, object>();
+	const capturedValues = new WeakMap<object, Map<PropertyKey, unknown>>();
+	// Replacers run after JSON has read a property and invoked its encoder.
+	// Observe those reads on the returned traversal object so Date detection
+	// never reads an accessor again. Children stay unwrapped until their own
+	// replacer runs, preserving encoder receivers and native conversion order.
+	const captureReads = (encoded: object): unknown => {
+		// Native raw JSON carries a brand that a proxy cannot preserve.
+		if (
+			"isRawJSON" in JSON &&
+			typeof JSON.isRawJSON === "function" &&
+			JSON.isRawJSON(encoded)
+		) {
+			return encoded;
+		}
+		const converted = unboxJsonPrimitive(encoded);
+		if (converted !== encoded) return converted;
+		const existing = proxies.get(encoded);
+		if (existing) return existing;
+		const values = new Map<PropertyKey, unknown>();
+		const proxy = new Proxy(encoded, {
+			get(target, property) {
+				const entry = Reflect.get(target, property, target);
+				values.set(property, entry);
+				return entry;
+			},
+		});
+		proxies.set(encoded, proxy);
+		capturedValues.set(proxy, values);
+		return proxy;
+	};
 	const json = JSON.stringify(
 		value,
 		function wireValueReplacer(key, jsonValue) {
 			const holder = this as Record<string, unknown>;
 			const holderPath = paths.get(holder);
 			const path = holderPath ? [...holderPath, key] : [];
-			const originalValue = holderPath ? holder[key] : value;
+			const originalValue = holderPath
+				? capturedValues.get(holder)?.get(key)
+				: value;
 			if (encodeFunction && Array.isArray(holder)) {
 				assertDefinedArrayEntry(jsonValue, path);
 			}
 
 			let encoded = jsonValue;
 			if (isDate(originalValue)) {
-				encoded = encodeDateWireValue(originalValue);
+				encoded = {
+					__forgeframe_wire_type__: "date",
+					__forgeframe_wire_value__: jsonValue,
+				};
 				generatedMarkerPaths.add(JSON.stringify(path));
 			} else if (typeof jsonValue === "function" && encodeFunction) {
 				encoded = encodeFunction(jsonValue);
 				generatedMarkerPaths.add(JSON.stringify(path));
 			}
-			if (isObjectRecord(encoded)) paths.set(encoded, path);
+			if (isObjectRecord(encoded)) {
+				encoded = captureReads(encoded);
+				if (isObjectRecord(encoded)) paths.set(encoded, path);
+			}
 			return encoded;
 		},
 	);
@@ -232,6 +271,17 @@ export function stringifyWireValue(
 	return JSON.stringify(
 		escapeConvertedRecords(JSON.parse(json), [], generatedMarkerPaths),
 	);
+}
+
+/** Uses native unboxing without probing records through throwing slot checks. */
+function unboxJsonPrimitive(value: object): unknown {
+	if (Array.isArray(value)) return value;
+	// The dummy encoder returns the value after the native toJSON lookup.
+	// An empty property list skips record fields entirely, while native JSON
+	// still unboxes primitive wrappers. Return that conversion so coercion
+	// hooks run once, including for wrappers with customized prototypes.
+	const json = JSON.stringify({ toJSON: () => value }, []);
+	return json === "{}" || json === undefined ? value : JSON.parse(json);
 }
 
 /** Preserves codec-generated markers while escaping indistinguishable ordinary data. */

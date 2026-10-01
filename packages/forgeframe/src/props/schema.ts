@@ -268,11 +268,15 @@ export function validateWithSchema<T>(
 	return result.value;
 }
 
-/** Recognizes asynchronous schema results across window realms. @internal */
+/** Recognizes and observes unsupported asynchronous results across window realms. @internal */
 export function isAsyncSchemaResult<T>(
 	result: StandardSchemaV1Result<T> | Promise<StandardSchemaV1Result<T>>,
 ): result is Promise<StandardSchemaV1Result<T>> {
-	return "then" in result && typeof result.then === "function";
+	if (!("then" in result && typeof result.then === "function")) return false;
+	// Callers refuse async validation synchronously. Observe its eventual failure
+	// so default/output probes and nested validation cannot leak a second error.
+	void Promise.resolve(result).catch(() => undefined);
+	return true;
 }
 
 /**

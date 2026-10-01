@@ -7,6 +7,58 @@ import { describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "@/events/emitter";
 
 describe("EventEmitter", () => {
+	it("defers a cancelled and re-registered handler even when its event stays subscribed", () => {
+		const emitter = new EventEmitter();
+		const handler = vi.fn();
+		emitter.once("test", () => {
+			emitter.off("test", handler);
+			emitter.on("test", handler);
+		});
+		emitter.on("test", () => {});
+		emitter.on("test", handler);
+
+		emitter.emit("test", "first");
+		expect(handler).not.toHaveBeenCalled();
+		emitter.emit("test", "second");
+		expect(handler).toHaveBeenCalledExactlyOnceWith("second");
+	});
+
+	it.each(["off", "removeAllListeners"] as const)(
+		"skips removed dispatch entries after %s and defers replacement subscriptions",
+		(removal) => {
+			const emitter = new EventEmitter();
+			const handler = vi.fn();
+			emitter.once("test", () => {
+				if (removal === "off") emitter.off("test");
+				else emitter.removeAllListeners();
+				emitter.on("test", handler);
+			});
+			emitter.on("test", handler);
+
+			emitter.emit("test", "first");
+			expect(handler).not.toHaveBeenCalled();
+			emitter.emit("test", "second");
+			expect(handler).toHaveBeenCalledExactlyOnceWith("second");
+		},
+	);
+
+	it("defers additions while honoring specific removals during dispatch", () => {
+		const emitter = new EventEmitter();
+		const added = vi.fn();
+		const removed = vi.fn();
+		emitter.on("test", () => {
+			emitter.off("test", removed);
+			emitter.on("test", added);
+		});
+		emitter.on("test", removed);
+
+		emitter.emit("test", "first");
+		expect(removed).not.toHaveBeenCalled();
+		expect(added).not.toHaveBeenCalled();
+		emitter.emit("test", "second");
+		expect(added).toHaveBeenCalledExactlyOnceWith("second");
+	});
+
 	it("should emit events to subscribed handlers", () => {
 		const emitter = new EventEmitter();
 		const handler = vi.fn();

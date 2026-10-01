@@ -56,6 +56,10 @@ export class HostPropsRuntime<
 	public consumerProps!: RemoteValue<P>;
 
 	public propsHandlers: Set<(props: RemoteValue<P>) => void> = new Set();
+	private propsHandlerRegistrations = new WeakMap<
+		(props: RemoteValue<P>) => void,
+		object
+	>();
 	private initialized = false;
 	private pendingBootstrapProps: SerializedProps | null = null;
 
@@ -150,7 +154,7 @@ export class HostPropsRuntime<
 			this.consumerProps,
 			propDefinitions,
 		);
-		if (this.initialized)
+		if (this.initialized || this.pendingBootstrapProps !== null)
 			validateNormalizedProps(
 				nextProps as P,
 				this.getBootstrapValidationDefinitions(propDefinitions),
@@ -227,9 +231,21 @@ export class HostPropsRuntime<
 		}
 	}
 
-	/** Observes async failures without awaiting subscribers or delaying acknowledgement. */
+	/**
+	 * Defers new subscriptions until the next update and skips cancelled observers.
+	 * Observes async failures without awaiting subscribers or delaying acknowledgement.
+	 */
 	private notifyPropsHandlers(nextProps: RemoteValue<P>): void {
-		for (const handler of this.propsHandlers) {
+		const subscriptions = [...this.propsHandlers].map((handler) => ({
+			handler,
+			registration: this.propsHandlerRegistrations.get(handler),
+		}));
+		for (const { handler, registration } of subscriptions) {
+			if (
+				!this.propsHandlers.has(handler) ||
+				this.propsHandlerRegistrations.get(handler) !== registration
+			)
+				continue;
 			try {
 				void Promise.resolve(handler(nextProps)).catch((error: unknown) => {
 					console.error("Error in props handler:", error);
@@ -248,10 +264,16 @@ export class HostPropsRuntime<
 	private onProps(handler: (props: RemoteValue<P>) => void): {
 		cancel: () => void;
 	} {
+		if (!this.propsHandlers.has(handler))
+			this.propsHandlerRegistrations.set(handler, {});
 		this.propsHandlers.add(handler);
+		const registration = this.propsHandlerRegistrations.get(handler);
 
 		return {
-			cancel: () => this.propsHandlers.delete(handler),
+			cancel: () => {
+				if (this.propsHandlerRegistrations.get(handler) === registration)
+					this.propsHandlers.delete(handler);
+			},
 		};
 	}
 
@@ -325,7 +347,12 @@ export class HostPropsRuntime<
 		for (const [name, ref] of Object.entries(nestedRefs)) {
 			const component = getRegisteredComponent(ref.tag);
 			if (component) {
-				components[name] = component;
+				Object.defineProperty(components, name, {
+					value: component,
+					enumerable: true,
+					writable: true,
+					configurable: true,
+				});
 			} else {
 				console.warn(
 					`Nested component "${name}" (${ref.tag}) must be registered in the host bundle before hostProps is initialized`,

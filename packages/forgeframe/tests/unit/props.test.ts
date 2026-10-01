@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { BUILTIN_PROP_DEFINITIONS } from "@/props/definitions";
 import {
 	getPropsForHost,
+	normalizeConsumerProps,
 	normalizeProps,
 	propsToBodyParams,
 	propsToQueryParams,
@@ -17,6 +18,21 @@ import { isStandardSchema } from "@/props/schema";
 import type { PropContext, PropDefinition, PropsDefinition } from "@/types";
 
 describe("Parameter callback compatibility", () => {
+	it("keeps builtin delivery rules when its optional definition is undefined", () => {
+		const onClose = vi.fn();
+		const definitions: PropsDefinition<{ onClose: () => void }> = {
+			onClose: undefined,
+		};
+		expect(
+			getPropsForHost(
+				{ onClose },
+				definitions,
+				"https://host.example.com",
+				false,
+			),
+		).toEqual({});
+	});
+
 	it.each(["queryParam", "bodyParam"] as const)(
 		"preserves the prop definition receiver for %s converters",
 		(parameter) => {
@@ -57,6 +73,18 @@ describe("Props Normalization", () => {
 		onError: vi.fn(),
 		state: {},
 		container: null,
+	});
+
+	it("preserves builtin defaults when undefined definitions are omitted during deferred normalization", () => {
+		const definitions: PropsDefinition<{ timeout: number }> = {
+			timeout: undefined,
+		};
+		expect(
+			normalizeConsumerProps({}, definitions, createContext(), {
+				deferCustomNormalization: true,
+				schemaValidatedKeys: new Set(),
+			}).timeout,
+		).toBe(10000);
 	});
 
 	it.each(["toString", "constructor", "hasOwnProperty"])(

@@ -52,6 +52,7 @@ export class HostComponent<
 
 	private destroyed = false;
 	private messagingBootstrap: boolean;
+	private bootstrapCompleted = false;
 
 	constructor(
 		payload: WindowNamePayload<P>,
@@ -158,12 +159,19 @@ export class HostComponent<
 				!deferredProps,
 			);
 			this.propsRuntime.exposeHostProps();
+			// Legacy props have already passed synchronous validation above.
+			this.bootstrapCompleted = !deferredProps;
 			this.ready = deferredProps
 				? this.initializeFromConsumer()
 				: Promise.resolve();
 			// Callers can await ready; deferred initialization must not create an
 			// unhandled rejection when the embedding consumer has already closed.
-			void this.ready.catch(() => undefined);
+			void this.ready.then(
+				() => {
+					this.bootstrapCompleted = true;
+				},
+				() => undefined,
+			);
 
 			if (!deferInit) {
 				this.flushInit();
@@ -192,6 +200,8 @@ export class HostComponent<
 		if (this.allowedConsumerDomains)
 			this.assertAllowedConsumerDomain(this.allowedConsumerDomains);
 		this.propsRuntime.applyBootstrap(data);
+		if (this.destroyed)
+			throw new Error("Host destroyed before bootstrap completed");
 	}
 
 	public get hostProps(): HostProps<P> {
@@ -200,6 +210,11 @@ export class HostComponent<
 
 	public set hostProps(value: HostProps<P>) {
 		this.propsRuntime.hostProps = value;
+	}
+
+	/** Distinguishes replacement configuration from deferred initial validation. @internal */
+	hasCompletedBootstrap(): boolean {
+		return this.bootstrapCompleted;
 	}
 
 	flushInit(): void {
@@ -218,15 +233,13 @@ export class HostComponent<
 		propDefinitions?: HostPropsDefinition<P, SchemaInputs>,
 		allowedConsumerDomains?: DomainMatcher,
 	): void {
+		if (propDefinitions !== undefined) {
+			this.propsRuntime.applyHostConfiguration(propDefinitions);
+		}
+
 		if (allowedConsumerDomains !== undefined) {
 			this.allowedConsumerDomains = allowedConsumerDomains;
 		}
-
-		if (propDefinitions === undefined) {
-			return;
-		}
-
-		this.propsRuntime.applyHostConfiguration(propDefinitions);
 	}
 
 	assertAllowedConsumerDomain(allowedConsumerDomains: DomainMatcher): void {

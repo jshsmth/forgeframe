@@ -132,6 +132,12 @@ export class ConsumerComponent<
 	/** @internal */
 	private closing = false;
 
+	/** Completion shared by direct and reentrant close requests. @internal */
+	private closePromise: Promise<void> | null = null;
+
+	/** Completion shared by close and teardown initiated by failed rendering. @internal */
+	private destroyPromise: Promise<void> | null = null;
+
 	/** @internal */
 	private constructing = true;
 
@@ -400,11 +406,20 @@ export class ConsumerComponent<
 	 * Emits the 'close' event before destruction. Safe to call multiple times.
 	 */
 	async close(): Promise<void> {
-		if (this.destroyed || this.closing) return;
+		if (this.closePromise) return this.closePromise;
+		if (this.destroyed) return this.destroyPromise ?? undefined;
+
+		const closeTask = createDeferred<void>();
+		this.closePromise = closeTask.promise;
 
 		this.closing = true;
 		this.activeRenderTask?.reject(this.createRenderCancellationError());
+		void this.performClose().then(closeTask.resolve, closeTask.reject);
+		return closeTask.promise;
+	}
 
+	/** Completes the one admitted close operation before its shared promise settles. */
+	private async performClose(): Promise<void> {
 		try {
 			const callbackProps = this.propsPipeline
 				? this.propsPipeline.props
@@ -979,6 +994,15 @@ export class ConsumerComponent<
 	 * @internal
 	 */
 	private async destroy(): Promise<void> {
+		if (this.destroyPromise) return this.destroyPromise;
+		const destroyTask = createDeferred<void>();
+		this.destroyPromise = destroyTask.promise;
+		void this.performDestroy().then(destroyTask.resolve, destroyTask.reject);
+		return destroyTask.promise;
+	}
+
+	/** Sequences teardown, deregistration and notifications for one destruction task. */
+	private async performDestroy(): Promise<void> {
 		const callbackProps = this.beginDestroy();
 		if (!callbackProps) return;
 

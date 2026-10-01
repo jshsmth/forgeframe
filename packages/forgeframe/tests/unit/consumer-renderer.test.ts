@@ -164,6 +164,127 @@ describe("ConsumerRenderer popup loading completion", () => {
 	});
 });
 
+describe("ConsumerRenderer configured iframe loading styles", () => {
+	it.each([
+		[undefined, "none"],
+		["eager", "none"],
+		["lazy", "block"],
+	] as const)(
+		"conceals loading %s frames with display %s and restores caller styles",
+		async (loading, display) => {
+			vi.useFakeTimers();
+			const mount = document.createElement("div");
+			document.body.appendChild(mount);
+			const renderer = createRenderer({
+				attributes: { loading },
+				style: { display: "block" },
+				containerTemplate: ({ container }) => container,
+			});
+			renderer.container = mount;
+			try {
+				await renderer.prerender(
+					(name) => {
+						const frame = renderer.createIframeElement(name);
+						// jsdom does not reflect the iframe loading attribute as a property.
+						Object.defineProperty(frame, "loading", {
+							value: loading ?? "eager",
+						});
+						return frame;
+					},
+					() => "loading-layout",
+					() => undefined,
+				);
+				const frame = renderer.iframe;
+				if (!frame) throw new Error("Missing iframe");
+				expect(frame.style.display).toBe(display);
+				expect(frame.style.visibility).toBe("hidden");
+				const completion = renderer.completePrerender();
+				await vi.runAllTimersAsync();
+				await completion;
+				expect(frame.style.display).toBe("block");
+				expect(frame.style.visibility).toBe("visible");
+			} finally {
+				renderer.destroy(null);
+				vi.useRealTimers();
+			}
+		},
+	);
+
+	it.each(["show", "hide"] as const)(
+		"retains an eager frame %s requested before creation through loading completion",
+		async (control) => {
+			vi.useFakeTimers();
+			const mount = document.createElement("div");
+			document.body.appendChild(mount);
+			const renderer = createRenderer({ style: { display: "block" } });
+			renderer.container = mount;
+			renderer[control]();
+			try {
+				await renderer.prerender(
+					(name) => renderer.createIframeElement(name),
+					() => "early-eager-control",
+					() => undefined,
+				);
+				const frame = renderer.iframe;
+				if (!frame) throw new Error("Missing iframe");
+				expect(frame.style.display).toBe(control === "hide" ? "none" : "");
+				expect(frame.style.visibility).toBe(
+					control === "hide" ? "hidden" : "visible",
+				);
+				const completion = renderer.completePrerender();
+				await vi.runAllTimersAsync();
+				await completion;
+				expect(frame.style.display).toBe(control === "hide" ? "none" : "");
+				expect(frame.style.visibility).toBe(
+					control === "hide" ? "hidden" : "visible",
+				);
+			} finally {
+				renderer.destroy(null);
+				vi.useRealTimers();
+			}
+		},
+	);
+
+	it.each([
+		["visibility", "hidden"],
+		["display", "none"],
+		["display", "block"],
+		["opacity", "0"],
+		["opacity", "0.25"],
+		["transition", "transform 2s"],
+	] as const)(
+		"retains configured %s: %s while completing the loading transition",
+		async (property, value) => {
+			vi.useFakeTimers();
+			const mount = document.createElement("div");
+			document.body.appendChild(mount);
+			const renderer = createRenderer({ style: { [property]: value } });
+			renderer.container = mount;
+			try {
+				await renderer.prerender(
+					(name) => renderer.createIframeElement(name),
+					() => "configured-loading-styles",
+					() => undefined,
+				);
+				const frame = renderer.iframe;
+				if (!frame) throw new Error("Missing iframe");
+				const completion = renderer.completePrerender();
+				// Sample after loader removal, when an unconditional frame fade used
+				// to override configured concealment, opacity, display and transition.
+				await vi.advanceTimersByTimeAsync(151);
+				expect(frame.style.getPropertyValue(property)).toBe(value);
+				await vi.runAllTimersAsync();
+				await completion;
+				expect(frame.style.getPropertyValue(property)).toBe(value);
+				expect(renderer.prerenderElement).toBeNull();
+			} finally {
+				renderer.destroy(null);
+				vi.useRealTimers();
+			}
+		},
+	);
+});
+
 describe("ConsumerRenderer submitBodyForm", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();

@@ -15,6 +15,8 @@ import {
 	PROTOCOL_VERSION,
 	VERSION,
 } from "@/constants";
+import { create } from "@/core/component";
+import { deleteRegisteredComponent } from "@/core/component-registry";
 import { ConsumerComponent } from "@/core/consumer";
 import {
 	clearHostInstance,
@@ -132,6 +134,59 @@ afterEach(async () => {
 });
 
 describe("Host lifecycle behavior", () => {
+	it.each([
+		{ configure: "initHost", deferInit: true },
+		{ configure: "initHost", deferInit: false },
+		{ configure: "create", deferInit: true },
+		{ configure: "create", deferInit: false },
+	])(
+		"preserves a legacy host after same-turn rejected $configure configuration with deferInit=$deferInit",
+		({ configure, deferInit }) => {
+			const payload = createPayload({
+				tag: `legacy-replacement-${configure}-${deferInit}`,
+			});
+			window.name = buildWindowName(payload);
+			vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
+			const definitions = { amount: prop.number() };
+			const host = requireValue(
+				initHost(definitions, undefined, { deferInit }),
+			);
+			const snapshot = host.hostProps;
+			const destroy = vi.spyOn(host, "destroy");
+			const notified = vi.fn();
+			snapshot.onProps(notified);
+			try {
+				expect(() => {
+					const invalid = { amount: prop.string() };
+					if (configure === "initHost")
+						initHost(invalid, undefined, { deferInit });
+					else
+						create({
+							tag: payload.tag,
+							url: "https://host.example.com/widget",
+							props: invalid,
+						});
+				}).toThrow("Expected string, got number");
+				expect(getHostProps()).toBe(snapshot);
+				expect(destroy).not.toHaveBeenCalled();
+				expect(initHost(definitions, undefined, { deferInit })).toBe(host);
+				const handler = (
+					host as unknown as {
+						messenger: { handlers: Map<string, DirectHandler> };
+					}
+				).messenger.handlers.get(MESSAGE_NAME.PROPS);
+				expect(
+					requireValue(handler)({ amount: 11 }, createMessageSource(window)),
+				).toEqual({ success: true });
+				expect(snapshot.amount).toBe(11);
+				expect(notified).toHaveBeenCalledOnce();
+				expect(notified).toHaveBeenCalledWith({ amount: 11 });
+			} finally {
+				deleteRegisteredComponent(payload.tag);
+			}
+		},
+	);
+
 	it("reconciles late private fields only after replacement validation succeeds", () => {
 		const host = createHost({
 			payload: createPayload({
