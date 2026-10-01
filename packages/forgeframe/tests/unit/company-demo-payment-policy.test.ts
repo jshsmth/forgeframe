@@ -43,7 +43,8 @@ describe("merchant payment acceptance", () => {
 			receipt,
 			acknowledgement: { invoiceId: invoice.id, status: "recorded" },
 		});
-		expect(invoice.receipt).toBe(receipt);
+		expect(invoice.receipt).toEqual(receipt);
+		expect(invoice.receipt).not.toBe(receipt);
 		expect(invoices.slice(1).every((item) => item.receipt === null)).toBe(true);
 	});
 
@@ -69,6 +70,128 @@ describe("merchant payment acceptance", () => {
 		);
 	});
 
+	it.each([
+		null,
+		undefined,
+		false,
+		42,
+		"approved",
+		[],
+		{},
+		{ status: "pending" },
+		{ status: "declined" },
+		{ status: "declined", invoiceId: 1042 },
+		{ status: "declined", invoiceId: " " },
+		{ status: "approved" },
+		{ status: "approved", receipt: null },
+		{ status: "approved", receipt: [] },
+	])(
+		"rejects malformed callback data %# before committing and permits retry",
+		(payload) => {
+			const { invoice, session, result } = sample();
+			expect(() =>
+				commitPaymentResult(session, session, payload, 17600),
+			).toThrow("Invalid payment result.");
+			expect(invoice.receipt).toBeNull();
+			expect(commitPaymentResult(session, session, result, 17600).phase).toBe(
+				"approved",
+			);
+		},
+	);
+
+	it.each([
+		{ invoiceId: undefined },
+		{ invoiceId: 1042 },
+		{ invoiceId: " " },
+		{ transactionId: undefined },
+		{ transactionId: 123 },
+		{ transactionId: "" },
+		{ transactionId: " " },
+		{ amountCents: undefined },
+		{ amountCents: "17600" },
+		{ amountCents: Number.NaN },
+		{ amountCents: Number.POSITIVE_INFINITY },
+		{ amountCents: -1 },
+		{ amountCents: 17600.5 },
+		{ amountCents: Number.MAX_SAFE_INTEGER + 1 },
+		{ paidAt: undefined },
+		{ paidAt: 123 },
+		{ paidAt: "" },
+		{ paidAt: "not-a-date" },
+		{ paidAt: "2026-10-01" },
+		{ paidAt: "2026-02-30T07:00:00Z" },
+		{ paidAt: "2026-02-29T07:00:00Z" },
+		{ paidAt: "2026-02-30T17:00:00+10:00" },
+		{ paidAt: "2026-13-01T07:00:00Z" },
+		{ paidAt: "2026-10-01T24:00:00Z" },
+		{ paidAt: "2026-10-01T07:00:00+25:00" },
+		{ lastFour: undefined },
+		{ lastFour: 4242 },
+		{ lastFour: "" },
+		{ lastFour: "424" },
+		{ lastFour: "42424" },
+		{ lastFour: "42a2" },
+	])(
+		"rejects malformed receipt fields %# without poisoning invoice state",
+		(fields) => {
+			const { invoice, session, receipt, result } = sample();
+			expect(() =>
+				commitPaymentResult(
+					session,
+					session,
+					{
+						status: "approved",
+						receipt: { ...receipt, ...fields },
+					},
+					17600,
+				),
+			).toThrow("Invalid payment result.");
+			expect(invoice.receipt).toBeNull();
+			expect(commitPaymentResult(session, session, result, 17600).phase).toBe(
+				"approved",
+			);
+		},
+	);
+
+	it("rejects an unknown status even when its receipt otherwise matches", () => {
+		const { invoice, session, receipt } = sample();
+		expect(() =>
+			commitPaymentResult(
+				session,
+				session,
+				{
+					status: "pending",
+					receipt,
+				},
+				17600,
+			),
+		).toThrow("Invalid payment result.");
+		expect(invoice.receipt).toBeNull();
+	});
+
+	it.each([
+		"2026-10-01T07:00:00Z",
+		"2026-10-01T07:00:00.123Z",
+		"2026-10-01T07:00:00.1Z",
+		"2026-10-01T17:00:00+10:00",
+		"2024-02-29T07:00:00Z",
+	])("accepts a valid ISO timestamp %s", (paidAt) => {
+		const { session, receipt } = sample();
+		const accepted = commitPaymentResult(
+			session,
+			session,
+			{
+				status: "approved",
+				receipt: { ...receipt, paidAt },
+			},
+			17600,
+		);
+		expect(accepted.phase).toBe("approved");
+		expect(() =>
+			new Intl.DateTimeFormat("en-AU").format(new Date(paidAt)),
+		).not.toThrow();
+	});
+
 	it.each(["closed", "replaced", "cancelled"] as const)(
 		"rejects a %s session",
 		(state) => {
@@ -90,6 +213,7 @@ describe("merchant payment acceptance", () => {
 	it("rejects a duplicate result without replacing the recorded receipt", () => {
 		const { invoice, session, result, receipt } = sample();
 		commitPaymentResult(session, session, result, 17600);
+		const committed = invoice.receipt;
 		expect(() =>
 			commitPaymentResult(
 				session,
@@ -101,7 +225,18 @@ describe("merchant payment acceptance", () => {
 				17600,
 			),
 		).toThrow("This payment session has ended.");
-		expect(invoice.receipt).toBe(receipt);
+		expect(invoice.receipt).toBe(committed);
+	});
+
+	it("owns the validated receipt snapshot independently of callback input", () => {
+		const { invoice, session, result, receipt } = sample();
+		commitPaymentResult(session, session, result, 17600);
+		receipt.paidAt = "not-a-date";
+		receipt.amountCents = 1;
+		expect(invoice.receipt).toMatchObject({
+			paidAt: "2026-10-01T07:00:00Z",
+			amountCents: 17600,
+		});
 	});
 
 	it.each([

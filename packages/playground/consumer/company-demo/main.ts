@@ -16,7 +16,6 @@ import {
 	formatMoney,
 	type PaymentAcknowledgement,
 	type PaymentProps,
-	type PaymentResult,
 	paymentProps,
 } from "../../payment/contract";
 import {
@@ -188,14 +187,14 @@ function reportApproval(receipt: DemoReceipt): void {
  * Composes merchant acceptance, application observations and outcome presentation.
  *
  * @returns The operation's acknowledgement for ForgeFrame to deliver to the host.
- * @throws When {@link commitPaymentResult} rejects a stale or mismatched result.
+ * @throws When {@link commitPaymentResult} rejects malformed, stale or mismatched callback data.
  * @remarks
  * The operation commits an approved receipt before any UI work and before this
  * integration returns. The provider awaits that return before requesting close.
  */
 function acceptResult(
 	session: PaymentSession,
-	result: PaymentResult,
+	result: unknown,
 ): PaymentAcknowledgement {
 	const accepted = commitPaymentResult(
 		active,

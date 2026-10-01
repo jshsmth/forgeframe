@@ -4,10 +4,11 @@ import { prop } from "forgeframe";
 export interface DemoReceipt {
 	invoiceId: string;
 	transactionId: string;
-	/** Total in integer AUD cents, matching the consumer's invoice. */
+	/** Total in nonnegative safe-integer AUD cents, matching the consumer's invoice. */
 	amountCents: number;
-	/** ISO timestamp produced when the simulated payment succeeds. */
+	/** Valid ISO timestamp with timezone and up to millisecond precision. */
 	paidAt: string;
+	/** Exactly four decimal digits; never the full card number. */
 	lastFour: string;
 }
 
@@ -27,7 +28,9 @@ export interface PaymentAcknowledgement {
  * Application props passed from Pip Veterinary to the Harbor Pay host.
  *
  * @remarks
- * Both applications use {@link paymentProps} for runtime validation. Local
+ * Both applications use {@link paymentProps} to validate props and callback
+ * callability. Function schemas do not validate invocation arguments; the
+ * merchant validates the complete result before committing a receipt. Local
  * callbacks use their ordinary return types here; `HostProps<PaymentProps>`
  * presents them as asynchronous remote functions. The host awaits the result
  * acknowledgement before closing. No card number, expiry or CVC is delivered

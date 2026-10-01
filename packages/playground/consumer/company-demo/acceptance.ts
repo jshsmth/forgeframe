@@ -23,22 +23,24 @@ export type AcceptedPayment =
  * Applies the merchant's acceptance rules without a browser or transport.
  *
  * @param active - The current session object; identity, not invoice ID, determines ownership.
+ * @param payload - Untrusted callback arguments; a function schema validates callability only.
  * @param expectedAmountCents - The merchant's independently calculated invoice total.
  * @returns The outcome and acknowledgement for the integration to present and return.
- * @throws If the session ended, a receipt already exists, or invoice/amount do not match.
+ * @throws If the session ended, the payload is malformed, a receipt already exists, or invoice/amount do not match.
  * @remarks
- * Approval commits the receipt to the supplied invoice before returning. Decline
+ * Approval commits a validated receipt snapshot before returning. Decline
  * leaves it unpaid. A production merchant would verify the payment with its backend
  * here; a callback and these demo checks alone are not payment verification.
  */
 export function commitPaymentResult(
 	active: PaymentSessionState | null,
 	session: PaymentSessionState,
-	result: PaymentResult,
+	payload: unknown,
 	expectedAmountCents: number,
 ): AcceptedPayment {
 	if (active !== session || session.cancelled || session.invoice.receipt)
 		throw new Error("This payment session has ended.");
+	const result = readPaymentResult(payload);
 	if (result.status === "declined") {
 		if (result.invoiceId !== session.invoice.id)
 			throw new Error("Invoice mismatch.");
@@ -58,6 +60,54 @@ export function commitPaymentResult(
 		phase: "approved",
 		receipt,
 		acknowledgement: { invoiceId: session.invoice.id, status: "recorded" },
+	};
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Checks calendar/time validity as well as ISO syntax; Date.parse alone can normalize invalid days. */
+function isIsoTimestamp(value: string): boolean {
+	const parts =
+		/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,3}))?(?:Z|[+-]\d{2}:\d{2})$/.exec(
+			value,
+		);
+	if (!parts || !Number.isFinite(Date.parse(value))) return false;
+	const local = `${parts[1]}.${(parts[2] ?? "").padEnd(3, "0")}Z`;
+	const time = Date.parse(local);
+	return Number.isFinite(time) && new Date(time).toISOString() === local;
+}
+
+/** Validates remote arguments and copies only receipt fields the merchant can safely store. */
+function readPaymentResult(value: unknown): PaymentResult {
+	if (!isRecord(value)) throw new Error("Invalid payment result.");
+	if (value.status === "declined") {
+		if (typeof value.invoiceId !== "string" || !value.invoiceId.trim())
+			throw new Error("Invalid payment result.");
+		return { status: "declined", invoiceId: value.invoiceId };
+	}
+	if (value.status !== "approved" || !isRecord(value.receipt))
+		throw new Error("Invalid payment result.");
+	const { invoiceId, transactionId, amountCents, paidAt, lastFour } =
+		value.receipt;
+	if (
+		typeof invoiceId !== "string" ||
+		!invoiceId.trim() ||
+		typeof transactionId !== "string" ||
+		!transactionId.trim() ||
+		typeof amountCents !== "number" ||
+		!Number.isSafeInteger(amountCents) ||
+		amountCents < 0 ||
+		typeof paidAt !== "string" ||
+		!isIsoTimestamp(paidAt) ||
+		typeof lastFour !== "string" ||
+		!/^\d{4}$/.test(lastFour)
+	)
+		throw new Error("Invalid payment result.");
+	return {
+		status: "approved",
+		receipt: { invoiceId, transactionId, amountCents, paidAt, lastFour },
 	};
 }
 

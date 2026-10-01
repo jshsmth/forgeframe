@@ -155,6 +155,59 @@ async function openPayment(
 }
 
 for (const context of ["iframe", "popup"] as const) {
+	test(`${context} rejects a malformed result before committing and permits payment retry`, async ({
+		page,
+	}) => {
+		const errors: string[] = [];
+		page.on("pageerror", (error) => errors.push(error.message));
+		await page.goto(`${consumerOrigin}/company`);
+		const provider = await openPayment(page, context);
+		const rejection = await provider.locator("body").evaluate(async () => {
+			const props = Reflect.get(window, "hostProps");
+			try {
+				await props.onResult({
+					status: "approved",
+					receipt: {
+						invoiceId: props.invoiceId,
+						amountCents: props.amountCents,
+						transactionId: "HP-MALFORMED",
+						paidAt: "not-a-date",
+						lastFour: "4242",
+					},
+				});
+				return "Callback unexpectedly accepted";
+			} catch (error) {
+				return error instanceof Error ? error.message : String(error);
+			}
+		});
+		expect(rejection).toContain("Invalid payment result.");
+		await expect(page.locator("#invoice-status")).toHaveText(
+			"Awaiting payment",
+		);
+		await expect(page.locator("#invoice-summary")).toHaveText(
+			"3 awaiting payment",
+		);
+		await expect(
+			page.getByRole("heading", { name: "Payment received" }),
+		).toHaveCount(0);
+		await expect(page.locator("#onResult-calls")).toHaveText("0 calls");
+		await provider.getByRole("button", { name: "Use demo details" }).click();
+		await provider
+			.getByRole("button", { name: "Pay $176.00", exact: true })
+			.click();
+		await expect(
+			page.getByRole("heading", { name: "Payment received" }),
+		).toBeVisible();
+		await expect(page.locator("#invoice-status")).toHaveText("Paid");
+		await expect(page.locator("#onResult-calls")).toHaveText("1 call");
+		await expect(page.locator("#integration-events")).toContainText(
+			"Payment window closed",
+		);
+		if (context === "popup")
+			await expect.poll(() => (provider as Page).isClosed()).toBe(true);
+		expect(errors).toEqual([]);
+	});
+
 	test(`${context} company demo returns a receipt, isolates invoices and resets`, async ({
 		page,
 	}) => {
