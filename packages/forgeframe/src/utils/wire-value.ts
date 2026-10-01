@@ -208,8 +208,7 @@ export function stringifyWireValue(
 	// Observe those reads on the returned traversal object so Date detection
 	// never reads an accessor again. Children stay unwrapped until their own
 	// replacer runs, preserving encoder receivers and native conversion order.
-	const captureReads = (encoded: object): object => {
-		if (isBoxedPrimitive(encoded)) return encoded;
+	const captureReads = (encoded: object): unknown => {
 		// Native raw JSON carries a brand that a proxy cannot preserve.
 		if (
 			"isRawJSON" in JSON &&
@@ -218,6 +217,8 @@ export function stringifyWireValue(
 		) {
 			return encoded;
 		}
+		const converted = unboxJsonPrimitive(encoded);
+		if (converted !== encoded) return converted;
 		const existing = proxies.get(encoded);
 		if (existing) return existing;
 		const values = new Map<PropertyKey, unknown>();
@@ -258,7 +259,7 @@ export function stringifyWireValue(
 			}
 			if (isObjectRecord(encoded)) {
 				encoded = captureReads(encoded);
-				paths.set(encoded, path);
+				if (isObjectRecord(encoded)) paths.set(encoded, path);
 			}
 			return encoded;
 		},
@@ -272,23 +273,15 @@ export function stringifyWireValue(
 	);
 }
 
-/** Leaves native boxed-primitive unboxing available after the replacer returns. */
-function isBoxedPrimitive(value: object): boolean {
-	if (Array.isArray(value)) return false;
-	for (const read of [
-		Number.prototype.valueOf,
-		String.prototype.valueOf,
-		Boolean.prototype.valueOf,
-		BigInt.prototype.valueOf,
-	]) {
-		try {
-			Reflect.apply(read, value, []);
-			return true;
-		} catch {
-			// Internal-slot checks distinguish wrappers without invoking user code.
-		}
-	}
-	return false;
+/** Uses native unboxing without probing records through throwing slot checks. */
+function unboxJsonPrimitive(value: object): unknown {
+	if (Array.isArray(value)) return value;
+	// The dummy encoder returns the value after the native toJSON lookup.
+	// An empty property list skips record fields entirely, while native JSON
+	// still unboxes primitive wrappers. Return that conversion so coercion
+	// hooks run once, including for wrappers with customized prototypes.
+	const json = JSON.stringify({ toJSON: () => value }, []);
+	return json === "{}" || json === undefined ? value : JSON.parse(json);
 }
 
 /** Preserves codec-generated markers while escaping indistinguishable ordinary data. */

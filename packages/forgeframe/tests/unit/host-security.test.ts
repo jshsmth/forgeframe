@@ -11,7 +11,13 @@ import {
 	serializeMessage,
 } from "@/communication/protocol";
 import type { ConsumerExports } from "@/communication/types";
-import { CONTEXT, EVENT, MESSAGE_NAME, VERSION } from "@/constants";
+import {
+	CONTEXT,
+	EVENT,
+	MESSAGE_NAME,
+	PROTOCOL_VERSION,
+	VERSION,
+} from "@/constants";
 import { clearHostInstance, HostComponent, initHost } from "@/core/host";
 import * as hostSecurity from "@/core/host/security";
 import { prop } from "@/props/prop";
@@ -430,83 +436,142 @@ describe("Host security", () => {
 		);
 	});
 
-	it("should validate bootstrap props when prop definitions are applied after deferred pre-init", () => {
-		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
+	it.each(["legacy", "messaging"])(
+		"validates late definitions with deferred INIT for %s bootstrap",
+		(bootstrap) => {
+			vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
 
-		const payload: WindowNamePayload<Record<string, unknown>> = {
-			uid: "host-uid-preinit-validation",
-			tag: "secure-component-preinit-validation",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://trusted.example.com",
-			props: { amount: "not-a-number" },
-			exports: VALID_EXPORTS,
-		};
+			const payload: WindowNamePayload<Record<string, unknown>> = {
+				uid: "host-uid-preinit-validation",
+				protocolVersion:
+					bootstrap === "messaging" ? PROTOCOL_VERSION : undefined,
+				tag: "secure-component-preinit-validation",
+				version: VERSION,
+				context: CONTEXT.IFRAME,
+				consumerDomain: "https://trusted.example.com",
+				props: { amount: "not-a-number" },
+				exports: VALID_EXPORTS,
+			};
 
-		window.name = buildWindowName(payload);
-		setDocumentReferrer("https://trusted.example.com/checkout");
+			window.name = buildWindowName(payload);
+			setDocumentReferrer("https://trusted.example.com/checkout");
 
-		const host = initHost(undefined, undefined, { deferInit: true });
-		expect(host).not.toBeNull();
-		expect(
-			(window as unknown as { hostProps?: unknown }).hostProps,
-		).toBeDefined();
+			const host = initHost(undefined, undefined, { deferInit: true });
+			expect(host).not.toBeNull();
+			const snapshot = requireValue(host).hostProps;
+			if (bootstrap === "messaging") {
+				const handler = (
+					host as unknown as {
+						messenger: { handlers: Map<string, DirectHandler> };
+					}
+				).messenger.handlers.get(MESSAGE_NAME.PROPS);
+				expect(
+					requireValue(handler)(
+						payload.props,
+						createMessageSource(window, window.location.origin),
+					),
+				).toEqual({ success: true });
+			}
+			expect(
+				(window as unknown as { hostProps?: unknown }).hostProps,
+			).toBeDefined();
 
-		expect(() =>
-			initHost(
-				{
-					amount: { schema: prop.number() },
+			expect(() =>
+				initHost(
+					{
+						amount: { schema: prop.number() },
+					},
+					undefined,
+					{ deferInit: true },
+				),
+			).toThrow("Validation failed: amount: Expected number, got string");
+			if (bootstrap === "messaging") {
+				expect(
+					(window as unknown as { hostProps?: unknown }).hostProps,
+				).toBeUndefined();
+			} else {
+				expect((window as unknown as { hostProps?: unknown }).hostProps).toBe(
+					snapshot,
+				);
+				expect(
+					initHost({ amount: prop.string() }, undefined, { deferInit: true }),
+				).toBe(host);
+				expect(snapshot.amount).toBe("not-a-number");
+			}
+		},
+	);
+
+	it.each(["legacy", "messaging"])(
+		"does not relax required sameDomain props for unverified %s bootstrap with deferred INIT",
+		(bootstrap) => {
+			const inaccessibleConsumerWindow = {
+				postMessage: vi.fn(),
+				get location() {
+					throw new Error("Cross-origin");
 				},
-				undefined,
-				{ deferInit: true },
-			),
-		).toThrow("Validation failed: amount: Expected number, got string");
-		expect(
-			(window as unknown as { hostProps?: unknown }).hostProps,
-		).toBeUndefined();
-	});
+			} as unknown as Window;
 
-	it("should not relax required sameDomain props when claimed same-origin is unverified during deferred pre-init", () => {
-		const inaccessibleConsumerWindow = {
-			postMessage: vi.fn(),
-			get location() {
-				throw new Error("Cross-origin");
-			},
-		} as unknown as Window;
+			vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
+				inaccessibleConsumerWindow,
+			);
 
-		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
-			inaccessibleConsumerWindow,
-		);
+			const payload: WindowNamePayload<Record<string, unknown>> = {
+				uid: "host-uid-unverified-same-domain-required",
+				protocolVersion:
+					bootstrap === "messaging" ? PROTOCOL_VERSION : undefined,
+				tag: "secure-component-unverified-same-domain-required",
+				version: VERSION,
+				context: CONTEXT.IFRAME,
+				consumerDomain: window.location.origin,
+				props: {},
+				exports: VALID_EXPORTS,
+			};
 
-		const payload: WindowNamePayload<Record<string, unknown>> = {
-			uid: "host-uid-unverified-same-domain-required",
-			tag: "secure-component-unverified-same-domain-required",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
-			consumerDomain: window.location.origin,
-			props: {},
-			exports: VALID_EXPORTS,
-		};
+			window.name = buildWindowName(payload);
+			setDocumentReferrer("");
 
-		window.name = buildWindowName(payload);
-		setDocumentReferrer("");
+			const host = initHost(undefined, undefined, { deferInit: true });
+			expect(host).not.toBeNull();
+			const snapshot = requireValue(host).hostProps;
+			if (bootstrap === "messaging") {
+				const handler = (
+					host as unknown as {
+						messenger: { handlers: Map<string, DirectHandler> };
+					}
+				).messenger.handlers.get(MESSAGE_NAME.PROPS);
+				expect(
+					requireValue(handler)(
+						{},
+						createMessageSource(
+							inaccessibleConsumerWindow,
+							window.location.origin,
+						),
+					),
+				).toEqual({ success: true });
+			}
 
-		const host = initHost(undefined, undefined, { deferInit: true });
-		expect(host).not.toBeNull();
-
-		expect(() =>
-			initHost(
-				{
-					secret: { schema: prop.string(), sameDomain: true, required: true },
-				},
-				undefined,
-				{ deferInit: true },
-			),
-		).toThrow('Prop "secret" is required but was not provided');
-		expect(
-			(window as unknown as { hostProps?: unknown }).hostProps,
-		).toBeUndefined();
-	});
+			expect(() =>
+				initHost(
+					{
+						secret: { schema: prop.string(), sameDomain: true, required: true },
+					},
+					undefined,
+					{ deferInit: true },
+				),
+			).toThrow('Prop "secret" is required but was not provided');
+			if (bootstrap === "messaging") {
+				expect(
+					(window as unknown as { hostProps?: unknown }).hostProps,
+				).toBeUndefined();
+			} else {
+				expect((window as unknown as { hostProps?: unknown }).hostProps).toBe(
+					snapshot,
+				);
+				expect(initHost(undefined, undefined, { deferInit: true })).toBe(host);
+				expect(Object.hasOwn(snapshot, "secret")).toBe(false);
+			}
+		},
+	);
 
 	it("should reject allowlist rechecks when the existing host never verified the consumer origin", () => {
 		const inaccessibleConsumerWindow = {

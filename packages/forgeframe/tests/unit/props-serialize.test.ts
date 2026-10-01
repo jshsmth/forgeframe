@@ -40,6 +40,171 @@ afterEach(() => {
 
 describe("Props serialization behavior", () => {
 	it.each([PROP_SERIALIZATION.BASE64, PROP_SERIALIZATION.DOTIFY])(
+		"serializes ordinary records without unrelated primitive coercion in %s",
+		(serialization) => {
+			const { messenger, bridge } = createBridgeWithMessenger();
+			const props = {
+				payload: {
+					records: [
+						{ id: 1, label: "first" },
+						{ id: 2, label: "second" },
+					],
+				},
+			};
+			const probes = [
+				vi.spyOn(Number.prototype, "valueOf"),
+				vi.spyOn(String.prototype, "valueOf"),
+				vi.spyOn(Boolean.prototype, "valueOf"),
+				vi.spyOn(BigInt.prototype, "valueOf"),
+			];
+			const definitions = { payload: { schema: prop.object(), serialization } };
+			const wire = serializeProps<{ payload: Record<string, unknown> }>(
+				props,
+				definitions,
+				bridge,
+			);
+			for (const probe of probes) expect(probe).not.toHaveBeenCalled();
+			expect(
+				deserializeProps(
+					wire,
+					definitions,
+					messenger,
+					bridge,
+					window,
+					"https://consumer.example.com",
+				),
+			).toEqual(props);
+			bridge.destroy();
+		},
+	);
+
+	it.each([PROP_SERIALIZATION.BASE64, PROP_SERIALIZATION.DOTIFY])(
+		"preserves boxed values and avoids branding getters in %s",
+		(serialization) => {
+			const { messenger, bridge } = createBridgeWithMessenger();
+			const branding = vi.fn(() => {
+				throw new Error("Branding getter must not run");
+			});
+			const tagged = { label: "ordinary" };
+			Object.defineProperty(tagged, Symbol.toStringTag, { get: branding });
+			const wrappers = [Object(7), Object("boxed"), Object(true)];
+			for (const wrapper of wrappers) {
+				Object.setPrototypeOf(wrapper, Object.prototype);
+				Object.defineProperty(wrapper, "ignored", {
+					value: "field",
+					enumerable: true,
+				});
+			}
+			const customized = Object(9);
+			Object.defineProperty(customized, Symbol.toStringTag, { get: branding });
+			class Encoded {
+				toJSON() {
+					return { tagged, wrappers, customized };
+				}
+			}
+			const expected = JSON.parse(JSON.stringify(new Encoded()));
+			const definitions = { payload: { schema: prop.object(), serialization } };
+			const wire = serializeProps<{ payload: Record<string, unknown> }>(
+				{ payload: { encoded: new Encoded() } },
+				definitions,
+				bridge,
+			);
+			expect(
+				deserializeProps(
+					wire,
+					definitions,
+					messenger,
+					bridge,
+					window,
+					"https://consumer.example.com",
+				),
+			).toEqual({ payload: { encoded: expected } });
+			expect(branding).not.toHaveBeenCalled();
+			bridge.destroy();
+		},
+	);
+
+	it.each([PROP_SERIALIZATION.BASE64, PROP_SERIALIZATION.DOTIFY])(
+		"keeps native coercion counts and avoids proxy branding reads in %s",
+		(serialization) => {
+			const { messenger, bridge } = createBridgeWithMessenger();
+			const branding = vi.fn();
+			const record = new Proxy(
+				{ label: "original" },
+				{
+					get(target, key, receiver) {
+						if (key === Symbol.toStringTag) {
+							branding();
+							target.label = "changed";
+						}
+						return Reflect.get(target, key, receiver);
+					},
+				},
+			);
+			const opaque = new Proxy(
+				{ label: "opaque" },
+				{
+					getPrototypeOf() {
+						throw new Error("Prototype metadata must not be read");
+					},
+				},
+			);
+			const number = Object(7);
+			const numberCoercion = vi.fn(() => 8);
+			number.valueOf = numberCoercion;
+			const string = Object("boxed");
+			const stringCoercion = vi.fn(() => "converted");
+			string.toString = stringCoercion;
+			const foreign = runInNewContext(
+				"[Object(9), Object('foreign'), Object(false)]",
+			);
+			class Encoded {
+				toJSON() {
+					return {
+						record,
+						opaque,
+						number,
+						string,
+						foreign,
+						nonfinite: Object(Number.NaN),
+					};
+				}
+			}
+			const definitions = { payload: { schema: prop.object(), serialization } };
+			const wire = serializeProps<{ payload: Record<string, unknown> }>(
+				{ payload: { encoded: new Encoded() } },
+				definitions,
+				bridge,
+			);
+			expect(
+				deserializeProps(
+					wire,
+					definitions,
+					messenger,
+					bridge,
+					window,
+					window.location.origin,
+				),
+			).toEqual({
+				payload: {
+					encoded: {
+						record: { label: "original" },
+						opaque: { label: "opaque" },
+						number: 8,
+						string: "converted",
+						foreign: [9, "foreign", false],
+						nonfinite: null,
+					},
+				},
+			});
+			expect(branding).not.toHaveBeenCalled();
+			expect(numberCoercion).toHaveBeenCalledOnce();
+			expect(stringCoercion).toHaveBeenCalledOnce();
+			bridge.destroy();
+		},
+	);
+
+	it.each([PROP_SERIALIZATION.BASE64, PROP_SERIALIZATION.DOTIFY])(
 		"preserves native and foreign raw JSON values returned by encoders in %s",
 		(serialization) => {
 			const { messenger, bridge } = createBridgeWithMessenger();

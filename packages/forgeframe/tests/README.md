@@ -21,9 +21,9 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `error.test.ts`: Unknown-error normalization preserves Error identity and ordinary coercion, with a stable fallback when coercion throws.
 - `emitter.test.ts`: Event emitter subscription semantics, once/off behavior, and async error isolation.
 - `host-branch-coverage.test.ts`: Host branch/edge-path coverage for deferred init, failure capture, and guard paths.
-- `host-lifecycle.test.ts`: Host lifecycle message handling, hostProps synchronization, consumer window resolution, consumer-only field discard in legacy bootstrap payloads, atomic late-configuration validation/reconciliation, built-in and snapshot identity, and pending-bootstrap removal persistence.
+- `host-lifecycle.test.ts`: Host lifecycle message handling, hostProps synchronization, consumer window resolution, consumer-only field discard in legacy bootstrap payloads, same-turn rejected legacy configuration through `initHost()` and matching `create()` with immediate/deferred INIT delivery, atomic late-configuration validation/reconciliation, built-in and snapshot identity, and pending-bootstrap removal persistence.
 - `host-transport.test.ts`: Direct host transport behavior for deferred init scheduling, trust updates, props routing, and teardown.
-- `host-security.test.ts`: Host allowlist enforcement and deferred-init security gating.
+- `host-security.test.ts`: Host allowlist enforcement and deferred-init security gating, including rejected late definitions preserving completed legacy hosts while invalidating incomplete messaging bootstrap.
 - `iframe.test.ts`: Iframe creation, reserved-attribute guards, visibility, and sizing helpers.
 - `iframe-configuration.test.ts`: Pure CSS and boolean/string attribute encoding rules.
 - `index-side-effect-free.test.ts`: Public entrypoint import stays side-effect-free until `initHost()` is called explicitly in ForgeFrame-shaped host windows.
@@ -38,7 +38,7 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `package-contract.test.ts`: ESM package exports, documentation claims, and release checks.
 - `prop-schema.test.ts`: `prop` schema builder behavior, nonfinite-number rejection, own-field omission/defaults for inherited names in shaped objects, and Standard Schema compliance, parseable HTTP(S) URL validation with immutable/composable constraints, trimming before length validation, immutable literal optional/default clones, and literal/enum union continuation for BigInt/cyclic input and custom encoders without invoking JSON diagnostics.
 - `prop-update.test.ts`: Isolated patch/reset merging and validation-key bookkeeping.
-- `props-serialize.test.ts`: BASE64/DOTIFY serialization round-trips, nested callbacks produced by custom `toJSON()`, native/foreign raw JSON values returned by encoders, JSON-undefined leaf omission, emptied branches, marker-shaped assembled branches, and malformed wrapper fallback behavior.
+- `props-serialize.test.ts`: BASE64/DOTIFY serialization round-trips, ordinary-record encoding without primitive coercion probes, single wrapper coercion, customized/foreign boxed values, untouched branding getters and virtual proxy branding, opaque proxy prototype metadata, nested callbacks produced by custom `toJSON()`, native/foreign raw JSON values returned by encoders, JSON-undefined leaf omission, emptied branches, marker-shaped assembled branches, and malformed wrapper fallback behavior.
 - `props-alias-materialization.test.ts`: Pure alias-chain resolution, precedence, reset propagation, explicit clearing, and cycle safety.
 - `props-alias-updates.test.ts`: Consumer update-pipeline alias precedence, validation rollback, and materialized-value preservation.
 - `props.test.ts`: Prop normalization, own canonical/alias selection for inherited names, schema validation, host/query/body filtering and conversion rules.

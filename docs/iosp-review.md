@@ -257,7 +257,7 @@ Constructor proxies bind the owning host fields and existing props/transport run
 
 `HostComponent.destroy` sequences transport, observer and prop cleanup before notifying its bootstrap owner. The callback remains local to that owner; stale or repeated destruction cannot clear a replacement host. Evidence also includes `consumer-host-handshake.test.ts`.
 
-`HostComponent.hasCompletedBootstrap` reads readiness state. Configuration validates prop replacement before updating domain configuration. The readiness fulfillment observer records completion; rejection does not mark an incomplete runtime ready.
+`HostComponent.hasCompletedBootstrap` reads readiness state. Configuration validates prop replacement before updating domain configuration. The constructor records legacy completion synchronously after prop validation, independently of deferred INIT delivery. The readiness fulfillment observer records messaging-bootstrap completion; rejection does not mark an incomplete runtime ready.
 
 - **O:** `HostComponent.hasCompletedBootstrap`, `HostComponent.constructor.ready.then`.
 
@@ -684,9 +684,10 @@ Evidence: [utilities](#evidence-utilities); typecheck.
 
 Date framing and recursive JSON replacer/reviver behaviour are codec operations. The optional internal function encoder extends the existing replacer for prop codecs while callers without that encoder retain ordinary JSON function omission. Retain recursion and malformed Date handling together. For prop-codec JSON leaves, native conversion runs encoders once and records generated marker paths; `escapeConvertedRecords` then escapes final ordinary record shapes without re-running encoders.
 
-The serialization-local `captureReads` proxy records native property reads only after a replacer returns its traversal value, preserving child encoder receivers and conversion order. Date framing uses that captured input and the converted JSON value without rerunning getters or encoders. `isBoxedPrimitive` leaves native primitive unboxing available. Feature-detected `JSON.isRawJSON` bypasses proxy wrapping for native raw JSON objects, preserving their branding and primitive output, including values from another realm. BASE64 and DOTIFY custom-encoder round trips exercise this boundary.
+The serialization-local `captureReads` proxy records native property reads only after a replacer returns its traversal value, preserving child encoder receivers and conversion order. Date framing uses that captured input and the converted JSON value without rerunning getters or encoders. `unboxJsonPrimitive` uses a local dummy encoder and an empty native JSON property list to unbox primitive wrappers without exception-driven probes of ordinary records. The returned conversion is reused so coercion hooks run once; ordinary fields, branding getters and proxy prototype metadata are not read by the probe. Arrays bypass the probe to retain traversal and Date capture. Feature-detected `JSON.isRawJSON` bypasses proxy wrapping for native raw JSON objects, preserving their branding and primitive output, including values from another realm. BASE64 and DOTIFY custom-encoder round trips exercise this boundary.
 
-- **O:** `isBoxedPrimitive`.
+- **O:** `unboxJsonPrimitive`.
+- **O callback:** `unboxJsonPrimitive.toJSON`.
 - **O callbacks:** `stringifyWireValue.captureReads`, `stringifyWireValue.captureReads.get`.
 
 `assertDefinedArrayEntries` checks normalized container values with cycle-safe traversal and without calling custom JSON encoders. `hasJsonEncoder` inspects descriptors without invoking computed properties. BASE64 encoder-bearing branches are deferred to the replacer; `isDotifyObjectBranch` mirrors DOTIFY traversal so only its encoded leaves may defer. Top-level arrays and marker-shaped records use the same JSON bridge fallback during admission and serialization. Non-callable `toJSON` fields remain ordinary data. `assertDefinedArrayEntry` also guards bridge arrays, including holes, and prop-codec replacer values before JSON can convert them to null. Date framing ignores extra instance fields as before.

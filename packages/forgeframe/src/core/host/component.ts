@@ -159,6 +159,8 @@ export class HostComponent<
 				!deferredProps,
 			);
 			this.propsRuntime.exposeHostProps();
+			// Legacy props have already passed synchronous validation above.
+			this.bootstrapCompleted = !deferredProps;
 			this.ready = deferredProps
 				? this.initializeFromConsumer()
 				: Promise.resolve();
