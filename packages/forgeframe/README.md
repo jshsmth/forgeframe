@@ -425,11 +425,13 @@ Peer discovery uses a separate relay registry with a cumulative **500-reference*
 
 ### Schema Types
 
+Enum schemas retain the allowed values supplied at creation. Changing the original array does not change validation or the constraints retained by `.optional()`, `.nullable()`, and `.default()`.
+
 Shaped object schemas validate own fields. An omitted field is treated as `undefined`, so optional fields and defaults work even for names such as `constructor` and `toString`; inherited values are not supplied as schema inputs.
 
 Arrays sent as props or exports require defined entries after normalization. `undefined` entries and sparse holes are rejected instead of silently becoming `null`, including in nested arrays. Use `prop.string().nullable()` with `null`, or an item default such as `prop.array().of(prop.string().default('fallback'))`. Standalone schema validation still accepts optional array entries; props excluded by `sendToHost`, `sameDomain`, or `trustedDomains` retain their local values.
 
-Ordinary normalized prop arrays are checked before opening the host or committing an update, so a rejected update preserves the previous snapshot. Values produced by `hostDecorate` or custom `toJSON()` encoders (including computed encoder properties) are checked during delivery; those failures retain the existing transport-failure behavior. A non-callable `toJSON` field is ordinary data. DOTIFY traverses plain objects directly and invokes JSON encoders only on encoded leaves. Literal and enum rejection messages format arbitrary inputs without invoking their JSON encoders, allowing later union branches to validate them.
+Ordinary normalized prop arrays are checked before opening the host or committing an update, so a rejected update preserves the previous snapshot. Values produced by `hostDecorate` or custom `toJSON()` encoders (including computed encoder properties) are checked during delivery; those failures retain the existing consumer snapshot commitment. A non-callable `toJSON` field is ordinary data. DOTIFY traverses root own properties and nested plain objects directly, invoking JSON encoders only on encoded leaves. Use BASE64 when a root object's `toJSON()` should determine its delivered value; an encoder returning `undefined` omits that prop. Literal and enum rejection messages format arbitrary inputs without invoking their JSON encoders, allowing later union branches to validate them.
 
 `prop.string().url()` requires a parseable absolute HTTP(S) URL and preserves the supplied string. It composes with `.pattern()` and `.trim()`; trimming changes the returned string only when requested.
 
@@ -592,6 +594,8 @@ canonical key doubles as another prop's alias.
 a valid input can transform to `undefined`, its `outputSchema` must explicitly
 accept `undefined`; the host then treats that as a valid normalized result.
 
+Definitions with `sendToHost: false` validate consumer input only. Shared host definitions exclude these fields from bootstrap and update validation, so a required local prop does not prevent host initialization. Origin restrictions on delivered props continue to apply.
+
 Prefer inferred component and React-wrapper types. If you explicitly annotate
 an aliased component whose schema inputs differ from its host props, supply the
 canonical schema-input type as the fifth `ForgeFrameComponent` generic, after
@@ -602,6 +606,8 @@ the sixth generic.
 - Use `sameDomain` for values that should never be exposed during cross-origin bootstrap.
 - `DOTIFY` safely preserves nested object keys that contain separators such as `.`, `&`, or `=`.
 - Ordinary objects with transport-like marker fields and additional user fields remain data in all three serialization modes.
+
+Date props and exports preserve genuine dates created in another browser window. Record schemas also accept ordinary dictionaries from another window while continuing to reject class instances. Numeric iframe styles use pixels for lengths and retain numbers for unitless CSS properties; custom property names remain case-sensitive.
 
 ### Passing Props via URL or POST Body (Advanced)
 
@@ -721,7 +727,10 @@ It reads channel metadata from `window.name`, requests initial props through ori
 
 Only channel metadata remains in `window.name`, allowing reloads and subsequent host documents to reconnect and receive the latest props. Browser policies that clear window names across sites can still prevent reconnection. `initHost()` returns `null` outside a ForgeFrame host window; handle that case if the page also supports standalone use.
 
+Calling the returned host's `destroy()` disposes its runtime and removes `window.hostProps`. When the channel metadata is still available, a later `initHost()` creates a fresh runtime; await its new `ready` promise before using props or controls.
+
 Supported host boot patterns:
+
 - Call `initHost(propDefinitions, allowedConsumerDomains)` during host startup, await the returned host's `ready`, then read `window.hostProps`.
 - Call `initHost(propDefinitions)` or `initHost()` only for hosts that are intentionally embeddable by any consumer origin.
 - Define the host with `ForgeFrame.create(...)` and let component creation initialize the host runtime, then await `initHost()?.ready` before reading props.

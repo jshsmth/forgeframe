@@ -97,6 +97,9 @@ export function initHost<P extends Record<string, unknown>, SchemaInputs = P>(
 			propDefinitions,
 			allowedConsumerDomains,
 			options.deferInit ?? false,
+			() => {
+				if (hostInstance === nextHostInstance) clearHostInstance();
+			},
 		) as HostComponent<Record<string, unknown>, Record<string, unknown>>;
 		hostInstance = nextHostInstance;
 		pendingInitialPayload = null;
@@ -130,11 +133,9 @@ export function getHost<
 
 export function clearHostInstance(): void {
 	pendingInitialPayload = null;
-
-	if (hostInstance) {
-		hostInstance.destroy();
-		hostInstance = null;
-	}
+	const previousHost = hostInstance;
+	hostInstance = null;
+	previousHost?.destroy();
 
 	if (hasBrowserWindow()) {
 		delete (

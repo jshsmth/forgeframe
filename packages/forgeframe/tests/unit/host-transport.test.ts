@@ -185,6 +185,8 @@ describe("HostTransport", () => {
 				uid: "host-transport-uid",
 				tag: "host-transport-component",
 			},
+			undefined,
+			undefined,
 		);
 
 		transport.handleHostPropsAccess();

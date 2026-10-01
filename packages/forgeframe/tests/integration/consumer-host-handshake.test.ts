@@ -5,7 +5,8 @@
  * handshake across separate consumer and host windows.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { create, EVENT, prop } from "@/index";
+import { z } from "zod";
+import { create, EVENT, getHostProps, initHost, prop } from "@/index";
 import type { HostProps, PropsDefinition } from "@/types";
 import {
 	createIframeIntegrationHarness,
@@ -29,6 +30,71 @@ describe("Consumer/host handshake integration", () => {
 		await harness?.cleanup();
 		harness = null;
 		vi.restoreAllMocks();
+	});
+
+	it("bootstraps a parent without serializing its child's recursive schema", async () => {
+		harness = createIframeIntegrationHarness();
+		const tree = z.object({
+			name: z.string(),
+			get children(): z.ZodArray<typeof tree> {
+				return z.array(tree);
+			},
+		});
+		const Child = create({
+			tag: "recursive-schema-child",
+			url: "https://host.example.com/child",
+			props: { tree },
+		});
+		const Parent = create({
+			tag: "recursive-schema-parent",
+			url: "https://host.example.com/widget",
+			children: () => ({ Child }),
+		});
+		const container = document.createElement("div");
+		document.body.append(container);
+		const instance = Parent();
+		const rendering = instance.render(container);
+		void rendering.catch(() => {});
+		const { hostProps } = await harness.bootstrapIframeHost(container, {});
+		await expect(rendering).resolves.toBeUndefined();
+		expect(hostProps.children?.Child).toBe(Child);
+		expect(tree.safeParse({ name: "root", children: [] }).success).toBe(true);
+	});
+
+	it("initializes a fresh host after public teardown and clears stale host props", async () => {
+		harness = createIframeIntegrationHarness();
+		const activeHarness = harness;
+		const definitions = { title: prop.string() };
+		const Component = create({
+			tag: "host-public-teardown",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const container = document.createElement("div");
+		document.body.append(container);
+		const instance = Component({ title: "initial" });
+		const rendering = instance.render(container);
+		const { host } = await activeHarness.bootstrapIframeHost(
+			container,
+			definitions,
+		);
+		await rendering;
+		activeHarness.withHostGlobals(() => host.destroy());
+		expect(activeHarness.withHostGlobals(() => getHostProps())).toBeUndefined();
+		const nextHost = activeHarness.withHostGlobals(() => initHost(definitions));
+		if (!nextHost) throw new Error("Expected host reinitialization");
+		expect(nextHost).not.toBe(host);
+		await nextHost.ready;
+		activeHarness.withHostGlobals(() => host.destroy());
+		expect(activeHarness.withHostGlobals(() => getHostProps())).toBe(
+			nextHost.hostProps,
+		);
+		await expect(
+			instance.updateProps({ title: "updated" }),
+		).resolves.toBeUndefined();
+		expect(nextHost.hostProps.title).toBe("updated");
+		await expect(nextHost.hostProps.hide()).resolves.toBeUndefined();
+		expect(container.querySelector("iframe")?.style.display).toBe("none");
 	});
 
 	it("rejects oversized bootstrap metadata before installing a host and accepts a valid retry", async () => {

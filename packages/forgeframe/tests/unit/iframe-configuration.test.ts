@@ -16,6 +16,35 @@ describe("iframe configuration encoding", () => {
 		});
 	});
 
+	it.each([
+		"fontWeight",
+		"fontSizeAdjust",
+		"mathDepth",
+		"shapeImageThreshold",
+		"hyphenateLimitChars",
+		"initialLetter",
+		"readingOrder",
+		"flexLineCount",
+		"borderImage",
+		"maskBorderSlice",
+		"WebkitHyphenateLimitLines",
+		"WebkitMaskBoxImageSlice",
+		"opacity",
+		"flexGrow",
+		"gridRow",
+		"aspectRatio",
+		"WebkitLineClamp",
+	])("encodes numeric %s without length units", (property) => {
+		expect(encodeIframeStyle(property, 2).value).toBe("2");
+	});
+
+	it("preserves kebab-case unitless properties", () => {
+		expect(encodeIframeStyle("z-index", 10)).toEqual({
+			property: "z-index",
+			value: "10",
+		});
+	});
+
 	it("preserves boolean presence, explicit strings, and omitted attributes", () => {
 		expect(encodeIframeAttribute(true)).toBe("");
 		expect(encodeIframeAttribute(false)).toBeUndefined();

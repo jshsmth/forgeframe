@@ -310,6 +310,7 @@ export function fadeOut(element: HTMLElement, duration = 200): Promise<void> {
  * @param container - The parent container element
  * @param prerenderElement - The prerender placeholder element, or `null` if none exists
  * @param actualElement - The actual content element to display
+ * @param shouldShow - Checks the latest explicit visibility request after loading fades
  * @returns A Promise that resolves when the swap animation completes
  *
  * @example
@@ -327,12 +328,14 @@ export async function swapPrerenderContent(
 	_container: HTMLElement,
 	prerenderElement: HTMLElement | null,
 	actualElement: HTMLElement,
+	shouldShow: () => boolean = () => true,
 ): Promise<void> {
 	if (prerenderElement) {
 		await fadeOut(prerenderElement, 150);
 		prerenderElement.remove();
 	}
 
+	if (!shouldShow()) return;
 	actualElement.style.display = "";
 	actualElement.style.visibility = "visible";
 	actualElement.style.opacity = "0";

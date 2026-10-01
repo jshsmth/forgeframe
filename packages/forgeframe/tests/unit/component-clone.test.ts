@@ -220,6 +220,51 @@ describe("Component clone", () => {
 		expect(GlobalComponent.instances).toEqual([]);
 	});
 
+	it.each(["off", "removeAllListeners"] as const)(
+		"should deregister originals and clones after public %s cleanup",
+		async (method) => {
+			const tag = `listener-cleanup-${method.toLowerCase()}`;
+			const Component = create({
+				tag,
+				url: "https://example.com/clone",
+			});
+			const original = Component();
+			const cloned = original.clone();
+			const events: string[] = [];
+			for (const [name, instance] of [
+				["original", original],
+				["clone", cloned],
+			] as const) {
+				if (method === "off") instance.event.off("destroy");
+				else instance.event.removeAllListeners();
+				instance.event.on("close", () => {
+					events.push(
+						`${name}:close:${Component.instances.includes(instance)}`,
+					);
+				});
+				instance.event.on("destroy", () => {
+					events.push(
+						`${name}:destroy:${Component.instances.includes(instance)}`,
+					);
+				});
+			}
+
+			await original.close();
+			expect(Component.instances).toEqual([cloned]);
+			expect(getSiblingInstances({ uid: cloned.uid, tag })).toEqual([]);
+			await cloned.close();
+			await cloned.close();
+			expect(Component.instances).toEqual([]);
+			expect(getSiblingInstances({ uid: "outside", tag })).toEqual([]);
+			expect(events).toEqual([
+				"original:close:true",
+				"original:destroy:false",
+				"clone:close:true",
+				"clone:destroy:false",
+			]);
+		},
+	);
+
 	it("should keep direct ConsumerComponent clones untracked", async () => {
 		const original = new ConsumerComponent({
 			tag: "direct-untracked-clone",

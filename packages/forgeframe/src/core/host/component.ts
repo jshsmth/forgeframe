@@ -61,6 +61,7 @@ export class HostComponent<
 		> = EMPTY_PROP_DEFINITIONS as HostPropsDefinition<P, SchemaInputs>,
 		allowedConsumerDomains?: DomainMatcher,
 		deferInit = false,
+		private readonly onDestroy?: () => void,
 	) {
 		this.uid = payload.uid;
 		this.tag = payload.tag;
@@ -261,5 +262,6 @@ export class HostComponent<
 		this.transport.destroy();
 		this.event.removeAllListeners();
 		this.propsRuntime.destroy();
+		this.onDestroy?.();
 	}
 }

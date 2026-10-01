@@ -145,12 +145,16 @@ export class ConsumerComponent<
 	 * @param props - Initial props to pass to the component
 	 * @param trackInstance - Owning component registration callback used for clones
 	 * @param propsSnapshot - Existing normalized pipeline state used by clones
+	 * @param untrackInstance - Owning factory cleanup independent of public observers
 	 */
 	constructor(
 		options: ComponentOptions<P, I, SchemaInputs>,
 		props?: ConsumerPropsInput<P, I, SchemaInputs>,
 		private trackInstance?: ConsumerInstanceTracker<P, X, I, SchemaInputs>,
 		propsSnapshot?: ConsumerPropsPipelineSnapshot<P>,
+		private untrackInstance?: (
+			instance: ConsumerComponent<P, X, I, SchemaInputs>,
+		) => void,
 	) {
 		this._uid = generateUID();
 		this.options = this.normalizeOptions(options);
@@ -583,6 +587,7 @@ export class ConsumerComponent<
 			undefined,
 			this.trackInstance,
 			this.propsPipeline.createSnapshot(),
+			this.untrackInstance,
 		);
 		return this.trackInstance ? this.trackInstance(cloned) : cloned;
 	}
@@ -984,6 +989,7 @@ export class ConsumerComponent<
 
 		await this.cleanup.cleanup();
 
+		this.untrackInstance?.(this);
 		this.event.emit(EVENT.DESTROY);
 		invokePropCallback(callbackProps as Record<string, unknown>, "onDestroy");
 		this.event.removeAllListeners();

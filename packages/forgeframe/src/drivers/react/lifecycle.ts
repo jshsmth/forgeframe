@@ -3,6 +3,7 @@ import type {
 	ConsumerPropsInput,
 	ForgeFrameComponentInstance,
 } from "../../types/runtime";
+import { normalizeError } from "../../utils/error";
 import { deactivatePropSyncState, type ReactPropSyncState } from "./prop-sync";
 
 /** Mutable refs remain owned by the React wrapper. @internal */
@@ -113,8 +114,7 @@ export function mountReactInstance<
 			initialProps as ConsumerPropsInput<P, I, SchemaInputs>,
 		);
 	} catch (err) {
-		const constructionError =
-			err instanceof Error ? err : new Error(String(err));
+		const constructionError = normalizeError(err);
 		observers.setError(constructionError);
 		observers.onError(constructionError);
 		return;

@@ -3,6 +3,7 @@
  *
  * Covers schema shape detection, validation success/failure formatting, async schema guardrails, and normalizeProps integration.
  */
+import { runInNewContext } from "node:vm";
 import { describe, expect, it, vi } from "vitest";
 import { validateProps } from "@/props/normalize";
 import { prop } from "@/props/prop";
@@ -211,6 +212,31 @@ describe("validateWithSchema", () => {
 		expect(() => validateWithSchema(schema, "value", "asyncProp")).toThrow(
 			"ForgeFrame only supports synchronous schema validation",
 		);
+	});
+
+	it("rejects promises returned by schemas from another realm", () => {
+		const result: Promise<{ value: string }> = runInNewContext(
+			'Promise.resolve({ value: "parsed" })',
+		);
+		const schema: StandardSchemaV1<unknown, string> = {
+			"~standard": {
+				version: 1,
+				vendor: "foreign-realm",
+				validate: () => result,
+			},
+		};
+		expect(result).not.toBeInstanceOf(Promise);
+		expect(() => validateWithSchema(schema, "input", "name")).toThrow(
+			"uses an async schema",
+		);
+		const nestedSchema = prop.string();
+		vi.spyOn(nestedSchema["~standard"], "validate").mockReturnValue(result);
+		expect(() =>
+			prop
+				.object()
+				.shape({ name: nestedSchema })
+				["~standard"].validate({ name: "input" }),
+		).toThrow("Async schema validation is not supported");
 	});
 });
 

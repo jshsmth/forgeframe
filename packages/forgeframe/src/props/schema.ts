@@ -249,7 +249,7 @@ export function validateWithSchema<T>(
 ): T {
 	const result = schema["~standard"].validate(value);
 
-	if (result instanceof Promise) {
+	if (isAsyncSchemaResult(result)) {
 		throw new Error(
 			`Prop "${propName}" uses an async schema. ForgeFrame only supports synchronous ` +
 				`schema validation. Please use a synchronous schema or remove async operations ` +
@@ -266,6 +266,13 @@ export function validateWithSchema<T>(
 	}
 
 	return result.value;
+}
+
+/** Recognizes asynchronous schema results across window realms. @internal */
+export function isAsyncSchemaResult<T>(
+	result: StandardSchemaV1Result<T> | Promise<StandardSchemaV1Result<T>>,
+): result is Promise<StandardSchemaV1Result<T>> {
+	return "then" in result && typeof result.then === "function";
 }
 
 /**

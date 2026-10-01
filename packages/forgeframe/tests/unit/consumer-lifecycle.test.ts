@@ -16,7 +16,6 @@ import { ConsumerComponent } from "@/core/consumer";
 import { PROP_RESET } from "@/core/consumer/props-pipeline";
 import { prop } from "@/props/prop";
 import * as popupRender from "@/render/popup";
-import * as templateRender from "@/render/templates";
 import { requireValue } from "../require-value";
 
 const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
@@ -285,6 +284,8 @@ describe("Consumer lifecycle behavior", () => {
 			redirectedOrigin,
 			MESSAGE_NAME.PROPS,
 			expect.objectContaining({ amount: 2 }),
+			undefined,
+			expect.any(Function),
 		);
 	});
 
@@ -731,18 +732,10 @@ describe("Consumer lifecycle behavior", () => {
 			"waitForHost",
 		).mockResolvedValue(undefined);
 
-		const swapSpy = vi
-			.spyOn(templateRender, "swapPrerenderContent")
-			.mockResolvedValue(undefined);
-
 		await consumer.render(container);
 
-		expect(swapSpy).toHaveBeenCalledTimes(1);
-		expect(swapSpy).toHaveBeenCalledWith(
-			expect.any(HTMLElement),
-			null,
-			expect.any(HTMLIFrameElement),
-		);
+		expect(container.querySelector("iframe")?.style.display).toBe("");
+		expect(container.querySelector("iframe")?.style.visibility).toBe("visible");
 	});
 
 	it("should route popup close watcher through close()", async () => {
@@ -1334,6 +1327,8 @@ describe("Consumer lifecycle behavior", () => {
 			"https://host.example.com",
 			MESSAGE_NAME.PROPS,
 			expect.objectContaining({ amount: 2 }),
+			undefined,
+			expect.any(Function),
 		);
 	});
 

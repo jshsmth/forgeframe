@@ -60,6 +60,8 @@ All unit tests and shared fixtures are strictly compiled by `npm run typecheck`,
 
 ## Integration Tests (`packages/forgeframe/tests/integration`)
 
+`consumer-host-handshake.test.ts` also covers parent bootstrap with a recursive Zod child schema and public host destruction followed by fresh initialization, prop synchronization, and working host controls. `prop-schema.test.ts` verifies enum constraints and diagnostics stay stable after the caller mutates the original values array.
+
 - `array-prop-transport.test.ts`: Consumer-side rejection of undefined/sparse array entries before opening or update commitment, recovery, nested values, item defaults, nullable entries, delivery-policy exclusions, custom encoders/host decorators, and export rejection without replacing acknowledged data.
 - `body-param-bootstrap.test.ts`: End-to-end iframe and popup `bodyParam` POST bootstrap coverage, including hidden-form submission and host initialization.
 - `consumer-host-handshake.test.ts`: End-to-end iframe happy path covering `create()`, `instance.render()`, `initHost()`, and the real INIT handshake, plus oversized bootstrap metadata rejection followed by a valid retry.
@@ -120,3 +122,9 @@ Start with a supported public behavior or a reproduced failure and an agreed pub
 Check both acceptance and rejection/recovery where meaningful. Keep schema inputs and normalized outputs explicit in fixtures, and run `typecheck:tests` as well as Vitest. Use a targeted regression probe to confirm a new test can detect the behavior being lost; restore the source before final validation. Coverage identifies candidates for inspection, while supported behavior and failure impact decide whether to add a test. Do not add casts, mocks, exclusions, or threshold changes merely to reach 100%.
 
 The installed-package check compiles the actual README Define a Component example under strict NodeNext resolution, and smoke-tests callback default behavior against the built package. Callback type fixtures require factory syntax after fluent chaining. Consumer transport tests verify that only a verified new bootstrap session releases a full recovery pool.
+
+## October consolidation regressions
+
+Public regressions cover instance/index cleanup after listener removal (including clones), acknowledged host hide during initial rendering, unitless CSS values and case-sensitive variables, callback capacity recovery after final protocol encoding failure in both directions, and remote errors for uncoercible thrown values. Shared required consumer-only definitions initialize and update successfully while invalid local inputs still reject. Cross-realm schema promises reject explicitly, including in nested builders. BASE64 root JSON omission removes stale host fields. `error.test.ts` verifies preserved Error identity, normal coercion and fallback conversion. The navigation browser regression checks initialization visibility and CSS behavior in Chromium, Firefox and WebKit.
+
+The residual audit adds public `events.typecheck.ts` assertions for typed removal and realm-value regressions for dates and ordinary records from another window. Browser cases exercise props/exports in every codec and compare supported numeric CSS declarations with direct native application; class-instance rejection remains covered.

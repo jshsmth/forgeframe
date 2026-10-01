@@ -13,6 +13,40 @@ import {
 	type IframeIntegrationHarness,
 } from "./helpers";
 
+it("validates required consumer-only inputs locally while shared host definitions omit them", async () => {
+	const harness = createIframeIntegrationHarness();
+	try {
+		const definitions = {
+			local: { schema: prop.string(), required: true, sendToHost: false },
+			title: prop.string(),
+		};
+		const Component = create({
+			tag: "required-local-prop",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const container = document.createElement("div");
+		document.body.append(container);
+		const instance = Component({ local: "private", title: "initial" });
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			definitions,
+		);
+		await rendering;
+		expect(Object.hasOwn(hostProps, "local")).toBe(false);
+		await instance.updateProps({ local: "changed", title: "updated" });
+		expect(hostProps.title).toBe("updated");
+		expect(Object.hasOwn(hostProps, "local")).toBe(false);
+		await expect(instance.updateProps({ local: undefined })).rejects.toThrow(
+			/required/,
+		);
+		expect(hostProps.title).toBe("updated");
+	} finally {
+		await harness.cleanup();
+	}
+});
+
 type SyncProps = {
 	title: string;
 	optionalNote?: string;

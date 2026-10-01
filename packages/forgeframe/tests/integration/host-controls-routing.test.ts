@@ -32,6 +32,31 @@ describe("Host controls and routing integration", () => {
 		vi.restoreAllMocks();
 	});
 
+	it("preserves an acknowledged host hide while initial rendering completes", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const Component = create({
+			tag: "integration-hide-during-initialization",
+			url: "https://host.example.com/widget",
+		});
+		const instance = Component();
+		const rendered = vi.fn();
+		instance.event.on(EVENT.RENDERED, rendered);
+		const rendering = instance.render(container);
+		const { host, iframe } = await harness.bootstrapIframeHost(container);
+		await host.ready;
+		await host.hostProps.hide();
+		expect(iframe.style.display).toBe("none");
+		await rendering;
+		expect(rendered).toHaveBeenCalledOnce();
+		expect(iframe.style.display).toBe("none");
+		expect(iframe.style.visibility).toBe("hidden");
+		await host.hostProps.show();
+		expect(iframe.style.display).toBe("");
+		expect(iframe.style.visibility).toBe("visible");
+	});
+
 	it("rejects oversized exports without replacing acknowledged exports", async () => {
 		harness = createIframeIntegrationHarness();
 		const container = document.createElement("div");
@@ -73,6 +98,47 @@ describe("Host controls and routing integration", () => {
 		const next = instance.exports as { next: () => Promise<number> };
 		await expect(next.next()).resolves.toBe(42);
 		await expect(first.m0?.()).rejects.toThrow("not found");
+	});
+
+	it("recovers export callback capacity after final message encoding fails", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const Component = create<
+			Record<string, unknown>,
+			Record<string, () => number>
+		>({
+			tag: "integration-export-message-encoding",
+			url: "https://host.example.com/widget",
+		});
+		const instance = Component();
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(container);
+		await rendering;
+		const methods = Object.fromEntries(
+			Array.from({ length: 500 }, (_, index) => [`m${index}`, () => index]),
+		);
+		await hostProps.export(methods);
+		const previous = instance.exports;
+		if (!previous) throw new Error("Missing initial exports");
+		const replacement = Object.fromEntries(
+			Array.from({ length: 500 }, (_, index) => [
+				`m${index}`,
+				() => index + 500,
+			]),
+		);
+
+		await expect(
+			hostProps.export({ ...replacement, metadata: 1n }),
+		).rejects.toThrow(/BigInt/);
+		expect(instance.exports).toBe(previous);
+		await expect(previous.m0?.()).resolves.toBe(0);
+		await expect(previous.m499?.()).resolves.toBe(499);
+		await hostProps.export({ fresh: () => 1001 });
+		const current = instance.exports;
+		if (!current) throw new Error("Missing replacement exports");
+		await expect(current.fresh?.()).resolves.toBe(1001);
+		await expect(previous.m0?.()).rejects.toThrow("not found");
 	});
 
 	it("preserves held peer methods when discovery exceeds cumulative relay capacity", async () => {

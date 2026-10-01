@@ -104,6 +104,94 @@ describe("Function prop bridge integration", () => {
 		},
 	);
 
+	it("recovers callback capacity after final props message encoding fails", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const definitions = {
+			callbacks: prop.record(prop.function<() => number>()),
+			metadata: prop.any().optional(),
+		};
+		const Component = create({
+			tag: "integration-props-message-encoding",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const callbacks = Object.fromEntries(
+			Array.from({ length: 500 }, (_, index) => [`c${index}`, () => index]),
+		);
+		const instance = Component({ callbacks });
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			definitions,
+		);
+		await rendering;
+		const previous = hostProps.callbacks;
+		const replacement = Object.fromEntries(
+			Array.from({ length: 500 }, (_, index) => [
+				`c${index}`,
+				() => index + 500,
+			]),
+		);
+
+		await expect(
+			instance.updateProps({ callbacks: replacement, metadata: 1n }),
+		).rejects.toThrow(/BigInt/);
+		expect(hostProps.callbacks).toBe(previous);
+		await expect(previous.c0?.()).resolves.toBe(0);
+		await expect(previous.c499?.()).resolves.toBe(499);
+		await instance.updateProps({
+			callbacks: { fresh: () => 1001 },
+			metadata: undefined,
+		});
+		await expect(hostProps.callbacks.fresh?.()).resolves.toBe(1001);
+		await expect(previous.c0?.()).rejects.toThrow("not found");
+	});
+
+	it.each(["null-prototype", "throwing-coercion"] as const)(
+		"returns an immediate error for %s throws from callbacks and exports",
+		async (kind) => {
+			harness = createIframeIntegrationHarness();
+			const thrown: unknown =
+				kind === "null-prototype"
+					? Object.create(null)
+					: {
+							[Symbol.toPrimitive]() {
+								throw new Error("coercion failed");
+							},
+						};
+			let shouldThrow = true;
+			const run = () => {
+				if (shouldThrow) throw thrown;
+				return 42;
+			};
+			const definitions = { run: prop.function<typeof run>() };
+			const Component = create<{ run: typeof run }, { run: typeof run }>({
+				tag: "integration-uncoercible-callback",
+				url: "https://host.example.com/widget",
+				props: definitions,
+			});
+			const container = document.createElement("div");
+			document.body.append(container);
+			const instance = Component({ run });
+			const rendering = instance.render(container);
+			const { hostProps } = await harness.bootstrapIframeHost(
+				container,
+				definitions,
+			);
+			await rendering;
+			await expect(hostProps.run()).rejects.toThrow("Unknown error");
+			await hostProps.export({ run });
+			const exported = instance.exports;
+			if (!exported) throw new Error("Missing exported callback");
+			await expect(exported.run()).rejects.toThrow("Unknown error");
+			shouldThrow = false;
+			await expect(hostProps.run()).resolves.toBe(42);
+			await expect(exported.run()).resolves.toBe(42);
+		},
+	);
+
 	it("delivers an omitted callback default without invoking the callback during normalization", async () => {
 		harness = createIframeIntegrationHarness();
 		const container = document.createElement("div");

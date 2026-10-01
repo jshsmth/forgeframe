@@ -14,10 +14,12 @@ import type {
 	PropsDefinition,
 } from "../types/props";
 import type { DomainMatcher } from "../types/utility";
+import { isDate, isPlainObject } from "../utils/realm-values";
 import { assertDefinedArrayEntries } from "../utils/wire-value";
 import { matchDomain } from "../window/helpers";
 import { BUILTIN_PROP_DEFINITIONS } from "./definitions";
 import {
+	isAsyncSchemaResult,
 	isStandardSchema,
 	type StandardSchemaV1,
 	validateWithSchema,
@@ -72,10 +74,10 @@ function schemaOutputMatchesInput(
 		return false;
 	}
 
-	if (input instanceof Date || output instanceof Date) {
+	if (isDate(input) || isDate(output)) {
 		return (
-			input instanceof Date &&
-			output instanceof Date &&
+			isDate(input) &&
+			isDate(output) &&
 			Object.is(input.getTime(), output.getTime())
 		);
 	}
@@ -94,15 +96,20 @@ function schemaOutputMatchesInput(
 	}
 
 	const inputPrototype = Object.getPrototypeOf(input) as object | null;
-	if (inputPrototype !== Object.getPrototypeOf(output)) {
+	const outputPrototype = Object.getPrototypeOf(output) as object | null;
+	if (
+		inputPrototype !== outputPrototype &&
+		!(
+			inputPrototype !== null &&
+			outputPrototype !== null &&
+			isPlainObject(input) &&
+			isPlainObject(output)
+		)
+	) {
 		return false;
 	}
 
-	if (
-		!inputIsArray &&
-		inputPrototype !== Object.prototype &&
-		inputPrototype !== null
-	) {
+	if (!inputIsArray && !isPlainObject(input)) {
 		return false;
 	}
 
@@ -365,7 +372,8 @@ function probeSchemaDefault<P>(
 	step: PropNormalizationStep<P>,
 ): unknown {
 	const schemaResult = schema["~standard"].validate(undefined);
-	if (schemaResult instanceof Promise || schemaResult.issues) return undefined;
+	if (isAsyncSchemaResult(schemaResult) || schemaResult.issues)
+		return undefined;
 	const value = schemaResult.value;
 	if (value !== undefined || step.isDirectSchema || !step.definition.required) {
 		step.options.schemaValidatedKeys?.add(step.key);
@@ -495,10 +503,13 @@ function validateNormalizationOutput<P>(
 			normalizedValueCanBeSchemaValidated = true;
 		} else {
 			const revalidationResult = definition.schema["~standard"].validate(value);
-			if (revalidationResult instanceof Promise || revalidationResult.issues) {
+			if (
+				isAsyncSchemaResult(revalidationResult) ||
+				revalidationResult.issues
+			) {
 				validateWithSchema(definition.schema, value, key);
 			} else if (
-				!(revalidationResult instanceof Promise) &&
+				!isAsyncSchemaResult(revalidationResult) &&
 				!revalidationResult.issues
 			) {
 				normalizedValueCanBeSchemaValidated = schemaOutputMatchesInput(

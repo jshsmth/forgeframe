@@ -64,7 +64,7 @@ Evidence: [messaging](#evidence-messaging), typecheck.
 
 Admission precedes decoding; channel, usable source, expected origin and pending target identity remain explicit. Execution and response encoding are cohesive boundary operations; their workflow and posting are named separately. Trusted-domain recursion is one matcher-registry algorithm.
 
-- **O:** `isPendingResponseSourceMatch`, `normalizeTargetDomainToExpectedOrigin`, `Messenger.addTrustedDomain`, `Messenger.removeTrustedDomain`, `Messenger.isOriginTrusted`, `Messenger.on`, `Messenger.settlePendingResponse`, `Messenger.executeRequest`, `Messenger.serializeResponse`, `Messenger.postResponse`, `Messenger.isDestroyed`, `normalizeResponseError`.
+- **O:** `isPendingResponseSourceMatch`, `normalizeTargetDomainToExpectedOrigin`, `Messenger.addTrustedDomain`, `Messenger.removeTrustedDomain`, `Messenger.isOriginTrusted`, `Messenger.on`, `Messenger.settlePendingResponse`, `Messenger.executeRequest`, `Messenger.serializeResponse`, `Messenger.postResponse`, `Messenger.isDestroyed`.
 - **I:** `Messenger.constructor`, `Messenger.send`, `Messenger.post`, `Messenger.setupListener`, `Messenger.setupListener.this.listener`, `Messenger.readTrustedMessage`, `Messenger.handleMessage`, `Messenger.handleRequest`, `Messenger.destroy`.
 - **O callbacks:** `Messenger.removeTrustedDomain.callback@197`, `Messenger.removeTrustedDomain.callback@203`, `Messenger.on.callback@334`.
 - **I callbacks:** `Messenger.send.callback@263`.
@@ -110,10 +110,10 @@ Evidence: [consumer](#evidence-consumer); typecheck.
 
 ### [core/component.ts](../packages/forgeframe/src/core/component.ts)
 
-Declaration policy receives options; static URL context selection receives observed origin. Factory construction and host configuration are integrations; getters are short delegates. Factory host-props caching checks the current singleton before reuse and rebinds after a failed bootstrap is retried. Destruction callbacks remove both factory and index identities in order.
+Declaration policy receives options; static URL context selection receives observed origin. Factory construction and host configuration are integrations; getters are short delegates. Factory host-props caching checks the current singleton before reuse and rebinds after a failed bootstrap is retried. An owner callback removes factory and index identities before destruction observers, even after public listeners are removed. It propagates to clones; the retained event listener preserves synthetic destroy notifications.
 
 - **O:** `assertComponentShape`, `staticUrlValidationContext`, `removeTrackedInstance`, `create.Component.canRenderTo`.
-- **I:** `validateComponentOptions`, `validateStaticComponentUrl`, `create`, `create.createTrackedInstance`, `create.canDetectComponentHost`, `create.syncHostProps`, `create.detectHostState`, `create.Component.isHost`, `create.Component.isEmbedded`, `create.get`, `getComponent`, `getRegisteredComponents`, `getComponentInstancesByTag`, `getIndexedComponentInstances`, `destroy`, `destroyByTag`, `destroyAll`, `unregisterComponent`, `clearComponents`.
+- **I:** `validateComponentOptions`, `validateStaticComponentUrl`, `create`, `create.untrackInstance`, `create.createTrackedInstance`, `create.canDetectComponentHost`, `create.syncHostProps`, `create.detectHostState`, `create.Component.isHost`, `create.Component.isEmbedded`, `create.get`, `getComponent`, `getRegisteredComponents`, `getComponentInstancesByTag`, `getIndexedComponentInstances`, `destroy`, `destroyByTag`, `destroyAll`, `unregisterComponent`, `clearComponents`.
 - **M:** `create.trackInstance`.
 - **I callbacks:** `create.trackInstance.callback@234`, `create.callback@305`, `destroyByTag.callback@452`, `destroyAll.callback@474`.
 - **Retained rationale —** `create.trackInstance`: The factory-local guard, list append, index update and destruction subscription share one lifetime. Keep this short ownership adapter next to construction; removal bookkeeping is named separately.
@@ -148,6 +148,8 @@ Evidence: [consumer](#evidence-consumer); typecheck.
 ### [core/consumer/child-refs.ts](../packages/forgeframe/src/core/consumer/child-refs.ts)
 
 Registry lookup is separate from metadata-to-reference construction. Creating lazy references does not construct child instances.
+
+References omit executable prop definitions; hosts resolve them from their local registered factories. Recursive child schemas therefore cannot enter parent bootstrap serialization. Evidence also includes `consumer-host-handshake.test.ts`.
 
 - **O:** `createNestedHostRef`.
 - **I:** `buildNestedHostRefs`.
@@ -225,9 +227,11 @@ Evidence: [host](#evidence-host); typecheck.
 
 The singleton integration reuses/configures or constructs the runtime, retaining retry after failed asynchronous validation. Its ready callback clears only the instance it created.
 
+Its destruction callback clears only the same owned instance. Cleanup releases the singleton before resource destruction, avoiding reentrant cleanup and allowing public teardown followed by fresh initialization from retained channel metadata.
+
 - **O:** `getHost`.
 - **I:** `readInitialPayload`, `initHost`, `clearHostInstance`.
-- **I callbacks:** `initHost.callback@101`.
+- **I callbacks:** `initHost.onDestroy`, `initHost.ready.catch`.
 
 Evidence: [host](#evidence-host); typecheck.
 
@@ -239,6 +243,8 @@ Evidence: [host](#evidence-host), typecheck.
 ### [core/host/component.ts](../packages/forgeframe/src/core/host/component.ts)
 
 Constructor proxies bind the owning host fields and existing props/transport runtimes. Accessors delegate. Bootstrap readiness, source verification and teardown remain explicit integrations.
+
+`HostComponent.destroy` sequences transport, observer and prop cleanup before notifying its bootstrap owner. The callback remains local to that owner; stale or repeated destruction cannot clear a replacement host. Evidence also includes `consumer-host-handshake.test.ts`.
 
 - **O:** `HostComponent.constructor.getConsumerDomain@98`, `HostComponent.constructor.getConsumerWindow`, `HostComponent.constructor.getConsumerDomain@121`, `HostComponent.constructor.isConsumerDomainVerified`, `HostComponent.constructor.getMessenger`, `HostComponent.constructor.getBridge`, `HostComponent.constructor.get@131`, `HostComponent.constructor.get@135`, `HostComponent.constructor.get@139`, `HostComponent.constructor.get@143`, `HostComponent.constructor.isConsumerSource`.
 - **I:** `HostComponent.constructor`, `HostComponent.constructor.close`, `HostComponent.constructor.focus`, `HostComponent.constructor.resize`, `HostComponent.constructor.show`, `HostComponent.constructor.hide`, `HostComponent.constructor.onError`, `HostComponent.constructor.exportData`, `HostComponent.constructor.consumerExport`, `HostComponent.constructor.getPeerInstances`, `HostComponent.constructor.onFirstHostPropsAccess`, `HostComponent.constructor.applySerializedProps`, `HostComponent.initializeFromConsumer`, `HostComponent.hostProps@196`, `HostComponent.hostProps@200`, `HostComponent.flushInit`, `HostComponent.getProps`, `HostComponent.getInitError`, `HostComponent.applyHostConfiguration`, `HostComponent.assertAllowedConsumerDomain`, `HostComponent.assertAllowedConsumerDomain.onConsumerDomainChange`, `HostComponent.destroy`.
@@ -260,7 +266,7 @@ Stable built-in reference construction is separate from consumer snapshot commit
 
 The rejection callback in `HostPropsRuntime.notifyPropsHandlers` is an **O** callback boundary: it logs one observer failure and does not mutate prop state.
 
-- **O:** `filterReservedHostPropKeys`, `HostPropsRuntime.constructor`, `HostPropsRuntime.createHostProps.getConsumer`, `HostPropsRuntime.exposeHostProps.set`, `HostPropsRuntime.commitHostProps`, `HostPropsRuntime.notifyPropsHandlers`, `HostPropsRuntime.destroy`, `HostPropsRuntime.onProps`, `HostPropsRuntime.onProps.cancel`, `HostPropsRuntime.removeStaleHostProps`, `relaxSameDomainBootstrapDefinitions`.
+- **O:** `filterReservedHostPropKeys`, `HostPropsRuntime.constructor`, `HostPropsRuntime.createHostProps.getConsumer`, `HostPropsRuntime.exposeHostProps.set`, `HostPropsRuntime.commitHostProps`, `HostPropsRuntime.notifyPropsHandlers`, `HostPropsRuntime.destroy`, `HostPropsRuntime.onProps`, `HostPropsRuntime.onProps.cancel`, `HostPropsRuntime.removeStaleHostProps`, `HostPropsRuntime.getDeliveredPropDefinitions`, `relaxSameDomainBootstrapDefinitions`.
 - **I:** `HostPropsRuntime.initializeHostProps`, `HostPropsRuntime.createHostProps`, `HostPropsRuntime.createHostProps.close`, `HostPropsRuntime.createHostProps.focus`, `HostPropsRuntime.createHostProps.resize`, `HostPropsRuntime.createHostProps.show`, `HostPropsRuntime.createHostProps.hide`, `HostPropsRuntime.createHostProps.onProps`, `HostPropsRuntime.createHostProps.onError`, `HostPropsRuntime.createHostProps.getConsumerDomain`, `HostPropsRuntime.createHostProps.export@111`, `HostPropsRuntime.createHostProps.export@114`, `HostPropsRuntime.createHostProps.getPeerInstances`, `HostPropsRuntime.exposeHostProps`, `HostPropsRuntime.exposeHostProps.get`, `HostPropsRuntime.applyHostConfiguration`, `HostPropsRuntime.applyBootstrap`, `HostPropsRuntime.applySerializedProps`, `HostPropsRuntime.deserialize`, `HostPropsRuntime.getBootstrapValidationDefinitions`, `HostPropsRuntime.buildNestedComponents`.
 
 Evidence: [host](#evidence-host); typecheck.
@@ -393,7 +399,7 @@ Evidence: [props](#evidence-props), typecheck.
 
 Presence selection is separate from default/nested validation execution. Callable default parameters require factories, including widened optional/nullable builders; scalar default behavior is unchanged. Free functions preserve the exported subclass surface; immutable fluent builders retain the explicit small exceptions below. Runtime schema invocation is one validation boundary operation.
 
-- **O:** `testRegExpStateless`, `validateSchemaSync`, `prependIssuePath`, `getValueKind`, `isPlainObject`, `formatDateForMessage`, `defineDataProperty`, `validateDateBound`, `selectSchemaPresence`, `PropSchema._getDefaultValue`, `PropSchema._copyBaseTo`, `PropSchema._copyPresenceTo`.
+- **O:** `testRegExpStateless`, `validateSchemaSync`, `prependIssuePath`, `getValueKind`, `formatDateForMessage`, `defineDataProperty`, `validateDateBound`, `selectSchemaPresence`, `PropSchema._getDefaultValue`, `PropSchema._copyBaseTo`, `PropSchema._copyPresenceTo`.
 - **I:** `validateSchemaPresence`, `PropSchema.validate`, `PropSchema._validateInput`.
 - **M:** `PropSchema.optional`, `PropSchema.nullable`, `PropSchema.default`.
 - **I callbacks:** `prependIssuePath.callback@39`, `PropSchema._validateInput.callback@227`, `PropSchema._validateInput.callback@228`.
@@ -425,6 +431,8 @@ Evidence: [props](#evidence-props); typecheck.
 
 Literal/enum constraint evaluation and ordered union probing are cohesive validation operations. Union presence uses the same free selector with union-specific null/undefined policy.
 
+`EnumSchema.constructor` copies the values array before building its membership set, keeping clones and diagnostics independent of later caller mutations. This remains one cohesive construction operation.
+
 `formatRejectedValue` formats primitive values or a type label without invoking arbitrary JSON serialization. Rejected cyclic objects, BigInts and custom encoders therefore cannot abort later union branches.
 
 - **O:** `formatRejectedValue`, `LiteralSchema.constructor`, `LiteralSchema._validate`, `EnumSchema.constructor`, `EnumSchema._validate`, `UnionSchema.constructor`, `UnionSchema._validate`.
@@ -453,7 +461,7 @@ Evidence: [props](#evidence-props); typecheck.
 
 Standard Schema detection, issue-path formatting and invoking a supplied schema are validation boundary operations; sync/async rejection and error text remain intact.
 
-- **O:** `isStandardSchema`, `validateWithSchema`, `formatIssuePath`.
+- **O:** `isStandardSchema`, `isAsyncSchemaResult`, `validateWithSchema`, `formatIssuePath`.
 - **O callbacks:** `validateWithSchema.callback@261`, `formatIssuePath.callback@288`.
 
 Evidence: [props](#evidence-props); typecheck.
@@ -462,7 +470,7 @@ Evidence: [props](#evidence-props); typecheck.
 
 DOTIFY pair decoding and path reconstruction are distinct operations. Reconstruction tracks assembled branches separately from encoded leaves so `escapeDotNotationBranches` escapes their final shapes without confusing genuine leaf function/Date markers. JSON-undefined leaves are omitted and emptied branches retain explicit framing. Recursive wire conversion, escaping, reserved-key checks and malformed fallback remain cohesive codec algorithms. BASE64 and DOTIFY register nested callbacks while encoding JSON values, retaining custom `toJSON()` behavior. After wrapper decoding, the recursive bridge reconstructs callbacks and Date values together, preserving the existing wire formats and transport-owned batch boundary. The encoding closures only delegate function retention to the supplied bridge. BASE64/DOTIFY guards require both own fields and no extra keys, so user records with additional fields remain ordinary data.
 
-- **O:** `isSafeObjectKey`, `isPlainObject`, `encodeDotNotationPath`, `encodeDotNotationValue`, `createDotNotationPair`, `createDotNotationEmptyObjectPair`, `defineDataProperty`, `toDotNotation`, `fromDotNotation`, `escapeDotNotationBranches`, `decodeDotNotationPair`, `assignDotNotationPath`, `decodeDotNotationPath`, `isDotifyEncoded`, `serializeProps`, `serializeValue`, `deserializeProps`, `deserializeValue`, `isBase64Encoded`.
+- **O:** `isSafeObjectKey`, `encodeDotNotationPath`, `encodeDotNotationValue`, `createDotNotationPair`, `createDotNotationEmptyObjectPair`, `defineDataProperty`, `toDotNotation`, `fromDotNotation`, `escapeDotNotationBranches`, `decodeDotNotationPair`, `assignDotNotationPath`, `decodeDotNotationPath`, `isDotifyEncoded`, `serializeProps`, `serializeValue`, `deserializeProps`, `deserializeValue`, `isBase64Encoded`.
 - **O callbacks:** `encodeDotNotationValue.callback@74`, `serializeValue.callback@331`, `fromDotNotation.callback@170`, `decodeDotNotationPath.callback@249`.
 
 Evidence: [utilities](#evidence-utilities); typecheck.
@@ -474,7 +482,7 @@ Evidence: [props](#evidence-props), typecheck.
 
 ### [render/iframe-configuration.ts](../packages/forgeframe/src/render/iframe-configuration.ts)
 
-CSS key/value encoding and boolean HTML-attribute representation use only supplied data.
+CSS key/value encoding and boolean HTML-attribute representation use only supplied data. Custom property names retain case, standard unitless numeric styles retain numeric meaning, and dimensional numeric values use pixels.
 
 - **O:** `encodeIframeStyle`, `encodeIframeAttribute`.
 
@@ -604,6 +612,14 @@ Evidence: [utilities](#evidence-utilities); typecheck.
 **Contract only.** Types, re-exports or immutable declarations; no runtime callable body. Public exports and supported subpaths remain unchanged.
 Evidence: [utilities](#evidence-utilities), typecheck.
 
+### [utils/error.ts](../packages/forgeframe/src/utils/error.ts)
+
+Unknown-error conversion preserves Error identity and ordinary coercion, with a stable fallback when coercion throws. The helper has no runtime ownership or browser observations.
+
+- **O:** `normalizeError`.
+
+Evidence: [error.test](../packages/forgeframe/tests/unit/error.test.ts), function-prop-bridge and host-controls-routing integration regressions; typecheck.
+
 ### [utils/promise.ts](../packages/forgeframe/src/utils/promise.ts)
 
 Deferred creation and timeout wrapping are cohesive platform operations. Executor/timer/completion callbacks claim resolver references or settle the owned promise, with no domain workflow.
@@ -612,6 +628,14 @@ Deferred creation and timeout wrapping are cohesive platform operations. Executo
 - **O callbacks:** `createDeferred.callback@48`, `promiseTimeout.callback@92`, `promiseTimeout.callback@92.callback@93`, `promiseTimeout.callback@92.callback@98`, `promiseTimeout.callback@92.callback@102`.
 
 Evidence: [utilities](#evidence-utilities); typecheck.
+
+### [utils/realm-values.ts](../packages/forgeframe/src/utils/realm-values.ts)
+
+Date detection uses the intrinsic Date brand across realms. Ordinary-record detection compares native constructor/prototype evidence, preserving null-prototype records and rejecting class instances. Schemas, output comparison and codecs use these neutral supplied-value operations.
+
+- **O:** `isDate`, `isPlainObject`.
+
+Evidence: realm-value/schema tests, public integration and navigation browser regressions; typecheck.
 
 ### [utils/uid.ts](../packages/forgeframe/src/utils/uid.ts)
 
@@ -687,3 +711,13 @@ Evidence: [utilities](#evidence-utilities), typecheck.
 Added 20 tests across five new direct-rule suites and two existing boundary suites. The latter preserve unbound computed/default callbacks, bound query/body converter receivers, and synchronous message-handler failure timing. No test or coverage threshold was weakened. The package README mirror is produced by the existing library build.
 
 These results record the earlier internal refactor and are not the current v1 release status. The v1 release gates now include all three browser engines and an installed-package smoke check; see the root README for the current commands.
+
+## October consolidation audit boundaries
+
+`Messenger.send` encodes before pending-request registration and signals a delivery attempt before posting. Consumer prop and host export integrations abort bridge additions on pre-delivery failures and retain potentially delivered callbacks after posting. Delivery notification closures only record the attempt. Error catch paths delegate to `normalizeError`.
+
+`ConsumerRenderer.completePrerender` supplies a pure visibility observation callback to `swapPrerenderContent`, which checks it after loading content removal and before reveal. Explicit show/hide state stays renderer-owned. Factory teardown sequences `create.untrackInstance` before public destruction observers. Host validation selects delivered definitions without weakening same-domain checks. `isAsyncSchemaResult` recognizes asynchronous results across realms; BASE64 root omission follows native JSON conversion without changing framed wire formats.
+
+Evidence: component-clone, consumer-renderer, iframe-configuration, iframe, schema, props-sync, object-prop-roundtrip, function-prop-bridge and host-controls-routing regressions; navigation browser initialization-hide and CSS checks in all three engines.
+
+The residual browser-realm fixes keep Date framing and DOTIFY branch admission consistent across windows. Schema output equivalence accepts equivalent ordinary prototypes across realms while preserving null-prototype distinctions and class checks. `EventEmitter.off` remains an **O** listener-removal operation; its public generic now matches subscription types. Numeric iframe policy includes supported numeric shorthands, typography, shapes, counters and vendor forms; the browser test derives its expected declarations from native CSS admission rather than the library lookup.

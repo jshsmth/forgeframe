@@ -308,7 +308,7 @@ type ComponentFactoryArguments<
  *   tag: 'my-component',
  *   url: 'https://example.com/component',
  *   props: {
- *     name: prop.string().required(),
+ *     name: prop.string(),
  *   },
  *   dimensions: { width: 400, height: 300 },
  * };
@@ -571,6 +571,7 @@ export interface ForgeFrameComponentInstance<
  *
  * // Check if we're in a host context
  * if (MyComponent.isHost()) {
+ *   await ForgeFrame.initHost()?.ready;
  *   const props = MyComponent.hostProps;
  * }
  * ```
@@ -841,7 +842,7 @@ export interface HostPropsBuiltins<P = Record<string, unknown>> {
  *   onSubmit: (data: { success: boolean }) => void;
  * }
  *
- * initHost();
+ * await initHost()?.ready;
  * const props = window.hostProps as HostProps<MyProps>;
  *
  * // User props are properly typed

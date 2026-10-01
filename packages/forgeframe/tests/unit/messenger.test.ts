@@ -151,6 +151,24 @@ describe("Messenger", () => {
 			).rejects.toThrow("Messenger has been destroyed");
 		});
 
+		it("stops a send when JSON conversion destroys the messenger", async () => {
+			vi.useFakeTimers();
+			try {
+				await expect(
+					messenger.send(targetWindow, "https://target.com", "test", {
+						toJSON() {
+							messenger.destroy();
+							return { converted: true };
+						},
+					}),
+				).rejects.toThrow("Messenger destroyed");
+				expect(targetWindow.postMessage).not.toHaveBeenCalled();
+				expect(vi.getTimerCount()).toBe(0);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
 		it("should propagate errors from response", async () => {
 			vi.useFakeTimers();
 

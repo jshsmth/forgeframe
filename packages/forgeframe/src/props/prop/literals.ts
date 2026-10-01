@@ -82,8 +82,8 @@ export class EnumSchema<T extends string | number> extends PropSchema<T> {
 
 	constructor(values: readonly T[]) {
 		super();
-		this._values = values;
-		this._valueSet = new Set(values);
+		this._values = [...values];
+		this._valueSet = new Set(this._values);
 	}
 
 	/** @internal */

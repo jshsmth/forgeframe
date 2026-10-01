@@ -17,6 +17,7 @@ import { Messenger } from "../../communication/messenger";
 import { EVENT, MESSAGE_NAME } from "../../constants";
 import type { SerializedProps } from "../../props/types";
 import type { GetPeerInstancesOptions, SiblingInfo } from "../../types/runtime";
+import { normalizeError } from "../../utils/error";
 import { generateShortUID } from "../../utils/uid";
 import { getDomain } from "../../window/helpers";
 import type { HostBootstrapData } from "../../window/types";
@@ -165,11 +166,15 @@ export class HostTransport {
 			this.bridge.abortBatch();
 			throw error;
 		}
+		let deliveryAttempted = false;
 		try {
-			await this.sendMessage(MESSAGE_NAME.EXPORT, serialized);
+			await this.sendMessage(MESSAGE_NAME.EXPORT, serialized, () => {
+				deliveryAttempted = true;
+			});
 			this.bridge.finishBatch();
 		} catch (error) {
-			this.bridge.finishBatch(true);
+			if (deliveryAttempted) this.bridge.finishBatch(true);
+			else this.bridge.abortBatch();
 			throw error;
 		}
 	}
@@ -239,8 +244,7 @@ export class HostTransport {
 				...(this.options.beforeInit ? { sessionId: this.sessionId } : {}),
 			});
 		} catch (error) {
-			const initError =
-				error instanceof Error ? error : new Error(String(error));
+			const initError = normalizeError(error);
 			this.initError = initError;
 
 			this.options.event.emit(EVENT.ERROR, {
@@ -253,12 +257,18 @@ export class HostTransport {
 		}
 	}
 
-	private async sendMessage<T>(name: string, data: T): Promise<void> {
+	private async sendMessage<T>(
+		name: string,
+		data: T,
+		onDeliveryAttempt?: () => void,
+	): Promise<void> {
 		await this.messenger.send(
 			this.options.consumerWindow,
 			this.options.getConsumerDomain(),
 			name,
 			data,
+			undefined,
+			onDeliveryAttempt,
 		);
 	}
 }

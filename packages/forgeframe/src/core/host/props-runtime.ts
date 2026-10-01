@@ -20,6 +20,7 @@ import type {
 	HostProps,
 	RemoteValue,
 } from "../../types/runtime";
+import { normalizeError } from "../../utils/error";
 import { getDomain } from "../../window/helpers";
 import type {
 	HostBootstrapData,
@@ -181,7 +182,10 @@ export class HostPropsRuntime<
 			const previousProps = this.consumerProps;
 			const nextProps = this.deserialize(serializedProps);
 
-			validateNormalizedProps(nextProps as P, this.propDefinitions);
+			validateNormalizedProps(
+				nextProps as P,
+				this.getDeliveredPropDefinitions(),
+			);
 			const nextHostProps = filterReservedHostPropKeys(nextProps);
 
 			this.commitHostProps(
@@ -196,8 +200,7 @@ export class HostPropsRuntime<
 
 			return { success: true };
 		} catch (error) {
-			const propsError =
-				error instanceof Error ? error : new Error(String(error));
+			const propsError = normalizeError(error);
 			console.error("Error deserializing props:", propsError);
 			this.options.event.emit(EVENT.ERROR, propsError);
 			throw propsError;
@@ -261,14 +264,30 @@ export class HostPropsRuntime<
 	private getBootstrapValidationDefinitions(
 		propDefinitions = this.propDefinitions,
 	): HostPropsDefinition<P, SchemaInputs> {
+		const deliveredDefinitions =
+			this.getDeliveredPropDefinitions(propDefinitions);
 		if (
 			!this.options.isConsumerDomainVerified() ||
 			this.options.getConsumerDomain() !== getDomain()
 		) {
-			return propDefinitions;
+			return deliveredDefinitions;
 		}
 
-		return relaxSameDomainBootstrapDefinitions(propDefinitions);
+		return relaxSameDomainBootstrapDefinitions(deliveredDefinitions);
+	}
+
+	/** Consumer-only definitions validate local input and do not require wire fields. */
+	private getDeliveredPropDefinitions(
+		propDefinitions = this.propDefinitions,
+	): HostPropsDefinition<P, SchemaInputs> {
+		return Object.fromEntries(
+			Object.entries(propDefinitions).filter(
+				([, definition]) =>
+					!definition ||
+					isStandardSchema(definition) ||
+					definition.sendToHost !== false,
+			),
+		) as HostPropsDefinition<P, SchemaInputs>;
 	}
 
 	private buildNestedComponents(

@@ -298,7 +298,7 @@ describe("ConsumerTransport", () => {
 		);
 	});
 
-	it("should keep previous callback references when a props update send fails", async () => {
+	it("should retain both callback snapshots after a props delivery attempt fails", async () => {
 		const transport = createTransport();
 		transport.hostWindow = window;
 
@@ -312,7 +312,10 @@ describe("ConsumerTransport", () => {
 
 		expect(transport.bridge.localFunctionCount).toBe(1);
 
-		sendSpy.mockRejectedValueOnce(new Error("props sync failed"));
+		sendSpy.mockImplementationOnce(async (...args) => {
+			args[5]?.();
+			throw new Error("props sync failed");
+		});
 
 		await expect(
 			transport.sendPropsUpdateToHost(

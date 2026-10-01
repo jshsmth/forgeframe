@@ -1,8 +1,13 @@
-import type {
-	StandardSchemaV1,
-	StandardSchemaV1Issue,
-	StandardSchemaV1Props,
-	StandardSchemaV1Result,
+import { isDate } from "../../utils/realm-values";
+
+export { isPlainObject } from "../../utils/realm-values";
+
+import {
+	isAsyncSchemaResult,
+	type StandardSchemaV1,
+	type StandardSchemaV1Issue,
+	type StandardSchemaV1Props,
+	type StandardSchemaV1Result,
 } from "../schema";
 
 export function testRegExpStateless(pattern: RegExp, value: string): boolean {
@@ -23,7 +28,7 @@ export function validateSchemaSync<T>(
 ): StandardSchemaV1Result<T> {
 	const result = schema["~standard"].validate(value);
 
-	if (result instanceof Promise) {
+	if (isAsyncSchemaResult(result)) {
 		throw new Error(
 			"Async schema validation is not supported. Use synchronous schemas.",
 		);
@@ -51,22 +56,11 @@ export function getValueKind(value: unknown): string {
 		return "null";
 	}
 
-	if (value instanceof Date) {
+	if (isDate(value)) {
 		return "Date";
 	}
 
 	return typeof value;
-}
-
-export function isPlainObject(
-	value: unknown,
-): value is Record<string, unknown> {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) {
-		return false;
-	}
-
-	const prototype = Object.getPrototypeOf(value);
-	return prototype === Object.prototype || prototype === null;
 }
 
 export function formatDateForMessage(date: Date): string {

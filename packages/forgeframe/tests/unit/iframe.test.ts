@@ -120,6 +120,28 @@ describe("createIframe", () => {
 		expect(iframe.style.getPropertyValue("border-radius")).toBe("12px");
 	});
 
+	it("should preserve unitless numeric styles and case-sensitive CSS variables", () => {
+		const iframe = createIframe({
+			url: "https://example.com",
+			name: "styled-frame",
+			container,
+			dimensions: { width: 100, height: 100 },
+			style: {
+				zIndex: 10,
+				lineHeight: 1.5,
+				"--brandColor": "red",
+				"--scaleFactor": 2,
+				borderColor: "var(--brandColor)",
+			},
+		});
+
+		expect(iframe.style.zIndex).toBe("10");
+		expect(iframe.style.lineHeight).toBe("1.5");
+		expect(iframe.style.getPropertyValue("--brandColor")).toBe("red");
+		expect(iframe.style.getPropertyValue("--scaleFactor")).toBe("2");
+		expect(iframe.style.borderColor).toBe("var(--brandColor)");
+	});
+
 	it("should handle boolean attributes", () => {
 		const iframe = createIframe({
 			url: "https://example.com",
