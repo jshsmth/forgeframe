@@ -6,7 +6,8 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { create, EVENT, PROP_SERIALIZATION, prop } from "@/index";
+import { deleteRegisteredComponent } from "@/core/component-registry";
+import { create, EVENT, initHost, PROP_SERIALIZATION, prop } from "@/index";
 import type { PropsDefinition } from "@/types";
 import {
 	createIframeIntegrationHarness,
@@ -112,6 +113,106 @@ describe("Props sync integration", () => {
 		await harness?.cleanup();
 		harness = null;
 		vi.restoreAllMocks();
+	});
+
+	describe.each([
+		PROP_SERIALIZATION.JSON,
+		PROP_SERIALIZATION.BASE64,
+		PROP_SERIALIZATION.DOTIFY,
+	])("%s late configuration", (serialization) => {
+		it.each(["create", "initHost"])(
+			"purges already committed private fields when %s supplies definitions",
+			async (configure) => {
+				harness = createIframeIntegrationHarness();
+				const activeHarness = harness;
+				const container = document.createElement("div");
+				document.body.append(container);
+				const tag = "integration-late-private-props";
+				const Component = create({
+					tag,
+					url: "https://host.example.com/widget",
+					props: {
+						title: prop.string(),
+						local: { schema: z.unknown(), serialization },
+						constructor: z.unknown(),
+						callback: prop.function<() => number>(),
+						extra: prop.string(),
+					},
+				});
+				const instance = Component({
+					title: "initial",
+					local: { private: "accepted before configuration" },
+					constructor: 42,
+					callback: () => 7,
+					extra: "undeclared",
+				});
+				const rendering = instance.render(container);
+				const { host, hostProps } = await activeHarness.bootstrapIframeHost<{
+					title: string;
+					local: unknown;
+					constructor: unknown;
+					callback: () => number;
+					extra: string;
+				}>(container);
+				await rendering;
+				expect(hostProps.local).toEqual({
+					private: "accepted before configuration",
+				});
+				expect(hostProps.constructor).toBe(42);
+				const close = hostProps.close;
+				const callback = hostProps.callback;
+				const onProps = vi.fn();
+				const onEvent = vi.fn();
+				hostProps.onProps(onProps);
+				host.event.on(EVENT.PROPS, onEvent);
+				const definitions = {
+					title: prop.string(),
+					local: { schema: prop.string(), required: true, sendToHost: false },
+					constructor: { schema: prop.string(), sendToHost: false },
+					callback: prop.function<() => number>(),
+				};
+				// These two test windows share one module registry. Remove only the
+				// stale declaration to model the host bundle's matching registration.
+				if (configure === "create") deleteRegisteredComponent(tag);
+				const configuredProps = activeHarness.withHostGlobals(() =>
+					configure === "create"
+						? create({
+								tag,
+								url: "https://host.example.com/widget",
+								props: definitions,
+							}).hostProps
+						: initHost(definitions)?.hostProps,
+				);
+				expect(configuredProps).toBe(hostProps);
+				expect(hostProps.consumer.props).toEqual({
+					title: "initial",
+					callback,
+					extra: "undeclared",
+				});
+				for (const key of ["local", "constructor"]) {
+					expect(Object.hasOwn(hostProps, key)).toBe(false);
+				}
+				expect(hostProps.close).toBe(close);
+				await expect(callback()).resolves.toBe(7);
+				expect(onProps).not.toHaveBeenCalled();
+				expect(onEvent).not.toHaveBeenCalled();
+				await instance.updateProps({
+					title: "updated",
+					local: "still private",
+				});
+				expect(hostProps.consumer.props).toEqual({
+					title: "updated",
+					callback,
+					extra: "undeclared",
+				});
+				expect(onProps).toHaveBeenCalledExactlyOnceWith(
+					hostProps.consumer.props,
+				);
+				expect(onEvent).toHaveBeenCalledExactlyOnceWith(
+					hostProps.consumer.props,
+				);
+			},
+		);
 	});
 
 	it.each([

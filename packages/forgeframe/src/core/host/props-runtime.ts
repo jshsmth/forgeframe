@@ -142,19 +142,24 @@ export class HostPropsRuntime<
 		}
 	}
 
+	/** Validates retained props before reconciling newly consumer-only fields out of host state. */
 	applyHostConfiguration(
 		propDefinitions: HostPropsDefinition<P, SchemaInputs>,
 	): void {
+		const nextProps = this.filterConsumerOnlyProps(
+			this.consumerProps,
+			propDefinitions,
+		);
 		if (this.initialized)
 			validateNormalizedProps(
-				this.consumerProps as P,
+				nextProps as P,
 				this.getBootstrapValidationDefinitions(propDefinitions),
 			);
+		const nextHostProps = filterReservedHostPropKeys(nextProps);
 		this.propDefinitions = propDefinitions;
-		Object.assign(
-			this.hostProps,
-			filterReservedHostPropKeys(this.consumerProps),
-		);
+		this.removeStaleHostProps(this.consumerProps, nextHostProps);
+		this.consumerProps = nextProps;
+		Object.assign(this.hostProps, nextHostProps);
 		this.hostProps.consumer.props = this.consumerProps;
 	}
 
@@ -251,24 +256,32 @@ export class HostPropsRuntime<
 	}
 
 	private deserialize(serializedProps: SerializedProps): RemoteValue<P> {
-		const deliveredDefinitions = this.getDeliveredPropDefinitions();
-		// A stale or forged consumer can still send fields declared consumer-only.
-		// Discard them before decoding or exposing any part of the host snapshot.
-		const deliveredProps = Object.fromEntries(
-			Object.entries(serializedProps).filter(
-				([key]) =>
-					!Object.hasOwn(this.propDefinitions, key) ||
-					Object.hasOwn(deliveredDefinitions, key),
-			),
-		);
 		return deserializeProps(
-			deliveredProps,
+			this.filterConsumerOnlyProps(serializedProps),
 			this.propDefinitions,
 			this.options.getMessenger(),
 			this.options.getBridge(),
 			this.options.getConsumerWindow(),
 			this.options.getConsumerDomain(),
 		) as RemoteValue<P>;
+	}
+
+	/** Filters wire or committed snapshots against the supplied delivery definitions. */
+	private filterConsumerOnlyProps<T extends Record<string, unknown>>(
+		props: T,
+		propDefinitions = this.propDefinitions,
+	): T {
+		const deliveredDefinitions =
+			this.getDeliveredPropDefinitions(propDefinitions);
+		const entries = Object.entries(props);
+		const deliveredEntries = entries.filter(
+			([key]) =>
+				!Object.hasOwn(propDefinitions, key) ||
+				Object.hasOwn(deliveredDefinitions, key),
+		);
+		return deliveredEntries.length === entries.length
+			? props
+			: (Object.fromEntries(deliveredEntries) as T);
 	}
 
 	private getBootstrapValidationDefinitions(

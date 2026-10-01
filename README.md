@@ -596,6 +596,8 @@ accept `undefined`; the host then treats that as a valid normalized result.
 
 Definitions with `sendToHost: false` validate consumer input only. Shared host definitions discard these fields from received bootstrap and update snapshots before decoding or validation, including fields sent by a stale consumer. A required local prop does not prevent host initialization, and discarded values never enter `hostProps`, `hostProps.consumer.props`, or prop notifications. Origin restrictions on delivered props continue to apply.
 
+If host definitions arrive after bootstrap through a matching `create()` or another `initHost()`, applying them also removes newly consumer-only fields from the current host snapshots. The remaining values are validated before any reconciliation. Built-in controls and retained callback references keep their identity, and configuration changes do not emit prop notifications.
+
 Prefer inferred component and React-wrapper types. If you explicitly annotate
 an aliased component whose schema inputs differ from its host props, supply the
 canonical schema-input type as the fifth `ForgeFrameComponent` generic, after

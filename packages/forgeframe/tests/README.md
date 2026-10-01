@@ -21,7 +21,7 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `error.test.ts`: Unknown-error normalization preserves Error identity and ordinary coercion, with a stable fallback when coercion throws.
 - `emitter.test.ts`: Event emitter subscription semantics, once/off behavior, and async error isolation.
 - `host-branch-coverage.test.ts`: Host branch/edge-path coverage for deferred init, failure capture, and guard paths.
-- `host-lifecycle.test.ts`: Host lifecycle message handling, hostProps synchronization, consumer window resolution, and consumer-only field discard in legacy bootstrap payloads.
+- `host-lifecycle.test.ts`: Host lifecycle message handling, hostProps synchronization, consumer window resolution, consumer-only field discard in legacy bootstrap payloads, atomic late-configuration validation/reconciliation, built-in and snapshot identity, and pending-bootstrap removal persistence.
 - `host-transport.test.ts`: Direct host transport behavior for deferred init scheduling, trust updates, props routing, and teardown.
 - `host-security.test.ts`: Host allowlist enforcement and deferred-init security gating.
 - `iframe.test.ts`: Iframe creation, reserved-attribute guards, visibility, and sizing helpers.
@@ -73,7 +73,7 @@ All unit tests and shared fixtures are strictly compiled by `npm run typecheck`,
 - `object-prop-roundtrip.test.ts`: Ordinary BASE64/DOTIFY/function-shaped records retain user fields through bootstrap and updates in all three serialization modes, including direct and nested DOTIFY branches converted by custom JSON encoders.
 - `popup-host-handshake.test.ts`: End-to-end popup happy path and popup-blocked failure coverage through `render(..., 'popup')` and `initHost()`.
 - `props-alias-sync.test.ts`: End-to-end canonical host synchronization for initial, updated, and chained alias values.
-- `props-sync.test.ts`: Post-connect prop updates across the real messaging pipeline, including host snapshot replacement, stale inherited-name key removal, nonfinite update rejection/recovery, host-side rejection followed by a queued valid update, private prop filtering, discard of stale consumer-only wire fields across JSON/BASE64/DOTIFY bootstrap and updates, and nonblocking/cancellable `onProps` subscriber delivery.
+- `props-sync.test.ts`: Post-connect prop updates across the real messaging pipeline, including host snapshot replacement, stale inherited-name key removal, nonfinite update rejection/recovery, host-side rejection followed by a queued valid update, private prop filtering, discard of stale consumer-only wire fields across JSON/BASE64/DOTIFY bootstrap and updates, private-field purge through late matching `create()`/`initHost()` with retained callbacks and subsequent updates, and nonblocking/cancellable `onProps` subscriber delivery.
 - `react-driver-dom.test.ts`: Real React DOM construction failures stay local to the wrapper and preserve sibling application content.
 - `react-host-sync.test.ts`: Real React DOM commits through the consumer/host handshake and messaging pipeline, covering updates before readiness, omitted prop defaults/removal, validation recovery, unmount cancellation/cleanup, wrapper styles/prop filtering, latest callbacks and DOM refs, equivalent-commit suppression, popup-to-iframe recovery, StrictMode replay, host error forwarding, and rejected lifecycle/error observer isolation.
 
