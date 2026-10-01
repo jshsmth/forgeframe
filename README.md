@@ -1350,6 +1350,12 @@ FORGEFRAME_SKIP_MKCERT=1 VITE_HOST_URL=http://localhost:5174/ FORGEFRAME_PLAYGRO
 
 Then open `http://localhost:5173`. The `/tests` page contains browser scenarios for iframe/popup handshakes, prop updates, callbacks, and lifecycle behavior. Use `npm run dev:consumer` or `npm run dev:host` to start the two servers separately. Set `VITE_HOST_URL` when the host runs at another address.
 
+The **Company demo** button opens `/company`: a fictional Pip Veterinary invoice portal using fictional Harbor Pay on the host's `/payment.html` page. Select one of three AUD invoices, take payment in a modal iframe or popup, and use the prepared demo card details. The outcome selector can approve immediately or decline the first attempt before approving a retry. Closing either payment window leaves the invoice unpaid; successful payments return a receipt and mark only that invoice paid. **Reset demo** or refreshing restores the sample invoices. Payment processing and all company/customer data are simulated; no backend or real payment service is used.
+
+**Experience** presents the clinic's payment journey. **Technical** keeps that same application running and adds its origins, live props, lifecycle events, callback arguments and return acknowledgements. Source tabs display the actual consumer, host, shared contract, merchant acceptance rules and provider simulation TypeScript, including TSDoc explaining ownership, initialization, cancellation and callback return values. The host awaits the consumer's `onResult` acknowledgement before closing; these calls use ForgeFrame across the two origins.
+
+For a custom deployment, set `VITE_HOST_URL` in the consumer build and `VITE_CONSUMER_URL` in the host build. The payment host allowlists that consumer origin; its default is the local consumer on port 5173 using the host page's protocol. Consumer builds generate a static `/company/index.html`, and host builds include `/payment.html`.
+
 ### Architecture and ownership
 
 The playground displays cross-window prop values, identity fields, and log messages as text. When building a host UI, use `textContent` for received strings rather than interpolating them into HTML.

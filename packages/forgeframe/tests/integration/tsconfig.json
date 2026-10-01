@@ -1,4 +1,12 @@
 {
 	"extends": "../typecheck/tsconfig.json",
+	"compilerOptions": {
+		"rootDir": "../../..",
+		/* Check shared playground contracts against the library source. */
+		"paths": {
+			"@/*": ["../../src/*"],
+			"forgeframe": ["../../src/index.ts"]
+		}
+	},
 	"include": ["./**/*.ts"]
 }

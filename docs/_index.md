@@ -5,7 +5,7 @@ desc: Current architecture, state ownership, callable responsibilities, and test
 tags: []
 sources: []
 created: 2026-10-01T01:55:30Z
-updated: 2026-10-01T01:55:48Z
+updated: 2026-10-01T07:49:42Z
 ---
 
 # ForgeFrame development wiki

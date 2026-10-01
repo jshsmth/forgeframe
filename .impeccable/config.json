@@ -1,0 +1,29 @@
+{
+	"detector": {
+		"ignoreRules": [],
+		"ignoreFiles": [],
+		"ignoreValues": [
+			{
+				"rule": "cramped-padding",
+				"value": "*",
+				"files": ["packages/playground/consumer/index.html"],
+				"createdAt": "2026-10-01T06:36:12.433Z",
+				"reason": "Agent verified: this diagnostic panel wrapper is intentionally edge-to-edge; headers, code blocks, controls and log entries provide their own text padding."
+			},
+			{
+				"rule": "design-system-font",
+				"value": "sf mono",
+				"files": ["packages/playground/consumer/index.html"],
+				"createdAt": "2026-10-01T06:36:12.498Z",
+				"reason": "Agent verified: existing SF Mono and Consolas code-preview typography belongs to the diagnostic editor, whose separate identity is preserved by DESIGN.md."
+			},
+			{
+				"rule": "overused-font",
+				"value": "open sans",
+				"files": ["packages/playground/assets/theme.css"],
+				"createdAt": "2026-10-01T06:36:12.559Z",
+				"reason": "User supplied and requested the Open Sans navy/orange demo theme; this self-hosted family is explicitly documented in DESIGN.md."
+			}
+		]
+	}
+}

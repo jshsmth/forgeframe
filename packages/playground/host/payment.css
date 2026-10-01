@@ -1,0 +1,232 @@
+@import "../assets/theme.css";
+
+* {
+	box-sizing: border-box;
+}
+html,
+body {
+	margin: 0;
+	min-height: 100%;
+}
+body {
+	background: var(--demo-white);
+	color: var(--demo-navy);
+	font: 14px / 1.5 var(--demo-font);
+	caret-color: var(--demo-navy);
+	scrollbar-color: var(--demo-scrollbar) var(--demo-surface);
+}
+::selection {
+	background: var(--demo-selection);
+	color: var(--demo-navy);
+}
+[hidden] {
+	display: none;
+}
+:focus-visible {
+	outline: 3px solid var(--demo-focus);
+	outline-offset: 3px;
+}
+button,
+input {
+	font: inherit;
+}
+button {
+	cursor: pointer;
+}
+button:disabled {
+	cursor: default;
+	opacity: 0.7;
+}
+a {
+	color: var(--demo-navy);
+	text-underline-offset: 3px;
+}
+.payment-app {
+	max-width: 480px;
+	margin: 0 auto;
+	padding: 0 24px 16px;
+}
+.payment-context {
+	position: sticky;
+	top: 0;
+	background: var(--demo-white);
+	border-bottom: 1px solid var(--demo-line);
+	padding: 16px 0 12px;
+	z-index: 1;
+}
+.provider-header {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	font-size: 18px;
+	font-weight: 650;
+	margin-bottom: 14px;
+}
+.provider-mark {
+	width: 32px;
+	height: 32px;
+	display: grid;
+	place-items: center;
+	background: var(--demo-navy);
+	border-radius: 8px;
+	color: var(--demo-white);
+	font-size: 20px;
+	font-weight: 500;
+}
+.provider-demo {
+	margin-left: auto;
+	background: var(--demo-info);
+	color: var(--demo-navy);
+	font-size: 11px;
+	padding: 3px 8px;
+	border-radius: 4px;
+	font-weight: 500;
+}
+.payment-summary {
+	position: relative;
+	padding-right: 125px;
+}
+.payment-summary h1 {
+	font-size: 18px;
+	font-weight: 650;
+	letter-spacing: -0.02em;
+	margin: 0 0 4px;
+}
+.payment-summary p {
+	color: var(--demo-muted);
+	font-size: 12px;
+	margin: 0;
+}
+.payment-summary strong {
+	position: absolute;
+	right: 0;
+	top: 0;
+	font-size: 26px;
+	font-weight: 650;
+	letter-spacing: -0.025em;
+	font-variant-numeric: tabular-nums;
+}
+.payment-currency {
+	display: block;
+	color: var(--demo-muted);
+	font-size: 11px;
+	margin-top: 2px;
+}
+.simulation-note {
+	display: block;
+	color: var(--demo-navy);
+	font-size: 11px;
+	margin-top: 8px;
+	font-weight: 600;
+}
+.demo-card-help {
+	padding: 12px 0;
+}
+.demo-card-help p {
+	font-size: 12px;
+	color: var(--demo-muted);
+	margin: 0 0 8px;
+}
+.provider-text-button {
+	min-height: 44px;
+	width: 100%;
+	border: 1px solid var(--demo-line);
+	border-radius: 6px;
+	padding: 8px 12px;
+	background: var(--demo-info);
+	color: var(--demo-navy);
+	font-size: 13px;
+	font-weight: 600;
+}
+form label {
+	display: block;
+	font-size: 12px;
+	font-weight: 600;
+	margin-bottom: 4px;
+}
+form input {
+	display: block;
+	width: 100%;
+	height: 46px;
+	border: 1px solid var(--demo-field-line);
+	border-radius: 6px;
+	padding: 10px 12px;
+	background: var(--demo-white);
+	color: var(--demo-navy);
+	margin-bottom: 10px;
+	font-size: 16px;
+	scroll-margin: 175px 0 115px;
+}
+form input::placeholder {
+	color: var(--demo-muted);
+}
+form input:read-only {
+	background: var(--demo-surface);
+}
+.card-fields {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 12px;
+}
+.payment-feedback {
+	background: var(--demo-waiting-bg);
+	color: var(--demo-waiting-ink);
+	border-radius: 8px;
+	padding: 12px 14px;
+	font-size: 12px;
+	margin: 0 0 12px;
+	scroll-margin-top: 175px;
+}
+.provider-actions {
+	position: sticky;
+	bottom: 0;
+	padding: 8px 0;
+	background: var(--demo-white);
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 10px;
+}
+.provider-primary {
+	width: 100%;
+	min-height: 46px;
+	background: var(--demo-orange);
+	color: var(--demo-navy);
+	border: 0;
+	border-radius: 6px;
+	padding: 10px 16px;
+	font-weight: 600;
+}
+.provider-primary:hover {
+	background: var(--demo-action-hover);
+}
+.provider-cancel {
+	min-height: 46px;
+	border: 1px solid var(--demo-line);
+	border-radius: 6px;
+	padding: 8px 12px;
+	background: var(--demo-white);
+	color: var(--demo-navy);
+	font-size: 12px;
+}
+.provider-cancel:hover {
+	background: var(--demo-quiet);
+}
+.payment-footnote {
+	color: var(--demo-muted);
+	font-size: 11px;
+	margin: 4px 0 0;
+}
+@media (max-width: 380px) {
+	.payment-app {
+		padding: 0 18px 14px;
+	}
+	.payment-summary {
+		padding-right: 112px;
+	}
+	.payment-summary h1 {
+		font-size: 17px;
+	}
+	.payment-summary strong {
+		font-size: 22px;
+	}
+}
