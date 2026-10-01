@@ -88,6 +88,10 @@ Install the engines with `npx playwright install chromium firefox webkit`, then 
 
 The suite also renders two same-tag widgets concurrently against the same host origin, verifying independent prop snapshots and callbacks and continued operation after one peer closes.
 
+`playground-text.spec.ts` also runs the real `/tests` overview twice through its Run all button. It requires all 17 automatic scenarios, 76 passing assertions, the single documented production POST skip, no failures or uncaught page errors, and an empty sandbox after completion. It waits for the runner button to become enabled, since intermediate results can already say passed. The `/tests/popup` route must wait for a user click, complete all five assertions, close its window, and rerun successfully. POST transport remains exercised by the existing POST-capable navigation/integration fixtures.
+
+`react-journey.spec.ts` bundles real React/React DOM and the public ForgeFrame driver with a separate host origin. Normal and StrictMode journeys verify readiness, prop delivery, updated callback return values, validation rejection without replacing host state or retiring acknowledged callbacks, subsequent recovery, forwarded-ref cleanup, zero active instances, removal of embedded frames, and preservation of surrounding application content. Development React is intentional: an effect probe verifies StrictMode actually performs its setup/cleanup replay. The browser fixture itself is strictly typechecked; it does not add React to the published runtime dependencies.
+
 ## Type Tests (`packages/forgeframe/tests/typecheck`)
 
 - `component-inference.typecheck.ts`: Compile-time assertions for inferred and explicit schema-backed component props, third-party schemas, callbacks, and typed children.
