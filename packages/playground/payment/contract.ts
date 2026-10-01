@@ -33,12 +33,12 @@ export interface PaymentAcknowledgement {
  * merchant validates the complete result before committing a receipt. Local
  * callbacks use their ordinary return types here; `HostProps<PaymentProps>`
  * presents them as asynchronous remote functions. The host validates the returned
- * acknowledgement against the submitted invoice before approving and closing. No card number, expiry or CVC is delivered
- * to the consumer.
+ * acknowledgement against the submitted invoice before approving and closing.
+ * No card number, expiry or CVC is delivered to the consumer.
  */
 export interface PaymentProps extends Record<string, unknown> {
 	invoiceId: string;
-	/** Invoice total in integer AUD cents, rather than floating-point dollars. */
+	/** Invoice total in nonnegative safe-integer AUD cents; validated on both sides. */
 	amountCents: number;
 	customer: string;
 	outcome: DemoOutcome;
@@ -54,7 +54,7 @@ export interface PaymentProps extends Record<string, unknown> {
 /** Shared runtime schemas; callbacks travel through ForgeFrame's function bridge. */
 export const paymentProps = {
 	invoiceId: prop.string(),
-	amountCents: prop.number(),
+	amountCents: prop.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
 	customer: prop.string(),
 	outcome: prop.enum(["success", "decline"]),
 	onReady: prop.function<PaymentProps["onReady"]>(),

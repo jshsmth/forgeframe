@@ -64,6 +64,8 @@ All unit tests and shared fixtures are strictly compiled by `npm run typecheck`,
 
 ## Integration Tests (`packages/forgeframe/tests/integration`)
 
+- `company-demo-payment-contract.test.ts`: Shared payment amount constraints through public consumer render admission and real host bootstrap/update validation; negative, fractional and unsafe cents reject, accepted host state survives rejected updates, and zero, ordinary cents and the maximum safe integer pass.
+
 `consumer-host-handshake.test.ts` also covers parent bootstrap with a recursive Zod child schema, preservation of own child names such as `__proto__` and `constructor` without changing map prototypes, and public host destruction followed by fresh initialization, prop synchronization, and working host controls. Child-name cases retain factory identity through a prop update and exercise public close. `prop-schema.test.ts` verifies enum constraints and diagnostics stay stable after the caller mutates the original values array.
 
 `props-sync.test.ts` covers undefined definition entries as omitted through public construction, bootstrap, updates and close, and stale or duplicate cancellation handles after re-registering the same subscriber. `props.test.ts` checks that omitted built-in definitions retain default normalization and delivery rules.
