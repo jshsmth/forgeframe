@@ -226,7 +226,7 @@ export function renderPropsBar(config: PlaygroundConfig) {
 						} as Partial<DynamicProps>);
 						if (instance !== targetInstance) return;
 						recordAppliedProp(propName, value);
-						log(`Updated ${propName} to: ${input.value}`, "info");
+						log(`Updated ${propName} to: ${submittedText}`, "info");
 					}
 					if (input.value === submittedText) setPropValue(propName, value);
 					onPropValuesChange?.();

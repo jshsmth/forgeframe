@@ -217,6 +217,49 @@ describe("playground prop editor", () => {
 			);
 		},
 	);
+	it("logs the submitted value after an update succeeds while preserving a newer draft", async () => {
+		const config = {
+			tag: "pending-editor",
+			url: "https://example.com",
+			props: { count: { type: "number", default: 0 } },
+		};
+		setCurrentConfig(config);
+		const target = create<Record<string, unknown>>({
+			tag: config.tag,
+			url: config.url,
+		})({ count: 0 });
+		setInstance(target);
+		recordRunningConfiguration("iframe", "embedded", { count: 0 });
+		const status = document.createElement("p");
+		status.id = "configuration-summary";
+		document.body.append(status);
+		const pending = createDeferred<void>();
+		const update = vi
+			.spyOn(target, "updateProps")
+			.mockReturnValue(pending.promise);
+		renderPropsBar(config);
+		const input = elements.propsBar.querySelector("input[data-prop]");
+		const button = elements.propsBar.querySelector<HTMLButtonElement>(
+			"button[data-update-prop]",
+		);
+		if (!(input instanceof HTMLInputElement) || !button)
+			throw new Error("Missing prop controls");
+		input.value = "1";
+		input.dispatchEvent(new Event("input"));
+		button.click();
+		expect(update).toHaveBeenCalledWith({ count: 1 });
+		expect(button.disabled).toBe(true);
+		input.value = "2";
+		input.dispatchEvent(new Event("input"));
+		pending.resolve();
+		await vi.waitFor(() => expect(button.disabled).toBe(false));
+		expect(log).toHaveBeenLastCalledWith("Updated count to: 1", "info");
+		expect(runningConfiguration?.props.count).toBe("1");
+		expect(input.value).toBe("2");
+		expect(currentPropValues.count).toBe(2);
+		expect(propInputDrafts.count).toEqual({ text: "2", valid: true });
+		expect(status.textContent).toContain("Draft changes pending");
+	});
 	it("renders typed editor values without converting composites or callbacks to strings", async () => {
 		const config = {
 			tag: "typed-editor",
