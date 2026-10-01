@@ -373,14 +373,16 @@ test("playground labels controls, disables unavailable styles and reflows at mob
 		page.getByRole("button", { name: "Modal", exact: true }),
 	).toBeDisabled();
 	await popup.focus();
+	await expect(popup).toBeFocused();
 	await page.keyboard.press("Tab");
-	// WebKit's default macOS Tab navigation skips links. Both paths must skip
-	// the disabled iframe styles and reach the next available control.
-	const nextControl =
+	// WebKit's native Tab navigation can skip links, depending on the platform.
+	// Both destinations must skip the disabled iframe styles.
+	const testRoutes = page.getByRole("link", { name: "Test routes" });
+	const nextControls =
 		browserName === "webkit"
-			? page.locator(".code-panel > summary")
-			: page.getByRole("link", { name: "Test routes" });
-	await expect(nextControl).toBeFocused();
+			? testRoutes.or(page.locator(".code-panel > summary"))
+			: testRoutes;
+	await expect(nextControls.and(page.locator(":focus"))).toHaveCount(1);
 	await page.getByRole("button", { name: "Iframe", exact: true }).click();
 	await expect(
 		page.getByRole("button", { name: "Embedded", exact: true }),
