@@ -137,7 +137,7 @@ test.beforeAll(async () => {
 		const button = document.querySelector('#open-payment');
 		button.addEventListener('click',() => {
 			const instance = payment({invoiceId:'PV-1042',amountCents:17600,customer:'Demo customer',
-				outcome:'success',onReady:()=>{},onResult:()=>{window.results++;return window.acknowledgement;}});
+				outcome:new URL(location.href).searchParams.get('outcome') || 'success',onReady:()=>{},onResult:()=>{window.results++;return window.acknowledgement;}});
 			instance.event.on('destroy',()=>{window.paymentWindowClosed=true;});
 			void instance.render(document.querySelector('#mount'),new URL(location.href).searchParams.get('context'));
 		});
@@ -191,6 +191,82 @@ async function openPayment(
 }
 
 for (const context of ["iframe", "popup"] as const) {
+	test(`${context} validates decline acknowledgements before reporting the outcome`, async ({
+		page,
+	}) => {
+		const errors: string[] = [];
+		page.on("pageerror", (error) => errors.push(error.message));
+		await page.goto(
+			`${consumerOrigin}/acknowledgement-fixture.html?context=${context}&outcome=decline`,
+		);
+		async function openProvider(): Promise<Provider> {
+			const opened = context === "popup" ? page.waitForEvent("popup") : null;
+			await page.getByRole("button", { name: "Open payment" }).click();
+			const provider = opened
+				? await opened
+				: page.frameLocator('iframe[title="Harbor Pay demo payment form"]');
+			if (context === "popup")
+				(provider as Page).on("pageerror", (error) =>
+					errors.push(error.message),
+				);
+			await provider.getByRole("button", { name: "Use demo details" }).click();
+			await provider
+				.getByRole("button", { name: "Pay $176.00", exact: true })
+				.click();
+			return provider;
+		}
+		for (const acknowledgement of [
+			null,
+			{ status: "recorded", invoiceId: "PV-1042" },
+			{ status: "declined", invoiceId: "PV-OTHER" },
+		]) {
+			await page.evaluate(
+				(value) => Reflect.set(window, "acknowledgement", value),
+				acknowledgement,
+			);
+			const provider = await openProvider();
+			await expect(provider.locator("#payment-feedback")).toHaveText(
+				"The clinic could not confirm this payment. Close the window and try again from the invoice.",
+			);
+			await provider
+				.getByRole("button", { name: "Cancel payment", exact: true })
+				.click();
+			if (context === "popup")
+				await expect.poll(() => (provider as Page).isClosed()).toBe(true);
+			else
+				await expect(
+					page.locator('iframe[title="Harbor Pay demo payment form"]'),
+				).toHaveCount(0);
+		}
+		await page.evaluate(() =>
+			Reflect.set(window, "acknowledgement", {
+				status: "declined",
+				invoiceId: "PV-1042",
+			}),
+		);
+		const provider = await openProvider();
+		await expect(provider.locator("#payment-feedback")).toHaveText(
+			"The demo payment was declined. No payment was taken. Try again to simulate an approval.",
+		);
+		await page.evaluate(() =>
+			Reflect.set(window, "acknowledgement", {
+				status: "recorded",
+				invoiceId: "PV-1042",
+			}),
+		);
+		await provider
+			.getByRole("button", { name: "Retry payment $176.00", exact: true })
+			.click();
+		if (context === "popup")
+			await expect.poll(() => (provider as Page).isClosed()).toBe(true);
+		else
+			await expect(
+				page.locator('iframe[title="Harbor Pay demo payment form"]'),
+			).toHaveCount(0);
+		expect(await page.evaluate(() => Reflect.get(window, "results"))).toBe(5);
+		expect(errors).toEqual([]);
+	});
+
 	test(`${context} rejects a mismatched acknowledgement without approving or closing`, async ({
 		page,
 	}) => {
@@ -605,8 +681,12 @@ test("technical view observes real callback arguments and returns without replac
 	);
 	await page.locator('[data-step="4"]').click();
 	await expect(page.locator("#step-code")).toContainText(
-		"assertPaymentRecorded(acknowledgement, result.receipt.invoiceId);",
+		"assertPaymentAcknowledged(",
 	);
+	await expect(page.locator("#step-code")).toContainText(
+		"result.receipt.invoiceId",
+	);
+	await expect(page.locator("#step-code")).toContainText('"recorded"');
 	await expect(page.locator("#step-code")).toContainText(
 		"await props.close();",
 	);

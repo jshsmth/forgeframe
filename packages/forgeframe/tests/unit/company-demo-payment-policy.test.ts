@@ -14,7 +14,7 @@ import type {
 } from "../../../playground/payment/contract";
 import {
 	approvedPaymentResult,
-	assertPaymentRecorded,
+	assertPaymentAcknowledged,
 	normalizeDemoCardNumber,
 	shouldDeclineAttempt,
 } from "../../../playground/payment/simulation";
@@ -343,9 +343,10 @@ describe("provider simulation rules", () => {
 
 	it("requires a recorded acknowledgement for the expected invoice", () => {
 		expect(() =>
-			assertPaymentRecorded(
+			assertPaymentAcknowledged(
 				{ invoiceId: "PV-1042", status: "recorded" },
 				"PV-1042",
+				"recorded",
 			),
 		).not.toThrow();
 	});
@@ -366,9 +367,40 @@ describe("provider simulation rules", () => {
 	])(
 		"rejects %s acknowledgements before approval",
 		(_name, acknowledgement) => {
-			expect(() => assertPaymentRecorded(acknowledgement, "PV-1042")).toThrow(
-				"The clinic did not record the payment.",
-			);
+			expect(() =>
+				assertPaymentAcknowledged(acknowledgement, "PV-1042", "recorded"),
+			).toThrow("The clinic did not record the payment.");
+		},
+	);
+	it("requires a declined acknowledgement for the submitted invoice", () => {
+		expect(() =>
+			assertPaymentAcknowledged(
+				{ invoiceId: "PV-1042", status: "declined" },
+				"PV-1042",
+				"declined",
+			),
+		).not.toThrow();
+	});
+
+	it.each([
+		["another invoice", { invoiceId: "PV-1043", status: "declined" }],
+		["recorded", { invoiceId: "PV-1042", status: "recorded" }],
+		["unknown status", { invoiceId: "PV-1042", status: "approved" }],
+		["missing status", { invoiceId: "PV-1042" }],
+		["missing invoice", { status: "declined" }],
+		["wrong invoice type", { invoiceId: 1042, status: "declined" }],
+		["blank invoice", { invoiceId: "", status: "declined" }],
+		["null", null],
+		["undefined", undefined],
+		["array", []],
+		["string", "declined"],
+		["boolean", true],
+	])(
+		"rejects %s acknowledgements before decline feedback",
+		(_name, acknowledgement) => {
+			expect(() =>
+				assertPaymentAcknowledged(acknowledgement, "PV-1042", "declined"),
+			).toThrow("The clinic did not acknowledge the decline.");
 		},
 	);
 });

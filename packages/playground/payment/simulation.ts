@@ -1,6 +1,7 @@
 import type {
 	DemoOutcome,
 	DemoReceipt,
+	PaymentAcknowledgement,
 	PaymentProps,
 	PaymentResult,
 } from "./contract";
@@ -41,24 +42,30 @@ export function approvedPaymentResult(
 }
 
 /**
- * Validates an untrusted callback return before the provider approves and closes.
+ * Validates an untrusted callback return before presenting its matching outcome.
  *
  * @param expectedInvoiceId - The invoice in the submitted result, captured before awaiting the callback.
- * @throws If the merchant did not acknowledge recording that exact invoice.
+ * @param expectedStatus - The acknowledgement required for the reported approval or decline.
+ * @throws If the merchant did not acknowledge that outcome for the submitted invoice.
  * @remarks Function schemas validate callability, not callback return payloads.
  */
-export function assertPaymentRecorded(
+export function assertPaymentAcknowledged(
 	acknowledgement: unknown,
 	expectedInvoiceId: string,
+	expectedStatus: PaymentAcknowledgement["status"],
 ): void {
 	if (
 		typeof acknowledgement !== "object" ||
 		acknowledgement === null ||
 		Array.isArray(acknowledgement) ||
 		!("status" in acknowledgement) ||
-		acknowledgement.status !== "recorded" ||
+		acknowledgement.status !== expectedStatus ||
 		!("invoiceId" in acknowledgement) ||
 		acknowledgement.invoiceId !== expectedInvoiceId
 	)
-		throw new Error("The clinic did not record the payment.");
+		throw new Error(
+			expectedStatus === "recorded"
+				? "The clinic did not record the payment."
+				: "The clinic did not acknowledge the decline.",
+		);
 }

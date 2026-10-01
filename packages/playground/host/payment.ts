@@ -12,11 +12,12 @@ import { getHostProps, type HostProps, initHost } from "forgeframe";
 import {
 	formatMoney,
 	type PaymentProps,
+	type PaymentResult,
 	paymentProps,
 } from "../payment/contract";
 import {
 	approvedPaymentResult,
-	assertPaymentRecorded,
+	assertPaymentAcknowledged,
 	normalizeDemoCardNumber,
 	type ReceiptEvidence,
 	shouldDeclineAttempt,
@@ -124,8 +125,14 @@ function renderForm(props: HostProps<PaymentProps>): void {
 			: `${attempt ? "Retry payment" : "Pay"} ${amount}`;
 	}
 
+	/** Confirms the submitted invoice's decline before presenting the retry guidance. */
 	async function reportDecline(): Promise<void> {
-		await props.onResult({ status: "declined", invoiceId: props.invoiceId });
+		const result: PaymentResult = {
+			status: "declined",
+			invoiceId: props.invoiceId,
+		};
+		const acknowledgement = await props.onResult(result);
+		assertPaymentAcknowledged(acknowledgement, result.invoiceId, "declined");
 		showFeedback(
 			"The demo payment was declined. No payment was taken. Try again to simulate an approval.",
 		);
@@ -135,7 +142,11 @@ function renderForm(props: HostProps<PaymentProps>): void {
 	async function reportApproval(digits: string): Promise<void> {
 		const result = approvedPaymentResult(props, collectReceiptEvidence(digits));
 		const acknowledgement = await props.onResult(result);
-		assertPaymentRecorded(acknowledgement, result.receipt.invoiceId);
+		assertPaymentAcknowledged(
+			acknowledgement,
+			result.receipt.invoiceId,
+			"recorded",
+		);
 		approved = true;
 		await props.close();
 	}

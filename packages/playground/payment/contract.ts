@@ -33,7 +33,8 @@ export interface PaymentAcknowledgement {
  * merchant validates the complete result before committing a receipt. Local
  * callbacks use their ordinary return types here; `HostProps<PaymentProps>`
  * presents them as asynchronous remote functions. The host validates the returned
- * acknowledgement against the submitted invoice before approving and closing.
+ * acknowledgement status and invoice before confirming a decline or approving
+ * and closing.
  * No card number, expiry or CVC is delivered to the consumer.
  */
 export interface PaymentProps extends Record<string, unknown> {

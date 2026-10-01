@@ -81,8 +81,8 @@ const steps = [
 		description:
 			"On approval, Harbor validates that the acknowledgement records the submitted invoice before calling close(). This observation comes from the consumer's destroy event after ForgeFrame cleanup. Cancellation can also close a window without a payment result.",
 		source: "provider",
-		needle: "assertPaymentRecorded(acknowledgement, result.receipt.invoiceId);",
-		lines: 5,
+		needle: "async function reportApproval(digits: string)",
+		lines: 14,
 	},
 ] as const;
 
