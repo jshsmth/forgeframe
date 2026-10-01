@@ -3,7 +3,7 @@
  *
  * Covers Standard Schema compatibility, primitive/composite validators, schema chaining immutability, and normalizeProps integration.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { validateProps } from "@/props/normalize";
 import {
 	AnySchema,
@@ -469,6 +469,63 @@ describe("prop.boolean()", () => {
 // ============================================================================
 
 describe("prop.function()", () => {
+	it("evaluates default factories once without invoking the returned callback", () => {
+		const callback = vi.fn(() => 42);
+		const factory = vi.fn(() => callback);
+		const original = prop.function<() => number>();
+		const defaulted = original.default(factory);
+		expect(defaulted["~standard"].validate(undefined)).toEqual({
+			value: callback,
+		});
+		expect(factory).toHaveBeenCalledOnce();
+		expect(callback).not.toHaveBeenCalled();
+		expect(original["~standard"].validate(undefined)).toHaveProperty("issues");
+	});
+
+	it("rejects invalid callback factory results and permits declared presence values", () => {
+		// @ts-expect-error Invalid JavaScript default factories must still fail at runtime.
+		const invalid = prop.function<() => void>().default(() => 42);
+		expect(invalid["~standard"].validate(undefined)).toEqual({
+			issues: [{ message: "Expected function, got number" }],
+		});
+		// @ts-expect-error A required callback cannot default to undefined.
+		const missing = prop.function<() => void>().default(() => undefined);
+		expect(missing["~standard"].validate(undefined)).toHaveProperty("issues");
+		expect(
+			prop
+				.function()
+				.optional()
+				.default(() => undefined)
+				["~standard"].validate(undefined),
+		).toEqual({ value: undefined });
+		expect(
+			prop.function().nullable().default(null)["~standard"].validate(undefined),
+		).toEqual({ value: null });
+		expect(
+			prop
+				.function()
+				.nullable()
+				.default(() => null)
+				["~standard"].validate(undefined),
+		).toEqual({ value: null });
+	});
+
+	it("preserves callback defaults through fluent clones and nested shapes", () => {
+		const callback = () => 42;
+		const schema = prop
+			.function<() => number>()
+			.default(() => callback)
+			.optional()
+			.nullable();
+		expect(schema["~standard"].validate(undefined)).toEqual({
+			value: callback,
+		});
+		expect(schema["~standard"].validate(null)).toEqual({ value: null });
+		expect(
+			prop.object().shape({ callback: schema })["~standard"].validate({}),
+		).toEqual({ value: { callback } });
+	});
+
 	it("should validate functions", () => {
 		const fn = () => {};
 		const schema = prop.function();

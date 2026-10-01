@@ -129,16 +129,19 @@ describe("FunctionBridge", () => {
 			guardedBridge.destroy();
 		});
 
-		it("should evict the oldest local function reference when capacity is exceeded", async () => {
+		it("rejects excess local references without evicting existing callbacks", async () => {
 			const firstRef = bridge.serialize(() => "first");
 
-			for (let index = 0; index < 500; index += 1) {
+			for (let index = 0; index < 499; index += 1) {
 				bridge.serialize(() => index);
 			}
 
 			expect(bridge.localFunctionCount).toBe(500);
-			await expect(messenger.simulateCall(firstRef.__id__, [])).rejects.toThrow(
-				`Function with id "${firstRef.__id__}" not found`,
+			expect(() => bridge.serialize(() => "excess")).toThrow(
+				"500 distinct callback limit",
+			);
+			await expect(messenger.simulateCall(firstRef.__id__, [])).resolves.toBe(
+				"first",
 			);
 		});
 	});
@@ -350,6 +353,136 @@ describe("FunctionBridge", () => {
 	});
 
 	describe("batch lifecycle", () => {
+		it("preserves callback IDs across a new-session reset without retaining old functions", async () => {
+			const callback = () => 42;
+			const previous = bridge.serialize(callback);
+			bridge.clearLocal(true);
+			expect(bridge.localFunctionCount).toBe(0);
+			bridge.startBatch();
+			expect(bridge.serialize(callback).__id__).toBe(previous.__id__);
+			bridge.finishBatch();
+			await expect(messenger.simulateCall(previous.__id__, [])).resolves.toBe(
+				42,
+			);
+		});
+
+		it("replaces all 500 callbacks atomically and admits staged calls before acknowledgement", async () => {
+			bridge.startBatch();
+			const previous = Array.from({ length: 500 }, (_, index) =>
+				bridge.serialize(() => index),
+			);
+			bridge.finishBatch();
+			bridge.startBatch();
+			const next = Array.from({ length: 500 }, (_, index) =>
+				bridge.serialize(() => index + 500),
+			);
+			expect(bridge.localFunctionCount).toBe(1000);
+			await expect(
+				messenger.simulateCall(previous[0]?.__id__ ?? "", []),
+			).resolves.toBe(0);
+			await expect(
+				messenger.simulateCall(next[499]?.__id__ ?? "", []),
+			).resolves.toBe(999);
+			expect(() => bridge.serialize(() => 1000)).toThrow(
+				"500 distinct callback limit",
+			);
+			bridge.finishBatch();
+			expect(bridge.localFunctionCount).toBe(500);
+			await expect(
+				messenger.simulateCall(previous[0]?.__id__ ?? "", []),
+			).rejects.toThrow("not found");
+			await expect(
+				messenger.simulateCall(next[0]?.__id__ ?? "", []),
+			).resolves.toBe(500);
+		});
+
+		it("rolls back partial serialization and reuses existing identities", async () => {
+			const original = () => "original";
+			const previous = bridge.serialize(original);
+			bridge.startBatch();
+			for (let index = 0; index < 600; index++) {
+				expect(bridge.serialize(original).__id__).toBe(previous.__id__);
+			}
+			const staged = bridge.serialize(() => "staged");
+			bridge.abortBatch();
+			expect(bridge.localFunctionCount).toBe(1);
+			await expect(messenger.simulateCall(previous.__id__, [])).resolves.toBe(
+				"original",
+			);
+			await expect(messenger.simulateCall(staged.__id__, [])).rejects.toThrow(
+				"not found",
+			);
+			bridge.startBatch();
+			expect(bridge.serialize(original).__id__).toBe(previous.__id__);
+			bridge.finishBatch();
+		});
+
+		it("bounds failed-delivery retention and recovers through an acknowledged retry", async () => {
+			bridge.startBatch();
+			const previous = Array.from({ length: 500 }, (_, index) =>
+				bridge.serialize(() => index),
+			);
+			bridge.finishBatch();
+			const callbacks = Array.from(
+				{ length: 500 },
+				(_, index) => () => index + 500,
+			);
+			bridge.startBatch();
+			const next = callbacks.map((fn) => bridge.serialize(fn));
+			bridge.finishBatch(true);
+			for (let attempt = 0; attempt < 3; attempt++) {
+				bridge.startBatch();
+				expect(() => bridge.serialize(() => attempt)).toThrow(
+					"recovery pool is full",
+				);
+				bridge.abortBatch();
+				expect(bridge.localFunctionCount).toBe(1000);
+			}
+			await expect(
+				messenger.simulateCall(previous[0]?.__id__ ?? "", []),
+			).resolves.toBe(0);
+			await expect(
+				messenger.simulateCall(next[0]?.__id__ ?? "", []),
+			).resolves.toBe(500);
+			bridge.startBatch();
+			callbacks.forEach((fn, index) => {
+				expect(bridge.serialize(fn).__id__).toBe(next[index]?.__id__);
+			});
+			bridge.finishBatch();
+			expect(bridge.localFunctionCount).toBe(500);
+			bridge.startBatch();
+			bridge.serialize(() => "new capacity");
+			bridge.finishBatch();
+			expect(bridge.localFunctionCount).toBe(1);
+		});
+
+		it("rejects append overflow atomically and clears recovery references on reset", async () => {
+			bridge.startBatch("append");
+			const first = bridge.serialize(() => "first");
+			for (let index = 0; index < 498; index++) bridge.serialize(() => index);
+			bridge.finishBatch(true);
+			bridge.startBatch("append");
+			const staged = bridge.serialize(() => "staged");
+			expect(() => bridge.serialize(() => "overflow")).toThrow(
+				"500 distinct callback limit",
+			);
+			bridge.abortBatch();
+			expect(bridge.localFunctionCount).toBe(499);
+			await expect(messenger.simulateCall(first.__id__, [])).resolves.toBe(
+				"first",
+			);
+			await expect(messenger.simulateCall(staged.__id__, [])).rejects.toThrow(
+				"not found",
+			);
+			bridge.clearLocal();
+			expect(bridge.localFunctionCount).toBe(0);
+			bridge.startBatch();
+			bridge.serialize(() => "fresh session");
+			bridge.finishBatch();
+			bridge.destroy();
+			expect(bridge.localFunctionCount).toBe(0);
+		});
+
 		it("should keep previous function references when finishBatch(true) is used", async () => {
 			const firstRef = bridge.serialize(() => "first");
 

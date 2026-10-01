@@ -4,7 +4,7 @@ This index documents what each ForgeFrame test file validates and the naming con
 
 ## Unit Tests (`packages/forgeframe/tests/unit`)
 
-- `bridge.test.ts`: Function bridge serialization/deserialization and remote call dispatch behavior.
+- `bridge.test.ts`: Function bridge serialization/deserialization, remote call dispatch, 500-callback admission, full snapshot replacement, duplicate identity reuse, staged calls, rollback, bounded delivery recovery, append capacity, and reset/teardown.
 - `component-clone.test.ts`: Clone snapshot preservation, lifecycle tracking, peer visibility, and global/tag cleanup.
 - `component-instance-index.test.ts`: Internal active-instance indexing, reindexing, tag clearing, and peer lookup snapshot behavior.
 - `component.test.ts`: Component creation, registration, instance lifecycle, and host-context detection.
@@ -63,8 +63,8 @@ All unit tests and shared fixtures are strictly compiled by `npm run typecheck`,
 - `array-prop-transport.test.ts`: Consumer-side rejection of undefined/sparse array entries before opening or update commitment, recovery, nested values, item defaults, nullable entries, delivery-policy exclusions, custom encoders/host decorators, and export rejection without replacing acknowledged data.
 - `body-param-bootstrap.test.ts`: End-to-end iframe and popup `bodyParam` POST bootstrap coverage, including hidden-form submission and host initialization.
 - `consumer-host-handshake.test.ts`: End-to-end iframe happy path covering `create()`, `instance.render()`, `initHost()`, and the real INIT handshake, plus oversized bootstrap metadata rejection followed by a valid retry.
-- `function-prop-bridge.test.ts`: Real cross-window callback bridging from host `window.hostProps` back to consumer callbacks, including async results, thrown errors, BASE64/DOTIFY nested callback/Date bootstrap and updates, and retirement of replaced callbacks after acknowledged updates in all three serialization modes.
-- `host-controls-routing.test.ts`: Real host-builtins coverage for close/focus/resize/show/hide/error/export/peer lookup, plus spoofed-source rejection on consumer and host runtimes.
+- `function-prop-bridge.test.ts`: Capacity rejection/recovery across all codecs, omitted callback defaults, a genuinely dropped acknowledgement with receiver-installed callbacks, and real cross-window callback bridging from host `window.hostProps` back to consumer callbacks, including async results, thrown errors, BASE64/DOTIFY nested callback/Date bootstrap and updates, and retirement of replaced callbacks after acknowledged updates in all three serialization modes.
+- `host-controls-routing.test.ts`: Atomic export/peer-capacity rejection, held-reference recovery, and real host-builtins coverage for close/focus/resize/show/hide/error/export/peer lookup, plus spoofed-source rejection on consumer and host runtimes.
 - `object-prop-roundtrip.test.ts`: Ordinary BASE64/DOTIFY/function-shaped records retain user fields through bootstrap and updates in all three serialization modes, including direct and nested DOTIFY branches converted by custom JSON encoders.
 - `popup-host-handshake.test.ts`: End-to-end popup happy path and popup-blocked failure coverage through `render(..., 'popup')` and `initHost()`.
 - `props-alias-sync.test.ts`: End-to-end canonical host synchronization for initial, updated, and chained alias values.
@@ -118,3 +118,5 @@ See [the September 2026 test review](../../../docs/test-review.md) for the cover
 Start with a supported public behavior or a reproduced failure and an agreed public seam. Use literal expected outcomes independent of the implementation. Prefer a real consumer/host or React DOM integration when the behavior crosses layers; adapt browser APIs at the environment boundary. Retain focused policy and resource fault-injection cases when they add distinct evidence, and remove superseded wiring assertions once public behavior is verified.
 
 Check both acceptance and rejection/recovery where meaningful. Keep schema inputs and normalized outputs explicit in fixtures, and run `typecheck:tests` as well as Vitest. Use a targeted regression probe to confirm a new test can detect the behavior being lost; restore the source before final validation. Coverage identifies candidates for inspection, while supported behavior and failure impact decide whether to add a test. Do not add casts, mocks, exclusions, or threshold changes merely to reach 100%.
+
+The installed-package check compiles the actual README Define a Component example under strict NodeNext resolution, and smoke-tests callback default behavior against the built package. Callback type fixtures require factory syntax after fluent chaining. Consumer transport tests verify that only a verified new bootstrap session releases a full recovery pool.

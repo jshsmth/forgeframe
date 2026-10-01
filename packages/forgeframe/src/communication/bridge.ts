@@ -38,6 +38,8 @@ interface RemoteFunctionEntry {
  * @internal
  */
 const MAX_FUNCTIONS = 500;
+/** Previous and possibly delivered snapshots share this bounded recovery pool. */
+const MAX_RETAINED_FUNCTIONS = MAX_FUNCTIONS * 2;
 const UNSAFE_OBJECT_KEYS = new Set(["__proto__"]);
 
 /**
@@ -86,6 +88,9 @@ export class FunctionBridge {
 	 * @internal
 	 */
 	private currentBatchIds = new Set<string>();
+	/** Registrations created by a batch, removable before any delivery attempt. */
+	private newBatchIds = new Set<string>();
+	private batchMode: "replace" | "append" | null = null;
 
 	/**
 	 * Creates a new FunctionBridge instance.
@@ -108,7 +113,7 @@ export class FunctionBridge {
 	 * Serializes a local function to a transferable reference.
 	 *
 	 * @remarks
-	 * A retained function reuses its ID until eviction or batch reconciliation removes
+	 * A retained function reuses its ID until batch reconciliation removes
 	 * it. Serialization also records that identity in the current batch.
 	 *
 	 * @param fn - The function to serialize
@@ -126,15 +131,40 @@ export class FunctionBridge {
 	private retainLocalFunction(fn: CallableFunction): string {
 		const existingId = this.localFunctionIds.get(fn);
 		if (existingId && this.localFunctions.get(existingId) === fn) {
+			this.assertLocalCapacity(existingId);
 			this.currentBatchIds.add(existingId);
 			return existingId;
 		}
-		this.evictOldestLocal();
-		const id = generateShortUID();
+		this.assertLocalCapacity();
+		// A new host session may already have acknowledged queued props using this ID.
+		const id = existingId ?? generateShortUID();
 		this.localFunctions.set(id, fn);
 		this.localFunctionIds.set(fn, id);
 		this.currentBatchIds.add(id);
+		if (this.batchMode) this.newBatchIds.add(id);
 		return id;
+	}
+
+	/** Rejects additions before mutating either registry; retained identities never get evicted. */
+	private assertLocalCapacity(existingId?: string): void {
+		if (
+			!this.currentBatchIds.has(existingId ?? "") &&
+			this.currentBatchIds.size >= MAX_FUNCTIONS
+		) {
+			throw new Error(
+				"Function snapshot exceeds the 500 distinct callback limit",
+			);
+		}
+		if (existingId) return;
+		const limit =
+			this.batchMode === "replace" ? MAX_RETAINED_FUNCTIONS : MAX_FUNCTIONS;
+		if (this.localFunctions.size >= limit) {
+			throw new Error(
+				limit === MAX_RETAINED_FUNCTIONS
+					? "Function recovery pool is full (1000 callbacks); retry retained callbacks or reconnect"
+					: "Function registry exceeds the 500 distinct callback limit",
+			);
+		}
 	}
 
 	/**
@@ -186,13 +216,6 @@ export class FunctionBridge {
 			return;
 		const oldestKey = this.remoteFunctions.keys().next().value;
 		if (oldestKey) this.remoteFunctions.delete(oldestKey);
-	}
-
-	/** Keeps local registry capacity policy separate from reference construction. */
-	private evictOldestLocal(): void {
-		if (this.localFunctions.size < MAX_FUNCTIONS) return;
-		const oldestKey = this.localFunctions.keys().next().value;
-		if (oldestKey) this.removeLocal(oldestKey);
 	}
 
 	private createRemoteWrapper(
@@ -260,6 +283,8 @@ export class FunctionBridge {
 	removeLocal(id: string): void {
 		const fn = this.localFunctions.get(id);
 		this.localFunctions.delete(id);
+		this.currentBatchIds.delete(id);
+		this.newBatchIds.delete(id);
 		if (fn && this.localFunctionIds.get(fn) === id) {
 			this.localFunctionIds.delete(fn);
 		}
@@ -279,29 +304,52 @@ export class FunctionBridge {
 	 * bridge.finishBatch();
 	 * ```
 	 */
-	startBatch(): void {
+	startBatch(mode: "replace" | "append" = "replace"): void {
+		if (this.batchMode)
+			throw new Error("Function serialization batch already active");
 		this.currentBatchIds.clear();
+		this.newBatchIds.clear();
+		this.batchMode = mode;
 	}
 
 	/**
 	 * Finishes the current batch and removes functions not in this batch.
 	 *
 	 * @remarks
-	 * Pass `true` when serialization or delivery failed to preserve previous
-	 * references. This does not roll back newly registered functions or capacity
-	 * eviction; it skips stale-reference removal and clears the batch marker set.
+	 * Pass `true` after a delivery failure or successful append batch to retain both
+	 * previous and newly registered references. Serialization failures use {@link abortBatch}.
 	 *
 	 * @param keepPrevious - If true, keeps previous batch functions (default: false)
 	 */
 	finishBatch(keepPrevious = false): void {
-		if (keepPrevious) {
-			this.currentBatchIds.clear();
-			return;
+		if (!keepPrevious) {
+			for (const id of this.staleLocalIds()) this.removeLocal(id);
 		}
+		this.clearBatch();
+	}
 
-		// Remove functions not in the current batch
-		for (const id of this.staleLocalIds()) this.removeLocal(id);
+	/** Rolls back only new registrations when serialization failed before delivery. */
+	abortBatch(): void {
+		for (const id of this.newBatchIds) this.removeLocal(id);
+		this.clearBatch();
+	}
+
+	/** Settles the serialization transaction without changing retained functions. */
+	private clearBatch(): void {
 		this.currentBatchIds.clear();
+		this.newBatchIds.clear();
+		this.batchMode = null;
+	}
+
+	/**
+	 * Releases local registrations. Bootstrap preserves weak IDs for callbacks already
+	 * acknowledged by the new document; teardown also discards those identities.
+	 * @param preserveIds - Keep weak callback identities without retaining callable functions.
+	 */
+	clearLocal(preserveIds = false): void {
+		this.localFunctions.clear();
+		if (!preserveIds) this.localFunctionIds = new WeakMap();
+		this.clearBatch();
 	}
 
 	/** Determines stale references without mutating either registry. */
@@ -342,10 +390,8 @@ export class FunctionBridge {
 	 * Cleans up all function references.
 	 */
 	destroy(): void {
-		this.localFunctions.clear();
-		this.localFunctionIds = new WeakMap();
+		this.clearLocal();
 		this.remoteFunctions.clear();
-		this.currentBatchIds.clear();
 	}
 }
 

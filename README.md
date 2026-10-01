@@ -178,11 +178,11 @@ Components are defined using `ForgeFrame.create()`. This creates a reusable comp
 ```typescript
 import ForgeFrame, { prop } from 'forgeframe';
 
-interface LoginProps {
+type LoginProps = {
   email?: string;
   onLogin: (user: { id: number; name: string }) => void;
   onCancel?: () => void;
-}
+};
 
 const LoginForm = ForgeFrame.create<LoginProps>({
   tag: 'login-form',
@@ -404,7 +404,24 @@ All schemas support these base methods:
 |--------|-------------|
 | `.optional()` | Makes the prop optional (accepts `undefined`) |
 | `.nullable()` | Accepts `null` values |
-| `.default(value)` | Sets a default value (or factory function) |
+| `.default(value)` | Sets a non-callable default value or a factory that returns the default |
+
+Function defaults use a factory that returns the callback. ForgeFrame evaluates the factory when the input is omitted; it does not invoke the returned callback during default resolution. Invalid callback factory results fail schema validation. Optional/nullable schemas continue to accept their declared presence values.
+
+```typescript
+const onCancel = () => console.log('Cancelled');
+const callbackSchema = prop.function<() => void>().default(() => onCancel);
+```
+
+For integrations upgrading from 1.0.1, replace direct callback defaults such as `.default(onCancel)` with `.default(() => onCancel)`. The stricter types now reject previously ambiguous callback defaults. Capacity exhaustion now produces an explicit error instead of silently breaking older callbacks.
+
+### Callback Capacity
+
+Each delivered props or exports snapshot supports up to **500 distinct callbacks** per bridge. Reusing the same callback in multiple fields counts once. Oversized snapshots reject without evicting existing callable references. Successful updates retire callbacks absent from the new snapshot after acknowledgement.
+
+During replacement, the previous snapshot remains callable while new references are staged. A serialization failure removes only new registrations. A delivery failure may occur after the receiver installed the new snapshot, so both old and potentially delivered references remain callable within a **1,000-reference recovery pool**. Once that pool is full, additions reject until an acknowledged retry using retained callbacks, a new host session, or teardown releases capacity. Transport failures retain the existing consumer snapshot commitment behavior; they do not roll back local props.
+
+Peer discovery uses a separate relay registry with a cumulative **500-reference** limit for the requesting host session. Repeated discovery reuses retained identities and preserves held peer snapshots; an overflowing discovery rejects as a whole. Reconnection clears old relay identities. Source export replacement still retires the original exported callbacks.
 
 ### Schema Types
 
@@ -1080,7 +1097,7 @@ Each child tag must be registered in the host bundle before `hostProps` is initi
 
 ## Migrating from pre-v1 to v1
 
-This guide covers the published `0.2.0` release and earlier `0.x` integrations. The stable v1 release starts at `1.0.1`: npm permanently reserves `1.0.0` from an earlier publication that was removed. Install `forgeframe@1.0.1` in both consumer and host projects, rebuild their bundles, and exercise create/render, prop updates, callbacks, exports, reconnects, and teardown before releasing them. The public package remains a single ESM entrypoint: import from `forgeframe`; internal source paths are not public APIs. Global script-tag or CommonJS consumers must use an ESM-aware build.
+This guide covers the published `0.2.0` release and earlier `0.x` integrations. The stable v1 release starts at `1.0.1`: npm permanently reserves `1.0.0` from an earlier publication that was removed. Install the same stable v1 version in both consumer and host projects, rebuild their bundles, and exercise create/render, prop updates, callbacks, exports, reconnects, and teardown before releasing them. The public package remains a single ESM entrypoint: import from `forgeframe`; internal source paths are not public APIs. Global script-tag or CommonJS consumers must use an ESM-aware build.
 
 ### Upgrade checklist
 
@@ -1345,9 +1362,9 @@ Edit the root `README.md` for documentation changes. The library build copies it
 
 Version preparation and publication are separate:
 
-1. Run `npm run version:patch`, `version:minor`, or `version:major` to update workspace metadata and the lockfile only. For an explicit version, use `npm version 1.0.1 -w forgeframe --no-git-tag-version`. These commands do not commit, tag, publish, or push.
+1. Run `npm run version:patch`, `version:minor`, or `version:major` to update workspace metadata and the lockfile only. For an explicit version, use `npm version 1.0.2 -w forgeframe --no-git-tag-version`. These commands do not commit, tag, publish, or push.
 2. Run `npm run release:check` and `npm run test:browser`, review the changes, and commit the intended release source and metadata. Verify hosted CI for that commit before releasing.
-3. Create the matching Git tag, such as `v1.0.1`, on that commit. Keep the working tree clean so the published files match the tagged source.
+3. Create the matching Git tag, such as `v1.0.2`, on that commit. Keep the working tree clean so the published files match the tagged source.
 4. Run `npm run release` to publish. The publishable workspace owns `prepublishOnly`, so both this command and `npm publish -w forgeframe` run the full checks before publication.
 5. Push the release commit and its specific tag explicitly. The GitHub workflow requires the tag to match the package version, validates it, and creates release notes; it does not publish to npm. Manual workflow runs must select the matching tag.
 

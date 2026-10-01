@@ -43,7 +43,10 @@ type VerifiedMessageSource = Parameters<MessageHandler>[1];
  * @internal
  */
 export interface ConsumerTransportHandlers<X> {
-	onBootstrap?: (source: VerifiedMessageSource) => Promise<HostBootstrapData>;
+	onBootstrap?: (
+		source: VerifiedMessageSource,
+		resetLocalReferences: boolean,
+	) => Promise<HostBootstrapData>;
 	onReconnect?: () => void;
 	onInit?: () => void | Promise<void>;
 	onClose: () => Promise<void>;
@@ -97,6 +100,8 @@ export class ConsumerTransport<
 
 	private requiresBootstrap = false;
 	private bootstrapSessionId: string | null = null;
+	/** Keeps reset intent across bootstrap failures without admitting stale INIT messages. */
+	private localReferenceSessionId: string | null = null;
 
 	constructor(
 		private uid: string,
@@ -184,8 +189,9 @@ export class ConsumerTransport<
 	serializePropsForHost(
 		propsForHost: Record<string, unknown>,
 		propDefinitions: PropsDefinition<Record<string, unknown>>,
-		options?: { finishBatch?: boolean },
+		options?: { finishBatch?: boolean; resetLocalReferences?: boolean },
 	): SerializedProps {
+		if (options?.resetLocalReferences) this.bridge.clearLocal(true);
 		this.bridge.startBatch();
 		const finishBatch = options?.finishBatch ?? true;
 		try {
@@ -199,7 +205,7 @@ export class ConsumerTransport<
 			}
 			return serialized;
 		} catch (error) {
-			this.bridge.finishBatch(true);
+			this.bridge.abortBatch();
 			throw error;
 		}
 	}
@@ -314,11 +320,18 @@ export class ConsumerTransport<
 				) {
 					throw new Error("Invalid host bootstrap request");
 				}
+				const resetLocalReferences =
+					this.localReferenceSessionId !== null &&
+					this.localReferenceSessionId !== data.sessionId;
 				this.hostInitialized = false;
 				this.bootstrapSessionId = null;
-				const snapshot = await handlers.onBootstrap(source);
+				const snapshot = await handlers.onBootstrap(
+					source,
+					resetLocalReferences,
+				);
 				this.activeHostDomain = source.domain;
 				this.bootstrapSessionId = data.sessionId;
+				this.localReferenceSessionId = data.sessionId;
 				this.bridge.clearRemote();
 				this.peerBridge.startBatch();
 				this.peerBridge.finishBatch();
@@ -415,11 +428,15 @@ export class ConsumerTransport<
 			MESSAGE_NAME.GET_SIBLINGS,
 			async (request) => {
 				const peers = await handlers.onGetSiblings(request);
+				this.peerBridge.startBatch("append");
 				try {
-					return serializeFunctions(peers, this.peerBridge);
-				} finally {
+					const serialized = serializeFunctions(peers, this.peerBridge);
 					// Repeated discovery and prop updates must preserve held peer snapshots.
 					this.peerBridge.finishBatch(true);
+					return serialized;
+				} catch (error) {
+					this.peerBridge.abortBatch();
+					throw error;
 				}
 			},
 		);

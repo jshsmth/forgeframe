@@ -434,6 +434,21 @@ export class FunctionSchema<
 	// biome-ignore lint/suspicious/noExplicitAny: Generic callbacks must accept arbitrary argument and return types.
 	T extends (...args: any[]) => any = (...args: any[]) => any,
 > extends PropSchema<T> {
+	/** Checks factory outputs without invoking the returned callback or applying the default again. */
+	protected _validateInput(value: unknown): StandardSchemaV1Result<T> {
+		if (value === undefined && this._default !== undefined) {
+			const fallback = this._getDefaultValue();
+			if (
+				(fallback === null && this._nullable) ||
+				(fallback === undefined && this._optional)
+			) {
+				return { value: fallback };
+			}
+			return this._validate(fallback);
+		}
+		return super._validateInput(value);
+	}
+
 	/** @internal */
 	protected _validate(value: unknown): StandardSchemaV1Result<T> {
 		if (typeof value !== "function") {

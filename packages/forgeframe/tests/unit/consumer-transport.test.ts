@@ -143,6 +143,57 @@ describe("ConsumerTransport", () => {
 		).toEqual({ props: { secret: "private" } });
 	});
 
+	it("releases a full recovery pool only for a verified new bootstrap session", async () => {
+		const transport = createTransport();
+		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+		transport.hostWindow = hostWindow;
+		let rejectBootstrap = false;
+		const onBootstrap = async (
+			_source: HandlerSource,
+			resetLocalReferences: boolean,
+		) => {
+			if (rejectBootstrap) throw new Error("bootstrap normalization failed");
+			return {
+				props: transport.serializePropsForHost(
+					{
+						payload: Object.fromEntries(
+							Array.from({ length: 500 }, (_, index) => [
+								`c${index}`,
+								() => index,
+							]),
+						),
+					},
+					createOptions().props,
+					{ resetLocalReferences },
+				),
+			};
+		};
+		transport.setupMessageHandlers({ ...createHandlers(), onBootstrap });
+		const bootstrap = getHandler(transport, MESSAGE_NAME.BOOTSTRAP);
+		if (!bootstrap) throw new Error("Missing bootstrap handler");
+		const source = {
+			uid: "consumer-transport-uid",
+			domain: "https://host.example.com",
+			window: hostWindow,
+		};
+		await bootstrap({ sessionId: "first" }, source);
+		transport.bridge.startBatch();
+		for (let index = 0; index < 500; index++)
+			transport.bridge.serialize(() => index);
+		transport.bridge.finishBatch(true);
+		expect(transport.bridge.localFunctionCount).toBe(1000);
+		await bootstrap({ sessionId: "spoofed" }, { ...source, window });
+		expect(transport.bridge.localFunctionCount).toBe(1000);
+		rejectBootstrap = true;
+		await expect(bootstrap({ sessionId: "second" }, source)).rejects.toThrow(
+			"bootstrap normalization failed",
+		);
+		expect(transport.bridge.localFunctionCount).toBe(1000);
+		rejectBootstrap = false;
+		await bootstrap({ sessionId: "second" }, source);
+		expect(transport.bridge.localFunctionCount).toBe(500);
+	});
+
 	it("requires INIT to match the latest verified bootstrap session", async () => {
 		const transport = createTransport();
 		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
@@ -297,7 +348,7 @@ describe("ConsumerTransport", () => {
 			"Circular reference detected in props - arrays cannot contain circular references",
 		);
 
-		expect(transport.bridge.localFunctionCount).toBe(2);
+		expect(transport.bridge.localFunctionCount).toBe(1);
 	});
 
 	it("should short-circuit waitForHost when initialization already completed", async () => {

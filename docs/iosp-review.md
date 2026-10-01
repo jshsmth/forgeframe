@@ -40,14 +40,16 @@ Compile-time evidence: [typecheck suite guidance](../packages/forgeframe/tests/R
 
 ### [communication/bridge.ts](../packages/forgeframe/src/communication/bridge.ts)
 
-Registry reconciliation, capacity eviction, reference framing and remote wrapper creation are separate responsibilities. Retain recursive object/array codecs and local ID reconciliation as cohesive algorithms; CALL and PEER_CALL invoke supplied functions after browser-source authorization. The call channel is supplied to the bridge so peer relay registries retain a lifetime independent of props/export batches. Reference guards require the complete own-property wire shape and preserve records with extra user fields.
+Registry reconciliation, capacity admission, reference framing and remote wrapper creation are separate responsibilities. Retain recursive object/array codecs and local ID reconciliation as cohesive algorithms; CALL and PEER_CALL invoke supplied functions after browser-source authorization. The call channel is supplied to the bridge so peer relay registries retain a lifetime independent of props/export batches. Reference guards require the complete own-property wire shape and preserve records with extra user fields.
 
 Ordinary marker-shaped records are escaped after JSON conversion and omission and restored as data, including nested escape markers, across JSON/BASE64/DOTIFY props and exports.
 
+Local callback admission rejects oversized 500-function snapshots without eviction. Batch ownership records new IDs for pre-delivery rollback, while uncertain delivery preserves references within a 1,000-entry pool. Append-mode peer relays retain a cumulative 500-reference bound. Verified reconnect cleanup is sequenced inside the consumer props queue before bootstrap serialization, releasing strong registrations while preserving weak IDs used by props already acknowledged by the new document. Remote wrapper cache eviction and recursive codec semantics remain unchanged.
+
 Array encoding checks every position before mapping, rejecting undefined entries and sparse holes for both props and exports while leaving object-field omission and function/Date framing unchanged.
 
-- **O:** `isSafeObjectKey`, `FunctionBridge.retainLocalFunction`, `FunctionBridge.findRemoteWrapper`, `FunctionBridge.evictOldestRemote`, `FunctionBridge.evictOldestLocal`, `FunctionBridge.createRemoteWrapper`, `FunctionBridge.isFunctionRef`, `FunctionBridge.removeLocal`, `FunctionBridge.startBatch`, `FunctionBridge.staleLocalIds`, `FunctionBridge.clearRemote`, `FunctionBridge.localFunctionCount`, `FunctionBridge.remoteFunctionCount`, `serializeFunctions`, `deserializeFunctions`, `createFunctionRef`.
-- **I:** `FunctionBridge.constructor`, `FunctionBridge.serialize`, `FunctionBridge.deserialize`, `FunctionBridge.createRemoteWrapper.wrapper`, `FunctionBridge.setupCallHandler`, `FunctionBridge.finishBatch`, `FunctionBridge.destroy`.
+- **O:** `isSafeObjectKey`, `FunctionBridge.retainLocalFunction`, `FunctionBridge.findRemoteWrapper`, `FunctionBridge.evictOldestRemote`, `FunctionBridge.assertLocalCapacity`, `FunctionBridge.clearBatch`, `FunctionBridge.createRemoteWrapper`, `FunctionBridge.isFunctionRef`, `FunctionBridge.removeLocal`, `FunctionBridge.startBatch`, `FunctionBridge.staleLocalIds`, `FunctionBridge.clearRemote`, `FunctionBridge.localFunctionCount`, `FunctionBridge.remoteFunctionCount`, `serializeFunctions`, `deserializeFunctions`, `createFunctionRef`.
+- **I:** `FunctionBridge.constructor`, `FunctionBridge.serialize`, `FunctionBridge.deserialize`, `FunctionBridge.createRemoteWrapper.wrapper`, `FunctionBridge.setupCallHandler`, `FunctionBridge.finishBatch`, `FunctionBridge.abortBatch`, `FunctionBridge.clearLocal`, `FunctionBridge.destroy`.
 - **O callbacks:** `FunctionBridge.constructor.callback@96`, `FunctionBridge.setupCallHandler.callback@231`, `FunctionBridge.staleLocalIds.callback@299`.
 - **I callbacks:** `serializeFunctions.callback@372`, `deserializeFunctions.callback@433`.
 
@@ -274,7 +276,7 @@ Evidence: [host](#evidence-host); typecheck.
 
 ### [core/host/transport.ts](../packages/forgeframe/src/core/host/transport.ts)
 
-Outbound export batches share a FIFO queue. INIT workflow preserves beforeInit, destroy-after-await guard, error capture and event reporting. Browser focus remains part of the focus integration. Peer lookup sequences a correlated response and recursive decoding through the separate peer-call bridge; prop/export batches cannot retire these relay wrappers.
+Outbound export batches share a FIFO queue. Serialization failure aborts new bridge registrations; send failure preserves possibly delivered references, and acknowledged delivery retires stale IDs. INIT workflow preserves beforeInit, destroy-after-await guard, error capture and event reporting. Browser focus remains part of the focus integration. Peer lookup sequences a correlated response and recursive decoding through the separate peer-call bridge; prop/export batches cannot retire these relay wrappers.
 
 - **O:** `HostTransport.getInitError`.
 - **I:** `HostTransport.constructor`, `HostTransport.registerPropsHandler`, `HostTransport.requestBootstrap`, `HostTransport.updateTrustedConsumerDomain`, `HostTransport.close`, `HostTransport.focus`, `HostTransport.resize`, `HostTransport.show`, `HostTransport.hide`, `HostTransport.onError`, `HostTransport.exportData`, `HostTransport.sendExportBatch`, `HostTransport.consumerExport`, `HostTransport.getPeerInstances`, `HostTransport.destroy`, `HostTransport.sendInit`, `HostTransport.sendMessage`.
@@ -389,7 +391,7 @@ Evidence: [props](#evidence-props), typecheck.
 
 ### [props/prop/base.ts](../packages/forgeframe/src/props/prop/base.ts)
 
-Presence selection is separate from default/nested validation execution. Free functions preserve the exported subclass surface; immutable fluent builders retain the explicit small exceptions below. Runtime schema invocation is one validation boundary operation.
+Presence selection is separate from default/nested validation execution. Callable default parameters require factories, including widened optional/nullable builders; scalar default behavior is unchanged. Free functions preserve the exported subclass surface; immutable fluent builders retain the explicit small exceptions below. Runtime schema invocation is one validation boundary operation.
 
 - **O:** `testRegExpStateless`, `validateSchemaSync`, `prependIssuePath`, `getValueKind`, `isPlainObject`, `formatDateForMessage`, `defineDataProperty`, `validateDateBound`, `selectSchemaPresence`, `PropSchema._getDefaultValue`, `PropSchema._copyBaseTo`, `PropSchema._copyPresenceTo`.
 - **I:** `validateSchemaPresence`, `PropSchema.validate`, `PropSchema._validateInput`.
@@ -436,11 +438,12 @@ Evidence: [props](#evidence-props); typecheck.
 
 ### [props/prop/primitives.ts](../packages/forgeframe/src/props/prop/primitives.ts)
 
-Scalar schema validation stays cohesive: string trimming/constraints, number bounds/integer checks and Date bounds are algorithms, not workflows. Builder exceptions keep clone/set/return local.
+Scalar schema validation stays cohesive: string trimming/constraints, number bounds/integer checks and Date bounds are algorithms, not workflows. Builder exceptions keep clone/set/return local. Callback default validation sequences one factory evaluation and result validation, preserving optional/nullable presence without invoking the returned callback.
 
 Number validation rejects nonfinite values before JSON transport can change them to null. The pure `isHttpUrl` operation parses absolute HTTP(S) URL syntax; string cloning retains this constraint independently of regex patterns and preserves the schema output.
 
 - **O:** `isHttpUrl`, `StringSchema._validate`, `NumberSchema._validate`, `DateSchema._validate`, `BooleanSchema._validate`, `FunctionSchema._validate`, `AnySchema.constructor`, `AnySchema._validate`.
+- **I:** `FunctionSchema._validateInput`.
 - **M:** `StringSchema._clone`, `StringSchema.min`, `StringSchema.max`, `StringSchema.length`, `StringSchema.pattern`, `StringSchema.email`, `StringSchema.url`, `StringSchema.uuid`, `StringSchema.trim`, `StringSchema.nonempty`, `NumberSchema._clone`, `NumberSchema.min`, `NumberSchema.max`, `NumberSchema.int`, `NumberSchema.positive`, `NumberSchema.nonnegative`, `NumberSchema.negative`, `DateSchema._clone`, `DateSchema.min`, `DateSchema.max`, `BooleanSchema._clone`, `FunctionSchema._clone`, `AnySchema._clone`.
 - **Retained rationale —** `StringSchema._clone`, `StringSchema.min`, `StringSchema.max`, `StringSchema.length`, `StringSchema.pattern`, `StringSchema.email`, `StringSchema.url`, `StringSchema.uuid`, `StringSchema.trim`, `StringSchema.nonempty`, `NumberSchema._clone`, `NumberSchema.min`, `NumberSchema.max`, `NumberSchema.int`, `NumberSchema.positive`, `NumberSchema.nonnegative`, `NumberSchema.negative`, `DateSchema._clone`, `DateSchema.min`, `DateSchema.max`, `BooleanSchema._clone`, `FunctionSchema._clone`, `AnySchema._clone`: Immutable fluent construction stays local: clone existing schema state, set the selected constraint, return the same typed builder contract. One-line shortcuts retain the fluent vocabulary; an extra wrapper would add indirection.
 

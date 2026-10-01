@@ -156,3 +156,36 @@ void invalidNestedObjectInput;
 // @ts-expect-error prop.any() input excludes undefined
 const invalidAnyInput: InferInput<typeof _anySchema> = undefined;
 void invalidAnyInput;
+
+// Callable outputs always use factories, including widened fluent builders.
+const callback = (value: number): string => String(value);
+const callbackSchema = prop.function<typeof callback>().default(() => callback);
+const nestedCallbacks = prop.object().shape({ callback: callbackSchema });
+const callbackInput: InferInput<typeof nestedCallbacks> = {};
+const callbackOutput: InferOutput<typeof nestedCallbacks> = { callback };
+const callbackResult: string = callbackOutput.callback(1);
+prop
+	.function<typeof callback>()
+	.optional()
+	.nullable()
+	.default(() => callback);
+prop.function<typeof callback>().nullable().default(null);
+prop
+	.function<typeof callback>()
+	.optional()
+	.default(() => undefined);
+// @ts-expect-error A callback value is not a default factory.
+prop.function<typeof callback>().default(callback);
+// @ts-expect-error A direct no-op callback returns void rather than a callback.
+prop.function<() => void>().default(() => {});
+// @ts-expect-error Optional chaining does not admit direct callback values.
+prop.function<typeof callback>().optional().default(callback);
+// @ts-expect-error Nullable chaining does not admit direct callback values.
+prop.function<typeof callback>().nullable().default(callback);
+// @ts-expect-error Chaining after a default retains the factory requirement.
+callbackSchema.optional().nullable().default(callback);
+// @ts-expect-error Defaults do not change the callback's return type.
+const invalidCallbackResult: number = callbackOutput.callback(1);
+void callbackInput;
+void callbackResult;
+void invalidCallbackResult;
