@@ -1,3 +1,13 @@
+---
+name: iosp-review
+title: ForgeFrame callable reference
+desc: Runtime callable responsibilities, IOSP classifications, and boundary test evidence.
+tags: []
+sources: []
+created: 2026-10-01T01:55:30Z
+updated: 2026-10-01T01:55:30Z
+---
+
 # ForgeFrame callable reference
 
 This reference describes runtime responsibilities and the tests that exercise their boundaries. Type-only declarations, overload signatures and abstract methods have no runtime body; export/type barrels are explicitly accounted for below. Repetitive accessors and fluent builders share the stated rationale.

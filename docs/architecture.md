@@ -1,3 +1,13 @@
+---
+name: architecture
+title: ForgeFrame architecture
+desc: Consumer and host state ownership, transport contracts, and lifecycle flows.
+tags: []
+sources: []
+created: 2026-10-01T01:55:30Z
+updated: 2026-10-01T01:55:30Z
+---
+
 # ForgeFrame architecture
 
 ForgeFrame has two runtimes: the **consumer** is the outer embedding app; the **host** is the embedded iframe or popup. The public entrypoint is `packages/forgeframe/src/index.ts`. Importing it does not initialize a browser runtime. Without browser globals, host detection returns false, `initHost()` returns null, and `getHostProps()` returns undefined. The default `ForgeFrame` object delegates to the same named exports.

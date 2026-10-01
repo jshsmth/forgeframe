@@ -1334,6 +1334,16 @@ Read the [architecture guide](https://github.com/jshsmth/ForgeFrame/blob/main/do
 - `props/` owns schemas, normalization, and serialization. Schema input and normalized output are different contracts: repeated validation at trust boundaries protects mutated props and must not blindly reapply transformations.
 - `render/` owns iframe/popup resources and templates; `drivers/` contains the optional React adapter. `packages/playground/` exercises the library as a consumer and host.
 
+### Project wiki
+
+Current project knowledge lives in the [development wiki](https://github.com/jshsmth/ForgeFrame/blob/main/docs/_index.md). It uses [Plasma Wiki](https://docs.plasma.ai/wiki/guide/index.html) to maintain Markdown metadata and navigation, with a dedicated GitHub Actions check for generated-index drift and wiki lint issues.
+
+Install Python 3.11 or newer and the pinned CLI with `uv tool install plasma-wiki==1.4.0` (or `pipx install plasma-wiki==1.4.0`). Run `wiki map --path docs` to browse topics, `wiki search --path docs "callback"` for ranked lookup, and `wiki read architecture --path docs` to read a page. You can also read the Markdown files directly on GitHub or in an editor.
+
+Edit page bodies and authored metadata such as `title` and `desc`. Run `npm run docs:update` after adding, moving, or editing pages, then `npm run docs:check` before committing. The generator owns names, timestamps, headings, and index link blocks above `***`; index prose belongs below that delimiter. The existing image assets are excluded from indexing. This setup needs no Obsidian vault, plugins, or executable wiki hooks.
+
+Wiki tooling is a contributor dependency, separate from the npm package and its release checks. The Documentation workflow installs the same pinned CLI and checks without modifying files.
+
 ### Checks
 
 Development uses TypeScript 7 and Biome with its default formatting and recommended lint rules. Run `npm ci` to install the pinned workspace tools; npm scripts use the local `tsc` and `biome` executables. Generated builds, coverage, and the npm lockfile are excluded from Biome. Markdown, YAML, and TOML are not formatted by these commands.
@@ -1348,6 +1358,8 @@ Biome retains its recommended severities. Tests and playground bindings use expl
 | `npm run lint:fix` | Apply Biome formatting, import organization, and safe lint fixes |
 | `npm run format` / `npm run format:check` | Write / check Biome formatting |
 | `npm run check:ci` | Non-writing Biome checks for CI |
+| `npm run docs:check` | Pinned Plasma Wiki version, generated-index freshness, and wiki lint |
+| `npm run docs:update` | Regenerate wiki metadata and indexes after documentation edits |
 | `npm run typecheck` | Library source, compile-time API contracts, and playground types |
 | `npm run test:run` | Unit and integration tests in jsdom, plus Node-specific suites |
 | `npm run test:coverage` | The same tests with coverage thresholds enforced |

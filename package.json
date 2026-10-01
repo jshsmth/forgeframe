@@ -27,6 +27,8 @@
 		"format": "biome format --write .",
 		"format:check": "biome format .",
 		"check:ci": "biome ci .",
+		"docs:update": "wiki update --path docs",
+		"docs:check": "node scripts/check-wiki.mjs",
 		"test:browser": "npm run test:browser -w forgeframe",
 		"test:package": "node packages/forgeframe/scripts/check-package.mjs"
 	},
