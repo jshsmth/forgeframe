@@ -59,5 +59,5 @@ Author page bodies and descriptive metadata; let `wiki update --path docs` own
 `name`, timestamps, headings, and index link blocks above `***`. After changing
 pages or their locations, run `npm run docs:update`, then `npm run docs:check`.
 Rename with `git mv` and fix authored links. Setup and the pinned CLI version
-are documented in the README's **Project wiki** section. This repo uses the CLI
+are documented in the README's **Project Wiki** section. This repo uses the CLI
 and Markdown directly; it needs no Obsidian configuration or executable wiki hooks.
