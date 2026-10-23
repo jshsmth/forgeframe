@@ -1220,7 +1220,7 @@ ForgeFrame ships ES2022 output. Use modern evergreen browsers or transpile the p
 
 ## Developing ForgeFrame
 
-Repository tooling needs Node.js 22.22.2 or later 22.x, 24.15.0 or later 24.x, or 26 and newer; jsdom 30 sets these minimums. Use Node.js 24 locally; CI also tests on Node.js 22. Run commands from the repository root:
+Repository tooling needs Node.js 22.23.4 or later 22.x, 24.22.1 or later 24.x, or 26.12.1 and newer. These minimums include the October 2026 Node.js security fixes and satisfy jsdom 30. Use Node.js 24 locally; CI also tests on Node.js 22. Run commands from the repository root:
 
 ```bash
 npm ci
