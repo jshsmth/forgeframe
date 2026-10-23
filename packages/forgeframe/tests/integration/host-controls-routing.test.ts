@@ -283,6 +283,45 @@ describe("Host controls and routing integration", () => {
 		}
 	});
 
+	it("admits peers on other host origins that list the requester in peerDomains", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const Requester = create({
+			tag: "integration-peer-domains-requester",
+			url: "https://host.example.com/widget",
+		});
+		const Shared = create({
+			tag: "integration-peer-domains-shared",
+			url: "https://partner.example.com/widget",
+			peerDomains: "https://host.example.com",
+		});
+		const Private = create({
+			tag: "integration-peer-domains-private",
+			url: "https://partner.example.com/private",
+		});
+		const requester = Requester();
+		const shared = Shared();
+		const privatePeer = Private();
+		shared.exports = { run: () => "shared-partner" };
+		privatePeer.exports = { run: () => "private-partner" };
+		const rendering = requester.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(container);
+		await rendering;
+		setVerifiedHostDomain("https://partner.example.com", shared, privatePeer);
+
+		const peers = await harness.withHostGlobalsAsync(() =>
+			hostProps.getPeerInstances({ anyConsumer: true }),
+		);
+		expect(peers.map(({ uid, tag }) => ({ uid, tag }))).toEqual([
+			{ uid: shared.uid, tag: "integration-peer-domains-shared" },
+		]);
+		const exports = peers[0]?.exports as { run: () => Promise<string> };
+		await expect(
+			harness.withHostGlobalsAsync(() => exports.run()),
+		).resolves.toBe("shared-partner");
+	});
+
 	it("recovers export callback capacity after final message encoding fails", async () => {
 		harness = createIframeIntegrationHarness();
 		const container = document.createElement("div");

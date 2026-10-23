@@ -1,6 +1,6 @@
 import { createServer, type Server } from "node:http";
 import { fileURLToPath } from "node:url";
-import { expect, test } from "@playwright/test";
+import { expect, type Frame, type Page, test } from "@playwright/test";
 import { build } from "vite";
 
 let consumerOrigin: string;
@@ -268,6 +268,43 @@ test("peer exports retain callable methods and dates across independent prop upd
 	]);
 });
 
+/** Returns a rendered host frame once its page has finished initializing. */
+async function readyFrame(page: Page, selector: string): Promise<Frame> {
+	const frame = await (
+		await page.locator(`${selector} iframe`).elementHandle()
+	)?.contentFrame();
+	if (!frame) throw new Error(`Missing ${selector} frame`);
+	await frame.waitForFunction(
+		() => (window as unknown as { ready: boolean }).ready,
+	);
+	return frame;
+}
+
+/** Runs inside a host frame: discovers every peer and calls each peer's export. */
+function discoverAnyConsumerPeers() {
+	return (
+		window as unknown as {
+			props: {
+				getPeerInstances(options?: { anyConsumer: boolean }): Promise<
+					Array<{
+						tag: string;
+						exports?: { nested: { run(value: string): Promise<string> } };
+					}>
+				>;
+			};
+		}
+	).props
+		.getPeerInstances({ anyConsumer: true })
+		.then((peers) =>
+			Promise.all(
+				peers.map(async (peer) => ({
+					tag: peer.tag,
+					result: await peer.exports?.nested.run("probe"),
+				})),
+			),
+		);
+}
+
 test("peer discovery does not expose exports across host origins", async ({
 	page,
 }) => {
@@ -310,46 +347,76 @@ test("peer discovery does not expose exports across host origins", async ({
 		},
 		{ hostOrigin, foreignHostOrigin },
 	);
-	const frameFor = async (selector: string) => {
-		const frame = await (
-			await page.locator(`${selector} iframe`).elementHandle()
-		)?.contentFrame();
-		if (!frame) throw new Error(`Missing ${selector} frame`);
-		await frame.waitForFunction(
-			() => (window as unknown as { ready: boolean }).ready,
-		);
-		return frame;
-	};
-	const requester = await frameFor("#requester");
-	await frameFor("#sibling");
-	const foreign = await frameFor("#other");
-	const discover = () =>
-		(
-			window as unknown as {
-				props: {
-					getPeerInstances(options?: { anyConsumer: boolean }): Promise<
-						Array<{
-							tag: string;
-							exports?: { nested: { run(value: string): Promise<string> } };
-						}>
-					>;
-				};
-			}
-		).props
-			.getPeerInstances({ anyConsumer: true })
-			.then((peers) =>
-				Promise.all(
-					peers.map(async (peer) => ({
-						tag: peer.tag,
-						result: await peer.exports?.nested.run("probe"),
-					})),
-				),
-			);
+	const requester = await readyFrame(page, "#requester");
+	await readyFrame(page, "#sibling");
+	const foreign = await readyFrame(page, "#other");
 
-	expect(await requester.evaluate(discover)).toEqual([
+	expect(await requester.evaluate(discoverAnyConsumerPeers)).toEqual([
 		{ tag: "browser-origin-local", result: "sibling:probe" },
 	]);
-	expect(await foreign.evaluate(discover)).toEqual([]);
+	expect(await foreign.evaluate(discoverAnyConsumerPeers)).toEqual([]);
+});
+
+test("peerDomains admits a named host origin to discover a component's peers", async ({
+	page,
+}) => {
+	await page.goto(consumerOrigin);
+	await page.evaluate(
+		async ({ hostOrigin, foreignHostOrigin }) => {
+			const libraryUrl = "/library.js";
+			const library: typeof import("../../src/index") = await import(
+				libraryUrl
+			);
+			const { create, prop } = library;
+			const props = {
+				label: prop.string(),
+				onRun: prop.function<(value: string) => string>(),
+			};
+			const Local = create({
+				tag: "browser-peer-domains-local",
+				url: `${hostOrigin}/host`,
+				props,
+			});
+			const Partner = create({
+				tag: "browser-peer-domains-partner",
+				url: `${foreignHostOrigin}/host`,
+				props,
+				peerDomains: hostOrigin,
+			});
+			const Private = create({
+				tag: "browser-peer-domains-private",
+				url: `${foreignHostOrigin}/host`,
+				props,
+			});
+			await Promise.all([
+				Local({
+					label: "local",
+					onRun: (value: string) => `local:${value}`,
+				}).render("#requester"),
+				Private({
+					label: "private",
+					onRun: (value: string) => `private:${value}`,
+				}).render("#sibling"),
+				Partner({
+					label: "partner",
+					onRun: (value: string) => `partner:${value}`,
+				}).render("#other"),
+			]);
+		},
+		{ hostOrigin, foreignHostOrigin },
+	);
+	const local = await readyFrame(page, "#requester");
+	await readyFrame(page, "#sibling");
+	const partner = await readyFrame(page, "#other");
+
+	// Only the partner admits the local origin; the private component does not.
+	expect(await local.evaluate(discoverAnyConsumerPeers)).toEqual([
+		{ tag: "browser-peer-domains-partner", result: "partner:probe" },
+	]);
+	// The opt-in is one-way: the partner sees its same-origin peer, not the local host.
+	expect(await partner.evaluate(discoverAnyConsumerPeers)).toEqual([
+		{ tag: "browser-peer-domains-private", result: "private:probe" },
+	]);
 });
 
 for (const codec of ["JSON", "BASE64", "DOTIFY"] as const) {
