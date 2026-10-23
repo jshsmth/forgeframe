@@ -52,10 +52,12 @@ const OPAQUE_ORIGIN = "null";
 
 /**
  * Selects peer snapshots from supplied indexed instances, excluding the
- * requesting identity, unconnected peers, and peers whose verified host origin
- * differs from the requester's unless the peer's `peerDomains` admit it.
+ * requesting identity, unopened peers, and peers whose host origin differs from
+ * the requester's unless the peer's `peerDomains` admit it.
  *
  * @remarks
+ * A peer whose host is still loading is matched by the origin it was opened at
+ * and listed without exports; only verified hosts share exports.
  * Every opaque origin serializes as `"null"` but is distinct from all others,
  * so an opaque requester has no peers, even when `peerDomains` would match.
  * @internal
@@ -69,7 +71,8 @@ export function selectSiblingInstances(
 	const siblings: SiblingInfo[] = [];
 	for (const { tag, instance } of indexed) {
 		if (instance.uid === requestingUid) continue;
-		const peerHostDomain = instance.getVerifiedHostDomain();
+		const verifiedHostDomain = instance.getVerifiedHostDomain();
+		const peerHostDomain = verifiedHostDomain ?? instance.getOpenedHostDomain();
 		if (peerHostDomain === null) continue;
 		const peerDomains = instance.getPeerDomains();
 		if (
@@ -77,7 +80,11 @@ export function selectSiblingInstances(
 			!(peerDomains && matchDomain(peerDomains, requestingHostDomain))
 		)
 			continue;
-		siblings.push({ uid: instance.uid, tag, exports: instance.exports });
+		siblings.push({
+			uid: instance.uid,
+			tag,
+			exports: verifiedHostDomain === null ? undefined : instance.exports,
+		});
 	}
 	return siblings;
 }

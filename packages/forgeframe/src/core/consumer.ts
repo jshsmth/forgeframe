@@ -617,6 +617,11 @@ export class ConsumerComponent<
 		return this.transport.activeHostDomain;
 	}
 
+	/** Returns the origin this instance opened its host at, before verification. @internal */
+	getOpenedHostDomain(): string | null {
+		return this.transport.openedHostDomain;
+	}
+
 	/** Returns other host origins allowed to discover this instance as a peer. @internal */
 	getPeerDomains(): DomainMatcher | undefined {
 		return this.options.peerDomains;

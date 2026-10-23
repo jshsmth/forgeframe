@@ -14,6 +14,8 @@ import type { DomainMatcher } from "../types/utility";
 export interface IndexedInstanceAccess {
 	/** Browser-verified origin of the connected host window, if any. */
 	getVerifiedHostDomain(): string | null;
+	/** Origin the instance opened its host at, before verification. */
+	getOpenedHostDomain(): string | null;
 	/** Other host origins allowed to discover this instance as a peer. */
 	getPeerDomains(): DomainMatcher | undefined;
 }

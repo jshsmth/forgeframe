@@ -25,7 +25,11 @@ import * as hostSecurity from "@/core/host/security";
 import { prop } from "@/props/prop";
 import type { ComponentOptions, PropContext } from "@/types";
 import { buildWindowName } from "@/window/name-payload";
-import { PEER_HOST_DOMAIN, setVerifiedHostDomain } from "../peer-host-domain";
+import {
+	PEER_HOST_DOMAIN,
+	setOpenedHostDomain,
+	setVerifiedHostDomain,
+} from "../peer-host-domain";
 import { requireValue } from "../require-value";
 
 const VALID_EXPORTS: ConsumerExports = {
@@ -2386,6 +2390,55 @@ describe("Host Context Detection", () => {
 
 			await Promise.all(
 				[requester, sharedPeer, privatePeer].map((instance) =>
+					instance.close(),
+				),
+			);
+		});
+
+		it("should list same-origin peers whose hosts are still loading without exports", async () => {
+			const LoadingComponent = create({
+				tag: "peer-loading",
+				url: "https://example.com/loading",
+			});
+
+			const requester = LoadingComponent({});
+			const loadingPeer = LoadingComponent({});
+			const foreignLoadingPeer = LoadingComponent({});
+			loadingPeer.exports = { early: "not yet verified" };
+			setVerifiedHostDomain(PEER_HOST_DOMAIN, requester);
+			setOpenedHostDomain(PEER_HOST_DOMAIN, loadingPeer);
+			setOpenedHostDomain(
+				"https://foreign-host.example.com",
+				foreignLoadingPeer,
+			);
+
+			expect(
+				getSiblingInstances({
+					uid: requester.uid,
+					tag: "peer-loading",
+					hostDomain: PEER_HOST_DOMAIN,
+				}),
+			).toEqual([
+				{ uid: loadingPeer.uid, tag: "peer-loading", exports: undefined },
+			]);
+
+			setVerifiedHostDomain(PEER_HOST_DOMAIN, loadingPeer);
+			expect(
+				getSiblingInstances({
+					uid: requester.uid,
+					tag: "peer-loading",
+					hostDomain: PEER_HOST_DOMAIN,
+				}),
+			).toEqual([
+				{
+					uid: loadingPeer.uid,
+					tag: "peer-loading",
+					exports: { early: "not yet verified" },
+				},
+			]);
+
+			await Promise.all(
+				[requester, loadingPeer, foreignLoadingPeer].map((instance) =>
 					instance.close(),
 				),
 			);

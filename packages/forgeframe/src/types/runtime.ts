@@ -814,7 +814,7 @@ export interface HostPropsBuiltins<P = Record<string, unknown>> {
 	 * consumer window. This enables communication between multiple embedded components.
 	 * Only peers whose hosts the consumer verified at this host's origin are
 	 * returned, unless a peer's component lists this origin in `peerDomains`.
-	 * Peers still completing their handshake are omitted until rediscovery.
+	 * Peers whose hosts are still loading are listed without exports until rediscovery.
 	 * Exported methods are relayed through the consumer and return promises.
 	 * Rediscover peers after a sibling replaces its exports or reconnects; retired
 	 * methods reject. Unrelated prop updates do not retire cached peer methods.

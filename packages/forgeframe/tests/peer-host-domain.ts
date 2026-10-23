@@ -24,6 +24,22 @@ export function setVerifiedHostDomain(
 	}
 }
 
+/**
+ * Marks consumer instances as opened at a host origin whose host has not been
+ * verified yet, as while the host is still loading.
+ */
+export function setOpenedHostDomain(
+	domain: string | null,
+	...instances: object[]
+): void {
+	for (const instance of instances) {
+		vi.spyOn(
+			instance as { getOpenedHostDomain(): string | null },
+			"getOpenedHostDomain",
+		).mockReturnValue(domain);
+	}
+}
+
 /** Reads the verified host origin that peer discovery uses for an instance. */
 export function getVerifiedHostDomain(instance: object): string | null {
 	return (instance as VerifiedHostDomainAccess).getVerifiedHostDomain();

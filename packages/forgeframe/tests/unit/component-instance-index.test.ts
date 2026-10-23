@@ -33,6 +33,7 @@ function createInstance(uid: string): TestInstance {
 		event: {} as TestInstance["event"],
 		state: {},
 		getVerifiedHostDomain: vi.fn(() => null),
+		getOpenedHostDomain: vi.fn(() => null),
 		getPeerDomains: vi.fn(() => undefined),
 	} as TestInstance;
 
