@@ -95,7 +95,7 @@ Evidence: [contract](#evidence-contract); typecheck.
 
 ### [core/component-instance-index.ts](../packages/forgeframe/src/core/component-instance-index.ts)
 
-Map/index mutation and snapshots are cohesive state operations; this module remains the single active-instance index.
+Map/index mutation and snapshots are cohesive state operations; this module remains the single active-instance index. Indexed instances expose their verified host origin for peer scoping.
 
 - **O:** `indexComponentInstance`, `removeIndexedComponentInstance`, `clearIndexedInstancesByTag`, `clearIndexedInstances`, `getComponentInstancesByTag`, `getIndexedComponentInstances`.
 
@@ -129,7 +129,7 @@ Lifecycle integrations preserve user-callback and cancellation checkpoints. Rend
 
 `ConsumerComponent.close` installs its shared completion before invoking `performClose`, which sequences close notifications, destruction, and flag release. Both remain lifecycle integrations; reentrant callers wait for deregistration and destruction notifications without duplicating the workflow. `destroy` installs its own shared completion before `performDestroy` sequences resource teardown, cleanup, deregistration and notifications. Close calls during failed-render destruction join that completion without duplicating close events.
 
-- **O:** `ConsumerComponent.uid`, `ConsumerComponent.assertRenderAllowed`, `ConsumerComponent.finishRenderTask`, `ConsumerComponent.applyPropsUpdate.isRendered`, `ConsumerComponent.assertPropsUpdateActive`, `ConsumerComponent.assertStableRenderedOrigin`, `ConsumerComponent.isDestroyed`, `ConsumerComponent.normalizeOptions`, `ConsumerComponent.createPropContext`, `ConsumerComponent.createConsumerExports`, `ConsumerComponent.createRenderCancellationError`, `ConsumerComponent.isRenderCancelled`, `ConsumerComponent.assertRenderActive`, `ConsumerComponent.beginDestroy`.
+- **O:** `ConsumerComponent.uid`, `ConsumerComponent.assertRenderAllowed`, `ConsumerComponent.finishRenderTask`, `ConsumerComponent.applyPropsUpdate.isRendered`, `ConsumerComponent.assertPropsUpdateActive`, `ConsumerComponent.assertStableRenderedOrigin`, `ConsumerComponent.isDestroyed`, `ConsumerComponent.getVerifiedHostDomain`, `ConsumerComponent.normalizeOptions`, `ConsumerComponent.createPropContext`, `ConsumerComponent.createConsumerExports`, `ConsumerComponent.createRenderCancellationError`, `ConsumerComponent.isRenderCancelled`, `ConsumerComponent.assertRenderActive`, `ConsumerComponent.beginDestroy`.
 - **I:** `ConsumerComponent.constructor`, `ConsumerComponent.constructor.close`, `ConsumerComponent.constructor.focus`, `ConsumerComponent.render`, `ConsumerComponent.performRender`, `ConsumerComponent.emitRenderStage`, `ConsumerComponent.validateForRender`, `ConsumerComponent.renderTo`, `ConsumerComponent.close`, `ConsumerComponent.performClose`, `ConsumerComponent.focus`, `ConsumerComponent.resize`, `ConsumerComponent.show`, `ConsumerComponent.hide`, `ConsumerComponent.updateProps`, `ConsumerComponent.applyPropsUpdate`, `ConsumerComponent.applyPropsUpdate.assertActive`, `ConsumerComponent.applyPropsUpdate.resolveUrl`, `ConsumerComponent.applyPropsUpdate.resolveUrlOrigin`, `ConsumerComponent.applyPropsUpdate.assertStableRenderedOrigin`, `ConsumerComponent.applyPropsUpdate.syncTrustedDomainForUrl`, `ConsumerComponent.applyPropsUpdate.shouldSendPropsToHost`, `ConsumerComponent.applyPropsUpdate.sendPropsUpdateToHost`, `ConsumerComponent.applyPropsUpdate.emitPropsUpdated`, `ConsumerComponent.sendPropsUpdateToHost`, `ConsumerComponent.clone`, `ConsumerComponent.resolveUrl`, `ConsumerComponent.resolveDimensions`, `ConsumerComponent.resolveUrlOrigin`, `ConsumerComponent.syncTrustedDomainForUrl`, `ConsumerComponent.createPropContext.onError`, `ConsumerComponent.resolveContainer`, `ConsumerComponent.checkEligibility`, `ConsumerComponent.prerender`, `ConsumerComponent.createIframeElement`, `ConsumerComponent.open`, `ConsumerComponent.open.assertActive`, `ConsumerComponent.open.buildUrl`, `ConsumerComponent.open.buildBodyParams`, `ConsumerComponent.open.buildWindowName`, `ConsumerComponent.open.submitBodyForm`, `ConsumerComponent.open.onPopupClose`, `ConsumerComponent.open.registerCleanup`, `ConsumerComponent.buildUrl`, `ConsumerComponent.buildBodyParams`, `ConsumerComponent.submitBodyForm`, `ConsumerComponent.buildWindowName`, `ConsumerComponent.waitForHost`, `ConsumerComponent.setupMessageHandlers`, `ConsumerComponent.setupMessageHandlers.onBootstrap`, `ConsumerComponent.setupMessageHandlers.onReconnect`, `ConsumerComponent.setupMessageHandlers.onClose`, `ConsumerComponent.setupMessageHandlers.onResize`, `ConsumerComponent.setupMessageHandlers.onFocus`, `ConsumerComponent.setupMessageHandlers.onShow`, `ConsumerComponent.setupMessageHandlers.onHide`, `ConsumerComponent.setupMessageHandlers.onError`, `ConsumerComponent.setupMessageHandlers.onExport`, `ConsumerComponent.setupMessageHandlers.onConsumerExport`, `ConsumerComponent.setupMessageHandlers.onGetSiblings`, `ConsumerComponent.setupCleanup`, `ConsumerComponent.teardownRenderResources`, `ConsumerComponent.destroy`, `ConsumerComponent.performDestroy`.
 - **M:** `ConsumerComponent.isEligible`, `ConsumerComponent.createPropContext.close`, `ConsumerComponent.createPropContext.focus`.
 - **O callbacks:** `ConsumerComponent.constructor.callback@163`, `ConsumerComponent.constructor.callback@182`, `ConsumerComponent.performRender.callback@314`, `ConsumerComponent.waitForHost.callback@832`.
@@ -201,11 +201,11 @@ Evidence: [render](#evidence-render); typecheck.
 
 ### [core/consumer/siblings.ts](../packages/forgeframe/src/core/consumer/siblings.ts)
 
-Index lookup supplies identities to a data-only peer selection/reference operation.
+Index lookup supplies identities to a data-only peer selection/reference operation. Selection compares each peer's verified host origin with the requester's supplied origin.
 
 - **O:** `selectSiblingInstances`.
 - **I:** `getSiblingInstances`.
-- **O callbacks:** `getSiblingInstances.callback@35`.
+- **O callbacks:** `getSiblingInstances.callback@42`.
 
 Evidence: [consumer](#evidence-consumer); typecheck.
 
@@ -269,7 +269,7 @@ Evidence: [host](#evidence-host); typecheck.
 
 ### [core/host/consumer-origin-policy.ts](../packages/forgeframe/src/core/host/consumer-origin-policy.ts)
 
-All trust policy uses supplied origins/options. HTTP(S) messaging bootstrap context is provisional until verified. A changed accessible/referrer origin wins over old verification.
+All trust policy uses supplied origins/options. HTTP(S) messaging bootstrap context is provisional until verified. A changed accessible origin wins over old verification.
 
 - **O:** `assertAllowedConsumerDomain`, `selectConsumerSecurityContext`, `validateMessagingConsumerContext`, `selectObservedConsumerContext`, `assertVerifiedConsumerContext`.
 
@@ -290,10 +290,10 @@ Evidence: [host](#evidence-host); typecheck.
 
 ### [core/host/security.ts](../packages/forgeframe/src/core/host/security.ts)
 
-Browser observations are distinct from policy. Reassertion retains messenger trust rotation before allowlist enforcement, including the existing failure path.
+Browser observations are distinct from policy. Only a directly accessible consumer origin is verified evidence; the referrer is not observed. Reassertion retains messenger trust rotation before allowlist enforcement, including the existing failure path.
 
-- **O:** `resolveConsumerWindow`, `getReferrerOrigin`, `getAccessibleConsumerOrigin`.
-- **I:** `getVerifiedConsumerOrigin`, `resolveConsumerSecurityContext`, `resolveMessagingConsumerContext`, `reassertAllowedConsumerDomain`.
+- **O:** `resolveConsumerWindow`, `getAccessibleConsumerOrigin`.
+- **I:** `resolveConsumerSecurityContext`, `resolveMessagingConsumerContext`, `reassertAllowedConsumerDomain`.
 
 Evidence: [host](#evidence-host); typecheck.
 
@@ -482,10 +482,10 @@ Evidence: [props](#evidence-props); typecheck.
 
 ### [props/schema.ts](../packages/forgeframe/src/props/schema.ts)
 
-Standard Schema detection, issue-path formatting and invoking a supplied schema are validation boundary operations; sync/async rejection and error text remain intact. The internal `isAsyncSchemaResult` operation observes unsupported promises across realms without awaiting validation, so direct/nested validation and normalization default/output probes cannot leak rejected results. Its catch callback discards the refused result; the existing synchronous error remains authoritative.
+Standard Schema detection (including callable schemas such as ArkType types), issue-path formatting and invoking a supplied schema are validation boundary operations; sync/async rejection and error text remain intact. The internal `isAsyncSchemaResult` operation observes unsupported promises across realms without awaiting validation, so direct/nested validation and normalization default/output probes cannot leak rejected results. Its catch callback discards the refused result; the existing synchronous error remains authoritative.
 
 - **O:** `isStandardSchema`, `isAsyncSchemaResult`, `validateWithSchema`, `formatIssuePath`.
-- **O callbacks:** `validateWithSchema.callback@261`, `formatIssuePath.callback@288`.
+- **O callbacks:** `validateWithSchema.callback@265`, `formatIssuePath.callback@292`.
 
 Evidence: [props](#evidence-props); typecheck.
 

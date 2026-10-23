@@ -612,6 +612,11 @@ export class ConsumerComponent<
 		return this.destroyed;
 	}
 
+	/** Returns the browser-verified origin of the connected host window, if any. @internal */
+	getVerifiedHostDomain(): string | null {
+		return this.transport.activeHostDomain;
+	}
+
 	/**
 	 * Checks if the component is eligible to render based on the eligible option.
 	 *

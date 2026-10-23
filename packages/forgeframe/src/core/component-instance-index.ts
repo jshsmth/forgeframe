@@ -9,10 +9,17 @@
 
 import type { ForgeFrameComponentInstance } from "../types/runtime";
 
+/** Internal accessors the index requires in addition to the public instance API. @internal */
+export interface IndexedInstanceAccess {
+	/** Browser-verified origin of the connected host window, if any. */
+	getVerifiedHostDomain(): string | null;
+}
+
 export type IndexedComponentInstance = ForgeFrameComponentInstance<
 	Record<string, unknown>,
 	unknown
->;
+> &
+	IndexedInstanceAccess;
 
 const componentInstanceIndexByUid = new Map<
 	string,
@@ -34,7 +41,8 @@ export function indexComponentInstance<
 	SchemaInputs,
 >(
 	tag: string,
-	instance: ForgeFrameComponentInstance<P, X, I, SchemaInputs>,
+	instance: ForgeFrameComponentInstance<P, X, I, SchemaInputs> &
+		IndexedInstanceAccess,
 ): void {
 	const indexedInstance = instance as IndexedComponentInstance;
 	const existing = componentInstanceIndexByUid.get(indexedInstance.uid);

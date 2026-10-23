@@ -811,7 +811,7 @@ const peers = await props.getPeerInstances();
 cancel();
 ```
 
-Peer exports preserve data, `Date` values, and nested methods. Methods return promises and are relayed through the shared consumer. Cached methods survive unrelated prop updates. Rediscover peers after a sibling replaces its exports or reconnects; retired methods reject. Peer discovery uses the same bounded function registries as other callbacks.
+Peer discovery returns only peers whose hosts the consumer verified at the requesting host's origin; `anyConsumer: true` adds other component tags at that origin, never hosts from other origins. Peer exports preserve data, `Date` values, and nested methods. Methods return promises and are relayed through the shared consumer. Cached methods survive unrelated prop updates. Rediscover peers after a sibling replaces its exports or reconnects; retired methods reject. Peer discovery uses the same bounded function registries as other callbacks.
 
 <details>
 <summary>Method Reference</summary>
@@ -831,7 +831,7 @@ Peer exports preserve data, `Date` values, and nested methods. Methods return pr
 | `getConsumerDomain()` | Get consumer origin |
 | `consumer.props` | Access consumer's props |
 | `consumer.export()` | Send data to consumer from host context |
-| `getPeerInstances()` | Get peer component instances from the same consumer |
+| `getPeerInstances()` | Get peer component instances from the same consumer and host origin |
 | `children` | Nested component factories provided by consumer (if configured) |
 
 </details>
@@ -1178,7 +1178,7 @@ This guide covers the published `0.2.0` release and earlier `0.x` integrations. 
 
 v1 continues to use bootstrap protocol 2. Only channel metadata persists in `window.name`; props and child references arrive through a handshake that verifies the expected window and exact origin. This prevents a redirected host from reading props through the window name and supports reconnection after reload or navigation.
 
-Upgrade both bundles together where possible. For staged upgrades, deploy hosts first: v1 hosts retain the legacy consumer reader for this migration, while v1 consumers require secure bootstrap and reject older hosts that cannot complete it. This reader remains intentionally bounded to host startup; the consumer must also be upgraded to obtain redirect protection. Marker-shaped records use a new escaped-record envelope, and DOTIFY uses prefixed, JSON-framed path arrays. Do not share such payloads with older decoders. No persisted application data needs conversion unless your application has stored internal ForgeFrame transport payloads; regenerate those from original application values with v1.
+Upgrade both bundles together where possible. For staged upgrades, deploy hosts first: v1 hosts retain the legacy consumer reader for this migration, while v1 consumers require secure bootstrap and reject older hosts that cannot complete it. This reader remains intentionally bounded to host startup; the consumer must also be upgraded to obtain redirect protection. The legacy reader verifies a consumer only when the host can read the consumer window's origin directly, which requires the same origin. `document.referrer` is not consumer evidence, so a cross-origin legacy consumer cannot satisfy `allowedConsumerDomains`: upgrade those consumers before enabling an allowlist. Marker-shaped records use a new escaped-record envelope, and DOTIFY uses prefixed, JSON-framed path arrays. Do not share such payloads with older decoders. No persisted application data needs conversion unless your application has stored internal ForgeFrame transport payloads; regenerate those from original application values with v1.
 
 ### Development and release tooling
 

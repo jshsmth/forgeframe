@@ -13,6 +13,7 @@ import { ConsumerComponent } from "@/core/consumer";
 import { getSiblingInstances } from "@/core/consumer/siblings";
 import { prop } from "@/props/prop";
 import { CleanupManager } from "@/utils/cleanup";
+import { PEER_HOST_DOMAIN, setVerifiedHostDomain } from "../peer-host-domain";
 
 type CloneInternals = {
 	options: {
@@ -252,10 +253,12 @@ describe("Component clone", () => {
 		expect(clonedInternal.resolveUrl()).toBe(
 			"https://one.example.com/component",
 		);
+		setVerifiedHostDomain(PEER_HOST_DOMAIN, original, cloned);
 		expect(
 			getSiblingInstances({
 				uid: original.uid,
 				tag: "clone-options-snapshot",
+				hostDomain: PEER_HOST_DOMAIN,
 			}),
 		).toEqual([
 			expect.objectContaining({
@@ -274,10 +277,12 @@ describe("Component clone", () => {
 		const cloned = original.clone();
 
 		expect(Component.instances).toEqual([original, cloned]);
+		setVerifiedHostDomain(PEER_HOST_DOMAIN, original, cloned);
 		expect(
 			getSiblingInstances({
 				uid: original.uid,
 				tag: "tracked-clone-component",
+				hostDomain: PEER_HOST_DOMAIN,
 			}),
 		).toEqual([
 			{
@@ -294,6 +299,7 @@ describe("Component clone", () => {
 			getSiblingInstances({
 				uid: original.uid,
 				tag: "tracked-clone-component",
+				hostDomain: PEER_HOST_DOMAIN,
 			}),
 		).toEqual([]);
 
@@ -336,6 +342,7 @@ describe("Component clone", () => {
 			});
 			const original = Component();
 			const cloned = original.clone();
+			setVerifiedHostDomain(PEER_HOST_DOMAIN, original, cloned);
 			const events: string[] = [];
 			for (const [name, instance] of [
 				["original", original],
@@ -357,11 +364,23 @@ describe("Component clone", () => {
 
 			await original.close();
 			expect(Component.instances).toEqual([cloned]);
-			expect(getSiblingInstances({ uid: cloned.uid, tag })).toEqual([]);
+			expect(
+				getSiblingInstances({
+					uid: cloned.uid,
+					tag,
+					hostDomain: PEER_HOST_DOMAIN,
+				}),
+			).toEqual([]);
 			await cloned.close();
 			await cloned.close();
 			expect(Component.instances).toEqual([]);
-			expect(getSiblingInstances({ uid: "outside", tag })).toEqual([]);
+			expect(
+				getSiblingInstances({
+					uid: "outside",
+					tag,
+					hostDomain: PEER_HOST_DOMAIN,
+				}),
+			).toEqual([]);
 			expect(events).toEqual([
 				"original:close:true",
 				"original:destroy:false",
@@ -377,11 +396,13 @@ describe("Component clone", () => {
 			url: "https://example.com/direct-clone",
 		});
 		const cloned = original.clone();
+		setVerifiedHostDomain(PEER_HOST_DOMAIN, original, cloned);
 
 		expect(
 			getSiblingInstances({
 				uid: original.uid,
 				tag: "direct-untracked-clone",
+				hostDomain: PEER_HOST_DOMAIN,
 			}),
 		).toEqual([]);
 

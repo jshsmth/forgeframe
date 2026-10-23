@@ -9,12 +9,12 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `bridge.test.ts`: Function bridge serialization/deserialization, remote call dispatch, 500-callback admission, full snapshot replacement, duplicate identity reuse, staged calls, rollback, bounded delivery recovery, append capacity, and reset/teardown.
 - `component-clone.test.ts`: Clone snapshot preservation, lifecycle tracking, peer visibility, global/tag cleanup, and close completion while failed-render teardown is already waiting on cleanup.
 - `component-instance-index.test.ts`: Internal active-instance indexing, reindexing, tag clearing, and peer lookup snapshot behavior.
-- `component.test.ts`: Component creation, registration, instance lifecycle, and host-context detection.
+- `component.test.ts`: Component creation, registration, instance lifecycle, host-context detection, and peer discovery limited to peers at the requester's verified host origin.
 - `component-node-runtime-transition.test.ts`: Component registration across a Node-to-browser runtime transition.
 - `consumer-branch-coverage.test.ts`: Consumer branch/edge-path coverage for domain trust, rendering, and prop-sync internals.
 - `domain-pattern.test.ts`: Wildcard domain compilation cache behavior and stateless `RegExp` trust checks.
 - `dimension.test.ts`: Popup pixel conversion and fallbacks for nonpixel/nonfinite input, with unchanged iframe CSS units.
-- `consumer-lifecycle.test.ts`: Consumer handshake, lifecycle messaging, open/close guards, and update validation.
+- `consumer-lifecycle.test.ts`: Consumer handshake, lifecycle messaging, open/close guards, update validation, and `GET_SIBLINGS` scoping to the requester's own uid/tag and verified host origin regardless of claimed request fields.
 - `consumer-navigation.test.ts`: Relative URL origin admission, declaration/render base changes, pinned destinations, and fragment-bearing navigation.
 - `consumer-props-queue.test.ts`: Disconnected reentrant updates, FIFO failure recovery, render admission draining, matching initial request/bootstrap snapshots, and cancellation.
 - `consumer-renderer.test.ts`: Renderer ownership of iframe/popup resources, loading completion, configured CSS preservation throughout the transition, eager/lazy loading concealment and early visibility controls, custom shell/control preservation, templates, form cleanup after submission failure, mount-document prototypes, and teardown.
@@ -25,7 +25,7 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `host-branch-coverage.test.ts`: Host branch/edge-path coverage for deferred init, failure capture, and guard paths.
 - `host-lifecycle.test.ts`: Host lifecycle message handling, hostProps synchronization, consumer window resolution, consumer-only field discard in legacy bootstrap payloads, same-turn rejected legacy configuration through `initHost()` and matching `create()` with immediate/deferred INIT delivery, atomic late-configuration validation/reconciliation, built-in and snapshot identity, and pending-bootstrap removal persistence.
 - `host-transport.test.ts`: Direct host transport behavior for deferred init scheduling, trust updates, props routing, and teardown.
-- `host-security.test.ts`: Host allowlist enforcement and deferred-init security gating, including rejected late definitions preserving completed legacy hosts while invalidating incomplete messaging bootstrap.
+- `host-security.test.ts`: Host allowlist enforcement and deferred-init security gating, including rejected late definitions preserving completed legacy hosts while invalidating incomplete messaging bootstrap, and legacy payloads that never treat `document.referrer` as consumer identity.
 - `iframe.test.ts`: Iframe creation, reserved-attribute guards, visibility, and sizing helpers.
 - `iframe-configuration.test.ts`: Pure CSS and boolean/string attribute encoding rules.
 - `index-side-effect-free.test.ts`: Public entrypoint import stays side-effect-free until `initHost()` is called explicitly in ForgeFrame-shaped host windows.
@@ -48,7 +48,7 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `react-driver-lifecycle.test.ts`: Focused lifecycle fault injection for stale completion/rejection isolation, cleanup ordering, unavailable mounts, and context changes. Public refs and observer behavior are covered by `react-host-sync.test.ts`.
 - `react-driver-prop-sync.test.ts`: Focused queue fault injection for failed acknowledgement recovery, equivalent in-flight/queued commit retries, and throwing observers. Public FIFO, omission, and validation behavior are covered by `react-host-sync.test.ts`.
 - `react-prop-queue.test.ts`: Queue acknowledgement, explicitly requested retries, and reset payload rules without mounting React.
-- `schema-interoperability.test.ts`: Interoperability coverage for minimal Standard Schema shapes and optional metadata.
+- `schema-interoperability.test.ts`: Interoperability coverage for minimal Standard Schema shapes, callable (ArkType-style) schemas through validation and render admission, and optional metadata.
 - `schema-contract.test.ts`: Contract coverage against real schema libraries (Zod and Valibot).
 - `schema-path-format.test.ts`: Error path formatting behavior for mixed key/index Standard Schema segments.
 - `schema.test.ts`: Standard Schema detection and schema-aware prop validation integration, and observation of unsupported rejected native/foreign promises in direct and nested schemas.
@@ -80,7 +80,7 @@ All unit tests and shared fixtures are strictly compiled by `npm run typecheck`,
 - `consumer-host-handshake.test.ts`: End-to-end iframe happy path covering `create()`, `instance.render()`, `initHost()`, and the real INIT handshake, plus oversized bootstrap metadata rejection followed by a valid retry.
 - `cross-realm-props.test.ts`: Foreign-window Date and record inputs round-trip through props and exports across JSON, BASE64 and DOTIFY.
 - `function-prop-bridge.test.ts`: Capacity rejection/recovery across all codecs, omitted callback defaults, a genuinely dropped acknowledgement with receiver-installed callbacks, and real cross-window callback bridging from host `window.hostProps` back to consumer callbacks, including async results, thrown errors, BASE64/DOTIFY nested callback/Date bootstrap and updates, and retirement of replaced callbacks after acknowledged updates in all three serialization modes.
-- `host-controls-routing.test.ts`: Atomic export/peer-capacity rejection, held-reference recovery, and real host-builtins coverage for close/focus/resize/show/hide/error/export/peer lookup, plus spoofed-source rejection on consumer and host runtimes.
+- `host-controls-routing.test.ts`: Atomic export/peer-capacity rejection, held-reference recovery, and real host-builtins coverage for close/focus/resize/show/hide/error/export/peer lookup, peer exclusion across verified host origins, plus spoofed-source rejection on consumer and host runtimes.
 - `object-prop-roundtrip.test.ts`: Ordinary BASE64/DOTIFY/function-shaped records retain user fields through bootstrap and updates in all three serialization modes, including direct and nested DOTIFY branches converted by custom JSON encoders.
 - `popup-host-handshake.test.ts`: End-to-end popup happy path and popup-blocked failure coverage through `render(..., 'popup')` and `initHost()`.
 - `props-alias-sync.test.ts`: End-to-end canonical host synchronization for initial, updated, and chained alias values.
@@ -96,7 +96,7 @@ All integration test files and their shared harness are checked by `npm run type
 
 Install the engines with `npx playwright install chromium firefox webkit`, then run `npm run test:browser` from the repository root. CI installs browser system dependencies and runs all three engines on Node 24. WebKit supplies automated Safari-engine coverage; these tests do not establish physical Safari/device acceptance.
 
-`peer-exports.spec.ts` runs real same-origin sibling hosts under a separate consumer origin in all three engines. It verifies nested callable exports and dates, prop-update independence, propagated errors, retirement/replacement of exports, and discovery across component tags.
+`peer-exports.spec.ts` runs real same-origin sibling hosts under a separate consumer origin in all three engines. It verifies nested callable exports and dates, prop-update independence, propagated errors, retirement/replacement of exports, discovery across component tags, and that hosts on another origin neither see nor are seen as peers. Unit and integration peer fixtures use `tests/peer-host-domain.ts` to mark unrendered instances as connected at a verified host origin.
 
 `playground-text.spec.ts` builds both real playground pages and the consumer logger. Cross-origin iframe/popup tests verify literal markup-shaped prop names and values, greeting logs, updates, and export controls. Omitted popup dimensions are verified as a 500 × 500 viewport in all three engines. The consumer editor also exercises the physical blur-to-Set click sequence, copied-code refresh, and render/close control states. Its Add Prop controls reject reserved names, then accept a valid addition that renders and reaches the host.
 
@@ -110,7 +110,7 @@ The suite also renders two same-tag widgets concurrently against the same host o
 
 ## Type Tests (`packages/forgeframe/tests/typecheck`)
 
-- `component-inference.typecheck.ts`: Compile-time assertions for inferred and explicit schema-backed component props, third-party schemas, callbacks, and typed children.
+- `component-inference.typecheck.ts`: Compile-time assertions for inferred and explicit schema-backed component props, third-party and callable schemas, callbacks, and typed children.
 - `events.typecheck.ts`: Typed event handlers preserve compatible registration and removal contracts and reject incompatible explicit types.
 - `host.typecheck.ts`: Host initialization and host-prop schema input/output contracts.
 - `remote-values.typecheck.ts`: Promise-returning remote callbacks and exports, nested data shapes, and unchanged local callback inputs.

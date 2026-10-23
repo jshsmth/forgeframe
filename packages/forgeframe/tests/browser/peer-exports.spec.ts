@@ -5,6 +5,7 @@ import { build } from "vite";
 
 let consumerOrigin: string;
 let hostOrigin: string;
+let foreignHostOrigin: string;
 const servers: Server[] = [];
 
 async function listen(server: Server): Promise<string> {
@@ -43,25 +44,26 @@ test.beforeAll(async () => {
 			);
 		}),
 	);
-	hostOrigin = await listen(
-		createServer((req, res) => {
-			if (req.url === "/library.js")
-				return serve(res, bundle, "text/javascript");
-			if (req.url === "/capacity") {
-				return serve(
-					res,
-					`<!doctype html><script type="module">
+	const serveHost = (
+		req: import("node:http").IncomingMessage,
+		res: import("node:http").ServerResponse,
+	) => {
+		if (req.url === "/library.js") return serve(res, bundle, "text/javascript");
+		if (req.url === "/capacity") {
+			return serve(
+				res,
+				`<!doctype html><script type="module">
 				import {initHost,prop} from '/library.js';
 				const host = initHost({callbacks:prop.record(prop.function()),onDefault:prop.function()}, ['${consumerOrigin}']);
 				await host.ready;
 				window.props = host.hostProps;
 				window.ready = true;
 				</script>`,
-				);
-			}
-			serve(
-				res,
-				`<!doctype html><script type="module">
+			);
+		}
+		serve(
+			res,
+			`<!doctype html><script type="module">
 		import {initHost,prop} from '/library.js';
 		const host = initHost({label:prop.string(),onRun:prop.function()}, ['${consumerOrigin}']);
 		await host.ready;
@@ -74,9 +76,11 @@ test.beforeAll(async () => {
 		});
 		window.ready = true;
 		</script>`,
-			);
-		}),
-	);
+		);
+	};
+	hostOrigin = await listen(createServer(serveHost));
+	// A distinct port is a distinct origin serving the same host page.
+	foreignHostOrigin = await listen(createServer(serveHost));
 });
 
 test.afterAll(async () => {
@@ -262,6 +266,90 @@ test("peer exports retain callable methods and dates across independent prop upd
 		{ tag: "browser-peer-exports", result: "replacement:fresh" },
 		{ tag: "browser-other-peer", result: "other:fresh" },
 	]);
+});
+
+test("peer discovery does not expose exports across host origins", async ({
+	page,
+}) => {
+	await page.goto(consumerOrigin);
+	await page.evaluate(
+		async ({ hostOrigin, foreignHostOrigin }) => {
+			const libraryUrl = "/library.js";
+			const library: typeof import("../../src/index") = await import(
+				libraryUrl
+			);
+			const { create, prop } = library;
+			const props = {
+				label: prop.string(),
+				onRun: prop.function<(value: string) => string>(),
+			};
+			const Local = create({
+				tag: "browser-origin-local",
+				url: `${hostOrigin}/host`,
+				props,
+			});
+			const Foreign = create({
+				tag: "browser-origin-foreign",
+				url: `${foreignHostOrigin}/host`,
+				props,
+			});
+			await Promise.all([
+				Local({
+					label: "requester",
+					onRun: (value: string) => `requester:${value}`,
+				}).render("#requester"),
+				Local({
+					label: "sibling",
+					onRun: (value: string) => `sibling:${value}`,
+				}).render("#sibling"),
+				Foreign({
+					label: "foreign",
+					onRun: (value: string) => `foreign:${value}`,
+				}).render("#other"),
+			]);
+		},
+		{ hostOrigin, foreignHostOrigin },
+	);
+	const frameFor = async (selector: string) => {
+		const frame = await (
+			await page.locator(`${selector} iframe`).elementHandle()
+		)?.contentFrame();
+		if (!frame) throw new Error(`Missing ${selector} frame`);
+		await frame.waitForFunction(
+			() => (window as unknown as { ready: boolean }).ready,
+		);
+		return frame;
+	};
+	const requester = await frameFor("#requester");
+	await frameFor("#sibling");
+	const foreign = await frameFor("#other");
+	const discover = () =>
+		(
+			window as unknown as {
+				props: {
+					getPeerInstances(options?: { anyConsumer: boolean }): Promise<
+						Array<{
+							tag: string;
+							exports?: { nested: { run(value: string): Promise<string> } };
+						}>
+					>;
+				};
+			}
+		).props
+			.getPeerInstances({ anyConsumer: true })
+			.then((peers) =>
+				Promise.all(
+					peers.map(async (peer) => ({
+						tag: peer.tag,
+						result: await peer.exports?.nested.run("probe"),
+					})),
+				),
+			);
+
+	expect(await requester.evaluate(discover)).toEqual([
+		{ tag: "browser-origin-local", result: "sibling:probe" },
+	]);
+	expect(await foreign.evaluate(discover)).toEqual([]);
 });
 
 for (const codec of ["JSON", "BASE64", "DOTIFY"] as const) {

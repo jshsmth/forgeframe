@@ -690,7 +690,8 @@ export interface SiblingInfo {
 export interface GetPeerInstancesOptions {
 	/**
 	 * If true, include peers from all registered component tags in the current
-	 * consumer context.
+	 * consumer context. Peers must still be hosted at the requester's verified
+	 * origin.
 	 * @defaultValue false
 	 */
 	anyConsumer?: boolean;
@@ -801,6 +802,8 @@ export interface HostPropsBuiltins<P = Record<string, unknown>> {
 	 * @remarks
 	 * Peer instances are other ForgeFrame component instances that share the same
 	 * consumer window. This enables communication between multiple embedded components.
+	 * Only peers whose hosts the consumer verified at this host's origin are
+	 * returned, so exports never cross host origins.
 	 * Exported methods are relayed through the consumer and return promises.
 	 * Rediscover peers after a sibling replaces its exports or reconnects; retired
 	 * methods reject. Unrelated prop updates do not retire cached peer methods.
