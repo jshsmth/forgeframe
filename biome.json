@@ -12,7 +12,8 @@
 			"!!**/dist",
 			"!!**/dist-ssr",
 			"!!**/coverage",
-			"!!**/package-lock.json"
+			"!!**/package-lock.json",
+			"!!skills-lock.json"
 		]
 	},
 	"formatter": {
