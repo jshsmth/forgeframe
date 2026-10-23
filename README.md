@@ -811,7 +811,7 @@ const peers = await props.getPeerInstances();
 cancel();
 ```
 
-Peer discovery returns only peers whose hosts the consumer verified at the requesting host's origin; `anyConsumer: true` adds other component tags at that origin, never hosts from other origins. Peer exports preserve data, `Date` values, and nested methods. Methods return promises and are relayed through the shared consumer. Cached methods survive unrelated prop updates. Rediscover peers after a sibling replaces its exports or reconnects; retired methods reject. Peer discovery uses the same bounded function registries as other callbacks.
+Peer discovery returns only peers whose hosts the consumer verified at the requesting host's origin; `anyConsumer: true` adds other component tags at that origin. To share a component's instances with hosts on other origins, such as sibling subdomains, list those origins in its `peerDomains` option. Hosts with an opaque origin, such as sandboxed frames without `allow-same-origin`, have no peers. A peer appears only after its host completes the handshake, so rediscover peers if one may still be loading. Peer exports preserve data, `Date` values, and nested methods. Methods return promises and are relayed through the shared consumer. Cached methods survive unrelated prop updates. Rediscover peers after a sibling replaces its exports or reconnects; retired methods reject. Peer discovery uses the same bounded function registries as other callbacks.
 
 <details>
 <summary>Method Reference</summary>
@@ -1230,6 +1230,7 @@ interface ComponentOptions<P, I = P, SchemaInputs = I> {
   prerenderTemplate?: (ctx: TemplateContext<P>) => HTMLElement | null;
   domain?: DomainMatcher;                 // Consumer-side trusted host origins
   allowedConsumerDomains?: DomainMatcher; // Host-side allowed consumer origins
+  peerDomains?: DomainMatcher;            // Other host origins that may discover these instances as peers
   eligible?: (opts: { props: P }) => { eligible: boolean; reason?: string };
   validate?: (opts: { props: P }) => void;
   attributes?: IframeAttributes | ((props: P) => IframeAttributes);

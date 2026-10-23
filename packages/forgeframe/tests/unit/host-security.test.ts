@@ -56,6 +56,16 @@ function createAccessibleConsumerWindow(origin: string): Window {
 	return { location: { origin }, postMessage: vi.fn() } as unknown as Window;
 }
 
+/** Creates a cross-origin consumer window whose location the browser hides. */
+function createInaccessibleConsumerWindow(): Window {
+	return {
+		postMessage: vi.fn(),
+		get location() {
+			throw new Error("Cross-origin");
+		},
+	} as unknown as Window;
+}
+
 function dispatchConsumerMessage(
 	name: string,
 	sourceWindow: Window,
@@ -418,11 +428,7 @@ describe("Host security", () => {
 	});
 
 	it("should reject host initialization when consumer origin cannot be verified for an allowlist", () => {
-		const inaccessibleConsumerWindow = {
-			get location() {
-				throw new Error("Cross-origin");
-			},
-		} as unknown as Window;
+		const inaccessibleConsumerWindow = createInaccessibleConsumerWindow();
 
 		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
 			inaccessibleConsumerWindow,
@@ -512,12 +518,7 @@ describe("Host security", () => {
 	it.each(["legacy", "messaging"])(
 		"does not relax required sameDomain props for unverified %s bootstrap with deferred INIT",
 		(bootstrap) => {
-			const inaccessibleConsumerWindow = {
-				postMessage: vi.fn(),
-				get location() {
-					throw new Error("Cross-origin");
-				},
-			} as unknown as Window;
+			const inaccessibleConsumerWindow = createInaccessibleConsumerWindow();
 
 			vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
 				inaccessibleConsumerWindow,
@@ -581,11 +582,7 @@ describe("Host security", () => {
 	);
 
 	it("should reject allowlist rechecks when the existing host never verified the consumer origin", () => {
-		const inaccessibleConsumerWindow = {
-			get location() {
-				throw new Error("Cross-origin");
-			},
-		} as unknown as Window;
+		const inaccessibleConsumerWindow = createInaccessibleConsumerWindow();
 
 		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
 			inaccessibleConsumerWindow,
@@ -819,12 +816,7 @@ describe("Host security", () => {
 });
 
 describe("Legacy payload consumer identity", () => {
-	const inaccessibleConsumerWindow = {
-		postMessage: vi.fn(),
-		get location() {
-			throw new Error("Cross-origin");
-		},
-	} as unknown as Window;
+	const inaccessibleConsumerWindow = createInaccessibleConsumerWindow();
 
 	function writeLegacyPayload(consumerDomain: string): void {
 		window.name = buildWindowName({
@@ -899,11 +891,9 @@ describe("Host security helpers", () => {
 
 	it("should notify when the verified consumer domain changes during reassertion", () => {
 		const onConsumerDomainChange = vi.fn();
-		const consumerWindow = {
-			location: {
-				origin: "https://verified.example.com",
-			},
-		} as unknown as Window;
+		const consumerWindow = createAccessibleConsumerWindow(
+			"https://verified.example.com",
+		);
 
 		const context = hostSecurity.reassertAllowedConsumerDomain({
 			consumerWindow,

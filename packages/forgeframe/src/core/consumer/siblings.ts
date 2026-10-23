@@ -7,7 +7,8 @@
  * sibling consumer instances without keeping that logic inside the façade.
  */
 
-import type { GetPeerInstancesOptions, SiblingInfo } from "../../types/runtime";
+import type { SiblingInfo } from "../../types/runtime";
+import { matchDomain } from "../../window/helpers";
 import {
 	getComponentInstancesByTag,
 	getIndexedComponentInstances,
@@ -26,7 +27,8 @@ export interface ConsumerSiblingRequest {
 	tag: string;
 	/** Browser-verified origin of the requesting host window. */
 	hostDomain: string;
-	options?: GetPeerInstancesOptions;
+	/** Include peers from all component tags, as normalized by the transport. */
+	anyConsumer?: boolean;
 }
 
 /**
@@ -36,20 +38,26 @@ export interface ConsumerSiblingRequest {
 export function getSiblingInstances(
 	request: ConsumerSiblingRequest,
 ): SiblingInfo[] {
-	const indexed =
-		request.options?.anyConsumer === true
-			? getIndexedComponentInstances()
-			: getComponentInstancesByTag(request.tag).map((instance) => ({
-					tag: request.tag,
-					instance,
-				}));
+	const indexed = request.anyConsumer
+		? getIndexedComponentInstances()
+		: getComponentInstancesByTag(request.tag).map((instance) => ({
+				tag: request.tag,
+				instance,
+			}));
 	return selectSiblingInstances(indexed, request.uid, request.hostDomain);
 }
 
+/** Serialized origin of opaque documents, such as sandboxed frames without `allow-same-origin`. */
+const OPAQUE_ORIGIN = "null";
+
 /**
  * Selects peer snapshots from supplied indexed instances, excluding the
- * requesting identity and peers whose verified host origin differs from the
- * requester's, so exports never cross host origins.
+ * requesting identity, unconnected peers, and peers whose verified host origin
+ * differs from the requester's unless the peer's `peerDomains` admit it.
+ *
+ * @remarks
+ * Every opaque origin serializes as `"null"` but is distinct from all others,
+ * so an opaque requester has no peers, even when `peerDomains` would match.
  * @internal
  */
 export function selectSiblingInstances(
@@ -57,10 +65,18 @@ export function selectSiblingInstances(
 	requestingUid: string,
 	requestingHostDomain: string,
 ): SiblingInfo[] {
+	if (requestingHostDomain === OPAQUE_ORIGIN) return [];
 	const siblings: SiblingInfo[] = [];
 	for (const { tag, instance } of indexed) {
 		if (instance.uid === requestingUid) continue;
-		if (instance.getVerifiedHostDomain() !== requestingHostDomain) continue;
+		const peerHostDomain = instance.getVerifiedHostDomain();
+		if (peerHostDomain === null) continue;
+		const peerDomains = instance.getPeerDomains();
+		if (
+			peerHostDomain !== requestingHostDomain &&
+			!(peerDomains && matchDomain(peerDomains, requestingHostDomain))
+		)
+			continue;
 		siblings.push({ uid: instance.uid, tag, exports: instance.exports });
 	}
 	return siblings;

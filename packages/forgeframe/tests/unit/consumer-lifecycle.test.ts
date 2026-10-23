@@ -734,6 +734,92 @@ describe("Consumer lifecycle behavior", () => {
 		);
 	});
 
+	it("should give opaque-origin hosts no peers even when both report the null origin", async () => {
+		const OpaqueComponent = create({
+			tag: "peer-scope-opaque",
+			url: "https://host.example.com/opaque",
+			domain: "*",
+		});
+		const requester = OpaqueComponent();
+		const otherProvider = OpaqueComponent();
+		otherProvider.exports = { secret: "other-provider" };
+		// Sandboxed frames without allow-same-origin all serialize as "null".
+		setVerifiedHostDomain("null", requester, otherProvider);
+
+		const internal = getInternals(
+			requester as unknown as ConsumerComponent<Record<string, unknown>>,
+		);
+		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+		internal.transport.hostWindow = hostWindow;
+
+		for (const options of [undefined, { anyConsumer: true }]) {
+			dispatchHostMessage(MESSAGE_NAME.GET_SIBLINGS, hostWindow, {
+				data: { options },
+				origin: "null",
+				claimedUid: requester.uid,
+			});
+			await flushMessages();
+
+			expect(readResponseData(hostWindow)).toEqual([]);
+		}
+
+		await Promise.all([requester.close(), otherProvider.close()]);
+	});
+
+	it("should treat malformed GET_SIBLINGS data as a same-tag lookup", async () => {
+		const PeerComponent = create({
+			tag: "peer-scope-malformed",
+			url: "https://host.example.com/peer",
+		});
+		const OtherComponent = create({
+			tag: "peer-scope-malformed-other",
+			url: "https://host.example.com/other",
+		});
+		const requester = PeerComponent();
+		const sibling = PeerComponent();
+		const otherTag = OtherComponent();
+		sibling.exports = { id: "sibling" };
+		otherTag.exports = { id: "other-tag" };
+		setVerifiedHostDomain(
+			"https://host.example.com",
+			requester,
+			sibling,
+			otherTag,
+		);
+
+		const consumer = requester as unknown as ConsumerComponent<
+			Record<string, unknown>
+		>;
+		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+		getInternals(consumer).transport.hostWindow = hostWindow;
+		const handler = requireValue(
+			getHandlers(consumer).get(MESSAGE_NAME.GET_SIBLINGS),
+		);
+
+		for (const data of [
+			null,
+			undefined,
+			"options",
+			42,
+			{ options: null },
+			{ options: { anyConsumer: "yes" } },
+		]) {
+			await expect(
+				Promise.resolve(handler(data, createMessageSource(hostWindow))),
+			).resolves.toEqual([
+				{
+					uid: sibling.uid,
+					tag: "peer-scope-malformed",
+					exports: { id: "sibling" },
+				},
+			]);
+		}
+
+		await Promise.all(
+			[requester, sibling, otherTag].map((instance) => instance.close()),
+		);
+	});
+
 	it("should throw when open is called in iframe context without prerender iframe", async () => {
 		const consumer = createConsumer();
 		getInternals(consumer).renderer.context = CONTEXT.IFRAME;

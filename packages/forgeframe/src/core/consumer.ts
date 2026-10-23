@@ -27,7 +27,7 @@ import type {
 	ForgeFrameComponentInstance,
 	RemoteValue,
 } from "../types/runtime";
-import type { Dimensions } from "../types/utility";
+import type { Dimensions, DomainMatcher } from "../types/utility";
 import { CleanupManager } from "../utils/cleanup";
 import { createDeferred, type Deferred } from "../utils/promise";
 import { generateUID } from "../utils/uid";
@@ -615,6 +615,11 @@ export class ConsumerComponent<
 	/** Returns the browser-verified origin of the connected host window, if any. @internal */
 	getVerifiedHostDomain(): string | null {
 		return this.transport.activeHostDomain;
+	}
+
+	/** Returns other host origins allowed to discover this instance as a peer. @internal */
+	getPeerDomains(): DomainMatcher | undefined {
+		return this.options.peerDomains;
 	}
 
 	/**

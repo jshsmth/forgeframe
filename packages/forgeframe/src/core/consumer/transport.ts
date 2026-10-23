@@ -443,7 +443,7 @@ export class ConsumerTransport<
 					uid: this.uid,
 					tag: this.options.tag,
 					hostDomain: source.domain,
-					options: { anyConsumer: request?.options?.anyConsumer === true },
+					anyConsumer: request?.options?.anyConsumer === true,
 				});
 				this.peerBridge.startBatch("append");
 				try {

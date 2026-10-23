@@ -624,7 +624,7 @@ describe("Component Creation", () => {
 				uid: healthyInstance.uid,
 				tag: "resolver-close-unregistered-healthy-component",
 				hostDomain: PEER_HOST_DOMAIN,
-				options: { anyConsumer: true },
+				anyConsumer: true,
 			}).some((sibling) => sibling.uid === leakedInstance.uid),
 		).toBe(false);
 
@@ -2259,7 +2259,7 @@ describe("Host Context Detection", () => {
 				uid: alphaPrimary.uid,
 				tag: "peer-alpha",
 				hostDomain: PEER_HOST_DOMAIN,
-				options: { anyConsumer: true },
+				anyConsumer: true,
 			});
 
 			expect(sameTagSiblings).toEqual([
@@ -2326,7 +2326,7 @@ describe("Host Context Detection", () => {
 					uid: requester.uid,
 					tag: "peer-origin-alpha",
 					hostDomain: PEER_HOST_DOMAIN,
-					options: { anyConsumer },
+					anyConsumer,
 				}).map((sibling) => sibling.uid);
 
 				expect(uids).toContain(sameOrigin.uid);
@@ -2345,6 +2345,49 @@ describe("Host Context Detection", () => {
 					unconnected,
 					sameOriginOtherTag,
 				].map((instance) => instance.close()),
+			);
+		});
+
+		it("should let a component admit other host origins through peerDomains", async () => {
+			const SharedComponent = create({
+				tag: "peer-domains-shared",
+				url: "https://widgets-a.myapp.example/widget",
+				domain: "https://*.myapp.example",
+				peerDomains: "https://*.myapp.example",
+			});
+			const PrivateComponent = create({
+				tag: "peer-domains-private",
+				url: "https://widgets-a.myapp.example/private",
+				domain: "https://*.myapp.example",
+			});
+
+			const requester = SharedComponent({});
+			const sharedPeer = SharedComponent({});
+			const privatePeer = PrivateComponent({});
+			setVerifiedHostDomain("https://widgets-a.myapp.example", requester);
+			setVerifiedHostDomain(
+				"https://widgets-b.myapp.example",
+				sharedPeer,
+				privatePeer,
+			);
+			const lookup = (hostDomain: string) =>
+				getSiblingInstances({
+					uid: requester.uid,
+					tag: "peer-domains-shared",
+					hostDomain,
+					anyConsumer: true,
+				}).map((sibling) => sibling.uid);
+
+			expect(lookup("https://widgets-a.myapp.example")).toEqual([
+				sharedPeer.uid,
+			]);
+			expect(lookup("https://evil.example.com")).toEqual([]);
+			expect(lookup("null")).toEqual([]);
+
+			await Promise.all(
+				[requester, sharedPeer, privatePeer].map((instance) =>
+					instance.close(),
+				),
 			);
 		});
 
@@ -2402,7 +2445,7 @@ describe("Host Context Detection", () => {
 				uid: alphaPrimary.uid,
 				tag: "peer-index-unregister-alpha",
 				hostDomain: PEER_HOST_DOMAIN,
-				options: { anyConsumer: true },
+				anyConsumer: true,
 			});
 			expect(
 				siblingsBeforeUnregister.some(
@@ -2416,7 +2459,7 @@ describe("Host Context Detection", () => {
 				uid: alphaPrimary.uid,
 				tag: "peer-index-unregister-alpha",
 				hostDomain: PEER_HOST_DOMAIN,
-				options: { anyConsumer: true },
+				anyConsumer: true,
 			});
 			expect(
 				siblingsAfterUnregister.some(

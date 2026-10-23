@@ -9,12 +9,12 @@ This index documents what each ForgeFrame test file validates and the naming con
 - `bridge.test.ts`: Function bridge serialization/deserialization, remote call dispatch, 500-callback admission, full snapshot replacement, duplicate identity reuse, staged calls, rollback, bounded delivery recovery, append capacity, and reset/teardown.
 - `component-clone.test.ts`: Clone snapshot preservation, lifecycle tracking, peer visibility, global/tag cleanup, and close completion while failed-render teardown is already waiting on cleanup.
 - `component-instance-index.test.ts`: Internal active-instance indexing, reindexing, tag clearing, and peer lookup snapshot behavior.
-- `component.test.ts`: Component creation, registration, instance lifecycle, host-context detection, and peer discovery limited to peers at the requester's verified host origin.
+- `component.test.ts`: Component creation, registration, instance lifecycle, host-context detection, and peer discovery limited to peers at the requester's verified host origin unless a peer's `peerDomains` admit the requester.
 - `component-node-runtime-transition.test.ts`: Component registration across a Node-to-browser runtime transition.
 - `consumer-branch-coverage.test.ts`: Consumer branch/edge-path coverage for domain trust, rendering, and prop-sync internals.
 - `domain-pattern.test.ts`: Wildcard domain compilation cache behavior and stateless `RegExp` trust checks.
 - `dimension.test.ts`: Popup pixel conversion and fallbacks for nonpixel/nonfinite input, with unchanged iframe CSS units.
-- `consumer-lifecycle.test.ts`: Consumer handshake, lifecycle messaging, open/close guards, update validation, and `GET_SIBLINGS` scoping to the requester's own uid/tag and verified host origin regardless of claimed request fields.
+- `consumer-lifecycle.test.ts`: Consumer handshake, lifecycle messaging, open/close guards, update validation, and `GET_SIBLINGS` scoping to the requester's own uid/tag and verified host origin regardless of claimed or malformed request fields, with no peers for opaque (`"null"`) origins.
 - `consumer-navigation.test.ts`: Relative URL origin admission, declaration/render base changes, pinned destinations, and fragment-bearing navigation.
 - `consumer-props-queue.test.ts`: Disconnected reentrant updates, FIFO failure recovery, render admission draining, matching initial request/bootstrap snapshots, and cancellation.
 - `consumer-renderer.test.ts`: Renderer ownership of iframe/popup resources, loading completion, configured CSS preservation throughout the transition, eager/lazy loading concealment and early visibility controls, custom shell/control preservation, templates, form cleanup after submission failure, mount-document prototypes, and teardown.

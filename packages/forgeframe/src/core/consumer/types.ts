@@ -19,6 +19,7 @@ export interface NormalizedOptions<
 	timeout: number;
 	domain?: ComponentOptions<P>["domain"];
 	allowedConsumerDomains?: ComponentOptions<P>["allowedConsumerDomains"];
+	peerDomains?: ComponentOptions<P>["peerDomains"];
 	containerTemplate?: ComponentOptions<P>["containerTemplate"];
 	prerenderTemplate?: ComponentOptions<P>["prerenderTemplate"];
 	eligible?: ComponentOptions<P>["eligible"];
