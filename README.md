@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/forgeframe.svg)](https://www.npmjs.com/package/forgeframe)
 [![GitHub Release](https://img.shields.io/github/v/release/jshsmth/ForgeFrame)](https://github.com/jshsmth/ForgeFrame/releases)
 
-A TypeScript-first framework for embedding cross-domain iframes and popups with seamless communication. Pass data and callbacks across domains for payment forms, auth widgets, third-party integrations, and micro-frontends. Zero runtime dependencies with an ESM build.
+A TypeScript library for embedding cross-domain iframes and popups. The embedding page passes typed data and callbacks to a page on another origin, such as a payment form, sign-in widget, third-party integration, or micro-frontend. No runtime dependencies; ships as an ESM build.
 
 ## Used By
 
@@ -11,60 +11,54 @@ A TypeScript-first framework for embedding cross-domain iframes and popups with 
   <img src="https://raw.githubusercontent.com/jshsmth/forgeframe/main/docs/assets/tyro-health-used-by.png" alt="Tyro Health" width="220">
 </a>
 
-### Terminology
+## Terminology
 
-ForgeFrame involves two sides:
+Every integration has two sides:
 
-**Consumer** — The outer app that renders the iframe and passes props into it
+- **Consumer**: the outer app. It renders the iframe or popup and passes props into it.
+- **Host**: the inner app running in the iframe or popup. It reads those props from `window.hostProps`.
 
-**Host** — The inner app running inside the iframe that receives props via `window.hostProps`
-
-#### Real-world example
-
-Imagine a payment company (like Stripe) wants to let merchants embed a checkout form:
+For example, a payment provider lets merchants embed its checkout form:
 
 | | Consumer | Host |
 |--|----------|------|
-| **Who builds it** | Merchant (e.g., `shop.com`) | Payment company (e.g., `stripe.com`) |
-| **What they do** | Embeds the checkout, receives `onSuccess` | Provides the checkout UI, calls `onSuccess` when paid |
-| **Their domain** | `shop.com` | `stripe.com` |
+| **Built by** | The merchant | The payment provider |
+| **Origin** | `https://shop.example.com` | `https://pay.example.com` |
+| **Role** | Embeds the checkout and handles `onSuccess` | Renders the checkout UI and calls `onSuccess` after payment |
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Consumer (merchant's site - shop.com)                          │
+│  Consumer (merchant site, shop.example.com)                     │
 │                                                                 │
 │  Checkout({ amount: 99, onSuccess: (payment) => {               │
-│    // Payment complete! Fulfill the order                       │
+│    // Fulfill the order                                         │
 │  }}).render('#checkout-container');                             │
 │                         │                                       │
 │                         ▼                                       │
 │      ┌──────────────────────────────────────────────┐           │
-│      │  Host (payment form - stripe.com)            │           │
+│      │  Host (payment form, pay.example.com)        │           │
 │      │                                              │           │
 │      │  const { amount, onSuccess, close }          │           │
 │      │    = window.hostProps;                       │           │
 │      │                                              │           │
-│      │  // User enters card, pays...                │           │
+│      │  // The user enters card details and pays    │           │
 │      │  onSuccess({ paymentId: 'xyz', amount });    │           │
 │      │  close();                                    │           │
 │      └──────────────────────────────────────────────┘           │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-#### Which side are you building?
-
-| If you want to... | You're building the... |
-|-------------------|------------------------|
-| Embed someone else's component into your app | **Consumer** |
-| Build a component/widget for others to embed | **Host** |
-| Build both sides (e.g., your own micro-frontends) | **Both** |
+| If you want to... | You build the... |
+|-------------------|------------------|
+| Embed another team's or company's component in your app | **Consumer** |
+| Build a component or widget for others to embed | **Host** |
+| Build both sides, such as your own micro-frontends | **Both** |
 
 ---
 
 ## Table of Contents
 
 - [Installation](#installation)
-- [Start Here (Most Users)](#start-here-most-users)
 - [Quick Start](#quick-start)
 - [Step-by-Step Guide](#step-by-step-guide)
   - [1. Define a Component](#1-define-a-component)
@@ -76,6 +70,7 @@ Imagine a payment company (like Stripe) wants to let merchants embed a checkout 
 - [Templates (Advanced)](#templates-advanced)
 - [React Integration (Optional)](#react-integration-optional)
 - [Advanced Features](#advanced-features)
+- [Versioning](#versioning)
 - [Migrating from pre-v1 to v1](#migrating-from-pre-v1-to-v1)
 - [API Reference](#api-reference)
 - [TypeScript](#typescript)
@@ -92,17 +87,6 @@ npm install forgeframe
 
 ---
 
-## Start Here (Most Users)
-
-Use this path for typical integrations:
-
-1. Follow [Quick Start](#quick-start) to get a working component.
-2. Use [Step-by-Step Guide](#step-by-step-guide) to add typed props and callbacks.
-3. Use [Props System](#props-system) and [Host Window API (hostProps)](#host-window-api-hostprops) as your primary references.
-4. Treat sections marked **Advanced** as optional unless you specifically need them.
-
----
-
 ## Quick Start
 
 > **`Consumer`**
@@ -112,7 +96,7 @@ import ForgeFrame, { prop } from 'forgeframe';
 
 const PaymentForm = ForgeFrame.create({
   tag: 'payment-form',
-  url: 'https://checkout.stripe.com/payment',
+  url: 'https://pay.example.com/checkout',
   dimensions: { width: 400, height: 300 },
   props: {
     amount: prop.number(),
@@ -161,9 +145,7 @@ document.getElementById('pay-btn')!.onclick = async () => {
 };
 ```
 
-That's it! ForgeFrame handles all the cross-domain communication automatically.
-Before reading props, await `initHost(propDefinitions, allowedConsumerDomains)?.ready` as shown in [Host Init with initHost](#host-init-with-inithost).
-For intentionally open widgets, omit `allowedConsumerDomains`; for payment, auth, or account flows, use an allowlist.
+The host awaits `initHost(propDefinitions, allowedConsumerDomains)?.ready` before reading props; see [Host Init with initHost](#host-init-with-inithost). Always pass an allowlist for payment, auth, or account flows. Omit `allowedConsumerDomains` only for widgets that any site may embed.
 
 ---
 
@@ -173,7 +155,7 @@ For intentionally open widgets, omit `allowedConsumerDomains`; for payment, auth
 
 > **`Consumer`**
 
-Components are defined using `ForgeFrame.create()`. This creates a reusable component factory.
+`ForgeFrame.create()` returns a reusable component factory.
 
 ```typescript
 import ForgeFrame, { prop } from 'forgeframe';
@@ -186,7 +168,7 @@ type LoginProps = {
 
 const LoginForm = ForgeFrame.create<LoginProps>({
   tag: 'login-form',
-  url: 'https://auth.stripe.com/login',
+  url: 'https://auth.example.com/login',
   dimensions: { width: 400, height: 350 },
   props: {
     email: prop.string().optional(),
@@ -199,10 +181,10 @@ const LoginForm = ForgeFrame.create<LoginProps>({
 <details>
 <summary>Explanation</summary>
 
-- **`tag`** (required): Unique identifier for the component
-- **`url`** (required): URL of the host page to embed
-- **`dimensions`**: Width and height of the iframe or popup. Iframes accept CSS units; popups accept numbers, numeric strings, or `px` strings. Other CSS units use the popup fallback of 500 pixels per dimension (or the current size during resize).
-- **`props`**: Schema definitions for props passed to the host
+- **`tag`** (required): unique identifier for the component.
+- **`url`** (required): URL of the host page.
+- **`dimensions`**: width and height of the iframe or popup. Iframes accept CSS units. Popups accept numbers, numeric strings, or `px` strings; any other unit falls back to 500 pixels when opening, or to the current size when resizing.
+- **`props`**: schemas for the props passed to the host.
 
 </details>
 
@@ -210,7 +192,7 @@ const LoginForm = ForgeFrame.create<LoginProps>({
 
 > **`Host`**
 
-The host page runs inside the iframe at the URL you specified. It receives props via `window.hostProps`.
+The host page is served at the component's `url` and reads its props from `window.hostProps`.
 
 ```typescript
 import { initHost, prop, type HostProps } from 'forgeframe';
@@ -258,10 +240,10 @@ document.getElementById('cancel')!.onclick = async () => {
 <details>
 <summary>Explanation</summary>
 
-- **`HostProps<LoginProps>`**: Combines your props with built-in methods (`close`, `resize`, etc.)
-- **Host init**: Await `initHost(propDefinitions, allowedConsumerDomains)?.ready` before reading props. Use `allowedConsumerDomains` for security-sensitive embeds; omit it only for intentionally open widgets. If your host defines a component with `ForgeFrame.create(...)`, that component path still initializes the host runtime automatically.
-- **`window.hostProps`**: Contains all props passed from the consumer plus built-in methods
-- **`close()`**: Built-in method to close the iframe/popup
+- **`HostProps<LoginProps>`**: your props plus the built-in methods such as `close` and `resize`.
+- **`initHost(propDefinitions, allowedConsumerDomains)?.ready`**: await it before reading props. Pass `allowedConsumerDomains` for security-sensitive embeds; omit it only for widgets any site may embed. A host that also defines the component with `ForgeFrame.create(...)` is initialized by that definition, but must still await `ready`.
+- **`window.hostProps`**: the consumer's props plus the built-in methods.
+- **`close()`**: closes the iframe or popup.
 
 </details>
 
@@ -269,7 +251,7 @@ document.getElementById('cancel')!.onclick = async () => {
 
 > **`Consumer`**
 
-Back in your consumer app, create an instance with props and render it.
+In the consumer app, create an instance with props and render it.
 
 ```typescript
 const login = LoginForm({
@@ -281,33 +263,13 @@ const login = LoginForm({
 await login.render('#login-container');
 ```
 
-Calling `close()` while `render()` is still in flight cancels the render, removes
-its loading and host artifacts, and prevents any not-yet-opened iframe or popup
-from opening. The render promise rejects with
-`Component "<tag>" was closed before rendering completed`.
-
-Repeated or reentrant consumer `close()` calls wait for the same close operation,
-including instance deregistration and destruction notifications. Close events and
-cleanup run once. If failed rendering already started destruction, `close()` waits
-for that teardown to finish without emitting another close event.
-
-Relative component URLs use `document.baseURI`, including any `<base href>` in
-the consumer page. Rendering validates and pins the resolved absolute URL before
-loading callbacks run; that same destination is used for navigation and prop
-delivery checks. Changing the document base during a callback cannot redirect
-the initial request.
+See [Instance Lifecycle](#instance-lifecycle) for URL resolution and for closing an instance during rendering.
 
 ### 4. Handle Events
 
 > **`Consumer`**
 
-Subscribe to lifecycle events for better control.
-
-Handlers run synchronously in registration order. Listeners added during an
-event wait for the next emission, so a `once()` handler can safely rearm itself.
-Removing listeners before their turn skips them in the current emission,
-including bulk removal. Cancelling and re-registering a listener defers the new
-registration until the next emission.
+Subscribe to lifecycle events through `instance.event`.
 
 ```typescript
 const instance = LoginForm({ /* props */ });
@@ -320,40 +282,38 @@ instance.event.on('resize', (dimensions) => console.log('New size:', dimensions)
 await instance.render('#container');
 ```
 
-**Available Events:**
+Rendering emits `prerender`, `prerendered`, `render`, `rendered`, and `display`, in that order.
 
-| Event | Description |
-|-------|-------------|
-| `render` | Rendering started |
-| `rendered` | Fully rendered and initialized |
-| `prerender` | Prerender (loading) started |
-| `prerendered` | Prerender complete |
-| `display` | Component became visible |
-| `close` | Component is closing |
-| `destroy` | Component destroyed |
-| `error` | An error occurred |
-| `props` | Props were updated |
-| `resize` | Component was resized |
-| `focus` | Component received focus |
+| Event | Emitted when |
+|-------|--------------|
+| `prerender` | The loading placeholder starts rendering |
+| `prerendered` | The loading placeholder is in place |
+| `render` | The iframe or popup starts opening |
+| `rendered` | The host has loaded and initialized |
+| `display` | The component is visible |
+| `close` | The component starts closing |
+| `destroy` | The component has been destroyed |
+| `error` | An error occurs |
+| `props` | Props are updated |
+| `resize` | The component is resized |
+| `focus` | The component receives focus |
 
-If all you need is embed + typed props + callbacks, you can stop here and use the API reference as needed.
+Handlers run synchronously in registration order. A handler added during an emission first runs on the next emission, so a `once()` handler can rearm itself. A handler removed before its turn, individually or by bulk removal, is skipped; if it is re-registered during the same emission, it waits for the next one.
 
 ---
 
 ## Props System
 
-ForgeFrame uses a fluent, Zod-like schema API for defining props. All schemas implement [Standard Schema](https://standardschema.dev/), enabling seamless integration with external validation libraries.
+Props are declared with the fluent `prop` schema builders. Every `prop` schema implements [Standard Schema](https://standardschema.dev/), and props also accept schemas from any Standard Schema library.
 
 ### Defining Props
-
-Props define what data can be passed to your component.
 
 ```typescript
 import ForgeFrame, { prop } from 'forgeframe';
 
 const MyComponent = ForgeFrame.create({
   tag: 'my-component',
-  url: 'https://widgets.stripe.com/component',
+  url: 'https://widgets.example.com/component',
   props: {
     name: prop.string(),
     count: prop.number(),
@@ -391,7 +351,7 @@ const MyComponent = ForgeFrame.create({
 | `name`, `count`, `enabled`, `config`, `items` | Basic types: string, number, boolean, object, array |
 | `createdAt` | `prop.date()` validates real `Date` instances |
 | `position` | `prop.tuple(...)` validates fixed positional arrays |
-| `onSubmit` | Functions are automatically serialized for cross-domain calls |
+| `onSubmit` | Functions are bridged so the host can call them across origins |
 | `nickname` | `.optional()` makes the prop accept `undefined` |
 | `theme` | `.default('light')` provides a fallback value |
 | `email` | `.email()` validates email format |
@@ -402,7 +362,7 @@ const MyComponent = ForgeFrame.create({
 | `tags` | `.of(prop.string())` validates each array item |
 | `scores` | Array items can have their own validation chain |
 | `metadata` | `prop.record(...)` validates dictionary values by key |
-| `themeId` | `prop.union(...)` preserves type-safe multi-type props |
+| `themeId` | `prop.union(...)` accepts any of several schemas |
 | `user` | `.shape({...})` defines nested object structure |
 
 </details>
@@ -414,41 +374,25 @@ All schemas support these base methods:
 | Method | Description |
 |--------|-------------|
 | `.optional()` | Makes the prop optional (accepts `undefined`) |
-| `.nullable()` | Accepts `null` values |
-| `.default(value)` | Sets a non-callable default value or a factory that returns the default |
+| `.nullable()` | Accepts `null` |
+| `.default(value)` | Sets a non-callable default value, or a factory that returns the default |
 
-Function defaults use a factory that returns the callback. ForgeFrame evaluates the factory when the input is omitted; it does not invoke the returned callback during default resolution. Invalid callback factory results fail schema validation. Optional/nullable schemas continue to accept their declared presence values.
+A function prop's default must be a factory that returns the callback. ForgeFrame calls the factory when the input is omitted and validates its result; it never calls the returned callback while resolving the default.
 
 ```typescript
 const onCancel = () => console.log('Cancelled');
 const callbackSchema = prop.function<() => void>().default(() => onCancel);
 ```
 
-For integrations upgrading from 1.0.1, replace direct callback defaults such as `.default(onCancel)` with `.default(() => onCancel)`. The stricter types now reject previously ambiguous callback defaults. Capacity exhaustion now produces an explicit error instead of silently breaking older callbacks.
-
 ### Callback Capacity
 
-Each delivered props or exports snapshot supports up to **500 distinct callbacks** per bridge. Reusing the same callback in multiple fields counts once. Oversized snapshots reject without evicting existing callable references. Successful updates retire callbacks absent from the new snapshot after acknowledgement.
+Each delivered props or exports snapshot can hold up to **500 distinct callbacks** per bridge; a callback used in several fields counts once. A larger snapshot is rejected, and callbacks already delivered stay callable. After the host acknowledges an update, callbacks missing from the new snapshot are retired.
 
-During replacement, the previous snapshot remains callable while new references are staged. A serialization failure removes only new registrations. A delivery failure may occur after the receiver installed the new snapshot, so both old and potentially delivered references remain callable within a **1,000-reference recovery pool**. Once that pool is full, additions reject until an acknowledged retry using retained callbacks, a new host session, or teardown releases capacity. Transport failures retain the existing consumer snapshot commitment behavior; they do not roll back local props.
+During an update, the previous snapshot stays callable while new references are staged. If serialization fails, only the new registrations are removed. If delivery fails, the host may already have installed the new snapshot, so old and possibly delivered references both stay callable in a **1,000-reference recovery pool**. When that pool is full, new callbacks are rejected until an acknowledged retry that reuses retained callbacks, a new host session, or teardown frees capacity. A transport failure does not roll back the consumer's committed props.
 
-Peer discovery uses a separate relay registry with a cumulative **500-reference** limit for the requesting host session. Repeated discovery reuses retained identities and preserves held peer snapshots; an overflowing discovery rejects as a whole. Reconnection clears old relay identities. Source export replacement still retires the original exported callbacks.
+Peer discovery uses a separate relay registry with a cumulative **500-reference** limit per requesting host session. Repeated discovery reuses retained identities and keeps peer snapshots the host already holds; a discovery that would exceed the limit is rejected as a whole. Reconnection clears old relay identities. When a peer replaces its exports, its original exported callbacks are retired.
 
 ### Schema Types
-
-Enum schemas retain the allowed values supplied at creation. Changing the original array does not change validation or the constraints retained by `.optional()`, `.nullable()`, and `.default()`.
-
-Object shapes and the item/branch arrays passed to `TupleSchema` and `UnionSchema` also retain their definitions at creation. Replacing or removing entries from the original containers does not change existing schemas or their clones.
-
-Shaped object schemas validate own fields. An omitted field is treated as `undefined`, so optional fields and defaults work even for names such as `constructor` and `toString`; inherited values are not supplied as schema inputs.
-
-Arrays sent as props or exports require defined entries after normalization. `undefined` entries and sparse holes are rejected instead of silently becoming `null`, including in nested arrays. Use `prop.string().nullable()` with `null`, or an item default such as `prop.array().of(prop.string().default('fallback'))`. Standalone schema validation still accepts optional array entries; props excluded by `sendToHost`, `sameDomain`, or `trustedDomains` retain their local values.
-
-Array transport reads indexed entries directly, including arrays with a null prototype or an overridden `map` method. Array methods do not determine the delivered values.
-
-Ordinary normalized prop arrays are checked before opening the host or committing an update, so a rejected update preserves the previous snapshot. Values produced by `hostDecorate` or custom `toJSON()` encoders (including computed encoder properties) are checked during delivery; those failures retain the existing consumer snapshot commitment. A non-callable `toJSON` field is ordinary data. DOTIFY traverses root own properties and nested plain objects directly, invoking JSON encoders only on encoded leaves. Use BASE64 when a root object's `toJSON()` should determine its delivered value; an encoder returning `undefined` omits that prop. Literal and enum rejection messages format arbitrary inputs without invoking their JSON encoders, allowing later union branches to validate them.
-
-`prop.string().url()` requires a parseable absolute HTTP(S) URL and preserves the supplied string. It composes with `.pattern()` and `.trim()`; trimming changes the returned string only when requested.
 
 | Type | Factory | Methods |
 |------|---------|---------|
@@ -466,6 +410,21 @@ Ordinary normalized prop arrays are checked before opening the host or committin
 | Union | `prop.union(...schemas)` | - |
 | Any | `prop.any()` | - |
 
+Validation rules:
+
+- `prop.number()` rejects `NaN`, `Infinity`, and `-Infinity`, which JSON would otherwise turn into `null`.
+- `prop.string().url()` requires a parseable absolute HTTP(S) URL and returns the string unchanged. It composes with `.pattern()`; only `.trim()` changes the returned string.
+- Shaped object schemas validate own fields only. An omitted field is `undefined`, so optional fields and defaults work for names such as `constructor` and `toString`, and inherited values are never treated as input.
+- Enum values, object shapes, and the item and branch arrays passed to `prop.tuple()` and `prop.union()` are copied when the schema is created. Changing the original array or object later does not affect the schema or the clones made by `.optional()`, `.nullable()`, and `.default()`.
+- `Date` props and exports accept dates created in another window, and record schemas accept plain objects from another window; class instances are rejected.
+- Literal and enum errors describe the rejected input without calling its `toJSON()`, so a later `prop.union()` branch can still accept it.
+
+#### Arrays in props and exports
+
+Arrays delivered to the host, including nested arrays, must not contain `undefined` entries or sparse holes, because JSON would turn them into `null`. Use `null` with a nullable item schema, such as `prop.array().of(prop.string().nullable())`, or an item default, such as `prop.array().of(prop.string().default('fallback'))`. Standalone schema validation still accepts optional entries, and props withheld by `sendToHost`, `sameDomain`, or `trustedDomains` are not checked.
+
+ForgeFrame reads each indexed entry directly, so arrays with a null prototype or an overridden `map` method deliver their actual entries. Normalized arrays are checked before the host opens or an update is committed, so a rejected update keeps the previous snapshot. Values produced by `hostDecorate` or a custom `toJSON()` (including a computed `toJSON` property) are checked during delivery, after commitment. A `toJSON` field that is not a function is ordinary data.
+
 ### Using Standard Schema Libraries
 
 ForgeFrame accepts any [Standard Schema](https://standardschema.dev/) compliant library (Zod, Valibot, ArkType, etc.):
@@ -477,7 +436,7 @@ import * as v from 'valibot';
 
 const MyComponent = ForgeFrame.create({
   tag: 'my-component',
-  url: 'https://widgets.stripe.com/component',
+  url: 'https://widgets.example.com/component',
   props: {
     email: z.string().email(),
     user: z.object({ name: z.string(), role: z.enum(['admin', 'user']) }),
@@ -486,9 +445,7 @@ const MyComponent = ForgeFrame.create({
 });
 ```
 
-Note: ForgeFrame runs schema validation synchronously. Schemas with async `~standard.validate` are not supported. Their returned promises are observed so a rejected async validator does not leak an additional unhandled rejection.
-
-`prop.number()` rejects `NaN`, `Infinity`, and `-Infinity`. Nonfinite initial values and updates fail validation before delivery, preventing JSON transport from silently converting them to `null`. This tightens previously accepted nonfinite inputs.
+Validation is synchronous. If a schema's `~standard.validate` returns a promise, ForgeFrame throws an error naming the prop and handles the promise so its rejection is not reported as unhandled.
 
 ### Advanced Prop Definitions
 
@@ -528,19 +485,12 @@ const SecureWidget = ForgeFrame.create({
 | `trustedDomains` | Only send the prop to matching host domains |
 | `serialization` | Choose how object props are transferred: `JSON` (default), `BASE64`, or `DOTIFY`; all three bridge nested callbacks and preserve `Date` values |
 | `queryParam` / `bodyParam` | Include the prop in the host page's initial HTTP request |
-| `alias` | Accept a backwards-compatible input name. Alias links through other defined props resolve transitively; an explicitly supplied canonical key wins at that level. Only own input properties count as supplied values |
+| `alias` | Accept an alternate input name, such as a legacy name. Aliases can chain through other defined props; at each level, an explicitly supplied canonical key wins. Only own input properties count as supplied |
 | `outputSchema` | Validate the normalized value again at consumer and host trust boundaries without transforming it |
 
-Wrapped `default` and `value` fallbacks are schema inputs. ForgeFrame validates
-and transforms them before any decorator, validator, URL, or transport callback
-can observe the normalized output. A default configured directly on the schema
-remains a schema-owned output.
+In a wrapped definition, `default` and `value` fallbacks are schema inputs: ForgeFrame validates and transforms them before any decorator, validator, URL, or transport callback sees the normalized value. A `.default()` set on the schema itself is already a schema output.
 
-When an input schema changes the value's type, wrap it and provide an
-`outputSchema`, including when `sendToHost` is `false`. The input schema parses
-consumer values and fallbacks; the output schema independently checks the
-normalized value before consumer routing callbacks or host trust boundaries
-use it. Output schemas are validation-only and must not transform their input.
+When an input schema changes the value's type, use the wrapped form with an `outputSchema`, even when `sendToHost` is `false`. The input schema parses consumer values and fallbacks; the output schema checks the normalized value before consumer routing callbacks or host trust boundaries use it. Output schemas only validate; they must not transform.
 
 ```typescript
 import { z } from 'zod';
@@ -560,13 +510,9 @@ const AmountComponent = ForgeFrame.create({
 AmountComponent({ amount: '2' }); // Host receives the validated number 2
 ```
 
-Direct schemas remain the concise form when the same schema can validate its
-normalized output unchanged. A type-changing transform must use the wrapped
-form above. A same-type but non-idempotent transform must also declare an
-`outputSchema`; otherwise the host rejects the changed value rather than
-silently trusting it.
+Pass a schema directly when it accepts its own normalized output unchanged. A type-changing transform needs the wrapped form above, and so does a same-type transform that is not idempotent: without an `outputSchema`, the host rejects the changed value.
 
-TypeScript consumers can model alias inputs separately from the canonical props received by the host:
+To type alias inputs separately from the canonical props the host receives:
 
 ```typescript
 type WidgetProps = {
@@ -598,37 +544,26 @@ Widget({ userEmail: 'user@example.com' });
 Widget({ email: 'user@example.com' });
 ```
 
-Factories, prop updates, and React wrappers accept either the canonical schema
-input shape or the configured alternate input shape. Normalized host props are
-not treated as consumer inputs when a schema transform changes their type.
+Factories, prop updates, and React wrappers accept either the canonical schema-input shape or the alternate input shape. When a transform changes a prop's type, normalized host props are not accepted as consumer input. The alternate input type can be a subset of the canonical props when a canonical key doubles as another prop's alias.
 
-The alternate input type may also be a subset of the canonical props when one
-canonical key doubles as another prop's alias.
+`required: true` requires a consumer input, not a defined normalized output. If a valid input can transform to `undefined`, its `outputSchema` must accept `undefined`, and the host then treats `undefined` as a valid result.
 
-`required: true` requires a consumer input, not a defined normalized output. If
-a valid input can transform to `undefined`, its `outputSchema` must explicitly
-accept `undefined`; the host then treats that as a valid normalized result.
+A `sendToHost: false` definition validates consumer input only. Hosts that share the definition discard the field from received bootstrap and update snapshots before decoding or validation, even if a stale consumer sends it. A required local prop does not block host initialization, and discarded values never reach `hostProps`, `hostProps.consumer.props`, or prop notifications. Origin restrictions still apply to delivered props.
 
-Definitions with `sendToHost: false` validate consumer input only. Shared host definitions discard these fields from received bootstrap and update snapshots before decoding or validation, including fields sent by a stale consumer. A required local prop does not prevent host initialization, and discarded values never enter `hostProps`, `hostProps.consumer.props`, or prop notifications. Origin restrictions on delivered props continue to apply.
+Host definitions can also arrive after bootstrap, through a matching `create()` or another `initHost()`. Applying them removes newly consumer-only fields from the current host snapshots and validates the remaining values before reconciling. Built-in controls and retained callbacks keep their identity, and no prop notification is emitted.
 
-If host definitions arrive after bootstrap through a matching `create()` or another `initHost()`, applying them also removes newly consumer-only fields from the current host snapshots. The remaining values are validated before any reconciliation. Built-in controls and retained callback references keep their identity, and configuration changes do not emit prop notifications.
+Prefer inferred component and React-wrapper types. When you explicitly annotate an aliased component whose schema inputs differ from its host props, pass the canonical schema-input type as the fifth `ForgeFrameComponent` generic (after the required-props flag) or the fourth `ForgeFrameComponentInstance` generic. React wrappers infer it; with explicit wrapper type arguments, it is the sixth generic.
 
-Prefer inferred component and React-wrapper types. If you explicitly annotate
-an aliased component whose schema inputs differ from its host props, supply the
-canonical schema-input type as the fifth `ForgeFrameComponent` generic, after
-the required-props flag (or the fourth `ForgeFrameComponentInstance` generic).
-React wrappers normally infer this; with explicit wrapper type arguments, it is
-the sixth generic.
+Transport notes:
 
-- Use `sameDomain` for values that should never be exposed during cross-origin bootstrap.
-- `DOTIFY` safely preserves nested object keys that contain separators such as `.`, `&`, or `=`.
-- Ordinary objects with transport-like marker fields and additional user fields remain data in all three serialization modes.
-
-Date props and exports preserve genuine dates created in another browser window. Record schemas also accept ordinary dictionaries from another window while continuing to reject class instances. Numeric iframe styles use pixels for lengths and retain numbers for unitless CSS properties; custom property names remain case-sensitive. Loading concealment keeps lazy iframes in layout so they can initialize. After initialization, configured display, visibility, opacity and transition styles are restored without the default iframe fade overriding them; explicit show/hide requests take precedence over configured visibility.
+- Use `sameDomain` for values that must never be exposed during cross-origin bootstrap.
+- `DOTIFY` preserves nested keys that contain separators such as `.`, `&`, or `=`.
+- Ordinary objects that contain transport marker fields stay ordinary data in every serialization mode.
+- `DOTIFY` walks root own properties and nested plain objects itself and calls `toJSON()` only on leaves. Use `BASE64` when a root object's `toJSON()` should decide the delivered value. With `BASE64`, a `toJSON()` that returns `undefined` omits the prop.
 
 ### Passing Props via URL or POST Body (Advanced)
 
-Use prop definition flags to include specific values in the host page's initial HTTP request:
+Use these flags only when the host server needs values in its initial HTTP request:
 
 ```typescript
 const Checkout = ForgeFrame.create({
@@ -642,23 +577,16 @@ const Checkout = ForgeFrame.create({
 });
 ```
 
-- `queryParam`: appends to the URL query string before any `#fragment`, preserving existing query parameters and fragment text.
-- `bodyParam`: sends values in a hidden form `POST` for initial load (iframe and popup).
-- Custom POST field names may include `submit`, `remove`, and `appendChild`; these names do not interfere with submission or cleanup.
-- `bodyParam` only affects the initial navigation; later `updateProps()` uses postMessage.
-- Object values are JSON-stringified. Function and `undefined` values are skipped.
-- Never put credentials, bearer tokens, session identifiers, or sensitive personal data in `queryParam`; URLs commonly leak through browser history, referrers, analytics, and server logs.
-- `sendToHost`, `sameDomain`, and `trustedDomains` are enforced for query and body parameters as well as postMessage props. Because same-origin status is not verified until the host loads, `sameDomain` props are never included in the initial request.
-- Most apps do not need this unless the host server requires initial URL/body parameters.
+- `queryParam` appends the value to the query string before any `#fragment`, keeping existing parameters and the fragment.
+- `bodyParam` sends the value in a hidden-form `POST` when the iframe or popup first loads. Later `updateProps()` calls use postMessage.
+- POST field names such as `submit`, `remove`, and `appendChild` do not interfere with submission or cleanup.
+- Object values are JSON-stringified; functions and `undefined` are skipped.
+- `sendToHost`, `sameDomain`, and `trustedDomains` also apply to query and body parameters. Same-origin status is verified only after the host loads, so `sameDomain` props are never in the initial request.
+- Never put credentials, bearer tokens, session identifiers, or sensitive personal data in `queryParam`. URLs leak through browser history, referrers, analytics, and server logs.
 
 ### Updating Props
 
-Props can be updated after rendering. Once `close()` starts, new and queued updates reject; queued updates do not start validation or emit prop callbacks after teardown.
-
-Updates also work before rendering and run in order, including updates requested
-inside decorators or validators. Rendering waits for updates already queued so
-initial query/body parameters and bootstrap props use the resulting snapshot.
-New updates requested while rendering remain rejected.
+`updateProps()` works before and after rendering. Updates run in order, including updates requested inside decorators or validators. Rendering waits for queued updates, so the initial query/body parameters and bootstrap props use their result; updates requested while rendering are rejected. Once `close()` starts, new and queued updates are rejected without running validation or prop callbacks.
 
 ```typescript
 const instance = MyComponent({ name: 'Initial' });
@@ -666,7 +594,7 @@ await instance.render('#container');
 await instance.updateProps({ name: 'Updated' });
 ```
 
-The host receives updates via `onProps`:
+The host receives updates through `onProps`:
 
 ```typescript
 window.hostProps.onProps((newProps) => {
@@ -674,26 +602,15 @@ window.hostProps.onProps((newProps) => {
 });
 ```
 
-Host subscribers are invoked in registration order after props are committed.
-New or re-registered subscribers wait for the next update, and subscriptions
-cancelled before their turn are skipped.
-An old cancellation handle cannot cancel a later registration of the same callback.
-Thrown errors and rejected promises are caught and logged. Async subscribers are
-not awaited, so their work does not delay other subscribers or update acknowledgements.
+Subscribers run in registration order after props are committed. A subscriber added or re-registered during a notification waits for the next update, and a subscription cancelled before its turn is skipped. A stale cancellation handle cannot cancel a later registration of the same callback. Thrown errors and rejected promises are caught and logged. Async subscribers are not awaited, so they do not delay other subscribers or the update acknowledgement.
 
-Built-in `window.hostProps` names are reserved. Consumer props with names such as
-`uid`, `tag`, `close`, `focus`, `resize`, `show`, `hide`, `onProps`, `onError`,
-`getConsumer`, `getConsumerDomain`, `export`, `consumer`, `getPeerInstances`, and
-`children` are kept in `hostProps.consumer.props`, but they do not override the
-top-level ForgeFrame methods and metadata exposed on `window.hostProps`.
+Built-in `window.hostProps` names are reserved. A consumer prop named `uid`, `tag`, `close`, `focus`, `resize`, `show`, `hide`, `onProps`, `onError`, `getConsumer`, `getConsumerDomain`, `export`, `consumer`, `getPeerInstances`, or `children` is available only in `hostProps.consumer.props`; it does not replace the built-in on `window.hostProps`.
 
----
+### Cross-Window Callback Values
 
-### Cross-window callback values
+A callback implementation may return synchronously, but calling it from the other window always returns a promise. This applies to callbacks in `hostProps`, `hostProps.consumer.props`, `onProps` snapshots, and `instance.exports`. The exported `RemoteValue<T>` type describes this remote view, including callbacks nested in objects and arrays.
 
-A callback implementation may return synchronously, but calling it from the other window always returns a promise. This applies to callbacks in `hostProps`, `hostProps.consumer.props`, `onProps` snapshots, and methods in `instance.exports`. The exported `RemoteValue<T>` type describes that remote view, including callbacks nested in objects and arrays.
-
-For generic or overloaded callbacks, declare every call signature with a `Promise` return type and use an async implementation. This preserves TypeScript's overloads and relationships between arguments and results; automatic conversion of synchronous signatures cannot preserve those relationships.
+Declare every signature of a generic or overloaded callback with a `Promise` return type and use an async implementation. The automatic conversion of synchronous signatures cannot preserve overloads or the relationship between argument and result types.
 
 ```typescript
 // Consumer definition: the local implementation can be synchronous.
@@ -709,57 +626,33 @@ await counter.render('#container');
 const count = await window.hostProps.getCount();
 ```
 
-Callback arguments and results use JSON serialization. Pass plain objects, arrays, strings, finite numbers, booleans, and `null`; a callback may also return `undefined` for no result. Convert `Date` values to ISO strings and extract plain fields from `FormData` before calling a remote function. Functions passed as arguments or returned by callbacks are not bridged. Cyclic objects and `BigInt` results reject with a serialization error. This differs from prop snapshots and `hostProps.export(...)`, which explicitly bridge functions and preserve `Date` values.
+Callback arguments and results are JSON-serialized. Pass plain objects, arrays, strings, finite numbers, booleans, and `null`; a callback may return `undefined` for no result. Convert `Date` values to ISO strings and copy plain fields out of `FormData` before the call. Functions in arguments or results are not bridged, and cyclic or `BigInt` results reject with a serialization error. Prop snapshots and `hostProps.export(...)` are different: they bridge functions and preserve `Date` values.
 
 ## Host Window API (hostProps)
 
-In host windows, `window.hostProps` provides access to props and control methods.
+In a host window, `window.hostProps` holds the consumer's props and the host control methods. Type it as shown in [Typing Host hostProps](#typing-host-hostprops).
 
-When rendering in iframe mode, ForgeFrame applies a default sandbox of
-`allow-scripts allow-same-origin allow-forms allow-popups` unless you explicitly
-set `attributes.sandbox` on the consumer component. An explicit `sandbox` value is
-used as-is.
+Props come from another origin. Render received strings with `textContent` or other DOM text properties, never by interpolating them into HTML.
 
-### TypeScript Setup
-
-```typescript
-import { initHost, type HostProps } from 'forgeframe';
-
-interface MyProps {
-  email: string;
-  onLogin: (user: { id: number }) => void;
-}
-
-declare global {
-  interface Window {
-    hostProps?: HostProps<MyProps>;
-  }
-}
-
-await initHost()?.ready;
-const { email, onLogin, close, resize } = window.hostProps!;
-```
+In iframe mode, ForgeFrame sets `sandbox="allow-scripts allow-same-origin allow-forms allow-popups"` unless the consumer component sets `attributes.sandbox`, which is used as-is.
 
 ### Host Init with initHost
 
-`initHost(propDefinitions?, allowedConsumerDomains?)` is required when your host bundle reads `window.hostProps` directly.
-It reads channel metadata from `window.name`, requests initial props through origin-checked messaging, validates the received props, and attaches `window.hostProps`. Await the returned host's `ready` promise before reading consumer props or nested children. Initialization errors reject `ready`.
+`initHost(propDefinitions?, allowedConsumerDomains?)` starts the host runtime. It reads channel metadata from `window.name`, requests the initial props through origin-checked messaging, validates them, and attaches `window.hostProps`. Await the returned host's `ready` promise before reading props or nested children; initialization errors reject `ready`. Outside a ForgeFrame host window, `initHost()` returns `null`, so handle that case if the page can also run standalone.
 
-Only channel metadata remains in `window.name`, allowing reloads and subsequent host documents to reconnect and receive the latest props. Browser policies that clear window names across sites can still prevent reconnection. `initHost()` returns `null` outside a ForgeFrame host window; handle that case if the page also supports standalone use.
+Host startup patterns:
 
-Calling the returned host's `destroy()` disposes its runtime and removes `window.hostProps`. When the channel metadata is still available, a later `initHost()` creates a fresh runtime; await its new `ready` promise before using props or controls.
+- Call `initHost(propDefinitions, allowedConsumerDomains)` at startup, await `ready`, then read `window.hostProps`.
+- Call `initHost(propDefinitions)` or `initHost()` without an allowlist only for hosts that any consumer origin may embed.
+- If the host bundle defines the component with `ForgeFrame.create(...)`, that definition initializes the runtime; still await `initHost()?.ready` before reading props.
 
-If configuration validation destroys or replaces the existing host, that `initHost()` call returns `null`. It leaves any replacement runtime's configuration and deferred initialization intact.
+An explicit `initHost()` call also gives deterministic init timing for tests and instrumentation, and works when the first `window.hostProps` access is delayed by lazy-loaded modules, async startup, or gated initialization.
 
-Supported host boot patterns:
+Only channel metadata stays in `window.name`, so reloads and later host documents can reconnect and receive the latest props. Browser policies that clear window names across sites can prevent reconnection.
 
-- Call `initHost(propDefinitions, allowedConsumerDomains)` during host startup, await the returned host's `ready`, then read `window.hostProps`.
-- Call `initHost(propDefinitions)` or `initHost()` only for hosts that are intentionally embeddable by any consumer origin.
-- Define the host with `ForgeFrame.create(...)` and let component creation initialize the host runtime, then await `initHost()?.ready` before reading props.
+The returned host's `destroy()` disposes the runtime and removes `window.hostProps`. If the channel metadata is still available, a later `initHost()` creates a fresh runtime; await its new `ready` before using props or controls. If configuration validation destroys or replaces the existing host, that `initHost()` call returns `null` and leaves the replacement's configuration and deferred initialization alone.
 
-When a shared definition uses a type-changing schema, carry both the normalized
-host props and schema-input shapes through `HostPropsDefinition` and `initHost`.
-This keeps the required normalized `outputSchema` visible to TypeScript:
+When a shared definition uses a type-changing schema, pass both the normalized host props and the schema-input shapes to `HostPropsDefinition` and `initHost`, so TypeScript requires the normalized `outputSchema`:
 
 ```typescript
 type AmountProps = { amount: number };
@@ -775,12 +668,6 @@ const amountProps = {
 
 await initHost<AmountProps, AmountInputs>(amountProps, allowedConsumerDomains)?.ready;
 ```
-
-Use `initHost()` when:
-- You read `window.hostProps` directly.
-- Your host boot flow delays the first `window.hostProps` access (for example: lazy-loaded modules, async startup, or gated initialization).
-- You want deterministic init timing in tests or instrumentation.
-- You need the host side to enforce which consumer domains may embed or message it.
 
 ### Available Methods
 
@@ -811,7 +698,7 @@ const peers = await props.getPeerInstances();
 cancel();
 ```
 
-Peer exports preserve data, `Date` values, and nested methods. Methods return promises and are relayed through the shared consumer. Cached methods survive unrelated prop updates. Rediscover peers after a sibling replaces its exports or reconnects; retired methods reject. Peer discovery uses the same bounded function registries as other callbacks.
+Peers are other instances rendered by the same consumer. Their exports keep data, `Date` values, and nested methods; methods return promises and are relayed through the consumer. Method references survive unrelated prop updates. After a peer replaces its exports or reconnects, its old methods reject, so call `getPeerInstances()` again. Discovery counts toward the relay limit in [Callback Capacity](#callback-capacity).
 
 <details>
 <summary>Method Reference</summary>
@@ -838,7 +725,7 @@ Peer exports preserve data, `Date` values, and nested methods. Methods return pr
 
 ### Exporting Data to Consumer
 
-Host components can export methods/data for the consumer to use.
+The host can export data and methods for the consumer to call.
 
 > **`Host`**
 
@@ -863,16 +750,14 @@ const data = await instance.exports.getFormData();
 
 ## Templates (Advanced)
 
-Use this section only when you need custom containers/loading UI beyond the default behavior.
-
 ### Container Template
 
-Customize how the component container is rendered. Perfect for modals.
+`containerTemplate` builds the element that wraps the iframe, such as a modal overlay.
 
 ```typescript
 const ModalComponent = ForgeFrame.create({
   tag: 'modal',
-  url: 'https://widgets.stripe.com/modal',
+  url: 'https://widgets.example.com/modal',
   dimensions: { width: 500, height: 400 },
 
   containerTemplate: ({ doc, frame, prerenderFrame, close }) => {
@@ -909,28 +794,28 @@ const ModalComponent = ForgeFrame.create({
 
 ### Prerender Template
 
-Customize the loading state shown while the host loads.
+`prerenderTemplate` builds the placeholder shown while the host loads.
 
 ```typescript
+const toCssSize = (value?: string | number) =>
+  typeof value === 'number' ? `${value}px` : (value ?? '');
+
 const MyComponent = ForgeFrame.create({
   tag: 'my-component',
-  url: 'https://widgets.stripe.com/component',
+  url: 'https://widgets.example.com/component',
 
   prerenderTemplate: ({ doc, dimensions }) => {
     const loader = doc.createElement('div');
-    loader.innerHTML = `
-      <div style="
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: ${dimensions.width}px;
-        height: ${dimensions.height}px;
-        background: #f5f5f5;
-      ">
-        <span>Loading...</span>
-      </div>
-    `;
-    return loader.firstElementChild as HTMLElement;
+    Object.assign(loader.style, {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: toCssSize(dimensions.width),
+      height: toCssSize(dimensions.height),
+      background: '#f5f5f5',
+    });
+    loader.textContent = 'Loading...';
+    return loader;
   },
 });
 ```
@@ -947,7 +832,7 @@ import ForgeFrame, { prop, createReactComponent } from 'forgeframe';
 
 const LoginComponent = ForgeFrame.create({
   tag: 'login',
-  url: 'https://auth.stripe.com/login',
+  url: 'https://auth.example.com/login',
   dimensions: { width: 400, height: 350 },
   props: {
     email: prop.string().optional(),
@@ -991,16 +876,13 @@ The React component accepts your component props alongside these wrapper props:
 | `style` | `CSSProperties` | Container inline styles |
 | `ref` | `React.Ref<HTMLDivElement>` | Access the wrapper's container element |
 
-These wrapper names are reserved by the React adapter and are not forwarded as
-custom component props. Use a distinct name, such as `onHostClose`, for a callback
-the host needs to receive; avoid requiring a reserved name in the component's
-custom prop definitions when using this adapter.
+The adapter reserves these names and does not forward them as component props. Give a callback the host must receive a different name, such as `onHostClose`, and do not make a reserved name a required custom prop.
 
-Construction and render failures are reported through `onError` and shown inside the wrapper without removing sibling React content. Changing `context` creates a fresh instance and can recover from a render failure; changing the wrapper's React `key` explicitly remounts it. The container ref stays attached while the error is displayed.
+Construction and render failures go to `onError` and are shown inside the wrapper; sibling React content is unaffected, and the container ref stays attached. To recover, change `context` (which creates a fresh instance) or change the wrapper's React `key` to remount it.
 
 ### Factory Pattern
 
-For multiple components, use `withReactComponent`:
+To wrap several components with the same React instance, use `withReactComponent`:
 
 ```tsx
 import { withReactComponent } from 'forgeframe';
@@ -1016,35 +898,29 @@ const ProfileReact = createComponent(ProfileComponent);
 
 ## Advanced Features
 
-Most integrations can skip this section initially and return only when a specific requirement appears.
-
 ### Popup Windows
 
-Render as a popup instead of iframe.
+Pass `'popup'` to `render()`, or set `defaultContext: 'popup'` on the component.
 
 ```typescript
 await instance.render('#container', 'popup');
 
 const PopupComponent = ForgeFrame.create({
   tag: 'popup-component',
-  url: 'https://widgets.stripe.com/popup',
+  url: 'https://widgets.example.com/popup',
   defaultContext: 'popup',
 });
 ```
 
-After the popup initializes, ForgeFrame removes its loading content and default
-loading wrapper from the consumer mount. Caller-owned elements and custom
-container-template shells remain; custom prerender content is removed as it is
-for iframe rendering.
+After the popup initializes, ForgeFrame removes the loading content, including custom prerender content, and the default loading wrapper from the consumer mount. Caller-owned elements and custom container-template shells stay.
 
 ### Domain Security
 
-Restrict which domains can embed or communicate.
-String domain patterns support `*` wildcards (for example, `'https://*.myapp.com'`), and arrays can mix strings and `RegExp`.
+- `domain` is consumer-side trust: the host origins the consumer will render and message.
+- `allowedConsumerDomains` is host-side trust: the consumer origins that may embed and initialize the host.
+- Use both for payment, auth, account, and other sensitive workflows.
 
-- `domain` is consumer-side trust: it restricts which host origins the consumer will message.
-- `allowedConsumerDomains` is host-side trust: it restricts which consumer origins may embed and initialize the host.
-- Use both for payment, auth, account, or other sensitive workflows.
+Both accept a string, a `RegExp`, or an array mixing them. Strings support `*` wildcards, such as `'https://*.example.com'`.
 
 ```typescript
 const secureProps = {
@@ -1054,13 +930,13 @@ const secureProps = {
 
 const SecureComponent = ForgeFrame.create({
   tag: 'secure',
-  url: 'https://secure.stripe.com/widget',
+  url: 'https://secure.example.com/widget',
   props: secureProps,
-  domain: 'https://secure.stripe.com',
+  domain: 'https://secure.example.com',
   allowedConsumerDomains: [
-    'https://myapp.com',
-    'https://*.myapp.com',
-    /^https:\/\/.*\.trusted\.com$/,
+    'https://app.example.com',
+    'https://*.app.example.com',
+    /^https:\/\/[a-z0-9-]+\.partner\.example$/,
   ],
 });
 ```
@@ -1069,30 +945,30 @@ On the host page, pass the same host prop definitions and the consumer allowlist
 
 ```typescript
 await initHost(secureProps, [
-  'https://myapp.com',
-  'https://*.myapp.com',
-  /^https:\/\/.*\.trusted\.com$/,
+  'https://app.example.com',
+  'https://*.app.example.com',
+  /^https:\/\/[a-z0-9-]+\.partner\.example$/,
 ])?.ready;
 ```
 
-The host verifies the consumer through a response from the expected parent/opener window and exact origin. This works with `no-referrer` and after full-page host navigation. An invalid origin or a consumer that cannot complete the verified handshake prevents initialization.
-
-ForgeFrame 1.x follows semantic versioning for its public API. Review the migration guide and GitHub release notes before upgrading from a pre-v1 release; upgrade consumer and host bundles together when adopting changed wire behavior.
+The host verifies the consumer by requiring a response from the expected parent or opener window at its exact origin. Verification works with `Referrer-Policy: no-referrer` and after full-page host navigation. If the origin is not allowed or the consumer cannot complete the handshake, initialization fails.
 
 ### Eligibility Checks
 
-Conditionally allow rendering.
+`eligible` decides whether an instance may render.
 
 ```typescript
 const FeatureComponent = ForgeFrame.create({
   tag: 'feature',
-  url: 'https://widgets.stripe.com/feature',
+  url: 'https://widgets.example.com/feature',
+  props: { userId: prop.string().optional() },
   eligible: ({ props }) => {
     if (!props.userId) return { eligible: false, reason: 'User must be logged in' };
     return { eligible: true };
   },
 });
 
+const instance = FeatureComponent({ userId: currentUser?.id });
 if (instance.isEligible()) {
   await instance.render('#container');
 }
@@ -1100,14 +976,14 @@ if (instance.isEligible()) {
 
 ### Nested Components
 
-Define nested components that can be rendered from within the host.
+`children` exposes component factories that the host can render from inside the iframe or popup.
 
 > **`Consumer`**
 
 ```typescript
 const ContainerComponent = ForgeFrame.create({
   tag: 'container',
-  url: 'https://widgets.stripe.com/container',
+  url: 'https://widgets.example.com/container',
   children: () => ({
     CardField: CardFieldComponent,
     CVVField: CVVFieldComponent,
@@ -1127,15 +1003,24 @@ const { children } = window.hostProps;
 children.CardField({ onValid: () => {} }).render('#card-container');
 ```
 
-Each child tag must be registered in the host bundle before `hostProps` is initialized. Current hosts resolve executable validators, defaults, decorators, and regular expressions from that local registry instead of reconstructing them from JSON. Child metadata arrives through the verified bootstrap response. Nested child URLs must remain static strings. Child names are preserved verbatim, including `__proto__`.
+Register every child tag in the host bundle before `initHost()`. The host takes validators, defaults, decorators, and regular expressions from its own registered factories; only child metadata arrives, through the verified bootstrap response. Child URLs must be static strings. Child names are used verbatim, including `__proto__`.
+
+---
+
+## Versioning
+
+ForgeFrame 1.x follows semantic versioning for its public API. Read the [GitHub release notes](https://github.com/jshsmth/ForgeFrame/releases) before upgrading, and upgrade consumer and host bundles together when a release changes wire behavior.
+
+- **From 1.0.1:** function prop defaults must use the factory form. Replace `.default(onCancel)` with `.default(() => onCancel)`; the types reject the direct form. Exceeding [callback capacity](#callback-capacity) rejects with an explicit error instead of silently breaking older callbacks.
+- **From 0.x:** follow [Migrating from pre-v1 to v1](#migrating-from-pre-v1-to-v1).
 
 ---
 
 ## Migrating from pre-v1 to v1
 
-This guide covers the published `0.2.0` release and earlier `0.x` integrations. The stable v1 release starts at `1.0.1`: npm permanently reserves `1.0.0` from an earlier publication that was removed. Install the same stable v1 version in both consumer and host projects, rebuild their bundles, and exercise create/render, prop updates, callbacks, exports, reconnects, and teardown before releasing them. The public package remains a single ESM entrypoint: import from `forgeframe`; internal source paths are not public APIs. Global script-tag or CommonJS consumers must use an ESM-aware build.
+This guide covers `0.2.0` and earlier `0.x` integrations. Stable v1 starts at `1.0.1`; npm permanently reserves `1.0.0` from an earlier, removed publication. Install the same v1 version in the consumer and host projects, rebuild both bundles, and test create/render, prop updates, callbacks, exports, reconnects, and teardown before releasing. The package has one ESM entrypoint, `forgeframe`; internal source paths are not public API. Script-tag and CommonJS consumers need an ESM-aware build.
 
-### Upgrade checklist
+### Upgrade Checklist
 
 1. Await host readiness before reading initial props, children, or shared-factory `hostProps`:
 
@@ -1151,11 +1036,11 @@ This guide covers the published `0.2.0` release and earlier `0.x` integrations. 
    Apply this to every host startup path, including hosts that also define the shared component. After a failed bootstrap, `initHost()` can retry on the same page; a successful retry refreshes the factory's props and controls.
 
 2. Remove `undefined` array entries and sparse holes from deliverable props and exports. Use `null` with a nullable item schema or a defined item default. For example, replace `prop.array().of(prop.string().optional())` plus `[undefined]` with `prop.array().of(prop.string().nullable())` plus `[null]`, or with `prop.array().of(prop.string().default('fallback'))`. Item defaults run before transport admission. Standalone schema validation and props withheld by delivery policy still allow optional entries.
-3. Check number props for `NaN` or infinities; `prop.number()` admits only finite values. Check URL schemas for absolute HTTP(S) URLs; `.url()` composes with `.pattern()` and preserves input spelling unless `.trim()` is requested.
+3. Check number props for `NaN` or infinities; `prop.number()` accepts only finite values. Check that URL props are absolute HTTP(S) URLs; `.url()` composes with `.pattern()` and returns the input unchanged unless `.trim()` is used.
 4. Review callbacks and host exports as asynchronous remote calls. Await their returned promises, including nested methods. For generic or overloaded callbacks, declare promise-returning signatures and use async implementations. Callback arguments/results must be JSON-compatible; convert Dates to ISO strings. Props and `hostProps.export()` preserve Dates and bridge functions explicitly.
-5. Run your host with its intended consumer origin allowlist. `domain` controls consumer trust in the host; `allowedConsumerDomains` controls host trust in consumers. They serve different sides of the integration.
+5. Pass the host's consumer allowlist to `initHost()`. `domain` is the consumer's trust in host origins; `allowedConsumerDomains` is the host's trust in consumer origins.
 
-### API, configuration, and behavior changes
+### API, Configuration, and Behavior Changes
 
 | Area | v1 contract | Required action |
 |------|-------------|-----------------|
@@ -1174,17 +1059,11 @@ This guide covers the published `0.2.0` release and earlier `0.x` integrations. 
 | Remote errors | Messages cross the bridge; remote stack traces do not. Invalid message envelopes are ignored. | Capture detailed diagnostics in the originating window; do not depend on remote stacks. |
 | React adapter | Committed props synchronize per mounted instance; removed keys reset to their fallback. Obsolete or failed work cannot overwrite a newer mount. | Pass committed values and handle update errors through the adapter's error callback. Avoid mutating existing prop objects in place. |
 
-### Bootstrap and data formats
+### Bootstrap and Data Formats
 
-v1 continues to use bootstrap protocol 2. Only channel metadata persists in `window.name`; props and child references arrive through a handshake that verifies the expected window and exact origin. This prevents a redirected host from reading props through the window name and supports reconnection after reload or navigation.
+v1 uses bootstrap protocol 2. Only channel metadata is kept in `window.name`; props and child references arrive through a handshake that verifies the expected window and exact origin. A redirected host therefore cannot read props from the window name, and hosts can reconnect after reload or navigation.
 
-Upgrade both bundles together where possible. For staged upgrades, deploy hosts first: v1 hosts retain the legacy consumer reader for this migration, while v1 consumers require secure bootstrap and reject older hosts that cannot complete it. This reader remains intentionally bounded to host startup; the consumer must also be upgraded to obtain redirect protection. Marker-shaped records use a new escaped-record envelope, and DOTIFY uses prefixed, JSON-framed path arrays. Do not share such payloads with older decoders. No persisted application data needs conversion unless your application has stored internal ForgeFrame transport payloads; regenerate those from original application values with v1.
-
-### Development and release tooling
-
-Run `npm ci` with a supported Node version, then `npm run release:check` and `npm run test:browser`. The release check validates lint/formatting, types, coverage, library and playground builds, emitted declarations, dependency audit, package contents, and a clean installed-package runtime/type smoke check. Browser checks run Chromium, Firefox, and WebKit separately.
-
-The old `release:patch`, `release:minor`, and `release:major` helpers are absent. Use `version:patch`, `version:minor`, or `version:major` for metadata preparation, commit the validated source, then explicitly tag and publish using the release workflow below. Versioning does not create commits or tags, and GitHub release creation does not publish to npm.
+Upgrade both bundles together where possible. For a staged upgrade, deploy hosts first: v1 hosts still read legacy consumer payloads at startup, but v1 consumers require the secure bootstrap and reject older hosts. Redirect protection needs the upgraded consumer. Marker-shaped records use a new escaped-record envelope, and DOTIFY uses prefixed, JSON-framed path arrays, so do not pass these payloads to older decoders. Application data needs no conversion unless you stored internal ForgeFrame transport payloads; regenerate those from the original values with v1.
 
 ---
 
@@ -1200,7 +1079,7 @@ ForgeFrame.destroy(instance)      // Destroy an instance
 ForgeFrame.destroyByTag(tag)      // Destroy all instances of a tag
 ForgeFrame.destroyAll()           // Destroy all instances
 ForgeFrame.isHost()               // Check if in host context
-ForgeFrame.isEmbedded()           // Alias for isHost() - more intuitive naming
+ForgeFrame.isEmbedded()           // Alias for isHost()
 ForgeFrame.initHost(props?, allowedConsumerDomains?) // Await the returned host.ready before reading props
 ForgeFrame.getHostProps()         // Get hostProps in host context
 ForgeFrame.isStandardSchema(val)  // Check if value is a Standard Schema
@@ -1215,9 +1094,7 @@ ForgeFrame.VERSION                // Library version
 
 ### Component Options
 
-`props` accepts direct Standard Schemas for concise definitions or full
-`PropDefinition` objects when transport, alias, and lifecycle options are needed.
-Undefined definition entries are treated as omitted; built-in defaults and delivery rules still apply.
+Each `props` entry is either a Standard Schema or a full `PropDefinition` object with transport, alias, and lifecycle options. An entry set to `undefined` is treated as omitted, so built-in defaults and delivery rules apply.
 
 ```typescript
 interface ComponentOptions<P, I = P, SchemaInputs = I> {
@@ -1260,6 +1137,16 @@ instance.event                               // Event emitter
 instance.state                               // Mutable state
 instance.exports                             // Host exports
 ```
+
+### Instance Lifecycle
+
+- **URL resolution.** Relative component URLs resolve against `document.baseURI`, including any `<base href>`. `render()` validates and pins the absolute URL before loading callbacks run and uses it for navigation and prop delivery checks, so changing the document base during a callback cannot redirect the initial request.
+- **Closing during render.** Calling `close()` while `render()` is in flight cancels the render, removes its loading and host elements, and stops any iframe or popup that has not opened yet. The render promise rejects with `Component "<tag>" was closed before rendering completed`.
+- **Repeated close.** Repeated or reentrant `close()` calls wait for the same operation, including deregistration and destruction notifications; close events and cleanup run once. If a failed render already started destruction, `close()` waits for that teardown without emitting another close event.
+
+### Iframe Styles and Loading
+
+Numeric `style` values become pixels, except for unitless CSS properties, which stay numbers; custom property names are case-sensitive. While the host loads, ForgeFrame conceals the iframe; lazy iframes stay in layout so they can load. After initialization it restores configured `display`, `visibility`, `opacity`, and `transition` styles without its default fade overriding them. `show()` and `hide()` calls take precedence over configured visibility.
 
 ---
 
@@ -1333,58 +1220,56 @@ ForgeFrame ships ES2022 output. Use modern evergreen browsers or transpile the p
 
 ## Developing ForgeFrame
 
-Use Node.js 24.15.0 or newer in the Node.js 24 line for local development; CI also checks Node.js 22.22.2 or newer in the Node.js 22 line. Node.js 26 and newer are also supported by the development tools. These minimum versions are required by jsdom 30 and apply to repository tooling. Run commands from the repository root:
+Repository tooling needs Node.js 22.22.2 or later 22.x, 24.15.0 or later 24.x, or 26 and newer; jsdom 30 sets these minimums. Use Node.js 24 locally; CI also tests on Node.js 22. Run commands from the repository root:
 
 ```bash
 npm ci
 npm run dev
 ```
 
-The playground starts the consumer at `https://localhost:5173` and the host at `https://localhost:5174`. Both use the library source directly, so a separate library build is unnecessary during development. The HTTPS setup uses `vite-plugin-mkcert` and may prompt to trust its local certificate authority on first use.
+The playground serves the consumer at `https://localhost:5173` and the host at `https://localhost:5174`. Both import the library source, so no library build is needed. HTTPS uses `vite-plugin-mkcert`, which may ask you to trust its local certificate authority on first run.
 
-To run locally over HTTP without certificate setup:
+To run over HTTP without certificates:
 
 ```bash
 FORGEFRAME_SKIP_MKCERT=1 VITE_HOST_URL=http://localhost:5174/ FORGEFRAME_PLAYGROUND_OPEN=0 npm run dev
 ```
 
-Then open `http://localhost:5173`. The `/tests` page contains browser scenarios for iframe/popup handshakes, prop updates, callbacks, and lifecycle behavior. Use `npm run dev:consumer` or `npm run dev:host` to start the two servers separately. Set `VITE_HOST_URL` when the host runs at another address.
+Then open `http://localhost:5173`. The `/tests` page runs browser scenarios for iframe and popup handshakes, prop updates, callbacks, and lifecycle behavior. `npm run dev:consumer` and `npm run dev:host` start the two servers separately; set `VITE_HOST_URL` when the host runs at another address.
 
-The **Company demo** button opens `/company`: a fictional Pip Veterinary invoice portal using fictional Harbor Pay on the host's `/payment.html` page. Select one of three AUD invoices, take payment in a modal iframe or popup, and use the prepared demo card details. The outcome selector can approve immediately or decline the first attempt before approving a retry. Closing either payment window leaves the invoice unpaid; successful payments return a receipt and mark only that invoice paid. **Reset demo** or refreshing restores the sample invoices. Payment processing and all company/customer data are simulated; no backend or real payment service is used.
+The **Company demo** button opens `/company`, a fictional Pip Veterinary invoice portal that takes payment through the fictional Harbor Pay provider on the host's `/payment.html`. Pick one of three AUD invoices and pay in a modal iframe or a popup with the prepared demo card details. The outcome selector approves immediately or declines the first attempt and approves the retry. Closing the payment window leaves the invoice unpaid; a successful payment returns a receipt and marks only that invoice paid. **Reset demo** or a page refresh restores the sample invoices. All payment processing and company and customer data are simulated; there is no backend.
 
-**Experience** presents the clinic's payment journey. **Technical** keeps that same application running and adds its origins, live props, lifecycle events, callback arguments and return acknowledgements. Source tabs display the actual consumer, host, shared contract, merchant acceptance rules and provider simulation TypeScript, including TSDoc explaining ownership, initialization, cancellation and callback return values. The host awaits the consumer's `onResult` acknowledgement before closing; these calls use ForgeFrame across the two origins.
+**Experience** shows the clinic's payment journey. **Technical** keeps the same app running and adds its origins, live props, lifecycle events, and callback arguments and acknowledgements. Its source tabs show the consumer, host, shared contract, merchant acceptance rules, and provider simulation, with TSDoc on ownership, initialization, cancellation, and callback return values. The host waits for the consumer's `onResult` acknowledgement before closing.
 
-For a custom deployment, set `VITE_HOST_URL` in the consumer build and `VITE_CONSUMER_URL` in the host build. The payment host allowlists that consumer origin; its default is the local consumer on port 5173 using the host page's protocol. Consumer builds generate a static `/company/index.html`, and host builds include `/payment.html`.
+For a custom deployment, set `VITE_HOST_URL` in the consumer build and `VITE_CONSUMER_URL` in the host build; the payment host allowlists that consumer origin. By default it allows the local consumer on port 5173 with the host page's protocol. Consumer builds generate a static `/company/index.html`; host builds include `/payment.html`.
 
-### Architecture and ownership
+### Architecture and Ownership
 
-The playground displays cross-window prop values, identity fields, and log messages as text. When building a host UI, use `textContent` for received strings rather than interpolating them into HTML.
+The [architecture guide](https://github.com/jshsmth/ForgeFrame/blob/main/docs/architecture.md) covers state ownership and the render/bootstrap, props, callback, and React flows. The [callable reference](https://github.com/jshsmth/ForgeFrame/blob/main/docs/iosp-review.md) classifies runtime responsibilities and links their boundary tests.
 
-Read the [architecture guide](https://github.com/jshsmth/ForgeFrame/blob/main/docs/architecture.md) for state ownership and render/bootstrap, props, callback, and React flows. The [callable reference](https://github.com/jshsmth/ForgeFrame/blob/main/docs/iosp-review.md) classifies runtime responsibilities and links their boundary tests.
-
-- `packages/forgeframe/src/index.ts` defines the public package exports. Other source barrels are internal; the package exposes no subpath imports.
+- `packages/forgeframe/src/index.ts` defines the public exports. Other source barrels are internal; the package has no subpath exports.
 - `core/component.ts` owns component factories and instance tracking. `core/consumer.ts` coordinates rendering, the prop pipeline, and transport; `core/host/` owns host bootstrap and `hostProps`.
-- `communication/` owns request/response messaging and callback bridging. Transports retain their peer window directly and validate browser-provided sources and origins.
-- `props/` owns schemas, normalization, and serialization. Schema input and normalized output are different contracts: repeated validation at trust boundaries protects mutated props and must not blindly reapply transformations.
-- `render/` owns iframe/popup resources and templates; `drivers/` contains the optional React adapter. `packages/playground/` exercises the library as a consumer and host.
+- `communication/` owns request/response messaging and callback bridging. Transports hold their peer window and validate browser-provided sources and origins.
+- `props/` owns schemas, normalization, and serialization. Schema input and normalized output are separate contracts: trust boundaries revalidate normalized props without reapplying transforms.
+- `render/` owns iframe and popup resources and templates; `drivers/` holds the optional React adapter. `packages/playground/` exercises the library as consumer and host.
 
-### Project wiki
+### Project Wiki
 
-Current project knowledge lives in the [development wiki](https://github.com/jshsmth/ForgeFrame/blob/main/docs/_index.md). It uses [Plasma Wiki](https://docs.plasma.ai/wiki/guide/index.html) to maintain Markdown metadata and navigation, with a dedicated GitHub Actions check for generated-index drift and wiki lint issues.
+Contributor knowledge lives in the [development wiki](https://github.com/jshsmth/ForgeFrame/blob/main/docs/_index.md), managed with [Plasma Wiki](https://docs.plasma.ai/wiki/guide/index.html). The CLI generates page metadata and index navigation, and a GitHub Actions check fails on stale indexes or wiki lint issues.
 
-Install Python 3.11 or newer and the pinned CLI with `uv tool install plasma-wiki==1.4.0` (or `pipx install plasma-wiki==1.4.0`). Run `wiki map --path docs` to browse topics, `wiki search --path docs "callback"` for ranked lookup, and `wiki read architecture --path docs` to read a page. You can also read the Markdown files directly on GitHub or in an editor.
+Install Python 3.11 or newer and the pinned CLI with `uv tool install plasma-wiki==1.8.0` (or `pipx install plasma-wiki==1.8.0`). Browse with `wiki map --path docs`, search with `wiki search --path docs "callback"`, and read a page with `wiki read architecture --path docs`. The pages are plain Markdown and can also be read directly.
 
-Edit page bodies and authored metadata such as `title` and `desc`. Run `npm run docs:update` after adding, moving, or editing pages, then `npm run docs:check` before committing. The generator owns names, timestamps, headings, and index link blocks above `***`; index prose belongs below that delimiter. The existing image assets are excluded from indexing. This setup needs no Obsidian vault, plugins, or executable wiki hooks.
+Edit page bodies and authored metadata such as `title` and `desc`. The CLI owns `name`, timestamps, headings, and the index link blocks above `***`; put index prose below that line. After adding, moving, or editing pages, run `npm run docs:update`, then `npm run docs:check` before committing. Image assets are excluded from indexing. No Obsidian vault, plugins, or wiki hooks are needed.
 
-Wiki tooling is a contributor dependency, separate from the npm package and its release checks. The Documentation workflow installs the same pinned CLI and checks without modifying files.
+The wiki CLI is a contributor tool, separate from the npm package and its release checks. The Documentation workflow installs the same pinned version and runs the checks without modifying files.
 
 ### Checks
 
-Development uses TypeScript 7 and Biome with its default formatting and recommended lint rules. Run `npm ci` to install the pinned workspace tools; npm scripts use the local `tsc` and `biome` executables. Generated builds, coverage, and the npm lockfile are excluded from Biome. Markdown, YAML, and TOML are not formatted by these commands.
+Development uses TypeScript 7 and Biome with default formatting and recommended lint rules. `npm ci` installs the pinned tools, and npm scripts run the local `tsc` and `biome`. Biome skips generated builds, coverage, and the npm lockfile, and does not format Markdown, YAML, or TOML.
 
-For VS Code, use the official Biome extension (`biomejs.biome`) for supported files and the TypeScript 7 language-service extension (`TypeScriptTeam.native-preview`) for native compiler editor support. Other editors should use their Biome and TypeScript 7 LSP integrations. The compiler upgrade is development tooling; it does not require consumers to upgrade to TypeScript 7.
+In VS Code, use the Biome extension (`biomejs.biome`) and the TypeScript 7 language service (`TypeScriptTeam.native-preview`); in other editors, use their Biome and TypeScript 7 LSP integrations. Consumers of the package do not need TypeScript 7.
 
-Biome retains its recommended severities. Tests and playground bindings use explicit value guards so missing fixtures or elements fail instead of silently skipping assertions or actions. Intentional React effect signatures, prototype-safety fixtures, and CSS precedence overrides have local suppressions with explanations.
+Tests and playground bindings use explicit value guards, so a missing fixture or element fails instead of silently skipping an assertion or action. Intentional React effect signatures, prototype-safety fixtures, and CSS precedence overrides have local Biome suppressions with explanations.
 
 | Command | What it checks |
 |---------|----------------|
@@ -1403,17 +1288,13 @@ Biome retains its recommended severities. Tests and playground bindings use expl
 | `npm run test:package` | Pack and install the built library in an isolated project; verify ESM imports and NodeNext consumer types |
 | `npm run release:check` | Lint, types, tests once with coverage, builds, dependency audit, package dry run, and installed-package checks; does not publish |
 
-See the [test index](https://github.com/jshsmth/ForgeFrame/blob/main/packages/forgeframe/tests/README.md) for suite selection and single-file commands. jsdom checks do not replace browser testing of cross-origin navigation, popup blockers, or visual behavior. `npm audit` requires registry access; an audit service failure leaves the release check incomplete even when local checks pass.
+See the [test index](https://github.com/jshsmth/ForgeFrame/blob/main/packages/forgeframe/tests/README.md) for suite selection and single-file commands. jsdom tests do not replace browser testing of cross-origin navigation, popup blockers, or visual behavior. `npm audit` needs registry access; if the audit service fails, the release check is incomplete even when the local checks pass.
 
-Install browser engines with `npx playwright install chromium firefox webkit`
-before running `npm run test:browser`. CI installs their system dependencies and
-runs all three engines on Node 24. Local checks and hosted CI must both pass
-before release readiness is established. WebKit covers the Safari engine;
-physical Safari/device acceptance remains separate.
+Install browser engines with `npx playwright install chromium firefox webkit` before running `npm run test:browser`. CI installs their system dependencies and runs all three engines on Node 24. A release needs both the local checks and hosted CI to pass. WebKit covers the Safari engine, not physical Safari or devices.
 
-Edit the root `README.md` for documentation changes. The library build copies it to `packages/forgeframe/README.md` for npm publication; do not edit that copy separately. Commit the refreshed copy with documentation changes. Declaration files under `dist/` are generated by TypeScript and adjusted by `scripts/fix-dts-imports.mjs` for NodeNext consumers; do not edit them by hand.
+Edit documentation in the root `README.md`. The library build copies it to `packages/forgeframe/README.md` for npm; commit the refreshed copy and do not edit it directly. TypeScript generates the declarations under `dist/`, and `scripts/fix-dts-imports.mjs` adjusts them for NodeNext consumers; do not edit them by hand.
 
-### Release workflow
+### Release Workflow
 
 Version preparation and publication are separate:
 
@@ -1423,7 +1304,7 @@ Version preparation and publication are separate:
 4. Run `npm run release` to publish. The publishable workspace owns `prepublishOnly`, so both this command and `npm publish -w forgeframe` run the full checks before publication.
 5. Push the release commit and its specific tag explicitly. The GitHub workflow requires the tag to match the package version, validates it, and creates release notes; it does not publish to npm. Manual workflow runs must select the matching tag.
 
-The former `release:patch`, `release:minor`, and `release:major` helpers were removed because workspace versioning does not create the commits or tags those helpers assumed. Use `npm run release:check` for local verification without publishing or pushing.
+There are no `release:patch`, `release:minor`, or `release:major` scripts, because workspace versioning does not create commits or tags. `npm run release:check` verifies locally without publishing or pushing.
 
 ---
 
