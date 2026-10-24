@@ -698,7 +698,7 @@ const peers = await props.getPeerInstances();
 cancel();
 ```
 
-Peers are other instances rendered by the same consumer. Their exports keep data, `Date` values, and nested methods; methods return promises and are relayed through the consumer. Method references survive unrelated prop updates. After a peer replaces its exports or reconnects, its old methods reject, so call `getPeerInstances()` again. Discovery counts toward the relay limit in [Callback Capacity](#callback-capacity).
+Peers are other instances rendered by the same consumer whose hosts it verified at the requesting host's origin; `anyConsumer: true` adds other component tags at that origin. To let hosts on other origins, such as sibling subdomains, discover a component's instances, list those origins in its `peerDomains` option. Hosts with an opaque origin, such as sandboxed frames without `allow-same-origin`, have no peers. A peer whose host is still loading is listed without exports; call `getPeerInstances()` again once it is ready. Peer exports keep data, `Date` values, and nested methods; methods return promises and are relayed through the consumer. Method references survive unrelated prop updates. After a peer replaces its exports or reconnects, its old methods reject, so call `getPeerInstances()` again. Discovery counts toward the relay limit in [Callback Capacity](#callback-capacity).
 
 <details>
 <summary>Method Reference</summary>
@@ -718,7 +718,7 @@ Peers are other instances rendered by the same consumer. Their exports keep data
 | `getConsumerDomain()` | Get consumer origin |
 | `consumer.props` | Access consumer's props |
 | `consumer.export()` | Send data to consumer from host context |
-| `getPeerInstances()` | Get peer component instances from the same consumer |
+| `getPeerInstances()` | Get peer component instances from the same consumer and host origin |
 | `children` | Nested component factories provided by consumer (if configured) |
 
 </details>
@@ -1063,7 +1063,7 @@ This guide covers `0.2.0` and earlier `0.x` integrations. Stable v1 starts at `1
 
 v1 uses bootstrap protocol 2. Only channel metadata is kept in `window.name`; props and child references arrive through a handshake that verifies the expected window and exact origin. A redirected host therefore cannot read props from the window name, and hosts can reconnect after reload or navigation.
 
-Upgrade both bundles together where possible. For a staged upgrade, deploy hosts first: v1 hosts still read legacy consumer payloads at startup, but v1 consumers require the secure bootstrap and reject older hosts. Redirect protection needs the upgraded consumer. Marker-shaped records use a new escaped-record envelope, and DOTIFY uses prefixed, JSON-framed path arrays, so do not pass these payloads to older decoders. Application data needs no conversion unless you stored internal ForgeFrame transport payloads; regenerate those from the original values with v1.
+Upgrade both bundles together where possible. For a staged upgrade, deploy hosts first: v1 hosts still read legacy consumer payloads at startup, but v1 consumers require the secure bootstrap and reject older hosts. Redirect protection needs the upgraded consumer. The legacy reader verifies a consumer only when the host can read the consumer window's origin directly, which requires the same origin; `document.referrer` is not consumer evidence, so a cross-origin legacy consumer cannot satisfy `allowedConsumerDomains`. Upgrade those consumers before enabling an allowlist. Marker-shaped records use a new escaped-record envelope, and DOTIFY uses prefixed, JSON-framed path arrays, so do not pass these payloads to older decoders. Application data needs no conversion unless you stored internal ForgeFrame transport payloads; regenerate those from the original values with v1.
 
 ---
 
@@ -1107,6 +1107,7 @@ interface ComponentOptions<P, I = P, SchemaInputs = I> {
   prerenderTemplate?: (ctx: TemplateContext<P>) => HTMLElement | null;
   domain?: DomainMatcher;                 // Consumer-side trusted host origins
   allowedConsumerDomains?: DomainMatcher; // Host-side allowed consumer origins
+  peerDomains?: DomainMatcher;            // Other host origins that may discover these instances as peers
   eligible?: (opts: { props: P }) => { eligible: boolean; reason?: string };
   validate?: (opts: { props: P }) => void;
   attributes?: IframeAttributes | ((props: P) => IframeAttributes);

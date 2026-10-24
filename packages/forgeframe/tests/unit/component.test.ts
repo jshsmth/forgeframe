@@ -25,6 +25,11 @@ import * as hostSecurity from "@/core/host/security";
 import { prop } from "@/props/prop";
 import type { ComponentOptions, PropContext } from "@/types";
 import { buildWindowName } from "@/window/name-payload";
+import {
+	PEER_HOST_DOMAIN,
+	setOpenedHostDomain,
+	setVerifiedHostDomain,
+} from "../peer-host-domain";
 import { requireValue } from "../require-value";
 
 const VALID_EXPORTS: ConsumerExports = {
@@ -617,11 +622,13 @@ describe("Component Creation", () => {
 		await Promise.resolve();
 
 		expect(CloseResolverComponent.instances).toEqual([]);
+		setVerifiedHostDomain(PEER_HOST_DOMAIN, leakedInstance, healthyInstance);
 		expect(
 			getSiblingInstances({
 				uid: healthyInstance.uid,
 				tag: "resolver-close-unregistered-healthy-component",
-				options: { anyConsumer: true },
+				hostDomain: PEER_HOST_DOMAIN,
+				anyConsumer: true,
 			}).some((sibling) => sibling.uid === leakedInstance.uid),
 		).toBe(false);
 
@@ -2240,15 +2247,23 @@ describe("Host Context Detection", () => {
 			const alphaPrimary = AlphaComponent({});
 			const alphaSibling = AlphaComponent({});
 			const betaSibling = BetaComponent({});
+			setVerifiedHostDomain(
+				PEER_HOST_DOMAIN,
+				alphaPrimary,
+				alphaSibling,
+				betaSibling,
+			);
 
 			const sameTagSiblings = getSiblingInstances({
 				uid: alphaPrimary.uid,
 				tag: "peer-alpha",
+				hostDomain: PEER_HOST_DOMAIN,
 			});
 			const anyConsumerSiblings = getSiblingInstances({
 				uid: alphaPrimary.uid,
 				tag: "peer-alpha",
-				options: { anyConsumer: true },
+				hostDomain: PEER_HOST_DOMAIN,
+				anyConsumer: true,
 			});
 
 			expect(sameTagSiblings).toEqual([
@@ -2280,6 +2295,155 @@ describe("Host Context Detection", () => {
 			]);
 		});
 
+		it("should exclude peers whose verified host origin differs or is unavailable", async () => {
+			const AlphaComponent = create({
+				tag: "peer-origin-alpha",
+				url: "https://example.com/alpha",
+			});
+			const BetaComponent = create({
+				tag: "peer-origin-beta",
+				url: "https://example.com/beta",
+			});
+
+			const requester = AlphaComponent({});
+			const sameOrigin = AlphaComponent({});
+			const foreignSameTag = AlphaComponent({});
+			const foreignOtherTag = BetaComponent({});
+			const unconnected = AlphaComponent({});
+			const sameOriginOtherTag = BetaComponent({});
+			foreignSameTag.exports = { secret: "foreign-same-tag" };
+			foreignOtherTag.exports = { secret: "foreign-other-tag" };
+			setVerifiedHostDomain(
+				PEER_HOST_DOMAIN,
+				requester,
+				sameOrigin,
+				sameOriginOtherTag,
+			);
+			setVerifiedHostDomain(
+				"https://foreign-host.example.com",
+				foreignSameTag,
+				foreignOtherTag,
+			);
+
+			for (const anyConsumer of [false, true]) {
+				const uids = getSiblingInstances({
+					uid: requester.uid,
+					tag: "peer-origin-alpha",
+					hostDomain: PEER_HOST_DOMAIN,
+					anyConsumer,
+				}).map((sibling) => sibling.uid);
+
+				expect(uids).toContain(sameOrigin.uid);
+				expect(uids).not.toContain(foreignSameTag.uid);
+				expect(uids).not.toContain(foreignOtherTag.uid);
+				expect(uids).not.toContain(unconnected.uid);
+				expect(uids.includes(sameOriginOtherTag.uid)).toBe(anyConsumer);
+			}
+
+			await Promise.all(
+				[
+					requester,
+					sameOrigin,
+					foreignSameTag,
+					foreignOtherTag,
+					unconnected,
+					sameOriginOtherTag,
+				].map((instance) => instance.close()),
+			);
+		});
+
+		it("should let a component admit other host origins through peerDomains", async () => {
+			const SharedComponent = create({
+				tag: "peer-domains-shared",
+				url: "https://widgets-a.myapp.example/widget",
+				domain: "https://*.myapp.example",
+				peerDomains: "https://*.myapp.example",
+			});
+			const PrivateComponent = create({
+				tag: "peer-domains-private",
+				url: "https://widgets-a.myapp.example/private",
+				domain: "https://*.myapp.example",
+			});
+
+			const requester = SharedComponent({});
+			const sharedPeer = SharedComponent({});
+			const privatePeer = PrivateComponent({});
+			setVerifiedHostDomain("https://widgets-a.myapp.example", requester);
+			setVerifiedHostDomain(
+				"https://widgets-b.myapp.example",
+				sharedPeer,
+				privatePeer,
+			);
+			const lookup = (hostDomain: string) =>
+				getSiblingInstances({
+					uid: requester.uid,
+					tag: "peer-domains-shared",
+					hostDomain,
+					anyConsumer: true,
+				}).map((sibling) => sibling.uid);
+
+			expect(lookup("https://widgets-a.myapp.example")).toEqual([
+				sharedPeer.uid,
+			]);
+			expect(lookup("https://evil.example.com")).toEqual([]);
+			expect(lookup("null")).toEqual([]);
+
+			await Promise.all(
+				[requester, sharedPeer, privatePeer].map((instance) =>
+					instance.close(),
+				),
+			);
+		});
+
+		it("should list same-origin peers whose hosts are still loading without exports", async () => {
+			const LoadingComponent = create({
+				tag: "peer-loading",
+				url: "https://example.com/loading",
+			});
+
+			const requester = LoadingComponent({});
+			const loadingPeer = LoadingComponent({});
+			const foreignLoadingPeer = LoadingComponent({});
+			loadingPeer.exports = { early: "not yet verified" };
+			setVerifiedHostDomain(PEER_HOST_DOMAIN, requester);
+			setOpenedHostDomain(PEER_HOST_DOMAIN, loadingPeer);
+			setOpenedHostDomain(
+				"https://foreign-host.example.com",
+				foreignLoadingPeer,
+			);
+
+			expect(
+				getSiblingInstances({
+					uid: requester.uid,
+					tag: "peer-loading",
+					hostDomain: PEER_HOST_DOMAIN,
+				}),
+			).toEqual([
+				{ uid: loadingPeer.uid, tag: "peer-loading", exports: undefined },
+			]);
+
+			setVerifiedHostDomain(PEER_HOST_DOMAIN, loadingPeer);
+			expect(
+				getSiblingInstances({
+					uid: requester.uid,
+					tag: "peer-loading",
+					hostDomain: PEER_HOST_DOMAIN,
+				}),
+			).toEqual([
+				{
+					uid: loadingPeer.uid,
+					tag: "peer-loading",
+					exports: { early: "not yet verified" },
+				},
+			]);
+
+			await Promise.all(
+				[requester, loadingPeer, foreignLoadingPeer].map((instance) =>
+					instance.close(),
+				),
+			);
+		});
+
 		it("should update indexed peers when sibling instances are destroyed", async () => {
 			const IndexedComponent = create({
 				tag: "peer-index-cleanup",
@@ -2288,11 +2452,13 @@ describe("Host Context Detection", () => {
 
 			const primary = IndexedComponent({});
 			const sibling = IndexedComponent({});
+			setVerifiedHostDomain(PEER_HOST_DOMAIN, primary, sibling);
 
 			expect(
 				getSiblingInstances({
 					uid: primary.uid,
 					tag: "peer-index-cleanup",
+					hostDomain: PEER_HOST_DOMAIN,
 				}),
 			).toEqual([
 				expect.objectContaining({
@@ -2307,6 +2473,7 @@ describe("Host Context Detection", () => {
 				getSiblingInstances({
 					uid: primary.uid,
 					tag: "peer-index-cleanup",
+					hostDomain: PEER_HOST_DOMAIN,
 				}),
 			).toEqual([]);
 
@@ -2325,11 +2492,13 @@ describe("Host Context Detection", () => {
 
 			const alphaPrimary = AlphaComponent({});
 			const betaSibling = BetaComponent({});
+			setVerifiedHostDomain(PEER_HOST_DOMAIN, alphaPrimary, betaSibling);
 
 			const siblingsBeforeUnregister = getSiblingInstances({
 				uid: alphaPrimary.uid,
 				tag: "peer-index-unregister-alpha",
-				options: { anyConsumer: true },
+				hostDomain: PEER_HOST_DOMAIN,
+				anyConsumer: true,
 			});
 			expect(
 				siblingsBeforeUnregister.some(
@@ -2342,7 +2511,8 @@ describe("Host Context Detection", () => {
 			const siblingsAfterUnregister = getSiblingInstances({
 				uid: alphaPrimary.uid,
 				tag: "peer-index-unregister-alpha",
-				options: { anyConsumer: true },
+				hostDomain: PEER_HOST_DOMAIN,
+				anyConsumer: true,
 			});
 			expect(
 				siblingsAfterUnregister.some(

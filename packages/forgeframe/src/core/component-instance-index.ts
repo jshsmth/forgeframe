@@ -8,11 +8,23 @@
  */
 
 import type { ForgeFrameComponentInstance } from "../types/runtime";
+import type { DomainMatcher } from "../types/utility";
+
+/** Internal accessors the index requires in addition to the public instance API. @internal */
+export interface IndexedInstanceAccess {
+	/** Browser-verified origin of the connected host window, if any. */
+	getVerifiedHostDomain(): string | null;
+	/** Origin the instance opened its host at, before verification. */
+	getOpenedHostDomain(): string | null;
+	/** Other host origins allowed to discover this instance as a peer. */
+	getPeerDomains(): DomainMatcher | undefined;
+}
 
 export type IndexedComponentInstance = ForgeFrameComponentInstance<
 	Record<string, unknown>,
 	unknown
->;
+> &
+	IndexedInstanceAccess;
 
 const componentInstanceIndexByUid = new Map<
 	string,
@@ -34,7 +46,8 @@ export function indexComponentInstance<
 	SchemaInputs,
 >(
 	tag: string,
-	instance: ForgeFrameComponentInstance<P, X, I, SchemaInputs>,
+	instance: ForgeFrameComponentInstance<P, X, I, SchemaInputs> &
+		IndexedInstanceAccess,
 ): void {
 	const indexedInstance = instance as IndexedComponentInstance;
 	const existing = componentInstanceIndexByUid.get(indexedInstance.uid);

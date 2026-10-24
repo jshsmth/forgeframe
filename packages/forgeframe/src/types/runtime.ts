@@ -362,6 +362,16 @@ export interface ComponentOptions<
 	allowedConsumerDomains?: DomainMatcher;
 
 	/**
+	 * Other host origins whose instances may discover this component's instances
+	 * and call their exports through `getPeerInstances()`.
+	 *
+	 * @remarks
+	 * Without this option, only hosts verified at the same origin are peers.
+	 * Hosts with an opaque (`"null"`) origin never discover peers.
+	 */
+	peerDomains?: DomainMatcher;
+
+	/**
 	 * Custom container template function.
 	 */
 	containerTemplate?: ContainerTemplate<P>;
@@ -690,7 +700,8 @@ export interface SiblingInfo {
 export interface GetPeerInstancesOptions {
 	/**
 	 * If true, include peers from all registered component tags in the current
-	 * consumer context.
+	 * consumer context. Peers must still be hosted at the requester's verified
+	 * origin unless their component's `peerDomains` admit it.
 	 * @defaultValue false
 	 */
 	anyConsumer?: boolean;
@@ -801,6 +812,9 @@ export interface HostPropsBuiltins<P = Record<string, unknown>> {
 	 * @remarks
 	 * Peer instances are other ForgeFrame component instances that share the same
 	 * consumer window. This enables communication between multiple embedded components.
+	 * Only peers whose hosts the consumer verified at this host's origin are
+	 * returned, unless a peer's component lists this origin in `peerDomains`.
+	 * Peers whose hosts are still loading are listed without exports until rediscovery.
 	 * Exported methods are relayed through the consumer and return promises.
 	 * Rediscover peers after a sibling replaces its exports or reconnects; retired
 	 * methods reject. Unrelated prop updates do not retire cached peer methods.

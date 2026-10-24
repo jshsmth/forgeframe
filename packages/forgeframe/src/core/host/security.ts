@@ -46,21 +46,13 @@ export function resolveConsumerWindow(hostWindow: Window = window): Window {
 	throw new Error(CONSUMER_WINDOW_RESOLUTION_ERROR);
 }
 
-export function getReferrerOrigin(
-	hostDocument: Document = document,
-	hostWindow: Window = window,
-): string | null {
-	if (!hostDocument.referrer) {
-		return null;
-	}
-
-	try {
-		return new URL(hostDocument.referrer, hostWindow.location.href).origin;
-	} catch {
-		return null;
-	}
-}
-
+/**
+ * Reads the consumer origin only when the browser exposes it directly.
+ *
+ * @remarks
+ * `document.referrer` is not consumer evidence: it names the page that started
+ * the host navigation, which need not be the parent or opener window.
+ */
 export function getAccessibleConsumerOrigin(
 	consumerWindow: Window,
 ): string | null {
@@ -71,17 +63,6 @@ export function getAccessibleConsumerOrigin(
 	}
 }
 
-export function getVerifiedConsumerOrigin(
-	consumerWindow: Window,
-	hostDocument: Document = document,
-	hostWindow: Window = window,
-): string | null {
-	return (
-		getReferrerOrigin(hostDocument, hostWindow) ??
-		getAccessibleConsumerOrigin(consumerWindow)
-	);
-}
-
 export function resolveConsumerSecurityContext(options: {
 	consumerWindow: Window;
 	claimedConsumerDomain: string;
@@ -90,7 +71,7 @@ export function resolveConsumerSecurityContext(options: {
 }): HostSecurityContext {
 	return selectConsumerSecurityContext(
 		options,
-		getVerifiedConsumerOrigin(options.consumerWindow),
+		getAccessibleConsumerOrigin(options.consumerWindow),
 	);
 }
 
@@ -125,7 +106,7 @@ export function reassertAllowedConsumerDomain(options: {
 	onConsumerDomainChange?: (previousDomain: string, nextDomain: string) => void;
 }): HostSecurityContext {
 	const context = selectObservedConsumerContext(
-		getVerifiedConsumerOrigin(options.consumerWindow),
+		getAccessibleConsumerOrigin(options.consumerWindow),
 		options,
 	);
 	if (context.consumerDomain !== options.consumerDomain) {

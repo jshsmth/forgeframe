@@ -19,7 +19,11 @@ import { MESSAGE_NAME } from "../../constants";
 import { getPropsForHost, serializeProps } from "../../props";
 import type { SerializedProps } from "../../props/types";
 import type { PropsDefinition } from "../../types/props";
-import type { RemoteValue, SiblingInfo } from "../../types/runtime";
+import type {
+	GetPeerInstancesOptions,
+	RemoteValue,
+	SiblingInfo,
+} from "../../types/runtime";
 import type { Dimensions, DomainMatcher } from "../../types/utility";
 import { createDeferred, promiseTimeout } from "../../utils/promise";
 import {
@@ -430,10 +434,17 @@ export class ConsumerTransport<
 			return { success: true };
 		});
 
-		this.onHostControl<ConsumerSiblingRequest>(
+		this.onHostControl<{ options?: GetPeerInstancesOptions } | undefined>(
 			MESSAGE_NAME.GET_SIBLINGS,
-			async (request) => {
-				const peers = await handlers.onGetSiblings(request);
+			async (request, source) => {
+				// Scope discovery to this instance and the browser-verified host origin;
+				// claimed uid/tag fields could otherwise reach other origins' exports.
+				const peers = await handlers.onGetSiblings({
+					uid: this.uid,
+					tag: this.options.tag,
+					hostDomain: source.domain,
+					anyConsumer: request?.options?.anyConsumer === true,
+				});
 				this.peerBridge.startBatch("append");
 				try {
 					const serialized = serializeFunctions(peers, this.peerBridge);

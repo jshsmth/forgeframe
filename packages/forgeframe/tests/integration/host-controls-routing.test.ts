@@ -9,6 +9,10 @@ import { MESSAGE_NAME } from "@/constants";
 import { create, EVENT, prop } from "@/index";
 import type { Dimensions, PropsDefinition } from "@/types";
 import {
+	getVerifiedHostDomain,
+	setVerifiedHostDomain,
+} from "../peer-host-domain";
+import {
 	createIframeIntegrationHarness,
 	dispatchForgeFrameRequest,
 	type IframeIntegrationHarness,
@@ -215,6 +219,7 @@ describe("Host controls and routing integration", () => {
 		const rendering = requester.render(container);
 		const { hostProps } = await harness.bootstrapIframeHost(container);
 		await rendering;
+		setVerifiedHostDomain(getVerifiedHostDomain(requester), sibling);
 		const peers = await hostProps.getPeerInstances();
 		const held = peers[0]?.exports as { initial: () => Promise<number> };
 		const failedMethods = Object.fromEntries(
@@ -232,6 +237,89 @@ describe("Host controls and routing integration", () => {
 		await expect(methods.initial()).resolves.toBe(42);
 		await expect(methods.fresh()).resolves.toBe(7);
 		await expect(held.initial()).resolves.toBe(42);
+	});
+
+	it("excludes peers whose hosts were verified at another origin", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const Component = create({
+			tag: "integration-peer-origin-scope",
+			url: "https://host.example.com/widget",
+		});
+		const Other = create({
+			tag: "integration-peer-origin-scope-other",
+			url: "https://other.example.com/widget",
+		});
+		const requester = Component();
+		const sameOrigin = Component();
+		const foreignSameTag = Component();
+		const foreignOtherTag = Other();
+		sameOrigin.exports = { id: "same-origin" };
+		foreignSameTag.exports = { secret: () => "foreign-same-tag" };
+		foreignOtherTag.exports = { secret: () => "foreign-other-tag" };
+		const rendering = requester.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(container);
+		await rendering;
+		const requesterOrigin = getVerifiedHostDomain(requester);
+		expect(requesterOrigin).toBe("https://host.example.com");
+		setVerifiedHostDomain(requesterOrigin, sameOrigin);
+		setVerifiedHostDomain(
+			"https://other.example.com",
+			foreignSameTag,
+			foreignOtherTag,
+		);
+
+		for (const options of [undefined, { anyConsumer: true }]) {
+			await expect(
+				harness.withHostGlobalsAsync(() => hostProps.getPeerInstances(options)),
+			).resolves.toEqual([
+				{
+					uid: sameOrigin.uid,
+					tag: "integration-peer-origin-scope",
+					exports: { id: "same-origin" },
+				},
+			]);
+		}
+	});
+
+	it("admits peers on other host origins that list the requester in peerDomains", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const Requester = create({
+			tag: "integration-peer-domains-requester",
+			url: "https://host.example.com/widget",
+		});
+		const Shared = create({
+			tag: "integration-peer-domains-shared",
+			url: "https://partner.example.com/widget",
+			peerDomains: "https://host.example.com",
+		});
+		const Private = create({
+			tag: "integration-peer-domains-private",
+			url: "https://partner.example.com/private",
+		});
+		const requester = Requester();
+		const shared = Shared();
+		const privatePeer = Private();
+		shared.exports = { run: () => "shared-partner" };
+		privatePeer.exports = { run: () => "private-partner" };
+		const rendering = requester.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(container);
+		await rendering;
+		setVerifiedHostDomain("https://partner.example.com", shared, privatePeer);
+
+		const peers = await harness.withHostGlobalsAsync(() =>
+			hostProps.getPeerInstances({ anyConsumer: true }),
+		);
+		expect(peers.map(({ uid, tag }) => ({ uid, tag }))).toEqual([
+			{ uid: shared.uid, tag: "integration-peer-domains-shared" },
+		]);
+		const exports = peers[0]?.exports as { run: () => Promise<string> };
+		await expect(
+			harness.withHostGlobalsAsync(() => exports.run()),
+		).resolves.toBe("shared-partner");
 	});
 
 	it("recovers export callback capacity after final message encoding fails", async () => {
@@ -295,6 +383,7 @@ describe("Host controls and routing integration", () => {
 			definitions,
 		);
 		await rendering;
+		setVerifiedHostDomain(getVerifiedHostDomain(requester), sibling);
 		const peers = await harness.withHostGlobalsAsync(() =>
 			hostProps.getPeerInstances(),
 		);
@@ -360,6 +449,7 @@ describe("Host controls and routing integration", () => {
 		);
 
 		await expect(renderPromise).resolves.toBeUndefined();
+		setVerifiedHostDomain(getVerifiedHostDomain(instance), sibling);
 
 		const resizeDimensions: Dimensions = { width: 320, height: 240 };
 		await harness.withHostGlobalsAsync(() =>

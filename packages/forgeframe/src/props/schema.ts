@@ -192,6 +192,9 @@ export type InferOutput<Schema extends StandardSchemaV1> =
  * @param value - The value to check
  * @returns True if the value implements StandardSchemaV1
  *
+ * @remarks
+ * Callable schemas, such as ArkType types, are recognized alongside objects.
+ *
  * @example
  * ```typescript
  * import { z } from 'zod';
@@ -206,8 +209,8 @@ export type InferOutput<Schema extends StandardSchemaV1> =
  */
 export function isStandardSchema(value: unknown): value is StandardSchemaV1 {
 	return (
-		typeof value === "object" &&
-		value !== null &&
+		((typeof value === "object" && value !== null) ||
+			typeof value === "function") &&
 		"~standard" in value &&
 		typeof (value as StandardSchemaV1)["~standard"] === "object" &&
 		(value as StandardSchemaV1)["~standard"] !== null &&

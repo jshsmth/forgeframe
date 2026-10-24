@@ -52,6 +52,33 @@ void InferredComponent({
 	onSubmit: (_value: number) => undefined,
 });
 
+// Callable Standard Schemas, such as ArkType types, infer like schema objects.
+declare const callableStringSchema: ((input: unknown) => unknown) & {
+	readonly "~standard": {
+		readonly version: 1;
+		readonly vendor: "callable-validator";
+		readonly validate: (
+			value: unknown,
+		) => { value: string } | { issues: [{ message: string }] };
+		readonly types?: { readonly input: string; readonly output: string };
+	};
+};
+
+const CallableSchemaComponent = create({
+	tag: "callable-schema-component",
+	url: "https://example.com/callable",
+	props: { name: callableStringSchema },
+});
+
+void CallableSchemaComponent({ name: "ready" });
+
+// @ts-expect-error callable schemas reject the wrong value type
+void CallableSchemaComponent({ name: 1 });
+
+const callableHostName: string | undefined =
+	CallableSchemaComponent.hostProps?.name;
+void callableHostName;
+
 interface ExplicitProps extends Record<string, unknown> {
 	label: string;
 	enabled: boolean;

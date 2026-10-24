@@ -16,6 +16,7 @@ import { ConsumerComponent } from "@/core/consumer";
 import { PROP_RESET } from "@/core/consumer/props-pipeline";
 import { prop } from "@/props/prop";
 import * as popupRender from "@/render/popup";
+import { setVerifiedHostDomain } from "../peer-host-domain";
 import { requireValue } from "../require-value";
 
 const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
@@ -619,23 +620,25 @@ describe("Consumer lifecycle behavior", () => {
 			},
 		});
 
-		const instanceA = PeerComponent({ amount: 1 });
-		const instanceB = PeerComponent({ amount: 2 });
-		instanceA.exports = { id: "a" };
-		instanceB.exports = { id: "b" };
+		const requester = PeerComponent({ amount: 1 });
+		const sibling = PeerComponent({ amount: 2 });
+		requester.exports = { id: "a" };
+		sibling.exports = { id: "b" };
+		setVerifiedHostDomain("https://host.example.com", requester, sibling);
 
-		const consumer = createConsumer();
-		const internal = getInternals(consumer);
+		const internal = getInternals(
+			requester as unknown as ConsumerComponent<Record<string, unknown>>,
+		);
 		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
 		const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
 		internal.transport.hostWindow = hostWindow;
 
 		dispatchHostMessage(MESSAGE_NAME.GET_SIBLINGS, spoofedWindow, {
 			data: {
-				uid: instanceA.uid,
+				uid: requester.uid,
 				tag: "peer-siblings-component",
 			},
-			claimedUid: consumer.uid,
+			claimedUid: requester.uid,
 		});
 		await flushMessages();
 
@@ -643,20 +646,178 @@ describe("Consumer lifecycle behavior", () => {
 
 		dispatchHostMessage(MESSAGE_NAME.GET_SIBLINGS, hostWindow, {
 			data: {
-				uid: instanceA.uid,
+				uid: requester.uid,
 				tag: "peer-siblings-component",
 			},
-			claimedUid: consumer.uid,
+			claimedUid: requester.uid,
 		});
 		await flushMessages();
 
 		expect(readResponseData(hostWindow)).toEqual([
 			{
-				uid: instanceB.uid,
+				uid: sibling.uid,
 				tag: "peer-siblings-component",
 				exports: { id: "b" },
 			},
 		]);
+
+		await Promise.all([requester.close(), sibling.close()]);
+	});
+
+	it("should scope GET_SIBLINGS to the requester's own identity and verified host origin", async () => {
+		const RequesterComponent = create({
+			tag: "peer-scope-requester",
+			url: "https://host.example.com/requester",
+		});
+		const VictimComponent = create({
+			tag: "peer-scope-victim",
+			url: "https://victim.example.com/widget",
+		});
+
+		const requester = RequesterComponent();
+		const sameOriginSibling = RequesterComponent();
+		const victim = VictimComponent();
+		const victimSibling = VictimComponent();
+		sameOriginSibling.exports = { id: "same-origin" };
+		victim.exports = { secret: "victim" };
+		victimSibling.exports = { secret: "victim-sibling" };
+		setVerifiedHostDomain(
+			"https://host.example.com",
+			requester,
+			sameOriginSibling,
+		);
+		setVerifiedHostDomain("https://victim.example.com", victim, victimSibling);
+
+		const internal = getInternals(
+			requester as unknown as ConsumerComponent<Record<string, unknown>>,
+		);
+		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+		internal.transport.hostWindow = hostWindow;
+
+		// A host claiming another component's uid and tag still sees only its own peers.
+		dispatchHostMessage(MESSAGE_NAME.GET_SIBLINGS, hostWindow, {
+			data: { uid: victim.uid, tag: "peer-scope-victim" },
+			claimedUid: requester.uid,
+		});
+		await flushMessages();
+
+		expect(readResponseData(hostWindow)).toEqual([
+			{
+				uid: sameOriginSibling.uid,
+				tag: "peer-scope-requester",
+				exports: { id: "same-origin" },
+			},
+		]);
+
+		dispatchHostMessage(MESSAGE_NAME.GET_SIBLINGS, hostWindow, {
+			data: {
+				uid: victim.uid,
+				tag: "peer-scope-victim",
+				options: { anyConsumer: true },
+			},
+			claimedUid: requester.uid,
+		});
+		await flushMessages();
+
+		expect(readResponseData(hostWindow)).toEqual([
+			{
+				uid: sameOriginSibling.uid,
+				tag: "peer-scope-requester",
+				exports: { id: "same-origin" },
+			},
+		]);
+
+		await Promise.all(
+			[requester, sameOriginSibling, victim, victimSibling].map((instance) =>
+				instance.close(),
+			),
+		);
+	});
+
+	it("should give opaque-origin hosts no peers even when both report the null origin", async () => {
+		const OpaqueComponent = create({
+			tag: "peer-scope-opaque",
+			url: "https://host.example.com/opaque",
+			domain: "*",
+		});
+		const requester = OpaqueComponent();
+		const otherProvider = OpaqueComponent();
+		otherProvider.exports = { secret: "other-provider" };
+		// Sandboxed frames without allow-same-origin all serialize as "null".
+		setVerifiedHostDomain("null", requester, otherProvider);
+
+		const internal = getInternals(
+			requester as unknown as ConsumerComponent<Record<string, unknown>>,
+		);
+		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+		internal.transport.hostWindow = hostWindow;
+
+		for (const options of [undefined, { anyConsumer: true }]) {
+			dispatchHostMessage(MESSAGE_NAME.GET_SIBLINGS, hostWindow, {
+				data: { options },
+				origin: "null",
+				claimedUid: requester.uid,
+			});
+			await flushMessages();
+
+			expect(readResponseData(hostWindow)).toEqual([]);
+		}
+
+		await Promise.all([requester.close(), otherProvider.close()]);
+	});
+
+	it("should treat malformed GET_SIBLINGS data as a same-tag lookup", async () => {
+		const PeerComponent = create({
+			tag: "peer-scope-malformed",
+			url: "https://host.example.com/peer",
+		});
+		const OtherComponent = create({
+			tag: "peer-scope-malformed-other",
+			url: "https://host.example.com/other",
+		});
+		const requester = PeerComponent();
+		const sibling = PeerComponent();
+		const otherTag = OtherComponent();
+		sibling.exports = { id: "sibling" };
+		otherTag.exports = { id: "other-tag" };
+		setVerifiedHostDomain(
+			"https://host.example.com",
+			requester,
+			sibling,
+			otherTag,
+		);
+
+		const consumer = requester as unknown as ConsumerComponent<
+			Record<string, unknown>
+		>;
+		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+		getInternals(consumer).transport.hostWindow = hostWindow;
+		const handler = requireValue(
+			getHandlers(consumer).get(MESSAGE_NAME.GET_SIBLINGS),
+		);
+
+		for (const data of [
+			null,
+			undefined,
+			"options",
+			42,
+			{ options: null },
+			{ options: { anyConsumer: "yes" } },
+		]) {
+			await expect(
+				Promise.resolve(handler(data, createMessageSource(hostWindow))),
+			).resolves.toEqual([
+				{
+					uid: sibling.uid,
+					tag: "peer-scope-malformed",
+					exports: { id: "sibling" },
+				},
+			]);
+		}
+
+		await Promise.all(
+			[requester, sibling, otherTag].map((instance) => instance.close()),
+		);
 	});
 
 	it("should throw when open is called in iframe context without prerender iframe", async () => {

@@ -7,7 +7,8 @@
  * sibling consumer instances without keeping that logic inside the façade.
  */
 
-import type { GetPeerInstancesOptions, SiblingInfo } from "../../types/runtime";
+import type { SiblingInfo } from "../../types/runtime";
+import { matchDomain } from "../../window/helpers";
 import {
 	getComponentInstancesByTag,
 	getIndexedComponentInstances,
@@ -15,12 +16,19 @@ import {
 
 /**
  * Request shape used for consumer sibling lookups.
+ *
+ * @remarks
+ * The consumer transport supplies the requesting identity and the
+ * browser-verified host origin; host-claimed identity fields are not used.
  * @internal
  */
 export interface ConsumerSiblingRequest {
 	uid: string;
 	tag: string;
-	options?: GetPeerInstancesOptions;
+	/** Browser-verified origin of the requesting host window. */
+	hostDomain: string;
+	/** Include peers from all component tags, as normalized by the transport. */
+	anyConsumer?: boolean;
 }
 
 /**
@@ -30,24 +38,53 @@ export interface ConsumerSiblingRequest {
 export function getSiblingInstances(
 	request: ConsumerSiblingRequest,
 ): SiblingInfo[] {
-	const indexed = request.options?.anyConsumer
+	const indexed = request.anyConsumer
 		? getIndexedComponentInstances()
 		: getComponentInstancesByTag(request.tag).map((instance) => ({
 				tag: request.tag,
 				instance,
 			}));
-	return selectSiblingInstances(indexed, request.uid);
+	return selectSiblingInstances(indexed, request.uid, request.hostDomain);
 }
 
-/** Selects peer snapshots from supplied indexed instances, excluding the requesting identity. @internal */
+/** Serialized origin of opaque documents, such as sandboxed frames without `allow-same-origin`. */
+const OPAQUE_ORIGIN = "null";
+
+/**
+ * Selects peer snapshots from supplied indexed instances, excluding the
+ * requesting identity, unopened peers, and peers whose host origin differs from
+ * the requester's unless the peer's `peerDomains` admit it.
+ *
+ * @remarks
+ * A peer whose host is still loading is matched by the origin it was opened at
+ * and listed without exports; only verified hosts share exports.
+ * Every opaque origin serializes as `"null"` but is distinct from all others,
+ * so an opaque requester has no peers, even when `peerDomains` would match.
+ * @internal
+ */
 export function selectSiblingInstances(
 	indexed: ReturnType<typeof getIndexedComponentInstances>,
 	requestingUid: string,
+	requestingHostDomain: string,
 ): SiblingInfo[] {
+	if (requestingHostDomain === OPAQUE_ORIGIN) return [];
 	const siblings: SiblingInfo[] = [];
 	for (const { tag, instance } of indexed) {
 		if (instance.uid === requestingUid) continue;
-		siblings.push({ uid: instance.uid, tag, exports: instance.exports });
+		const verifiedHostDomain = instance.getVerifiedHostDomain();
+		const peerHostDomain = verifiedHostDomain ?? instance.getOpenedHostDomain();
+		if (peerHostDomain === null) continue;
+		const peerDomains = instance.getPeerDomains();
+		if (
+			peerHostDomain !== requestingHostDomain &&
+			!(peerDomains && matchDomain(peerDomains, requestingHostDomain))
+		)
+			continue;
+		siblings.push({
+			uid: instance.uid,
+			tag,
+			exports: verifiedHostDomain === null ? undefined : instance.exports,
+		});
 	}
 	return siblings;
 }

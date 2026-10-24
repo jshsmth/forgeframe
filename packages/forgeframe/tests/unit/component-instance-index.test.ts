@@ -10,15 +10,12 @@ import {
 	clearIndexedInstancesByTag,
 	getComponentInstancesByTag,
 	getIndexedComponentInstances,
+	type IndexedComponentInstance,
 	indexComponentInstance,
 	removeIndexedComponentInstance,
 } from "@/core/component-instance-index";
-import type { ForgeFrameComponentInstance } from "@/types";
 
-type TestInstance = ForgeFrameComponentInstance<
-	Record<string, unknown>,
-	unknown
->;
+type TestInstance = IndexedComponentInstance;
 
 function createInstance(uid: string): TestInstance {
 	const instance = {
@@ -35,6 +32,9 @@ function createInstance(uid: string): TestInstance {
 		isEligible: vi.fn(() => true),
 		event: {} as TestInstance["event"],
 		state: {},
+		getVerifiedHostDomain: vi.fn(() => null),
+		getOpenedHostDomain: vi.fn(() => null),
+		getPeerDomains: vi.fn(() => undefined),
 	} as TestInstance;
 
 	instance.clone = vi.fn(() => instance);

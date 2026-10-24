@@ -20,9 +20,9 @@ What each test file covers, how to run it, and how to choose new tests. Paths ar
 - `component-clone.test.ts`: Clone snapshots, lifecycle tracking, peer visibility, global and tag cleanup. Repeated and reentrant `close()` calls resolve only after deregistration and destruction notifications, including while failed-render teardown is in progress. A rearmed `once` observer waits for the next public resize.
 - `component-instance-index.test.ts`: Internal active-instance indexing, reindexing, tag clearing, and peer lookup snapshots.
 - `component-node-runtime-transition.test.ts`: Component registration across a Node-to-browser runtime transition.
-- `component.test.ts`: Component creation, registration, instance lifecycle, and host-context detection. Undefined reserved definition entries are treated as omitted; real host-control definitions are rejected.
+- `component.test.ts`: Component creation, registration, instance lifecycle, and host-context detection. Undefined reserved definition entries are treated as omitted; real host-control definitions are rejected. Peer discovery is limited to the requester's verified host origin unless a peer's `peerDomains` admit the requester, and peers still loading are listed without exports.
 - `consumer-branch-coverage.test.ts`: Consumer edge paths for domain trust, rendering, and prop sync.
-- `consumer-lifecycle.test.ts`: Consumer handshake, lifecycle messaging, open/close guards, and update validation.
+- `consumer-lifecycle.test.ts`: Consumer handshake, lifecycle messaging, open/close guards, update validation, and `GET_SIBLINGS` scoping to the requester's own uid, tag, and verified host origin regardless of claimed or malformed request fields, with no peers for opaque (`"null"`) origins.
 - `consumer-navigation.test.ts`: Relative URL origin admission, declaration and render base changes, pinned destinations, and fragment-bearing navigation.
 - `consumer-origin-policy.test.ts`: Trust decisions from supplied origin evidence, messaging-origin validation, and changed-origin selection.
 - `consumer-props-queue.test.ts`: Disconnected reentrant updates, FIFO failure recovery, render admission draining, matching initial request and bootstrap snapshots, and cancellation.
@@ -34,7 +34,7 @@ What each test file covers, how to run it, and how to choose new tests. Paths ar
 - `error.test.ts`: Unknown-error normalization keeps `Error` identity and ordinary coercion, with a stable fallback when coercion throws.
 - `host-branch-coverage.test.ts`: Host edge paths for deferred init, failure capture, and guards.
 - `host-lifecycle.test.ts`: Host lifecycle messages, `hostProps` synchronization, consumer window resolution, consumer-only field discard in legacy bootstrap payloads, rejected same-turn legacy configuration through `initHost()` and a matching `create()` with immediate and deferred INIT delivery, atomic late-configuration validation and reconciliation, built-in and snapshot identity, and persistence of removals during a pending bootstrap.
-- `host-security.test.ts`: Host allowlist enforcement and deferred-init security gating. Rejected late definitions keep a completed legacy host and invalidate an incomplete messaging bootstrap.
+- `host-security.test.ts`: Host allowlist enforcement and deferred-init security gating. Rejected late definitions keep a completed legacy host and invalidate an incomplete messaging bootstrap. Legacy payloads never treat `document.referrer` as consumer identity.
 - `host-transport.test.ts`: Deferred init scheduling, trust updates, props routing, and teardown.
 - `iframe-configuration.test.ts`: CSS and boolean/string attribute encoding.
 - `iframe.test.ts`: Iframe creation, reserved-attribute guards, visibility, and sizing.
@@ -62,7 +62,7 @@ What each test file covers, how to run it, and how to choose new tests. Paths ar
 - `realm-values.test.ts`: Cross-window `Date` and ordinary-record recognition, class and array rejection, and codec array values.
 - `render-templates.test.ts`: Template DOM creation, styles, transitions, and prerender swap.
 - `schema-contract.test.ts`: Contract coverage against Zod and Valibot.
-- `schema-interoperability.test.ts`: Minimal Standard Schema shapes and optional metadata.
+- `schema-interoperability.test.ts`: Minimal Standard Schema shapes, callable (ArkType-style) schemas through validation and render admission, and optional metadata.
 - `schema-path-format.test.ts`: Error paths that mix key and index segments.
 - `schema.test.ts`: Standard Schema detection, schema-aware prop validation, and handling of unsupported rejected native and foreign promises in direct and nested schemas.
 - `url.test.ts`: Relative URL resolution and query appending that keeps fragments, existing encoding, and duplicate parameters.
@@ -72,6 +72,8 @@ What each test file covers, how to run it, and how to choose new tests. Paths ar
 - `window-name-payload.test.ts`: Window-name payload encoding and parsing, and ForgeFrame-window detection.
 
 `react-driver-test-harness.ts` provides deterministic hook and component mocks for the React driver tests.
+
+`../peer-host-domain.ts`, shared with the integration tests, marks unrendered instances as connected or still loading at a host origin, so peer-discovery tests do not need a rendered host for every peer.
 
 `npm run typecheck` compiles all unit tests and fixtures through `unit/tsconfig.json` with the library's strict settings. Intentionally invalid public inputs use a documented `@ts-expect-error` at the negative fixture only.
 
@@ -83,7 +85,7 @@ What each test file covers, how to run it, and how to choose new tests. Paths ar
 - `consumer-host-handshake.test.ts`: Iframe happy path through `create()`, `render()`, `initHost()`, and the INIT handshake. Also covers oversized bootstrap metadata followed by a valid retry; parent bootstrap with a recursive Zod child schema; own child names such as `__proto__` and `constructor`, which keep their factory identity through a prop update and public close without changing map prototypes; and public host destruction followed by fresh initialization, prop sync, and working host controls.
 - `cross-realm-props.test.ts`: Foreign-window `Date` and record inputs through props and exports in JSON, BASE64, and DOTIFY; arrays with null prototypes or shadowed `map`; encoded accessors read once; and real BASE64/DOTIFY bootstrap and update delivery.
 - `function-prop-bridge.test.ts`: Capacity rejection and recovery in every codec, omitted callback defaults, a dropped acknowledgement after the receiver installed callbacks, and real callback bridging from host `window.hostProps` to consumer callbacks: async results, thrown errors, BASE64/DOTIFY nested callbacks and dates at bootstrap and update, and retirement of replaced callbacks after acknowledged updates in all three serialization modes.
-- `host-controls-routing.test.ts`: Host built-ins (`close`, `focus`, `resize`, `show`, `hide`, `onError`, `export`, peer lookup); acknowledged hide during initial rendering; atomic export and peer-capacity rejection; exported array entries captured once; rollback of new peer relay registrations when response encoding fails while held callbacks stay callable; and spoofed-source rejection in consumer and host runtimes.
+- `host-controls-routing.test.ts`: Host built-ins (`close`, `focus`, `resize`, `show`, `hide`, `onError`, `export`, peer lookup); acknowledged hide during initial rendering; atomic export and peer-capacity rejection; exported array entries captured once; rollback of new peer relay registrations when response encoding fails while held callbacks stay callable; exclusion of peers verified at another host origin, and admission of a partner origin through `peerDomains` with callable exports; and spoofed-source rejection in consumer and host runtimes.
 - `object-prop-roundtrip.test.ts`: Ordinary records shaped like BASE64, DOTIFY, or function markers keep their user fields through bootstrap and updates in all three serialization modes, including DOTIFY branches converted by custom JSON encoders.
 - `popup-host-handshake.test.ts`: Popup happy path and popup-blocked failure through `render(..., 'popup')` and `initHost()`.
 - `props-alias-sync.test.ts`: Canonical host synchronization for initial, updated, and chained alias values.
@@ -107,7 +109,7 @@ Each suite runs in Chromium, Firefox, and WebKit against separate local origins.
   - Arrays with null prototypes or shadowed `map` in props, updates, and exports, and repeated `close()` on rendered iframes and popups.
   - Loading layout: eager iframes with custom normal-flow templates keep the mount and following content in place; lazy GET/POST frames initialize while concealed, including with configured `display: none`; configured CSS values and priorities are restored; visibility controls apply during loading and before frame creation; and lazy navigation can be cancelled.
   - Rejected async schemas, with supplied input and during default probing: synchronous refusal, no unhandled rejection, and a successful retry with valid input.
-- `peer-exports.spec.ts`: Same-origin sibling hosts under a separate consumer origin: nested callable exports and dates, independence from prop updates, propagated errors, retirement and replacement of exports, and discovery across component tags.
+- `peer-exports.spec.ts`: Same-origin sibling hosts under a separate consumer origin: nested callable exports and dates, independence from prop updates, propagated errors, retirement and replacement of exports, discovery across component tags, hosts on another origin neither seeing nor being seen as peers, and one-way `peerDomains` admission of a named host origin.
 - `playground-text.spec.ts`: Builds both playground pages and the consumer logger.
   - Cross-origin iframe and popup: literal markup-shaped prop names and values, greeting logs, updates, export controls, and **Request Close** without a remote `onClose` callback. Omitted popup dimensions produce a 500 × 500 viewport.
   - Two same-tag widgets on one host origin keep independent prop snapshots and callbacks, and the remaining widget keeps working after the other closes.
@@ -125,7 +127,7 @@ Each suite runs in Chromium, Firefox, and WebKit against separate local origins.
 ## Type tests (`typecheck/`)
 
 - `alias-inputs.ts`: Canonical-key aliases, legacy aliases, mixed updates, and React wrapper input props.
-- `component-inference.typecheck.ts`: Inferred and explicit schema-backed component props, third-party schemas, callbacks, and typed children.
+- `component-inference.typecheck.ts`: Inferred and explicit schema-backed component props, third-party and callable schemas, callbacks, and typed children.
 - `events.typecheck.ts`: Typed event handlers keep compatible registration and removal contracts and reject incompatible explicit types.
 - `host.typecheck.ts`: Host initialization and host-prop schema input/output contracts.
 - `prop-schema.typecheck.ts`: Prop builder inference, defaults, optionality, and composite schemas.

@@ -51,6 +51,21 @@ function setDocumentReferrer(referrer: string): void {
 	});
 }
 
+/** Creates a consumer window whose origin the browser exposes to the host. */
+function createAccessibleConsumerWindow(origin: string): Window {
+	return { location: { origin }, postMessage: vi.fn() } as unknown as Window;
+}
+
+/** Creates a cross-origin consumer window whose location the browser hides. */
+function createInaccessibleConsumerWindow(): Window {
+	return {
+		postMessage: vi.fn(),
+		get location() {
+			throw new Error("Cross-origin");
+		},
+	} as unknown as Window;
+}
+
 function dispatchConsumerMessage(
 	name: string,
 	sourceWindow: Window,
@@ -277,7 +292,9 @@ describe("Host security", () => {
 	});
 
 	it("should reject disallowed consumer domains during host initialization", () => {
-		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
+		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
+			createAccessibleConsumerWindow("https://evil.example.com"),
+		);
 
 		const payload: WindowNamePayload<Record<string, unknown>> = {
 			uid: "host-uid",
@@ -290,15 +307,16 @@ describe("Host security", () => {
 		};
 
 		window.name = buildWindowName(payload);
-		setDocumentReferrer("https://evil.example.com/checkout");
 
 		expect(() => initHost({}, "https://trusted.example.com")).toThrow(
-			"is not allowed",
+			'Consumer domain "https://evil.example.com" is not allowed',
 		);
 	});
 
 	it("should clear the bootstrap window name but preserve same-page retry when allowlist validation fails", () => {
-		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
+		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
+			createAccessibleConsumerWindow("https://evil.example.com"),
+		);
 
 		const payload: WindowNamePayload<Record<string, unknown>> = {
 			uid: "host-uid-allowlist-retry",
@@ -312,7 +330,6 @@ describe("Host security", () => {
 		const bootstrapWindowName = buildWindowName(payload);
 
 		window.name = bootstrapWindowName;
-		setDocumentReferrer("https://evil.example.com/checkout");
 
 		expect(() => initHost({}, "https://trusted.example.com")).toThrow(
 			"is not allowed",
@@ -333,7 +350,9 @@ describe("Host security", () => {
 	});
 
 	it("should allow wildcard consumer domains during host initialization and bind the verified origin", () => {
-		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
+		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
+			createAccessibleConsumerWindow("https://api.trusted.example.com"),
+		);
 
 		const payload: WindowNamePayload<Record<string, unknown>> = {
 			uid: "host-uid-wildcard",
@@ -346,7 +365,6 @@ describe("Host security", () => {
 		};
 
 		window.name = buildWindowName(payload);
-		setDocumentReferrer("https://api.trusted.example.com/checkout");
 
 		const host = initHost({}, "https://*.trusted.example.com", {
 			deferInit: true,
@@ -363,8 +381,10 @@ describe("Host security", () => {
 		expect(hostPropsDescriptor?.get).toEqual(expect.any(Function));
 	});
 
-	it("should reject spoofed claimed consumer domains when the verified referrer origin is untrusted", () => {
-		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
+	it("should reject spoofed claimed consumer domains when the accessible consumer origin is untrusted", () => {
+		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
+			createAccessibleConsumerWindow("https://evil.example.com"),
+		);
 
 		const payload: WindowNamePayload<Record<string, unknown>> = {
 			uid: "host-uid-spoofed-domain",
@@ -377,15 +397,16 @@ describe("Host security", () => {
 		};
 
 		window.name = buildWindowName(payload);
-		setDocumentReferrer("https://evil.example.com/login");
 
 		expect(() => initHost({}, "https://trusted.example.com")).toThrow(
 			"https://evil.example.com",
 		);
 	});
 
-	it("should bind host consumer domain to the verified referrer origin instead of the claimed payload origin", () => {
-		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
+	it("should bind host consumer domain to the accessible consumer origin instead of the claimed payload origin", () => {
+		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
+			createAccessibleConsumerWindow("https://verified.example.com"),
+		);
 
 		const payload: WindowNamePayload<Record<string, unknown>> = {
 			uid: "host-uid-verified-domain",
@@ -398,7 +419,6 @@ describe("Host security", () => {
 		};
 
 		window.name = buildWindowName(payload);
-		setDocumentReferrer("https://verified.example.com/flow");
 
 		const host = initHost({}, undefined, { deferInit: true });
 
@@ -408,11 +428,7 @@ describe("Host security", () => {
 	});
 
 	it("should reject host initialization when consumer origin cannot be verified for an allowlist", () => {
-		const inaccessibleConsumerWindow = {
-			get location() {
-				throw new Error("Cross-origin");
-			},
-		} as unknown as Window;
+		const inaccessibleConsumerWindow = createInaccessibleConsumerWindow();
 
 		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
 			inaccessibleConsumerWindow,
@@ -429,7 +445,6 @@ describe("Host security", () => {
 		};
 
 		window.name = buildWindowName(payload);
-		setDocumentReferrer("");
 
 		expect(() => initHost({}, "https://trusted.example.com")).toThrow(
 			"Could not verify consumer origin",
@@ -454,7 +469,6 @@ describe("Host security", () => {
 			};
 
 			window.name = buildWindowName(payload);
-			setDocumentReferrer("https://trusted.example.com/checkout");
 
 			const host = initHost(undefined, undefined, { deferInit: true });
 			expect(host).not.toBeNull();
@@ -504,12 +518,7 @@ describe("Host security", () => {
 	it.each(["legacy", "messaging"])(
 		"does not relax required sameDomain props for unverified %s bootstrap with deferred INIT",
 		(bootstrap) => {
-			const inaccessibleConsumerWindow = {
-				postMessage: vi.fn(),
-				get location() {
-					throw new Error("Cross-origin");
-				},
-			} as unknown as Window;
+			const inaccessibleConsumerWindow = createInaccessibleConsumerWindow();
 
 			vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
 				inaccessibleConsumerWindow,
@@ -528,7 +537,6 @@ describe("Host security", () => {
 			};
 
 			window.name = buildWindowName(payload);
-			setDocumentReferrer("");
 
 			const host = initHost(undefined, undefined, { deferInit: true });
 			expect(host).not.toBeNull();
@@ -574,11 +582,7 @@ describe("Host security", () => {
 	);
 
 	it("should reject allowlist rechecks when the existing host never verified the consumer origin", () => {
-		const inaccessibleConsumerWindow = {
-			get location() {
-				throw new Error("Cross-origin");
-			},
-		} as unknown as Window;
+		const inaccessibleConsumerWindow = createInaccessibleConsumerWindow();
 
 		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
 			inaccessibleConsumerWindow,
@@ -595,7 +599,6 @@ describe("Host security", () => {
 		};
 
 		window.name = buildWindowName(payload);
-		setDocumentReferrer("");
 
 		const host = initHost(undefined, undefined, { deferInit: true });
 		expect(host).not.toBeNull();
@@ -622,7 +625,6 @@ describe("Host security", () => {
 		};
 
 		window.name = buildWindowName(payload);
-		setDocumentReferrer("https://evil.example.com/path");
 
 		initHost(undefined, undefined, { deferInit: true });
 		expect(
@@ -651,7 +653,6 @@ describe("Host security", () => {
 		};
 
 		window.name = buildWindowName(payload);
-		setDocumentReferrer("https://evil.example.com/path");
 
 		const host = initHost(undefined, undefined, { deferInit: true });
 		expect(host).not.toBeNull();
@@ -686,7 +687,6 @@ describe("Host security", () => {
 		};
 
 		window.name = buildWindowName(payload);
-		setDocumentReferrer("https://evil.example.com/path");
 
 		const host = initHost(undefined, undefined, { deferInit: true });
 		expect(host).not.toBeNull();
@@ -722,7 +722,6 @@ describe("Host security", () => {
 		};
 
 		window.name = buildWindowName(payload);
-		setDocumentReferrer("https://evil.example.com/path");
 
 		const host = initHost(undefined, undefined, { deferInit: true });
 		expect(host).not.toBeNull();
@@ -761,7 +760,6 @@ describe("Host security", () => {
 		};
 
 		window.name = buildWindowName(payload);
-		setDocumentReferrer("https://evil.example.com/path");
 
 		const host = initHost(undefined, undefined, { deferInit: true });
 		expect(host).not.toBeNull();
@@ -804,7 +802,6 @@ describe("Host security", () => {
 		};
 
 		window.name = buildWindowName(payload);
-		setDocumentReferrer("https://trusted.example.com/checkout");
 
 		expect(() =>
 			initHost(
@@ -818,20 +815,64 @@ describe("Host security", () => {
 	});
 });
 
-describe("Host security helpers", () => {
-	it("should return null when referrer origin parsing fails", () => {
-		const fakeDocument = {
-			referrer: "http://[invalid-referrer",
-		} as Document;
-		const fakeWindow = {
-			location: {
-				href: "https://host.example.com/page",
-			},
-		} as Window;
+describe("Legacy payload consumer identity", () => {
+	const inaccessibleConsumerWindow = createInaccessibleConsumerWindow();
 
-		expect(hostSecurity.getReferrerOrigin(fakeDocument, fakeWindow)).toBeNull();
+	function writeLegacyPayload(consumerDomain: string): void {
+		window.name = buildWindowName({
+			uid: "host-uid-legacy-referrer",
+			tag: "secure-component-legacy-referrer",
+			version: VERSION,
+			context: CONTEXT.IFRAME,
+			consumerDomain,
+			props: { amount: 999999, payee: "attacker" },
+			exports: VALID_EXPORTS,
+		});
+	}
+
+	it("should not accept an allowlisted referrer as a cross-origin consumer's identity", () => {
+		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
+			inaccessibleConsumerWindow,
+		);
+		// The referrer names the page that started navigation, not the parent/opener.
+		setDocumentReferrer("https://trusted.example.com/redirect");
+		writeLegacyPayload("https://trusted.example.com");
+
+		expect(() =>
+			initHost(
+				{ amount: prop.number(), payee: prop.string() },
+				"https://trusted.example.com",
+			),
+		).toThrow(
+			'Could not verify consumer origin for component "secure-component-legacy-referrer"',
+		);
+		expect(
+			(window as unknown as { hostProps?: unknown }).hostProps,
+		).toBeUndefined();
 	});
 
+	it("should keep an unverified claimed origin when only the referrer differs", () => {
+		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
+			inaccessibleConsumerWindow,
+		);
+		setDocumentReferrer("https://referrer.example.com/flow");
+		writeLegacyPayload("https://claimed.example.com");
+
+		const host = initHost(undefined, undefined, { deferInit: true });
+
+		expect(host?.hostProps.getConsumerDomain()).toBe(
+			"https://claimed.example.com",
+		);
+		expect(() => initHost({}, "https://referrer.example.com")).toThrow(
+			"Could not verify consumer origin",
+		);
+		expect(
+			(window as unknown as { hostProps?: unknown }).hostProps,
+		).toBeUndefined();
+	});
+});
+
+describe("Host security helpers", () => {
 	it("should reject reassertion when the resolved consumer domain is empty under an allowlist", () => {
 		const consumerWindow = {} as Window;
 
@@ -850,11 +891,9 @@ describe("Host security helpers", () => {
 
 	it("should notify when the verified consumer domain changes during reassertion", () => {
 		const onConsumerDomainChange = vi.fn();
-		const consumerWindow = {
-			location: {
-				origin: "https://verified.example.com",
-			},
-		} as unknown as Window;
+		const consumerWindow = createAccessibleConsumerWindow(
+			"https://verified.example.com",
+		);
 
 		const context = hostSecurity.reassertAllowedConsumerDomain({
 			consumerWindow,
