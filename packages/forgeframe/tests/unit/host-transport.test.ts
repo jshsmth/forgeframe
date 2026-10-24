@@ -270,6 +270,19 @@ describe("HostTransport", () => {
 		}
 	});
 
+	it("resolves focus() without waiting when the consumer page reports no focus", async () => {
+		const { transport } = createTransport();
+		vi.spyOn(transport.messenger, "send").mockResolvedValue({
+			success: true,
+			focused: false,
+		});
+		vi.spyOn(document, "hasFocus").mockReturnValue(false);
+		const waited = vi.spyOn(window, "addEventListener");
+
+		await transport.focus();
+		expect(waited).not.toHaveBeenCalledWith("focus", expect.any(Function));
+	});
+
 	it("should normalize non-Error init failures, emit lifecycle errors, and log the original value", async () => {
 		const { transport, event } = createTransport();
 		const sendSpy = vi

@@ -28,6 +28,22 @@ import type { FunctionRef } from "./types";
  */
 type CallableFunction = (...args: unknown[]) => unknown | Promise<unknown>;
 
+/**
+ * Delay before, and timeout of, each check that a window with pending calls
+ * still answers. A document that went away without teardown never answers.
+ * @internal
+ */
+const CALL_LIVENESS_MS = 10_000;
+
+const UNRESPONSIVE_WINDOW_ERROR =
+	"The other window stopped responding before the call completed";
+
+/** Pending calls to one window and its next liveness check. @internal */
+interface CallWatch {
+	calls: number;
+	timer: ReturnType<typeof setTimeout> | undefined;
+}
+
 /** Cached callable together with the remote identity it targets. @internal */
 interface RemoteFunctionEntry {
 	wrapper: CallableFunction;
@@ -96,6 +112,10 @@ export class FunctionBridge {
 	/** Registrations created by a batch, removable before any delivery attempt. */
 	private newBatchIds = new Set<string>();
 	private batchMode: "replace" | "append" | null = null;
+	/** Rejection messages for windows whose host session ended. */
+	private endedSessions = new WeakMap<Window, string>();
+	/** Windows with pending calls, checked periodically for a listener. */
+	private callWatches = new Map<Window, CallWatch>();
 
 	/**
 	 * Creates a new FunctionBridge instance.
@@ -226,26 +246,91 @@ export class FunctionBridge {
 
 	/**
 	 * Remote calls have no timeout: the callback may still be running in the
-	 * other window, so they settle with its result or reject on teardown.
+	 * other window, so they settle with its result, reject on teardown, or
+	 * reject when the other window stops answering liveness checks.
 	 */
 	private createRemoteWrapper(
 		ref: FunctionRef,
 		targetWin: Window,
 		targetDomain: string,
 	): CallableFunction {
-		const wrapper = async (...args: unknown[]): Promise<unknown> =>
-			this.messenger.send(
-				targetWin,
-				targetDomain,
-				this.callMessageName,
-				{ id: ref.__id__, args },
-				null,
-			);
+		const wrapper = async (...args: unknown[]): Promise<unknown> => {
+			const endedMessage = this.endedSessions.get(targetWin);
+			if (endedMessage !== undefined) throw new Error(endedMessage);
+			const unwatch = this.watchRemoteCall(targetWin, targetDomain);
+			try {
+				return await this.messenger.send(
+					targetWin,
+					targetDomain,
+					this.callMessageName,
+					{ id: ref.__id__, args },
+					null,
+				);
+			} finally {
+				unwatch();
+			}
+		};
 		Object.defineProperty(wrapper, "name", {
 			value: ref.__name__,
 			configurable: true,
 		});
 		return wrapper;
+	}
+
+	/**
+	 * Counts a pending call to a window and checks the window while any are
+	 * pending. The returned function releases the call.
+	 */
+	private watchRemoteCall(targetWin: Window, targetDomain: string): () => void {
+		let watch = this.callWatches.get(targetWin);
+		if (!watch) {
+			watch = { calls: 0, timer: undefined };
+			this.callWatches.set(targetWin, watch);
+			this.scheduleLivenessCheck(targetWin, targetDomain, watch);
+		}
+		const active = watch;
+		active.calls++;
+		return () => {
+			if (--active.calls > 0) return;
+			clearTimeout(active.timer);
+			if (this.callWatches.get(targetWin) === active)
+				this.callWatches.delete(targetWin);
+		};
+	}
+
+	/** Rejects pending calls to a window that no longer answers a liveness check. */
+	private scheduleLivenessCheck(
+		targetWin: Window,
+		targetDomain: string,
+		watch: CallWatch,
+	): void {
+		watch.timer = setTimeout(() => {
+			this.messenger
+				.send(
+					targetWin,
+					targetDomain,
+					this.livenessMessageName,
+					undefined,
+					CALL_LIVENESS_MS,
+				)
+				.then(
+					() => {
+						if (this.callWatches.get(targetWin) === watch)
+							this.scheduleLivenessCheck(targetWin, targetDomain, watch);
+					},
+					() => {
+						this.rejectRemoteCalls(
+							targetWin,
+							new Error(UNRESPONSIVE_WINDOW_ERROR),
+						);
+					},
+				);
+		}, CALL_LIVENESS_MS);
+	}
+
+	/** Liveness checks use a channel of their own, answered by the same source guard. */
+	private get livenessMessageName(): string {
+		return `${this.callMessageName}_liveness`;
 	}
 
 	/**
@@ -286,6 +371,12 @@ export class FunctionBridge {
 				return fn(...args);
 			},
 		);
+		this.messenger.on(this.livenessMessageName, (_data, source) => {
+			if (!this.isExpectedSource(source)) {
+				throw new Error("Liveness check rejected from unexpected window");
+			}
+			return true;
+		});
 	}
 
 	/**
@@ -384,14 +475,25 @@ export class FunctionBridge {
 	}
 
 	/**
-	 * Answers calls to this bridge's local functions that are still running
-	 * with an error, before this window stops serving them. Remote calls have
-	 * no timeout, so their callers would otherwise never settle.
+	 * Rejects this bridge's calls to a window whose session ended, including
+	 * calls it has not dispatched yet, and later calls until
+	 * {@link FunctionBridge.resumeRemoteSession}.
 	 *
-	 * @param error - The error sent to each caller
+	 * @param targetWin - The window whose session ended
+	 * @param message - The rejection message
 	 */
-	rejectLocalCalls(error: Error): void {
-		this.messenger.rejectInbound(this.callMessageName, error);
+	endRemoteSession(targetWin: Window, message: string): void {
+		this.endedSessions.set(targetWin, message);
+		this.rejectRemoteCalls(targetWin, new Error(message));
+	}
+
+	/**
+	 * Accepts calls to a window again once it starts a new session.
+	 *
+	 * @param targetWin - The window that started a new session
+	 */
+	resumeRemoteSession(targetWin: Window): void {
+		this.endedSessions.delete(targetWin);
 	}
 
 	/**
@@ -427,6 +529,8 @@ export class FunctionBridge {
 	destroy(): void {
 		this.clearLocal();
 		this.remoteFunctions.clear();
+		for (const watch of this.callWatches.values()) clearTimeout(watch.timer);
+		this.callWatches.clear();
 	}
 }
 

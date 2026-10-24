@@ -54,16 +54,6 @@ interface PendingRequest {
 	expectedOrigin: string | "*";
 }
 
-/**
- * A received request whose handler is still running.
- * @internal
- */
-interface InboundRequest {
-	message: Message;
-	sourceWin: Window;
-	origin: string;
-}
-
 function isPendingResponseSourceMatch(
 	pending: PendingRequest,
 	sourceWin: Window,
@@ -131,9 +121,6 @@ export class Messenger {
 
 	/** @internal */
 	private handlers = new Map<string, MessageHandler>();
-
-	/** @internal */
-	private inbound = new Set<InboundRequest>();
 
 	/** @internal */
 	private listener: ((event: MessageEvent) => void) | null = null;
@@ -447,8 +434,6 @@ export class Messenger {
 	): Promise<void> {
 		const handler = this.handlers.get(message.name);
 		if (!handler) return;
-		const request: InboundRequest = { message, sourceWin, origin };
-		this.inbound.add(request);
 		let responseData: unknown;
 		let responseError: Error | undefined;
 		try {
@@ -461,9 +446,12 @@ export class Messenger {
 		} catch (error) {
 			responseError = normalizeError(error);
 		}
-		// rejectInbound() may already have answered this request.
-		if (!this.inbound.delete(request)) return;
-		this.respond(request, responseData, responseError);
+		const serialized = this.serializeResponse(
+			message,
+			responseData,
+			responseError,
+		);
+		this.postResponse(sourceWin, origin, serialized);
 	}
 
 	/** Invokes user code with browser-verified metadata, preserving synchronous throw timing. */
@@ -478,12 +466,6 @@ export class Messenger {
 			domain: origin,
 			window: sourceWin,
 		});
-	}
-
-	/** Posts the one response a received request gets. */
-	private respond(request: InboundRequest, data: unknown, error?: Error): void {
-		const serialized = this.serializeResponse(request.message, data, error);
-		this.postResponse(request.sourceWin, request.origin, serialized);
 	}
 
 	/** An invalid handler result still produces the existing serializable error response. */
@@ -535,22 +517,6 @@ export class Messenger {
 			this.pending.delete(id);
 			clearTimeout(pending.timeout);
 			pending.deferred.reject(error);
-		}
-	}
-
-	/**
-	 * Answers received requests of one message type whose handlers are still
-	 * running with an error, such as before teardown when senders wait without
-	 * a timeout. Their handlers' later results are not sent.
-	 *
-	 * @param name - The message name/type of the requests to answer
-	 * @param error - The error sent to each sender
-	 */
-	rejectInbound(name: string, error: Error): void {
-		for (const request of this.inbound) {
-			if (request.message.name !== name) continue;
-			this.inbound.delete(request);
-			this.respond(request, undefined, error);
 		}
 	}
 

@@ -160,6 +160,22 @@ test.beforeAll(async () => {
 				</script>`,
 				);
 			}
+			if (req.url === "/destroy-host") {
+				return respond(
+					res,
+					`<!doctype html><script type="module">
+				import {initHost,prop} from '/library.js';
+				window.calls = 0;
+				const host = initHost({count:prop.number(),secret:prop.string(),onComplete:prop.function()}, ['${consumerOrigin}']);
+				await host.ready;
+				await host.hostProps.export({
+					destroy: () => { host.destroy(); },
+					value: () => ++window.calls,
+				});
+				window.ready = true;
+				</script>`,
+				);
+			}
 			if (req.url === "/popup-resize") {
 				return respond(
 					res,
@@ -1609,6 +1625,62 @@ test("a cross-origin popup host resizes itself and consumer resizing reports the
 	expect(
 		await page.evaluate(() => (window as unknown as ResizeWindow).resizes),
 	).toEqual([{ width: 640, height: 480 }]);
+});
+
+test("calls queued behind host teardown reject instead of waiting forever", async ({
+	page,
+}) => {
+	await mount(page, "/destroy-host");
+	expect(
+		await page.evaluate(
+			() => (window as unknown as { outcome: Promise<string> }).outcome,
+		),
+	).toBe("ready");
+	const frame = page
+		.frames()
+		.find((entry) => entry.url().startsWith(hostOrigin));
+	if (!frame) throw new Error("Missing host frame");
+	await frame.waitForFunction(
+		() => (window as unknown as { ready: boolean }).ready === true,
+	);
+	await page.waitForFunction(
+		() =>
+			typeof (
+				window as unknown as {
+					instance: { exports?: { value?: unknown } };
+				}
+			).instance.exports?.value === "function",
+	);
+
+	const results = await page.evaluate(async () => {
+		type HostExports = {
+			destroy(): Promise<void>;
+			value(): Promise<number>;
+		};
+		const { exports } = (
+			window as unknown as { instance: { exports: HostExports } }
+		).instance;
+		const settled = (promise: Promise<unknown>) =>
+			promise.then(
+				(value) => `resolved ${String(value)}`,
+				(error: Error) => error.message,
+			);
+		const control = await settled(exports.value());
+		// Posted in one task: the host destroys itself before dispatching the second call.
+		const destroying = settled(exports.destroy());
+		const queued = settled(exports.value());
+		const outcomes = await Promise.all([destroying, queued]);
+		return { control, outcomes, later: await settled(exports.value()) };
+	});
+	const destroyed = "Host was destroyed before the call completed";
+	expect(results).toEqual({
+		control: "resolved 1",
+		outcomes: [destroyed, destroyed],
+		later: destroyed,
+	});
+	expect(
+		await frame.evaluate(() => (window as unknown as { calls: number }).calls),
+	).toBe(1);
 });
 
 for (const context of ["iframe", "popup"] as const) {

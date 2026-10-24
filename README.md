@@ -635,7 +635,7 @@ Callback arguments and results are JSON-serialized. Pass plain objects, arrays, 
 
 `RemoteValue<T>` types this contract for synchronous signatures: a `Date` result is typed as its ISO string, and a parameter that JSON would change, such as a `Date`, is typed `never`, so the call does not compile. Promise-returning signatures keep their declared types, so declare them with JSON-compatible arguments and results.
 
-Remote calls have no timeout. A call waits until the callback in the other window settles, so a slow step such as a payment confirmation is never reported as failed while it is still running. The call rejects only with the callback's own error, or when the connection ends: the instance closes, the host is destroyed, or the host document reconnects. To bound a wait, race the call with your own timer, and remember that the callback may still finish in the other window.
+Remote calls have no timeout. A call waits until the callback in the other window settles, so a slow step such as a payment confirmation is never reported as failed while it is still running. The call rejects only with the callback's own error, or when the connection ends: the instance closes, the host is destroyed, or the host document reconnects. After the host is destroyed, calls to its exports reject until a host initializes again in that window. While a call is pending, ForgeFrame checks every 10 seconds that the other window still answers, so a call into a page that navigated away or closed without teardown rejects within about 20 seconds. To bound a wait, race the call with your own timer, and remember that the callback may still finish in the other window.
 
 ## Host Window API (hostProps)
 
@@ -720,7 +720,7 @@ Peers are other instances rendered by the same consumer whose hosts it verified 
 | `email`, `onLogin` | Your custom props and callbacks |
 | `uid`, `tag` | Built-in identifiers |
 | `close()` | Close the component |
-| `focus()` | Request focus for iframe/popup; resolves once this window has focus, or after a short wait, so the host can then focus its own element |
+| `focus()` | Request focus for iframe/popup; resolves once this window has focus, or after a short wait, so the host can then focus its own element. It resolves without waiting when the consumer page has no focus to pass on |
 | `resize()` | Resize the component |
 | `show()`, `hide()` | Toggle visibility |
 | `onProps()` | Listen for prop updates (returns `{ cancel() }`) |
@@ -926,7 +926,7 @@ const PopupComponent = ForgeFrame.create({
 
 After the popup initializes, ForgeFrame removes the loading content, including custom prerender content, and the default loading wrapper from the consumer mount. Caller-owned elements and custom container-template shells stay.
 
-Browsers do not let one origin resize another origin's window. For a cross-origin popup, `instance.resize()` rejects without emitting `resize`; call `hostProps.resize()` from the host instead, which resizes the popup's own window and then notifies the consumer. Browsers can still ignore resize requests, for example for a popup opened as a tab.
+Browsers do not let one origin resize another origin's window. For a popup that is not open, `instance.resize()` does nothing. For a cross-origin popup, `instance.resize()` rejects without emitting `resize`; call `hostProps.resize()` from the host instead, which resizes the popup's own window and then notifies the consumer. Browsers can still ignore resize requests, for example for a popup opened as a tab.
 
 ### Domain Security
 

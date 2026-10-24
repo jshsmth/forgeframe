@@ -268,6 +268,15 @@ describe("Consumer branch coverage and edge paths", () => {
 			width: 480,
 			height: 300,
 		});
+
+		// A popup that is not open has nothing to resize and reports no resize.
+		internal.transport.attachHostWindow(null);
+		resizePopupSpy.mockClear();
+		const resized = vi.fn();
+		consumer.event.on(EVENT.RESIZE, resized);
+		await consumer.resize({ width: 500, height: 320 });
+		expect(resizePopupSpy).not.toHaveBeenCalled();
+		expect(resized).not.toHaveBeenCalled();
 	});
 
 	it("should reject invalid origins when resolving URL origin", () => {

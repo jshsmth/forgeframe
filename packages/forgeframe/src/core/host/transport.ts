@@ -129,8 +129,18 @@ export class HostTransport {
 
 	async focus(): Promise<void> {
 		window.focus();
-		await this.sendMessage(MESSAGE_NAME.FOCUS, {});
-		// The consumer's frame focus can arrive after its acknowledgement.
+		const ack = await this.messenger.send<
+			Record<string, never>,
+			{ focused?: boolean } | undefined
+		>(
+			this.options.consumerWindow,
+			this.options.getConsumerDomain(),
+			MESSAGE_NAME.FOCUS,
+			{},
+		);
+		// Focus never arrives from a consumer page without focus. Otherwise its
+		// frame focus can arrive after this acknowledgement.
+		if (ack?.focused === false) return;
 		await waitForWindowFocus(window, FRAME_FOCUS_WAIT_MS);
 	}
 
@@ -236,9 +246,18 @@ export class HostTransport {
 
 		this.destroyed = true;
 		this.deferredInitFlushScheduled = false;
-		this.bridge.rejectLocalCalls(
-			new Error("Host was destroyed before the call completed"),
-		);
+		// The consumer's calls wait without a timeout, so tell it this session
+		// ended; calls not yet dispatched would otherwise never be answered.
+		try {
+			this.messenger.post(
+				this.options.consumerWindow,
+				this.options.getConsumerDomain(),
+				MESSAGE_NAME.TEARDOWN,
+				{},
+			);
+		} catch {
+			// The consumer window may already be closed.
+		}
 		this.messenger.destroy();
 		this.bridge.destroy();
 		this.peerBridge.destroy();

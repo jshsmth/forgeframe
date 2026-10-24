@@ -390,6 +390,34 @@ describe("ConsumerTransport", () => {
 		expect(transport.initPromise).toBe(replacement);
 	});
 
+	it("reports a host's initialization failure only in the handshake that received it", async () => {
+		vi.useFakeTimers();
+		const transport = createTransport();
+		const first = transport.waitForHost(
+			25,
+			"consumer-transport-component",
+			vi.fn(),
+		);
+		(transport as unknown as { hostInitFailure: Error }).hostInitFailure =
+			new Error("Host initialization failed: bad props");
+		const firstRejection = expect(first).rejects.toThrow(
+			"within 25ms. Host initialization failed: bad props",
+		);
+		await vi.advanceTimersByTimeAsync(25);
+		await firstRejection;
+
+		const second = transport.waitForHost(
+			25,
+			"consumer-transport-component",
+			vi.fn(),
+		);
+		const secondRejection = expect(second).rejects.toThrow(
+			"within 25ms. Check that the host page loads correctly",
+		);
+		await vi.advanceTimersByTimeAsync(25);
+		await secondRejection;
+	});
+
 	it("should forward async onInit failures to onError after a trusted INIT message", async () => {
 		const transport = createTransport();
 		const handlers = createHandlers();

@@ -319,6 +319,8 @@ export class ConsumerTransport<
 		} finally {
 			if (this.initPromise === initPromise) {
 				this.initPromise = null;
+				// A reported reason belongs to this handshake only.
+				this.hostInitFailure = null;
 			}
 		}
 	}
@@ -343,6 +345,7 @@ export class ConsumerTransport<
 					this.localReferenceSessionId !== data.sessionId;
 				this.hostInitialized = false;
 				this.bootstrapSessionId = null;
+				this.bridge.resumeRemoteSession(source.window);
 				if (resetLocalReferences) {
 					// Calls into the replaced host session can never be answered.
 					this.bridge.rejectRemoteCalls(
@@ -377,6 +380,7 @@ export class ConsumerTransport<
 				this.activeHostDomain = source.domain;
 				this.hostInitialized = true;
 				this.hostInitFailure = null;
+				this.bridge.resumeRemoteSession(source.window);
 				if (this.initPromise) {
 					this.initPromise.resolve();
 				}
@@ -393,6 +397,15 @@ export class ConsumerTransport<
 			},
 		);
 
+		this.onHostControl(MESSAGE_NAME.TEARDOWN, (_data, source) => {
+			// Calls into the destroyed runtime, queued or running, are never answered.
+			this.bridge.endRemoteSession(
+				source.window,
+				"Host was destroyed before the call completed",
+			);
+			return { success: true };
+		});
+
 		this.onHostControl(MESSAGE_NAME.CLOSE, async () => {
 			await handlers.onClose();
 			return { success: true };
@@ -405,7 +418,8 @@ export class ConsumerTransport<
 
 		this.onHostControl(MESSAGE_NAME.FOCUS, async () => {
 			await handlers.onFocus();
-			return { success: true };
+			// An unfocused page cannot pass focus on, so the host need not wait for it.
+			return { success: true, focused: document.hasFocus() };
 		});
 
 		this.onHostControl(MESSAGE_NAME.SHOW, async () => {

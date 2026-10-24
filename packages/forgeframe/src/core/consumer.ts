@@ -459,11 +459,14 @@ export class ConsumerComponent<
 	 * rejects without emitting `resize`; the host can resize its own popup with
 	 * `hostProps.resize()`.
 	 *
+	 * A popup that is not open has nothing to resize, so the call does nothing.
+	 *
 	 * @param dimensions - New width and height for the component
 	 * @throws Error if the browser denies resizing the popup window
 	 */
 	async resize(dimensions: Dimensions): Promise<void> {
 		const hostWindow = this.transport ? this.transport.hostWindow : null;
+		if (this.renderer.context === CONTEXT.POPUP && !hostWindow) return;
 		if (!this.renderer.resize(dimensions, hostWindow)) {
 			throw new Error(
 				`Cannot resize the popup for component "${this.options.tag}": the browser blocks resizing a cross-origin window. Call hostProps.resize() from the host instead.`,

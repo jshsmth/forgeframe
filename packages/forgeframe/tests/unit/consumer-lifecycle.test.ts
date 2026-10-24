@@ -533,7 +533,7 @@ describe("Consumer lifecycle behavior", () => {
 				{},
 				createMessageSource(hostWindow),
 			),
-		).resolves.toEqual({ success: true });
+		).resolves.toEqual({ success: true, focused: document.hasFocus() });
 		await expect(
 			requireValue(handlers.get(MESSAGE_NAME.SHOW))(
 				{},
