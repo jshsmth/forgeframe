@@ -40,13 +40,13 @@
 	],
 	"author": "Josh Smith",
 	"license": "MIT",
-	"homepage": "https://github.com/jshsmth/ForgeFrame#readme",
+	"homepage": "https://github.com/jshsmth/forgeframe#readme",
 	"bugs": {
-		"url": "https://github.com/jshsmth/ForgeFrame/issues"
+		"url": "https://github.com/jshsmth/forgeframe/issues"
 	},
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/jshsmth/ForgeFrame.git"
+		"url": "git+https://github.com/jshsmth/forgeframe.git"
 	},
 	"devDependencies": {
 		"@types/react": "^19.3.0",
