@@ -319,10 +319,12 @@ export class FunctionBridge {
 							this.scheduleLivenessCheck(targetWin, targetDomain, watch);
 					},
 					() => {
-						this.rejectRemoteCalls(
-							targetWin,
-							new Error(UNRESPONSIVE_WINDOW_ERROR),
-						);
+						// Calls that started after this watch ended have checks of their own.
+						if (this.callWatches.get(targetWin) === watch)
+							this.rejectRemoteCalls(
+								targetWin,
+								new Error(UNRESPONSIVE_WINDOW_ERROR),
+							);
 					},
 				);
 		}, CALL_LIVENESS_MS);

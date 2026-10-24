@@ -11,6 +11,7 @@ import {
 } from "@/communication/bridge";
 import type { Messenger } from "@/communication/messenger";
 import { MESSAGE_NAME } from "@/constants";
+import { createDeferred } from "@/utils/promise";
 
 type GenericFunction = (...args: unknown[]) => unknown;
 
@@ -26,6 +27,7 @@ const createMockMessenger = () => {
 	return {
 		send: vi.fn().mockResolvedValue(undefined),
 		post: vi.fn(),
+		rejectPending: vi.fn(),
 		on: vi.fn((name: string, handler: GenericFunction) => {
 			handlers.set(name, handler);
 			return () => handlers.delete(name);
@@ -346,6 +348,55 @@ describe("FunctionBridge", () => {
 			await expect(messenger.simulateCall(ref.__id__, [])).rejects.toThrow(
 				`Function with id "${ref.__id__}" not found`,
 			);
+		});
+	});
+
+	describe("liveness checks", () => {
+		it("ignores a timed-out check whose calls already settled", async () => {
+			vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+			try {
+				const targetWin = {} as Window;
+				const livenessName = `${MESSAGE_NAME.CALL}_liveness`;
+				const firstCheck = createDeferred<unknown>();
+				const firstCall = createDeferred<unknown>();
+				let calls = 0;
+				messenger.send.mockImplementation(
+					(_win: Window, _domain: string, name: string) => {
+						if (name === livenessName)
+							return messenger.send.mock.calls.filter(
+								([, , sent]) => sent === livenessName,
+							).length === 1
+								? firstCheck.promise
+								: new Promise(() => {});
+						calls++;
+						return calls === 1 ? firstCall.promise : new Promise(() => {});
+					},
+				);
+				const wrapper = bridge.deserialize(
+					{ __type__: "function", __id__: "fn-live", __name__: "live" },
+					targetWin,
+					"https://target.com",
+				) as () => Promise<unknown>;
+
+				const settled = wrapper();
+				await vi.advanceTimersByTimeAsync(10_000);
+				firstCall.resolve("done");
+				await settled;
+				void wrapper();
+				firstCheck.reject(new Error("Liveness check timed out"));
+				await vi.advanceTimersByTimeAsync(0);
+
+				// The newer call keeps waiting and gets a check of its own.
+				expect(messenger.rejectPending).not.toHaveBeenCalled();
+				await vi.advanceTimersByTimeAsync(10_000);
+				expect(
+					messenger.send.mock.calls.filter(
+						([, , name]) => name === livenessName,
+					),
+				).toHaveLength(2);
+			} finally {
+				vi.useRealTimers();
+			}
 		});
 	});
 

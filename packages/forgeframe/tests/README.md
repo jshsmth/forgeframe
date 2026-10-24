@@ -15,7 +15,7 @@ What each test file covers, how to run it, and how to choose new tests. Paths ar
 
 ## Unit tests (`unit/`)
 
-- `bridge.test.ts`: Function bridge serialization and deserialization, remote call dispatch, 500-callback admission, full snapshot replacement, duplicate identity reuse, staged calls, rollback, bounded delivery recovery, append capacity, and reset/teardown.
+- `bridge.test.ts`: Function bridge serialization and deserialization, remote call dispatch, 500-callback admission, full snapshot replacement, duplicate identity reuse, staged calls, rollback, bounded delivery recovery, append capacity, a timed-out liveness check that ignores calls a newer watch tracks, and reset/teardown.
 - `company-demo-payment-policy.test.ts`: Browser-independent playground payment rules: merchant session and result admission, receipt commitment and isolation, unpaid decline and retry, mismatch and duplicate rejection, malformed callback and receipt fields, ISO calendar/time validity, snapshot ownership, retry after rejection, payment availability, provider simulation, demo-card normalization, and acknowledgement admission with invoice correlation.
 - `component-clone.test.ts`: Clone snapshots, lifecycle tracking, peer visibility, global and tag cleanup. Repeated and reentrant `close()` calls resolve only after deregistration and destruction notifications, including while failed-render teardown is in progress. A rearmed `once` observer waits for the next public resize.
 - `component-instance-index.test.ts`: Internal active-instance indexing, reindexing, tag clearing, and peer lookup snapshots.
