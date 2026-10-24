@@ -58,6 +58,21 @@ const jsonResult: Promise<{ total: number }> = remoteJsonCallback({
 	label: "example",
 });
 
+// Callback arguments and results cross as JSON, so Dates arrive as ISO strings.
+declare const remoteDateResult: RemoteValue<() => { createdAt: Date }>;
+const isoResult: Promise<{ createdAt: string }> = remoteDateResult();
+// @ts-expect-error Date results are delivered as ISO strings.
+const dateResult: Promise<{ createdAt: Date }> = remoteDateResult();
+declare const remoteDateArgument: RemoteValue<
+	(data: { at: Date; label: string }) => void
+>;
+// @ts-expect-error The receiving callback would get a string, not a Date.
+void remoteDateArgument({ at: new Date(), label: "example" });
+declare const remoteIsoArgument: RemoteValue<
+	(data: { at: string; label: string }) => void
+>;
+void remoteIsoArgument({ at: new Date().toISOString(), label: "example" });
+
 const InferredComponent = create({
 	tag: "inferred-remote-value-types",
 	url: "https://example.com/widget",
@@ -96,6 +111,8 @@ void [
 	voidResult,
 	arrayResult,
 	jsonResult,
+	isoResult,
+	dateResult,
 	inferredCount,
 	stringLookup,
 	numberLookup,

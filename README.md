@@ -379,6 +379,8 @@ All schemas support these base methods:
 
 A function prop's default must be a factory that returns the callback. ForgeFrame calls the factory when the input is omitted and validates its result; it never calls the returned callback while resolving the default.
 
+A default replaces `undefined` input, so the output type of `.optional().default(x)` excludes `undefined` unless the default itself can be `undefined`.
+
 ```typescript
 const onCancel = () => console.log('Cancelled');
 const callbackSchema = prop.function<() => void>().default(() => onCancel);
@@ -412,6 +414,7 @@ Peer discovery uses a separate relay registry with a cumulative **500-reference*
 
 Validation rules:
 
+- Refinements accumulate: `prop.string().email().pattern(/@corp\.com$/)` requires both, and `.min(5).nonempty()` still requires 5 characters. Length checks run first, then URL syntax, then patterns; number integer checks run before bounds. The first failed rule is reported.
 - `prop.number()` rejects `NaN`, `Infinity`, and `-Infinity`, which JSON would otherwise turn into `null`.
 - `prop.string().url()` requires a parseable absolute HTTP(S) URL and returns the string unchanged. It composes with `.pattern()`; only `.trim()` changes the returned string.
 - Shaped object schemas validate own fields only. An omitted field is `undefined`, so optional fields and defaults work for names such as `constructor` and `toString`, and inherited values are never treated as input.
@@ -488,7 +491,7 @@ const SecureWidget = ForgeFrame.create({
 | `alias` | Accept an alternate input name, such as a legacy name. Aliases can chain through other defined props; at each level, an explicitly supplied canonical key wins. Only own input properties count as supplied |
 | `outputSchema` | Validate the normalized value again at consumer and host trust boundaries without transforming it |
 
-In a wrapped definition, `default` and `value` fallbacks are schema inputs: ForgeFrame validates and transforms them before any decorator, validator, URL, or transport callback sees the normalized value. A `.default()` set on the schema itself is already a schema output.
+In a wrapped definition, `default` and `value` fallbacks are schema inputs: ForgeFrame validates and transforms them before any decorator, validator, URL, or transport callback sees the normalized value. A `.default()` set on the schema itself is already a schema output. A function `default` is called as a factory with the prop context, so wrap a callback default as `default: () => onCancel`; the types reject `default: onCancel`, as they do for `.default()`.
 
 When an input schema changes the value's type, use the wrapped form with an `outputSchema`, even when `sendToHost` is `false`. The input schema parses consumer values and fallbacks; the output schema checks the normalized value before consumer routing callbacks or host trust boundaries use it. Output schemas only validate; they must not transform.
 
@@ -559,7 +562,8 @@ Transport notes:
 - Use `sameDomain` for values that must never be exposed during cross-origin bootstrap.
 - `DOTIFY` preserves nested keys that contain separators such as `.`, `&`, or `=`.
 - Ordinary objects that contain transport marker fields stay ordinary data in every serialization mode.
-- `DOTIFY` walks root own properties and nested plain objects itself and calls `toJSON()` only on leaves. Use `BASE64` when a root object's `toJSON()` should decide the delivered value. With `BASE64`, a `toJSON()` that returns `undefined` omits the prop.
+- `JSON` and `BASE64` deliver an object's `toJSON()` result instead of its fields, as native JSON does, so a class can hide fields such as tokens. A `URL` arrives as its `href`, and boxed primitives such as `new String('ab')` arrive unboxed. `JSON` mode reads arrays entry by entry and does not call an array's `toJSON()`.
+- `DOTIFY` walks root own properties and nested plain objects itself and calls `toJSON()` only on leaves. Use `JSON` or `BASE64` when a root object's `toJSON()` should decide the delivered value. With `BASE64`, a `toJSON()` that returns `undefined` omits the prop.
 
 ### Passing Props via URL or POST Body (Advanced)
 
@@ -580,7 +584,8 @@ const Checkout = ForgeFrame.create({
 - `queryParam` appends the value to the query string before any `#fragment`, keeping existing parameters and the fragment.
 - `bodyParam` sends the value in a hidden-form `POST` when the iframe or popup first loads. Later `updateProps()` calls use postMessage.
 - POST field names such as `submit`, `remove`, and `appendChild` do not interfere with submission or cleanup.
-- Object values are JSON-stringified; functions and `undefined` are skipped.
+- `Date` values are sent as ISO strings and other object values are JSON-stringified. Functions, `undefined`, `null`, and invalid dates are skipped.
+- Iframe containers must be attached to the document when rendering, so a `bodyParam` POST always targets the rendered frame.
 - `sendToHost`, `sameDomain`, and `trustedDomains` also apply to query and body parameters. Same-origin status is verified only after the host loads, so `sameDomain` props are never in the initial request.
 - Never put credentials, bearer tokens, session identifiers, or sensitive personal data in `queryParam`. URLs leak through browser history, referrers, analytics, and server logs.
 
@@ -628,13 +633,17 @@ const count = await window.hostProps.getCount();
 
 Callback arguments and results are JSON-serialized. Pass plain objects, arrays, strings, finite numbers, booleans, and `null`; a callback may return `undefined` for no result. Convert `Date` values to ISO strings and copy plain fields out of `FormData` before the call. Functions in arguments or results are not bridged, and cyclic or `BigInt` results reject with a serialization error. Prop snapshots and `hostProps.export(...)` are different: they bridge functions and preserve `Date` values.
 
+`RemoteValue<T>` types this contract for synchronous signatures: a `Date` result is typed as its ISO string, and a parameter that JSON would change, such as a `Date`, is typed `never`, so the call does not compile. Promise-returning signatures keep their declared types, so declare them with JSON-compatible arguments and results.
+
+Remote calls have no timeout. A call waits until the callback in the other window settles, so a slow step such as a payment confirmation is never reported as failed while it is still running. The call rejects only with the callback's own error, or when the connection ends: the instance closes, the host is destroyed, or the host document reconnects. After the host is destroyed, calls to its exports reject until a host initializes again in that window. While a call is pending, ForgeFrame checks every 10 seconds that the other window still answers, so a call into a page that navigated away or closed without teardown rejects within about 20 seconds. To bound a wait, race the call with your own timer, and remember that the callback may still finish in the other window.
+
 ## Host Window API (hostProps)
 
 In a host window, `window.hostProps` holds the consumer's props and the host control methods. Type it as shown in [Typing Host hostProps](#typing-host-hostprops).
 
 Props come from another origin. Render received strings with `textContent` or other DOM text properties, never by interpolating them into HTML.
 
-In iframe mode, ForgeFrame sets `sandbox="allow-scripts allow-same-origin allow-forms allow-popups"` unless the consumer component sets `attributes.sandbox`, which is used as-is.
+In iframe mode, ForgeFrame sets `sandbox="allow-scripts allow-same-origin allow-forms allow-popups"` unless the consumer component sets `attributes.sandbox` (in any letter case, such as `Sandbox`), which is used as-is. A `false` value writes no attribute, so the default still applies.
 
 ### Host Init with initHost
 
@@ -644,11 +653,14 @@ Host startup patterns:
 
 - Call `initHost(propDefinitions, allowedConsumerDomains)` at startup, await `ready`, then read `window.hostProps`.
 - Call `initHost(propDefinitions)` or `initHost()` without an allowlist only for hosts that any consumer origin may embed.
-- If the host bundle defines the component with `ForgeFrame.create(...)`, that definition initializes the runtime; still await `initHost()?.ready` before reading props.
+- If the host bundle defines the component with `ForgeFrame.create(...)`, that definition initializes the runtime; still await `initHost()?.ready` before reading props. A definition never throws for host startup failures, such as a disallowed consumer: it logs them, and a later `initHost()` call reports the same error to its caller. An `initHost()` call without prop definitions or an allowlist applies the `props` and `allowedConsumerDomains` of the component defined for the same tag, so it cannot start a host with props or a consumer that the definition refused. A definition that applies to an already running host keeps that host's INIT timing, including `deferInit`.
+- The factory's `isHost()`, `isEmbedded()`, and `hostProps` only read state. They never start, configure, or reconnect a host; `hostProps` is `undefined` until a host for that tag is initialized.
 
 An explicit `initHost()` call also gives deterministic init timing for tests and instrumentation, and works when the first `window.hostProps` access is delayed by lazy-loaded modules, async startup, or gated initialization.
 
 Only channel metadata stays in `window.name`, so reloads and later host documents can reconnect and receive the latest props. Browser policies that clear window names across sites can prevent reconnection.
+
+If the host's schemas reject the consumer's props, `ready` rejects and the host tells the consumer why. The consumer keeps waiting, so a same-page `initHost()` retry can still connect without any error being reported; if none succeeds, `render()` rejects at its `timeout`, and its single `error` event and `onError` call include `Host initialization failed: ...`.
 
 The returned host's `destroy()` disposes the runtime and removes `window.hostProps`. If the channel metadata is still available, a later `initHost()` creates a fresh runtime; await its new `ready` before using props or controls. If configuration validation destroys or replaces the existing host, that `initHost()` call returns `null` and leaves the replacement's configuration and deferred initialization alone.
 
@@ -698,7 +710,7 @@ const peers = await props.getPeerInstances();
 cancel();
 ```
 
-Peers are other instances rendered by the same consumer whose hosts it verified at the requesting host's origin; `anyConsumer: true` adds other component tags at that origin. To let hosts on other origins, such as sibling subdomains, discover a component's instances, list those origins in its `peerDomains` option. Hosts with an opaque origin, such as sandboxed frames without `allow-same-origin`, have no peers. A peer whose host is still loading is listed without exports; call `getPeerInstances()` again once it is ready. Peer exports keep data, `Date` values, and nested methods; methods return promises and are relayed through the consumer. Method references survive unrelated prop updates. After a peer replaces its exports or reconnects, its old methods reject, so call `getPeerInstances()` again. Discovery counts toward the relay limit in [Callback Capacity](#callback-capacity).
+Peers are other instances rendered by the same consumer whose hosts it verified at the requesting host's origin; `anyConsumer: true` adds other component tags at that origin. To let hosts on other origins, such as sibling subdomains, discover a component's instances, list those origins in its `peerDomains` option. Hosts with an opaque origin, such as sandboxed frames without `allow-same-origin`, neither discover peers nor are listed as peers, even when `peerDomains` match. A peer whose host is still loading is listed without exports; call `getPeerInstances()` again once it is ready. Peer exports keep data, `Date` values, and nested methods; methods return promises and are relayed through the consumer. Method references survive unrelated prop updates. After a peer replaces its exports or reconnects, its old methods reject, so call `getPeerInstances()` again. Discovery counts toward the relay limit in [Callback Capacity](#callback-capacity).
 
 <details>
 <summary>Method Reference</summary>
@@ -708,7 +720,7 @@ Peers are other instances rendered by the same consumer whose hosts it verified 
 | `email`, `onLogin` | Your custom props and callbacks |
 | `uid`, `tag` | Built-in identifiers |
 | `close()` | Close the component |
-| `focus()` | Request focus for iframe/popup |
+| `focus()` | Request focus for iframe/popup; resolves once this window has focus, or after a short wait, so the host can then focus its own element. It resolves without waiting when the consumer page has no focus to pass on |
 | `resize()` | Resize the component |
 | `show()`, `hide()` | Toggle visibility |
 | `onProps()` | Listen for prop updates (returns `{ cancel() }`) |
@@ -874,7 +886,7 @@ The React component accepts your component props alongside these wrapper props:
 | `context` | `'iframe' \| 'popup'` | Render mode |
 | `className` | `string` | Container CSS class |
 | `style` | `CSSProperties` | Container inline styles |
-| `ref` | `React.Ref<HTMLDivElement>` | Access the wrapper's container element |
+| `ref` | `React.Ref<HTMLDivElement>` | Access the wrapper's container element. It is attached during React's commit, so a parent's `useLayoutEffect` can read it, and React 19 callback-ref cleanups run on unmount |
 
 The adapter reserves these names and does not forward them as component props. Give a callback the host must receive a different name, such as `onHostClose`, and do not make a reserved name a required custom prop.
 
@@ -914,13 +926,15 @@ const PopupComponent = ForgeFrame.create({
 
 After the popup initializes, ForgeFrame removes the loading content, including custom prerender content, and the default loading wrapper from the consumer mount. Caller-owned elements and custom container-template shells stay.
 
+Browsers do not let one origin resize another origin's window. For a popup that is not open, `instance.resize()` does nothing. For a cross-origin popup, `instance.resize()` rejects without emitting `resize`; call `hostProps.resize()` from the host instead, which resizes the popup's own window and then notifies the consumer. Browsers can still ignore resize requests, for example for a popup opened as a tab.
+
 ### Domain Security
 
 - `domain` is consumer-side trust: the host origins the consumer will render and message.
 - `allowedConsumerDomains` is host-side trust: the consumer origins that may embed and initialize the host.
 - Use both for payment, auth, account, and other sensitive workflows.
 
-Both accept a string, a `RegExp`, or an array mixing them. Strings support `*` wildcards, such as `'https://*.example.com'`.
+Both accept a string, a `RegExp`, or an array mixing them. Strings support `*` wildcards, such as `'https://*.example.com'`. Empty or blank strings, `null`, and other values throw, so a missing setting such as `process.env.CONSUMER_ORIGIN || ''` cannot silently trust every origin. An empty array is valid and admits no origin. `peerDomains` follows the same rules.
 
 ```typescript
 const secureProps = {
@@ -1011,6 +1025,7 @@ Register every child tag in the host bundle before `initHost()`. The host takes 
 
 ForgeFrame 1.x follows semantic versioning for its public API. Read the [GitHub release notes](https://github.com/jshsmth/ForgeFrame/releases) before upgrading, and upgrade consumer and host bundles together when a release changes wire behavior.
 
+- **From 1.0.4:** review these behavior changes. Remote callbacks no longer time out after 10 seconds; add your own timer where you need one. `instance.resize()` rejects for a cross-origin popup; resize it from the host with `hostProps.resize()`. JSON props and exports deliver a value's `toJSON()` result. Schema refinements such as `.email().pattern()` now all apply. Empty or blank `domain`, `allowedConsumerDomains`, and `peerDomains` strings throw. Query and body parameters send dates as ISO strings and skip `null`. Iframe renders require an attached container. The factory's `isHost()` and `hostProps` no longer start a host, and defining a component logs host startup errors instead of throwing them. Hosts with an opaque origin are no longer listed as peers. `attributes.sandbox: false` now keeps the default iframe sandbox instead of removing it. Event `once()` registrations follow DOM listener rules: `off()` cancels them, and registering a handler twice keeps one registration.
 - **From 1.0.1:** function prop defaults must use the factory form. Replace `.default(onCancel)` with `.default(() => onCancel)`; the types reject the direct form. Exceeding [callback capacity](#callback-capacity) rejects with an explicit error instead of silently breaking older callbacks.
 - **From 0.x:** follow [Migrating from pre-v1 to v1](#migrating-from-pre-v1-to-v1).
 
@@ -1221,7 +1236,7 @@ ForgeFrame ships ES2022 output. Use modern evergreen browsers or transpile the p
 
 ## Developing ForgeFrame
 
-Repository tooling needs Node.js 22.23.4 or later 22.x, 24.22.1 or later 24.x, or 26.12.1 and newer. These minimums include the October 2026 Node.js security fixes and satisfy jsdom 30. Use Node.js 24 locally; CI also tests on Node.js 22. Run commands from the repository root:
+Repository tooling needs Node.js 22.23.4 or later 22.x, 24.22.1 or later 24.x, or 26.12.1 and newer. These minimums include the October 2026 Node.js security fixes and satisfy jsdom 30. Use Node.js 24 locally; CI also tests on Node.js 22 and 26. Run commands from the repository root:
 
 ```bash
 npm ci
@@ -1285,9 +1300,10 @@ Tests and playground bindings use explicit value guards, so a missing fixture or
 | `npm run test:coverage` | The same tests with coverage thresholds enforced |
 | `npm run test:browser` | Cross-origin iframe and popup regressions in Chromium, Firefox, and WebKit |
 | `npm run build && npm run typecheck:package` | ESM output and emitted declarations under NodeNext resolution |
+| `npm run size` | Minified and gzipped size of the built bundle against its budgets in `packages/forgeframe/scripts/check-bundle-size.mjs`; run after `npm run build` |
 | `npm run build:playground` | Consumer and host production builds |
 | `npm run test:package` | Pack and install the built library in an isolated project; verify ESM imports and NodeNext consumer types |
-| `npm run release:check` | Lint, types, tests once with coverage, builds, dependency audit, package dry run, and installed-package checks; does not publish |
+| `npm run release:check` | Lint, types, tests once with coverage, builds, bundle size, dependency audit, package dry run, and installed-package checks; does not publish |
 
 See the [test index](https://github.com/jshsmth/ForgeFrame/blob/main/packages/forgeframe/tests/README.md) for suite selection and single-file commands. jsdom tests do not replace browser testing of cross-origin navigation, popup blockers, or visual behavior. `npm audit` needs registry access; if the audit service fails, the release check is incomplete even when the local checks pass.
 
@@ -1297,13 +1313,14 @@ Edit documentation in the root `README.md`. The library build copies it to `pack
 
 ### Release Workflow
 
-Version preparation and publication are separate:
+Version preparation and publication are separate. The Release workflow publishes from CI through [npm trusted publishing](https://docs.npmjs.com/trusted-publishers), so no npm token is stored and the package gets a provenance attestation.
 
 1. Run `npm run version:patch`, `version:minor`, or `version:major` to update workspace metadata and the lockfile only. For an explicit version, use `npm version 1.0.2 -w forgeframe --no-git-tag-version`. These commands do not commit, tag, publish, or push.
 2. Run `npm run release:check` and `npm run test:browser`, review the changes, and commit the intended release source and metadata. Verify hosted CI for that commit before releasing.
 3. Create the matching Git tag, such as `v1.0.2`, on that commit. Keep the working tree clean so the published files match the tagged source.
-4. Run `npm run release` to publish. The publishable workspace owns `prepublishOnly`, so both this command and `npm publish -w forgeframe` run the full checks before publication.
-5. Push the release commit and its specific tag explicitly. The GitHub workflow requires the tag to match the package version, validates it, and creates release notes; it does not publish to npm. Manual workflow runs must select the matching tag.
+4. Push the release commit and its specific tag explicitly. The Release workflow checks that the tag matches the package version, runs the browser suite in all three engines, and publishes with `npm publish -w forgeframe --provenance`, whose `prepublishOnly` runs `npm run release:check` first. It then creates the GitHub release notes. Manual workflow runs must select the matching tag.
+
+Trusted publishing needs a one-time setup on npmjs.com: in the `forgeframe` package settings, add a trusted publisher for this GitHub repository with the workflow file `release.yml`. `npm run release` still publishes from a local machine with the same checks, but that copy has no provenance.
 
 There are no `release:patch`, `release:minor`, or `release:major` scripts, because workspace versioning does not create commits or tags. `npm run release:check` verifies locally without publishing or pushing.
 

@@ -87,11 +87,12 @@ export function createDeferred<T>(): Deferred<T> {
 export function promiseTimeout<T>(
 	promise: Promise<T>,
 	ms: number,
-	message = "Operation timed out",
+	message: string | (() => string) = "Operation timed out",
 ): Promise<T> {
 	return new Promise((resolve, reject) => {
 		const timeoutId = setTimeout(() => {
-			reject(new Error(`${message} (${ms}ms)`));
+			const text = typeof message === "function" ? message() : message;
+			reject(new Error(`${text} (${ms}ms)`));
 		}, ms);
 
 		promise

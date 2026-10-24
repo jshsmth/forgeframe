@@ -149,6 +149,8 @@ export const MESSAGE_NAME = {
 	CONSUMER_EXPORT: "forgeframe_consumer_export",
 	/** Get sibling components request */
 	GET_SIBLINGS: "forgeframe_get_siblings",
+	/** One-way notice that the host runtime was destroyed */
+	TEARDOWN: "forgeframe_teardown",
 } as const;
 
 /**

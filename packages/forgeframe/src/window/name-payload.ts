@@ -270,8 +270,7 @@ export function isForgeFrameWindow(win: Window = window): boolean {
  * @public
  */
 export function isHostOfComponent(tag: string, win: Window = window): boolean {
-	const payload = parseWindowName(win.name);
-	return payload?.tag === tag;
+	return getInitialPayload(win)?.tag === tag;
 }
 
 /**
@@ -454,7 +453,12 @@ export function updateWindowName<P>(
 export function getInitialPayload<P>(
 	win: Window = window,
 ): WindowNamePayload<P> | null {
-	return parseWindowName(win.name);
+	try {
+		return parseWindowName(win.name);
+	} catch {
+		// Unusual or inaccessible windows can throw when their name is read.
+		return null;
+	}
 }
 
 /**

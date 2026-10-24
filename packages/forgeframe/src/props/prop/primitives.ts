@@ -1,9 +1,12 @@
 import { isDate } from "../../utils/realm-values";
 import type { StandardSchemaV1Result } from "../schema";
 import {
+	addSchemaCheck,
+	findFailedSchemaCheck,
 	formatDateForMessage,
 	getValueKind,
 	PropSchema,
+	type SchemaCheck,
 	testRegExpStateless,
 	validateDateBound,
 } from "./base";
@@ -18,28 +21,35 @@ function isHttpUrl(value: string): boolean {
 	}
 }
 
+/** String refinements run length checks, then URL syntax, then patterns. */
+const STRING_LENGTH_RANK = 0;
+const STRING_URL_RANK = 1;
+const STRING_PATTERN_RANK = 2;
+
+/** Number refinements run integer checks, then lower bounds, then upper bounds. */
+const NUMBER_INTEGER_RANK = 0;
+const NUMBER_LOWER_BOUND_RANK = 1;
+const NUMBER_UPPER_BOUND_RANK = 2;
+
+/** Date refinements run lower bounds, then upper bounds. */
+const DATE_LOWER_BOUND_RANK = 0;
+const DATE_UPPER_BOUND_RANK = 1;
+
 /**
  * Schema for string props with optional validation constraints.
  *
  * @remarks
  * String schemas can trim values before validation and can enforce length,
- * pattern, email, URL, and UUID constraints.
+ * pattern, email, URL, and UUID constraints. Constraints accumulate, so
+ * `.email().pattern(...)` requires both.
  *
  * @public
  */
 export class StringSchema extends PropSchema<string> {
 	/** @internal */
-	private _minLength?: number;
-	/** @internal */
-	private _maxLength?: number;
-	/** @internal */
-	private _pattern?: RegExp;
-	/** @internal */
-	private _patternMessage?: string;
+	private _checks: readonly SchemaCheck<string>[] = [];
 	/** @internal */
 	private _trim = false;
-	/** @internal */
-	private _url = false;
 
 	/** @internal */
 	protected _validate(value: unknown): StandardSchemaV1Result<string> {
@@ -48,48 +58,22 @@ export class StringSchema extends PropSchema<string> {
 		}
 
 		const str = this._trim ? value.trim() : value;
-
-		if (this._minLength !== undefined && str.length < this._minLength) {
-			return {
-				issues: [
-					{ message: `String must be at least ${this._minLength} characters` },
-				],
-			};
-		}
-		if (this._maxLength !== undefined && str.length > this._maxLength) {
-			return {
-				issues: [
-					{ message: `String must be at most ${this._maxLength} characters` },
-				],
-			};
-		}
-		if (this._url && !isHttpUrl(str)) {
-			return { issues: [{ message: "Invalid URL" }] };
-		}
-		if (this._pattern && !testRegExpStateless(this._pattern, str)) {
-			return {
-				issues: [
-					{
-						message:
-							this._patternMessage ||
-							`String must match pattern ${this._pattern}`,
-					},
-				],
-			};
-		}
-
-		return { value: str };
+		const issue = findFailedSchemaCheck(this._checks, str);
+		return issue ? { issues: [issue] } : { value: str };
 	}
 
 	/** @internal */
 	protected _clone(): StringSchema {
 		const clone = this._copyBaseTo(new StringSchema());
-		clone._minLength = this._minLength;
-		clone._maxLength = this._maxLength;
-		clone._pattern = this._pattern;
-		clone._patternMessage = this._patternMessage;
+		clone._checks = this._checks;
 		clone._trim = this._trim;
-		clone._url = this._url;
+		return clone;
+	}
+
+	/** @internal */
+	private _withCheck(check: SchemaCheck<string>): StringSchema {
+		const clone = this._clone();
+		clone._checks = addSchemaCheck(this._checks, check);
 		return clone;
 	}
 
@@ -100,9 +84,11 @@ export class StringSchema extends PropSchema<string> {
 	 * @returns A cloned string schema with the minimum length constraint.
 	 */
 	min(length: number): StringSchema {
-		const clone = this._clone();
-		clone._minLength = length;
-		return clone;
+		return this._withCheck({
+			rank: STRING_LENGTH_RANK,
+			message: `String must be at least ${length} characters`,
+			test: (value) => value.length >= length,
+		});
 	}
 
 	/**
@@ -112,9 +98,11 @@ export class StringSchema extends PropSchema<string> {
 	 * @returns A cloned string schema with the maximum length constraint.
 	 */
 	max(length: number): StringSchema {
-		const clone = this._clone();
-		clone._maxLength = length;
-		return clone;
+		return this._withCheck({
+			rank: STRING_LENGTH_RANK,
+			message: `String must be at most ${length} characters`,
+			test: (value) => value.length <= length,
+		});
 	}
 
 	/**
@@ -124,10 +112,7 @@ export class StringSchema extends PropSchema<string> {
 	 * @returns A cloned string schema with matching minimum and maximum length constraints.
 	 */
 	length(length: number): StringSchema {
-		const clone = this._clone();
-		clone._minLength = length;
-		clone._maxLength = length;
-		return clone;
+		return this.min(length).max(length);
 	}
 
 	/**
@@ -138,10 +123,11 @@ export class StringSchema extends PropSchema<string> {
 	 * @returns A cloned string schema with the pattern constraint.
 	 */
 	pattern(regex: RegExp, message?: string): StringSchema {
-		const clone = this._clone();
-		clone._pattern = regex;
-		clone._patternMessage = message;
-		return clone;
+		return this._withCheck({
+			rank: STRING_PATTERN_RANK,
+			message: message || `String must match pattern ${regex}`,
+			test: (value) => testRegExpStateless(regex, value),
+		});
 	}
 
 	/**
@@ -159,9 +145,11 @@ export class StringSchema extends PropSchema<string> {
 	 * @returns A cloned string schema requiring a parseable absolute HTTP(S) URL.
 	 */
 	url(): StringSchema {
-		const clone = this._clone();
-		clone._url = true;
-		return clone;
+		return this._withCheck({
+			rank: STRING_URL_RANK,
+			message: "Invalid URL",
+			test: isHttpUrl,
+		});
 	}
 
 	/**
@@ -190,12 +178,10 @@ export class StringSchema extends PropSchema<string> {
 	/**
 	 * Requires a non-empty string.
 	 *
-	 * @returns A cloned string schema with a minimum length of 1.
+	 * @returns A cloned string schema that also requires at least 1 character.
 	 */
 	nonempty(): StringSchema {
-		const clone = this._clone();
-		clone._minLength = 1;
-		return clone;
+		return this.min(1);
 	}
 }
 
@@ -203,46 +189,42 @@ export class StringSchema extends PropSchema<string> {
  * Schema for number props with optional validation constraints.
  *
  * @remarks
- * Number schemas reject nonfinite values and can enforce inclusive range constraints or
- * integer-only values.
+ * Number schemas reject nonfinite values and can enforce range constraints or
+ * integer-only values. Constraints accumulate, so `.min(10).positive()`
+ * requires both.
  *
  * @public
  */
 export class NumberSchema extends PropSchema<number> {
 	/** @internal */
-	private _min?: number;
-	/** @internal */
-	private _max?: number;
-	/** @internal */
-	private _int = false;
+	private _checks: readonly SchemaCheck<number>[] = [];
 
 	/** @internal */
 	protected _validate(value: unknown): StandardSchemaV1Result<number> {
-		if (typeof value !== "number" || Number.isNaN(value)) {
+		if (typeof value !== "number") {
 			return { issues: [{ message: `Expected number, got ${typeof value}` }] };
+		}
+		if (Number.isNaN(value)) {
+			return { issues: [{ message: "Expected number, got NaN" }] };
 		}
 		if (!Number.isFinite(value)) {
 			return { issues: [{ message: "Expected finite number" }] };
 		}
-		if (this._int && !Number.isInteger(value)) {
-			return { issues: [{ message: "Expected integer" }] };
-		}
-		if (this._min !== undefined && value < this._min) {
-			return { issues: [{ message: `Number must be >= ${this._min}` }] };
-		}
-		if (this._max !== undefined && value > this._max) {
-			return { issues: [{ message: `Number must be <= ${this._max}` }] };
-		}
-
-		return { value };
+		const issue = findFailedSchemaCheck(this._checks, value);
+		return issue ? { issues: [issue] } : { value };
 	}
 
 	/** @internal */
 	protected _clone(): NumberSchema {
 		const clone = this._copyBaseTo(new NumberSchema());
-		clone._min = this._min;
-		clone._max = this._max;
-		clone._int = this._int;
+		clone._checks = this._checks;
+		return clone;
+	}
+
+	/** @internal */
+	private _withCheck(check: SchemaCheck<number>): NumberSchema {
+		const clone = this._clone();
+		clone._checks = addSchemaCheck(this._checks, check);
 		return clone;
 	}
 
@@ -253,9 +235,11 @@ export class NumberSchema extends PropSchema<number> {
 	 * @returns A cloned number schema with the minimum value constraint.
 	 */
 	min(n: number): NumberSchema {
-		const clone = this._clone();
-		clone._min = n;
-		return clone;
+		return this._withCheck({
+			rank: NUMBER_LOWER_BOUND_RANK,
+			message: `Number must be >= ${n}`,
+			test: (value) => value >= n,
+		});
 	}
 
 	/**
@@ -265,9 +249,11 @@ export class NumberSchema extends PropSchema<number> {
 	 * @returns A cloned number schema with the maximum value constraint.
 	 */
 	max(n: number): NumberSchema {
-		const clone = this._clone();
-		clone._max = n;
-		return clone;
+		return this._withCheck({
+			rank: NUMBER_UPPER_BOUND_RANK,
+			message: `Number must be <= ${n}`,
+			test: (value) => value <= n,
+		});
 	}
 
 	/**
@@ -276,9 +262,11 @@ export class NumberSchema extends PropSchema<number> {
 	 * @returns A cloned number schema that accepts only integers.
 	 */
 	int(): NumberSchema {
-		const clone = this._clone();
-		clone._int = true;
-		return clone;
+		return this._withCheck({
+			rank: NUMBER_INTEGER_RANK,
+			message: "Expected integer",
+			test: Number.isInteger,
+		});
 	}
 
 	/**
@@ -287,9 +275,11 @@ export class NumberSchema extends PropSchema<number> {
 	 * @returns A cloned number schema with a positive-value constraint.
 	 */
 	positive(): NumberSchema {
-		const clone = this._clone();
-		clone._min = Number.MIN_VALUE;
-		return clone;
+		return this._withCheck({
+			rank: NUMBER_LOWER_BOUND_RANK,
+			message: "Number must be > 0",
+			test: (value) => value > 0,
+		});
 	}
 
 	/**
@@ -298,9 +288,7 @@ export class NumberSchema extends PropSchema<number> {
 	 * @returns A cloned number schema with a non-negative constraint.
 	 */
 	nonnegative(): NumberSchema {
-		const clone = this._clone();
-		clone._min = 0;
-		return clone;
+		return this.min(0);
 	}
 
 	/**
@@ -309,9 +297,11 @@ export class NumberSchema extends PropSchema<number> {
 	 * @returns A cloned number schema with a negative-value constraint.
 	 */
 	negative(): NumberSchema {
-		const clone = this._clone();
-		clone._max = -Number.MIN_VALUE;
-		return clone;
+		return this._withCheck({
+			rank: NUMBER_UPPER_BOUND_RANK,
+			message: "Number must be < 0",
+			test: (value) => value < 0,
+		});
 	}
 }
 
@@ -320,15 +310,14 @@ export class NumberSchema extends PropSchema<number> {
  *
  * @remarks
  * Date schemas accept only valid `Date` instances. String timestamps and
- * numeric timestamps must be converted to `Date` before validation.
+ * numeric timestamps must be converted to `Date` before validation. Range
+ * constraints accumulate.
  *
  * @public
  */
 export class DateSchema extends PropSchema<Date> {
 	/** @internal */
-	private _minTime?: number;
-	/** @internal */
-	private _maxTime?: number;
+	private _checks: readonly SchemaCheck<number>[] = [];
 
 	/** @internal */
 	protected _validate(value: unknown): StandardSchemaV1Result<Date> {
@@ -343,34 +332,21 @@ export class DateSchema extends PropSchema<Date> {
 			return { issues: [{ message: "Expected valid Date" }] };
 		}
 
-		if (this._minTime !== undefined && time < this._minTime) {
-			return {
-				issues: [
-					{
-						message: `Date must be on or after ${formatDateForMessage(new Date(this._minTime))}`,
-					},
-				],
-			};
-		}
-
-		if (this._maxTime !== undefined && time > this._maxTime) {
-			return {
-				issues: [
-					{
-						message: `Date must be on or before ${formatDateForMessage(new Date(this._maxTime))}`,
-					},
-				],
-			};
-		}
-
-		return { value };
+		const issue = findFailedSchemaCheck(this._checks, time);
+		return issue ? { issues: [issue] } : { value };
 	}
 
 	/** @internal */
 	protected _clone(): DateSchema {
 		const clone = this._copyBaseTo(new DateSchema());
-		clone._minTime = this._minTime;
-		clone._maxTime = this._maxTime;
+		clone._checks = this._checks;
+		return clone;
+	}
+
+	/** @internal */
+	private _withCheck(check: SchemaCheck<number>): DateSchema {
+		const clone = this._clone();
+		clone._checks = addSchemaCheck(this._checks, check);
 		return clone;
 	}
 
@@ -383,9 +359,12 @@ export class DateSchema extends PropSchema<Date> {
 	 * @throws Error if `date` is an invalid `Date`.
 	 */
 	min(date: Date): DateSchema {
-		const clone = this._clone();
-		clone._minTime = validateDateBound(date, "min");
-		return clone;
+		const minTime = validateDateBound(date, "min");
+		return this._withCheck({
+			rank: DATE_LOWER_BOUND_RANK,
+			message: `Date must be on or after ${formatDateForMessage(new Date(minTime))}`,
+			test: (time) => time >= minTime,
+		});
 	}
 
 	/**
@@ -397,9 +376,12 @@ export class DateSchema extends PropSchema<Date> {
 	 * @throws Error if `date` is an invalid `Date`.
 	 */
 	max(date: Date): DateSchema {
-		const clone = this._clone();
-		clone._maxTime = validateDateBound(date, "max");
-		return clone;
+		const maxTime = validateDateBound(date, "max");
+		return this._withCheck({
+			rank: DATE_UPPER_BOUND_RANK,
+			message: `Date must be on or before ${formatDateForMessage(new Date(maxTime))}`,
+			test: (time) => time <= maxTime,
+		});
 	}
 }
 

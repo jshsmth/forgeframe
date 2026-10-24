@@ -155,18 +155,29 @@ describe("Host lifecycle behavior", () => {
 			const destroy = vi.spyOn(host, "destroy");
 			const notified = vi.fn();
 			snapshot.onProps(notified);
+			const consoleError = vi
+				.spyOn(console, "error")
+				.mockImplementation(() => {});
 			try {
-				expect(() => {
-					const invalid = { amount: prop.string() };
-					if (configure === "initHost")
-						initHost(invalid, undefined, { deferInit });
-					else
-						create({
-							tag: payload.tag,
-							url: "https://host.example.com/widget",
-							props: invalid,
-						});
-				}).toThrow("Expected string, got number");
+				const invalid = { amount: prop.string() };
+				if (configure === "initHost") {
+					expect(() => initHost(invalid, undefined, { deferInit })).toThrow(
+						"Expected string, got number",
+					);
+				} else {
+					// Defining a component reports host failures instead of throwing.
+					create({
+						tag: payload.tag,
+						url: "https://host.example.com/widget",
+						props: invalid,
+					});
+					expect(consoleError).toHaveBeenCalledWith(
+						`Failed to initialize host for component "${payload.tag}":`,
+						expect.objectContaining({
+							message: expect.stringContaining("Expected string, got number"),
+						}),
+					);
+				}
 				expect(getHostProps()).toBe(snapshot);
 				expect(destroy).not.toHaveBeenCalled();
 				expect(initHost(definitions, undefined, { deferInit })).toBe(host);
@@ -186,6 +197,33 @@ describe("Host lifecycle behavior", () => {
 			}
 		},
 	);
+
+	it("keeps a rejecting definition's prop schema when a bare initHost() retries a legacy payload", () => {
+		const payload = createPayload({ tag: "legacy-definition-schema-retry" });
+		window.name = buildWindowName(payload);
+		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
+		const consoleError = vi
+			.spyOn(console, "error")
+			.mockImplementation(() => {});
+		try {
+			create({
+				tag: payload.tag,
+				url: "https://host.example.com/widget",
+				props: { amount: prop.number().min(100) },
+			});
+			expect(consoleError).toHaveBeenCalledWith(
+				`Failed to initialize host for component "${payload.tag}":`,
+				expect.objectContaining({
+					message: expect.stringContaining("Number must be >= 100"),
+				}),
+			);
+
+			expect(() => initHost()).toThrow("Number must be >= 100");
+			expect(getHostProps()).toBeUndefined();
+		} finally {
+			deleteRegisteredComponent(payload.tag);
+		}
+	});
 
 	it("reconciles late private fields only after replacement validation succeeds", () => {
 		const host = createHost({
@@ -312,6 +350,60 @@ describe("Host lifecycle behavior", () => {
 		await host.ready;
 		expect(host.hostProps.amount).toBe(42);
 		host.destroy();
+	});
+
+	it("notifies subscribers once, with children attached, when bootstrap completes", async () => {
+		const childTag = "host-lifecycle-bootstrap-child";
+		const Child = create({
+			tag: childTag,
+			url: "https://host.example.com/child",
+		});
+		const bootstrap = createDeferred<{
+			props: { amount: number };
+			children: Record<string, { tag: string; url: string }>;
+		}>();
+		vi.spyOn(Messenger.prototype, "send").mockImplementation(
+			() => bootstrap.promise,
+		);
+		const host = createHost({
+			payload: createPayload({ protocolVersion: PROTOCOL_VERSION }),
+		});
+		try {
+			const notifications: Array<{ amount: unknown; child: unknown }> = [];
+			host.hostProps.onProps((props) => {
+				notifications.push({
+					amount: props.amount,
+					child: host.hostProps.children?.Child,
+				});
+			});
+			const propsEvents = vi.fn();
+			host.event.on(EVENT.PROPS, propsEvents);
+			const propsHandler = requireValue(
+				(
+					host as unknown as {
+						messenger: { handlers: Map<string, DirectHandler> };
+					}
+				).messenger.handlers.get(MESSAGE_NAME.PROPS),
+			);
+			expect(propsHandler({ amount: 42 }, createMessageSource(window))).toEqual(
+				{ success: true },
+			);
+			expect(notifications).toEqual([]);
+
+			bootstrap.resolve({
+				props: { amount: 10 },
+				children: {
+					Child: { tag: childTag, url: "https://host.example.com/child" },
+				},
+			});
+			await host.ready;
+
+			expect(notifications).toEqual([{ amount: 42, child: Child }]);
+			expect(propsEvents).toHaveBeenCalledExactlyOnceWith({ amount: 42 });
+		} finally {
+			host.destroy();
+			deleteRegisteredComponent(childTag);
+		}
 	});
 
 	it("should withhold all props until the messaging bootstrap completes", () => {

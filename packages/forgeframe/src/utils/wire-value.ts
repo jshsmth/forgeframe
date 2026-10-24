@@ -80,9 +80,8 @@ export function assertDefinedArrayEntries(
 			needsRecordEscape(value as Record<string, unknown>))
 			? PROP_SERIALIZATION.JSON
 			: encoding;
-	// Encoded leaves are checked by the replacer after their encoder runs.
-	if (nodeEncoding === PROP_SERIALIZATION.BASE64 && hasJsonEncoder(value))
-		return;
+	// Encoded values are checked during delivery after their encoder runs.
+	if (convertsThroughJsonEncoder(value, nodeEncoding)) return;
 	seen.add(value);
 	if (Array.isArray(value)) {
 		for (let index = 0; index < value.length; index++) {
@@ -116,6 +115,21 @@ function isDotifyObjectBranch(value: unknown): boolean {
 	return (
 		isPlainObject(value) && !needsRecordEscape(value as Record<string, unknown>)
 	);
+}
+
+/**
+ * Mirrors which values each codec converts through `toJSON()`: BASE64 converts
+ * every value, the JSON bridge converts non-array objects, and DOTIFY walks its
+ * own branches and converts only leaves, which it encodes as BASE64 values.
+ */
+function convertsThroughJsonEncoder(
+	value: object,
+	encoding: SerializationType,
+): boolean {
+	if (!hasJsonEncoder(value)) return false;
+	if (encoding === PROP_SERIALIZATION.BASE64) return true;
+	if (encoding === PROP_SERIALIZATION.DOTIFY) return false;
+	return !Array.isArray(value);
 }
 
 /** Detects methods without invoking computed encoders during admission. */
@@ -271,6 +285,21 @@ export function stringifyWireValue(
 	return JSON.stringify(
 		escapeConvertedRecords(JSON.parse(json), [], generatedMarkerPaths),
 	);
+}
+
+/**
+ * Applies native JSON conversion once: a callable `toJSON(key)`, then
+ * primitive-wrapper unboxing. The result is not converted again. Callers
+ * decide which values convert; bridge arrays never do.
+ * @internal
+ */
+export function toJsonValue(value: object, key: string): unknown {
+	const toJSON = (value as { toJSON?: unknown }).toJSON;
+	const converted =
+		typeof toJSON === "function" ? toJSON.call(value, key) : value;
+	return isObjectRecord(converted) && !isPlainObject(converted)
+		? unboxJsonPrimitive(converted)
+		: converted;
 }
 
 /** Uses native unboxing without probing records through throwing slot checks. */

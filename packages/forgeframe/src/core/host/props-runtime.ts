@@ -170,23 +170,37 @@ export class HostPropsRuntime<
 	/**
 	 * Completes bootstrap using any newer acknowledged props received while it was pending.
 	 * The selected snapshot is validated against the current host definitions.
+	 * Subscribers are notified once, after children are attached.
 	 */
 	applyBootstrap(data: HostBootstrapData): void {
 		const children = this.buildNestedComponents(data.children);
 		// An acknowledged PROPS update can arrive before this response. Preserve
 		// that newer snapshot, and validate it against the final host definitions.
-		this.applySerializedProps(this.pendingBootstrapProps ?? data.props);
+		const nextProps = this.commitSerializedProps(
+			this.pendingBootstrapProps ?? data.props,
+		);
 		this.hostProps.children = children;
 		this.initialized = true;
 		this.pendingBootstrapProps = null;
+		this.publishProps(nextProps);
 	}
 
 	/**
 	 * Validates and commits a wire snapshot before notifying subscribers and emitting props.
 	 * Stale custom keys are removed while built-in controls keep their identity.
 	 * Validation failure preserves the current prop snapshot and emits an error.
+	 * An update acknowledged before bootstrap completes is published by bootstrap.
 	 */
 	applySerializedProps(serializedProps: SerializedProps): { success: true } {
+		const nextProps = this.commitSerializedProps(serializedProps);
+		if (this.initialized) this.publishProps(nextProps);
+		return { success: true };
+	}
+
+	/** Validates and commits one wire snapshot, reporting a rejection as a host error. */
+	private commitSerializedProps(
+		serializedProps: SerializedProps,
+	): RemoteValue<P> {
 		try {
 			const previousProps = this.consumerProps;
 			const nextProps = this.deserialize(serializedProps);
@@ -203,17 +217,19 @@ export class HostPropsRuntime<
 				nextHostProps,
 				serializedProps,
 			);
-			this.notifyPropsHandlers(nextProps);
-
-			this.options.event.emit(EVENT.PROPS, nextProps);
-
-			return { success: true };
+			return nextProps;
 		} catch (error) {
 			const propsError = normalizeError(error);
 			console.error("Error deserializing props:", propsError);
 			this.options.event.emit(EVENT.ERROR, propsError);
 			throw propsError;
 		}
+	}
+
+	/** Notifies subscribers, then emits the props event, for one committed snapshot. */
+	private publishProps(nextProps: RemoteValue<P>): void {
+		this.notifyPropsHandlers(nextProps);
+		this.options.event.emit(EVENT.PROPS, nextProps);
 	}
 
 	private commitHostProps(

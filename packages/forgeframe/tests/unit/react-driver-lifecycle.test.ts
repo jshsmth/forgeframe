@@ -34,6 +34,27 @@ describe("createReactComponent lifecycle integration", () => {
 		expect(component).not.toHaveBeenCalled();
 	});
 
+	it("keeps the committed container ref callback when a render with another ref is discarded", () => {
+		const { React } = createReactHarness();
+		const { component } = createForgeFrameComponentMock();
+		const render = createReactComponent(component as never, {
+			React: React as never,
+		}) as unknown as (
+			props: Record<string, unknown>,
+			ref: { current: unknown },
+		) => { props: { ref: unknown } };
+		const committedRef = { current: null };
+		const discardedRef = { current: null };
+
+		const committed = render({ amount: 1 }, committedRef).props.ref;
+		// A concurrent render React abandons still runs the component body.
+		const discarded = render({ amount: 1 }, discardedRef).props.ref;
+		const next = render({ amount: 1 }, committedRef).props.ref;
+
+		expect(discarded).not.toBe(committed);
+		expect(next).toBe(committed);
+	});
+
 	it("should remount the ForgeFrame instance when context changes", () => {
 		const { React, refs, effects } = createReactHarness();
 		const first = createForgeFrameComponentMock();

@@ -103,7 +103,7 @@ export function createIframeElement(
 	applyDimensions(iframe, dimensions);
 	applyAttributes(iframe, attributes);
 	applyStyles(iframe, style);
-	applyDefaultSandbox(iframe, attributes);
+	applyDefaultSandbox(iframe);
 
 	return iframe;
 }
@@ -395,11 +395,10 @@ function applyAttributes(
  *
  * @internal
  */
-function applyDefaultSandbox(
-	iframe: HTMLIFrameElement,
-	attributes: IframeAttributes,
-): void {
-	if (attributes.sandbox !== undefined) {
+function applyDefaultSandbox(iframe: HTMLIFrameElement): void {
+	// Decide from the written attribute: HTML folds `Sandbox` to `sandbox`, and
+	// values that encode to nothing, such as `false`, leave the default in place.
+	if (iframe.hasAttribute("sandbox")) {
 		return;
 	}
 

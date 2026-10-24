@@ -8,14 +8,19 @@
  */
 
 import type { HostPropsDefinition } from "../../types/props";
-import type { HostProps } from "../../types/runtime";
+import type { ComponentOptions, HostProps } from "../../types/runtime";
 import type { DomainMatcher } from "../../types/utility";
 import { hasBrowserWindow } from "../../utils/browser";
+import { assertDomainMatcher } from "../../utils/domain-pattern";
 import {
 	consumeInitialPayload,
 	isForgeFrameWindow,
 } from "../../window/name-payload";
 import type { WindowNamePayload } from "../../window/types";
+import {
+	getComponentOptions,
+	getRegisteredComponent,
+} from "../component-registry";
 import { HostComponent } from "./component";
 import { CONSUMER_WINDOW_RESOLUTION_ERROR } from "./security";
 
@@ -60,6 +65,8 @@ export function initHost<P extends Record<string, unknown>, SchemaInputs = P>(
 	options: { deferInit?: boolean } = {},
 ): HostComponent<P, SchemaInputs> | null {
 	if (!hasBrowserWindow()) return null;
+	if (allowedConsumerDomains !== undefined)
+		assertDomainMatcher(allowedConsumerDomains, "allowedConsumerDomains");
 	if (hostInstance) {
 		const configuredHost = hostInstance;
 		try {
@@ -87,7 +94,7 @@ export function initHost<P extends Record<string, unknown>, SchemaInputs = P>(
 		if (hostInstance !== configuredHost) return null;
 
 		try {
-			if (allowedConsumerDomains) {
+			if (allowedConsumerDomains !== undefined) {
 				hostInstance.assertAllowedConsumerDomain(allowedConsumerDomains);
 			}
 		} catch (error) {
@@ -107,11 +114,15 @@ export function initHost<P extends Record<string, unknown>, SchemaInputs = P>(
 		return null;
 	}
 
+	// A bare initHost() keeps the schema and allowlist of a component defined
+	// for this tag, including after that definition rejected the consumer.
+	const definition = definedComponentOptions(payload.tag);
 	try {
 		const nextHostInstance = new HostComponent<P, SchemaInputs>(
 			payload,
-			propDefinitions,
-			allowedConsumerDomains,
+			propDefinitions ??
+				(definition?.props as HostPropsDefinition<P, SchemaInputs> | undefined),
+			allowedConsumerDomains ?? definition?.allowedConsumerDomains,
 			options.deferInit ?? false,
 			() => {
 				if (hostInstance === nextHostInstance) clearHostInstance();
@@ -138,6 +149,12 @@ export function initHost<P extends Record<string, unknown>, SchemaInputs = P>(
 	}
 
 	return hostInstance as HostComponent<P, SchemaInputs>;
+}
+
+/** Reads the options of the component registered for a tag. */
+function definedComponentOptions(tag: string): ComponentOptions | undefined {
+	const component = getRegisteredComponent(tag);
+	return component ? getComponentOptions(component) : undefined;
 }
 
 export function getHost<

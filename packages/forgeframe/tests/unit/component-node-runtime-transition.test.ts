@@ -96,8 +96,11 @@ describe("Component host detection across runtime transitions", () => {
 
 		expect(LateHostComponent.isHost()).toBe(true);
 		expect(LateHostComponent.isEmbedded()).toBe(true);
+		expect(LateHostComponent.hostProps).toBeUndefined();
+		expect(initHost).not.toHaveBeenCalled();
+
+		initHost();
 		expect(LateHostComponent.hostProps).toBe(mockHostProps);
-		expect(initHost).toHaveBeenCalled();
 
 		clearComponents();
 	});
@@ -150,6 +153,7 @@ describe("Component host detection across runtime transitions", () => {
 
 		browserAvailable = true;
 		hostDetected = true;
+		initHost();
 
 		expect(StickyHostComponent.isHost()).toBe(true);
 		expect(StickyHostComponent.hostProps).toBe(mockHostProps);
@@ -164,7 +168,7 @@ describe("Component host detection across runtime transitions", () => {
 		clearComponents();
 	});
 
-	it("should initialize host state when checking host status after a runtime transition", async () => {
+	it("does not initialize a host when checking host status after a runtime transition", async () => {
 		let browserAvailable = false;
 		let hostDetected = false;
 
@@ -215,8 +219,8 @@ describe("Component host detection across runtime transitions", () => {
 
 		expect(LateHostComponent.isHost()).toBe(true);
 		expect(LateHostComponent.isEmbedded()).toBe(true);
-		expect(LateHostComponent.hostProps).toBe(mockHostProps);
-		expect(initHost).toHaveBeenCalledTimes(1);
+		expect(LateHostComponent.hostProps).toBeUndefined();
+		expect(initHost).not.toHaveBeenCalled();
 
 		clearComponents();
 	});

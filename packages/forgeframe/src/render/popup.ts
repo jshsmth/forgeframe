@@ -309,13 +309,15 @@ export function watchPopupClose(
  *
  * @remarks
  * This function attempts to resize the popup window using `window.resizeTo()`.
- * Some browsers may restrict window resizing for security reasons, in which
- * case errors are silently ignored.
+ * Browsers deny access to another origin's window, so a cross-origin popup can
+ * only resize itself. Browsers may also ignore an allowed request, which this
+ * function cannot detect.
  *
  * If a dimension is not specified, the current window dimension is preserved.
  *
  * @param win - The popup Window object to resize
  * @param dimensions - The new dimensions for the popup
+ * @returns `false` when the browser denied access to the window, otherwise `true`
  *
  * @example
  * ```typescript
@@ -324,7 +326,7 @@ export function watchPopupClose(
  *
  * @public
  */
-export function resizePopup(win: Window, dimensions: Dimensions): void {
+export function resizePopup(win: Window, dimensions: Dimensions): boolean {
 	try {
 		const width = normalizeDimensionToNumber(dimensions.width, win.outerWidth);
 		const height = normalizeDimensionToNumber(
@@ -332,7 +334,9 @@ export function resizePopup(win: Window, dimensions: Dimensions): void {
 			win.outerHeight,
 		);
 		win.resizeTo(width, height);
+		return true;
 	} catch {
-		// Resize might be blocked
+		// Cross-origin windows deny resizeTo and outer dimensions.
+		return false;
 	}
 }

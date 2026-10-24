@@ -11,18 +11,23 @@ import {
 } from "@/communication/bridge";
 import type { Messenger } from "@/communication/messenger";
 import { MESSAGE_NAME } from "@/constants";
+import { createDeferred } from "@/utils/promise";
 
 type GenericFunction = (...args: unknown[]) => unknown;
 
 /**
  * Creates a messenger test double with handler storage and a `CALL` trigger helper.
  */
+/** Admits every caller where a test exercises serialization rather than source checks. */
+const acceptAnySource = () => true;
+
 const createMockMessenger = () => {
 	const handlers = new Map<string, GenericFunction>();
 
 	return {
 		send: vi.fn().mockResolvedValue(undefined),
 		post: vi.fn(),
+		rejectPending: vi.fn(),
 		on: vi.fn((name: string, handler: GenericFunction) => {
 			handlers.set(name, handler);
 			return () => handlers.delete(name);
@@ -54,7 +59,10 @@ describe("FunctionBridge", () => {
 
 	beforeEach(() => {
 		messenger = createMockMessenger();
-		bridge = new FunctionBridge(messenger as unknown as Messenger);
+		bridge = new FunctionBridge(
+			messenger as unknown as Messenger,
+			acceptAnySource,
+		);
 	});
 
 	afterEach(() => {
@@ -181,6 +189,7 @@ describe("FunctionBridge", () => {
 				"https://target.com",
 				MESSAGE_NAME.CALL,
 				{ id: "fn-123", args: ["arg1", "arg2"] },
+				null,
 			);
 		});
 
@@ -225,6 +234,7 @@ describe("FunctionBridge", () => {
 				"https://target.com",
 				MESSAGE_NAME.CALL,
 				{ id: "fn-shared", args: ["next-window"] },
+				null,
 			);
 		});
 
@@ -338,6 +348,55 @@ describe("FunctionBridge", () => {
 			await expect(messenger.simulateCall(ref.__id__, [])).rejects.toThrow(
 				`Function with id "${ref.__id__}" not found`,
 			);
+		});
+	});
+
+	describe("liveness checks", () => {
+		it("ignores a timed-out check whose calls already settled", async () => {
+			vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+			try {
+				const targetWin = {} as Window;
+				const livenessName = `${MESSAGE_NAME.CALL}_liveness`;
+				const firstCheck = createDeferred<unknown>();
+				const firstCall = createDeferred<unknown>();
+				let calls = 0;
+				messenger.send.mockImplementation(
+					(_win: Window, _domain: string, name: string) => {
+						if (name === livenessName)
+							return messenger.send.mock.calls.filter(
+								([, , sent]) => sent === livenessName,
+							).length === 1
+								? firstCheck.promise
+								: new Promise(() => {});
+						calls++;
+						return calls === 1 ? firstCall.promise : new Promise(() => {});
+					},
+				);
+				const wrapper = bridge.deserialize(
+					{ __type__: "function", __id__: "fn-live", __name__: "live" },
+					targetWin,
+					"https://target.com",
+				) as () => Promise<unknown>;
+
+				const settled = wrapper();
+				await vi.advanceTimersByTimeAsync(10_000);
+				firstCall.resolve("done");
+				await settled;
+				void wrapper();
+				firstCheck.reject(new Error("Liveness check timed out"));
+				await vi.advanceTimersByTimeAsync(0);
+
+				// The newer call keeps waiting and gets a check of its own.
+				expect(messenger.rejectPending).not.toHaveBeenCalled();
+				await vi.advanceTimersByTimeAsync(10_000);
+				expect(
+					messenger.send.mock.calls.filter(
+						([, , name]) => name === livenessName,
+					),
+				).toHaveLength(2);
+			} finally {
+				vi.useRealTimers();
+			}
 		});
 	});
 
@@ -523,7 +582,10 @@ describe("serializeFunctions", () => {
 
 	beforeEach(() => {
 		messenger = createMockMessenger();
-		bridge = new FunctionBridge(messenger as unknown as Messenger);
+		bridge = new FunctionBridge(
+			messenger as unknown as Messenger,
+			acceptAnySource,
+		);
 	});
 
 	afterEach(() => {
@@ -573,6 +635,20 @@ describe("serializeFunctions", () => {
 		expect(FunctionBridge.isFunctionRef(result[0])).toBe(true);
 		expect(result[1]).toBe("string");
 		expect(FunctionBridge.isFunctionRef(result[2])).toBe(true);
+	});
+
+	it("rejects a toJSON() result that contains its own source as a cycle", () => {
+		class SelfReferencing {
+			toJSON() {
+				return { self: this };
+			}
+		}
+		expect(() => serializeFunctions(new SelfReferencing(), bridge)).toThrow(
+			"Circular reference detected in props",
+		);
+		expect(() =>
+			serializeFunctions({ items: [new SelfReferencing()] }, bridge),
+		).toThrow("Circular reference detected in props");
 	});
 
 	it("should preserve primitives", () => {
@@ -652,7 +728,10 @@ describe("deserializeFunctions", () => {
 
 	beforeEach(() => {
 		messenger = createMockMessenger();
-		bridge = new FunctionBridge(messenger as unknown as Messenger);
+		bridge = new FunctionBridge(
+			messenger as unknown as Messenger,
+			acceptAnySource,
+		);
 	});
 
 	afterEach(() => {
@@ -826,9 +905,11 @@ describe("round-trip serialization", () => {
 
 		const consumerBridge = new FunctionBridge(
 			consumerMessenger as unknown as Messenger,
+			acceptAnySource,
 		);
 		const hostBridge = new FunctionBridge(
 			hostMessenger as unknown as Messenger,
+			acceptAnySource,
 		);
 
 		const targetWin = {} as Window;
@@ -854,6 +935,7 @@ describe("round-trip serialization", () => {
 			targetDomain,
 			MESSAGE_NAME.CALL,
 			{ id: serialized.__id__, args: ["arg1"] },
+			null,
 		);
 
 		// Simulate the consumer receiving and handling the call

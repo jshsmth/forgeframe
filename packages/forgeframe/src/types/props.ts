@@ -100,8 +100,17 @@ interface PropDefinitionOptions<
 
 	/** Whether the prop is required */
 	required?: boolean;
-	/** Schema input used when the caller omits the prop */
-	default?: Input | ((ctx: PropContext<P>) => Input);
+	/**
+	 * Schema input used when the caller omits the prop.
+	 *
+	 * @remarks
+	 * A function is called as a factory with the prop context, so a callback
+	 * default must be wrapped: `default: () => onCancel`. Passing the callback
+	 * directly is rejected, as it is by schema `.default()`.
+	 */
+	default?:
+		| Exclude<Input, (...args: never[]) => unknown>
+		| ((ctx: PropContext<P>) => Input);
 	/** Function that computes a schema input when the caller omits the prop */
 	value?: (ctx: PropContext<P>) => Input;
 

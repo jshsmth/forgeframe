@@ -160,6 +160,35 @@ test.beforeAll(async () => {
 				</script>`,
 				);
 			}
+			if (req.url === "/destroy-host") {
+				return respond(
+					res,
+					`<!doctype html><script type="module">
+				import {initHost,prop} from '/library.js';
+				window.calls = 0;
+				const host = initHost({count:prop.number(),secret:prop.string(),onComplete:prop.function()}, ['${consumerOrigin}']);
+				await host.ready;
+				await host.hostProps.export({
+					destroy: () => { host.destroy(); },
+					value: () => ++window.calls,
+				});
+				window.ready = true;
+				</script>`,
+				);
+			}
+			if (req.url === "/popup-resize") {
+				return respond(
+					res,
+					`<!doctype html><script type="module">
+				import {initHost,prop} from '/library.js';
+				window.resizeCalls = [];
+				const resizeTo = window.resizeTo.bind(window);
+				window.resizeTo = (width, height) => { window.resizeCalls.push([width, height]); resizeTo(width, height); };
+				const host = initHost({count:prop.number(),secret:prop.string(),onComplete:prop.function()}, ['${consumerOrigin}']);
+				await host.ready; window.received = host.hostProps; window.ready = true;
+				</script>`,
+				);
+			}
 			if (req.url === "/retry") {
 				return respond(
 					res,
@@ -1538,6 +1567,120 @@ test("growing a widget also grows its clipping container", async ({ page }) => {
 		wrapperHeight: 500,
 		wrapperWidth: 600,
 	});
+});
+
+test("a cross-origin popup host resizes itself and consumer resizing reports the block", async ({
+	page,
+}) => {
+	const popupEvent = page.waitForEvent("popup");
+	await mount(page, "/popup-resize", "popup");
+	const popup = await popupEvent;
+	expect(
+		await page.evaluate(
+			() => (window as unknown as { outcome: Promise<string> }).outcome,
+		),
+	).toBe("ready");
+	await popup.waitForFunction(
+		() => (window as unknown as { ready: boolean }).ready === true,
+	);
+	type ResizeWindow = {
+		resizes: unknown[];
+		instance: {
+			event: { on(event: string, handler: (data: unknown) => void): void };
+			resize(dimensions: { width: number; height: number }): Promise<void>;
+		};
+	};
+	const consumerResult = await page.evaluate(async () => {
+		const state = window as unknown as ResizeWindow;
+		state.resizes = [];
+		state.instance.event.on("resize", (dimensions) => {
+			state.resizes.push(dimensions);
+		});
+		return state.instance.resize({ width: 600, height: 500 }).then(
+			() => "resolved",
+			(error: Error) => error.message,
+		);
+	});
+	expect(consumerResult).toContain(
+		'Cannot resize the popup for component "browser-navigation-review"',
+	);
+	expect(
+		await page.evaluate(() => (window as unknown as ResizeWindow).resizes),
+	).toEqual([]);
+
+	await popup.evaluate(() =>
+		(
+			window as unknown as {
+				received: {
+					resize(dimensions: { width: number; height: number }): Promise<void>;
+				};
+			}
+		).received.resize({ width: 640, height: 480 }),
+	);
+	expect(
+		await popup.evaluate(
+			() => (window as unknown as { resizeCalls: unknown[] }).resizeCalls,
+		),
+	).toEqual([[640, 480]]);
+	expect(
+		await page.evaluate(() => (window as unknown as ResizeWindow).resizes),
+	).toEqual([{ width: 640, height: 480 }]);
+});
+
+test("calls queued behind host teardown reject instead of waiting forever", async ({
+	page,
+}) => {
+	await mount(page, "/destroy-host");
+	expect(
+		await page.evaluate(
+			() => (window as unknown as { outcome: Promise<string> }).outcome,
+		),
+	).toBe("ready");
+	const frame = page
+		.frames()
+		.find((entry) => entry.url().startsWith(hostOrigin));
+	if (!frame) throw new Error("Missing host frame");
+	await frame.waitForFunction(
+		() => (window as unknown as { ready: boolean }).ready === true,
+	);
+	await page.waitForFunction(
+		() =>
+			typeof (
+				window as unknown as {
+					instance: { exports?: { value?: unknown } };
+				}
+			).instance.exports?.value === "function",
+	);
+
+	const results = await page.evaluate(async () => {
+		type HostExports = {
+			destroy(): Promise<void>;
+			value(): Promise<number>;
+		};
+		const { exports } = (
+			window as unknown as { instance: { exports: HostExports } }
+		).instance;
+		const settled = (promise: Promise<unknown>) =>
+			promise.then(
+				(value) => `resolved ${String(value)}`,
+				(error: Error) => error.message,
+			);
+		const control = await settled(exports.value());
+		// Posted in one task: the host destroys itself before dispatching the second call.
+		const destroying = settled(exports.destroy());
+		const queued = settled(exports.value());
+		const outcomes = await Promise.all([destroying, queued]);
+		return { control, outcomes, later: await settled(exports.value()) };
+	});
+	const destroyed = "Host was destroyed before the call completed";
+	expect(results).toEqual({
+		control: "resolved 1",
+		outcomes: [destroyed, destroyed],
+		later: destroyed,
+	});
+	expect(
+		await frame.evaluate(() => (window as unknown as { calls: number }).calls),
+	).toBe(1);
 });
 
 for (const context of ["iframe", "popup"] as const) {

@@ -259,6 +259,7 @@ describe("Component clone", () => {
 				uid: original.uid,
 				tag: "clone-options-snapshot",
 				hostDomain: PEER_HOST_DOMAIN,
+				anyConsumer: false,
 			}),
 		).toEqual([
 			expect.objectContaining({
@@ -283,6 +284,7 @@ describe("Component clone", () => {
 				uid: original.uid,
 				tag: "tracked-clone-component",
 				hostDomain: PEER_HOST_DOMAIN,
+				anyConsumer: false,
 			}),
 		).toEqual([
 			{
@@ -300,6 +302,7 @@ describe("Component clone", () => {
 				uid: original.uid,
 				tag: "tracked-clone-component",
 				hostDomain: PEER_HOST_DOMAIN,
+				anyConsumer: false,
 			}),
 		).toEqual([]);
 
@@ -369,6 +372,7 @@ describe("Component clone", () => {
 					uid: cloned.uid,
 					tag,
 					hostDomain: PEER_HOST_DOMAIN,
+					anyConsumer: false,
 				}),
 			).toEqual([]);
 			await cloned.close();
@@ -379,6 +383,7 @@ describe("Component clone", () => {
 					uid: "outside",
 					tag,
 					hostDomain: PEER_HOST_DOMAIN,
+					anyConsumer: false,
 				}),
 			).toEqual([]);
 			expect(events).toEqual([
@@ -403,6 +408,7 @@ describe("Component clone", () => {
 				uid: original.uid,
 				tag: "direct-untracked-clone",
 				hostDomain: PEER_HOST_DOMAIN,
+				anyConsumer: false,
 			}),
 		).toEqual([]);
 

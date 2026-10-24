@@ -25,6 +25,7 @@
 		"test": "vitest",
 		"test:run": "vitest run",
 		"test:coverage": "vitest run --coverage",
+		"size": "node scripts/check-bundle-size.mjs",
 		"prepublishOnly": "npm run release:check --prefix ../..",
 		"test:browser": "playwright test"
 	},

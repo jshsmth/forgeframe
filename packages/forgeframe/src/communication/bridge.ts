@@ -17,6 +17,7 @@ import {
 	escapeWireRecord,
 	isDateWireValue,
 	isRecordWireValue,
+	toJsonValue,
 } from "../utils/wire-value";
 import type { MessageHandler, Messenger } from "./messenger";
 import type { FunctionRef } from "./types";
@@ -26,6 +27,22 @@ import type { FunctionRef } from "./types";
  * @internal
  */
 type CallableFunction = (...args: unknown[]) => unknown | Promise<unknown>;
+
+/**
+ * Delay before, and timeout of, each check that a window with pending calls
+ * still answers. A document that went away without teardown never answers.
+ * @internal
+ */
+const CALL_LIVENESS_MS = 10_000;
+
+const UNRESPONSIVE_WINDOW_ERROR =
+	"The other window stopped responding before the call completed";
+
+/** Pending calls to one window and its next liveness check. @internal */
+interface CallWatch {
+	calls: number;
+	timer: ReturnType<typeof setTimeout> | undefined;
+}
 
 /** Cached callable together with the remote identity it targets. @internal */
 interface RemoteFunctionEntry {
@@ -61,7 +78,10 @@ function isSafeObjectKey(key: string): boolean {
  *
  * @example
  * ```typescript
- * const bridge = new FunctionBridge(messenger);
+ * const bridge = new FunctionBridge(
+ *   messenger,
+ *   (source) => source.window === hostWindow && source.domain === hostOrigin,
+ * );
  *
  * // Serialize a local function
  * const ref = bridge.serialize(() => console.log('Hello'));
@@ -92,19 +112,24 @@ export class FunctionBridge {
 	/** Registrations created by a batch, removable before any delivery attempt. */
 	private newBatchIds = new Set<string>();
 	private batchMode: "replace" | "append" | null = null;
+	/** Rejection messages for windows whose host session ended. */
+	private endedSessions = new WeakMap<Window, string>();
+	/** Windows with pending calls, checked periodically for a listener. */
+	private callWatches = new Map<Window, CallWatch>();
 
 	/**
 	 * Creates a new FunctionBridge instance.
 	 *
 	 * @param messenger - The messenger to use for cross-domain calls
-	 * @param isExpectedSource - Admits browser-verified callers for this bridge.
+	 * @param isExpectedSource - Admits browser-verified callers for this bridge;
+	 * there is no permissive default.
 	 * @param callMessageName - Internal call channel, separating peer relays from prop/export batches.
 	 */
 	constructor(
 		private messenger: Messenger,
 		private isExpectedSource: (
 			source: Parameters<MessageHandler>[1],
-		) => boolean = () => true,
+		) => boolean,
 		private callMessageName: string = MESSAGE_NAME.CALL,
 	) {
 		this.setupCallHandler();
@@ -219,21 +244,95 @@ export class FunctionBridge {
 		if (oldestKey) this.remoteFunctions.delete(oldestKey);
 	}
 
+	/**
+	 * Remote calls have no timeout: the callback may still be running in the
+	 * other window, so they settle with its result, reject on teardown, or
+	 * reject when the other window stops answering liveness checks.
+	 */
 	private createRemoteWrapper(
 		ref: FunctionRef,
 		targetWin: Window,
 		targetDomain: string,
 	): CallableFunction {
-		const wrapper = async (...args: unknown[]): Promise<unknown> =>
-			this.messenger.send(targetWin, targetDomain, this.callMessageName, {
-				id: ref.__id__,
-				args,
-			});
+		const wrapper = async (...args: unknown[]): Promise<unknown> => {
+			const endedMessage = this.endedSessions.get(targetWin);
+			if (endedMessage !== undefined) throw new Error(endedMessage);
+			const unwatch = this.watchRemoteCall(targetWin, targetDomain);
+			try {
+				return await this.messenger.send(
+					targetWin,
+					targetDomain,
+					this.callMessageName,
+					{ id: ref.__id__, args },
+					null,
+				);
+			} finally {
+				unwatch();
+			}
+		};
 		Object.defineProperty(wrapper, "name", {
 			value: ref.__name__,
 			configurable: true,
 		});
 		return wrapper;
+	}
+
+	/**
+	 * Counts a pending call to a window and checks the window while any are
+	 * pending. The returned function releases the call.
+	 */
+	private watchRemoteCall(targetWin: Window, targetDomain: string): () => void {
+		let watch = this.callWatches.get(targetWin);
+		if (!watch) {
+			watch = { calls: 0, timer: undefined };
+			this.callWatches.set(targetWin, watch);
+			this.scheduleLivenessCheck(targetWin, targetDomain, watch);
+		}
+		const active = watch;
+		active.calls++;
+		return () => {
+			if (--active.calls > 0) return;
+			clearTimeout(active.timer);
+			if (this.callWatches.get(targetWin) === active)
+				this.callWatches.delete(targetWin);
+		};
+	}
+
+	/** Rejects pending calls to a window that no longer answers a liveness check. */
+	private scheduleLivenessCheck(
+		targetWin: Window,
+		targetDomain: string,
+		watch: CallWatch,
+	): void {
+		watch.timer = setTimeout(() => {
+			this.messenger
+				.send(
+					targetWin,
+					targetDomain,
+					this.livenessMessageName,
+					undefined,
+					CALL_LIVENESS_MS,
+				)
+				.then(
+					() => {
+						if (this.callWatches.get(targetWin) === watch)
+							this.scheduleLivenessCheck(targetWin, targetDomain, watch);
+					},
+					() => {
+						// Calls that started after this watch ended have checks of their own.
+						if (this.callWatches.get(targetWin) === watch)
+							this.rejectRemoteCalls(
+								targetWin,
+								new Error(UNRESPONSIVE_WINDOW_ERROR),
+							);
+					},
+				);
+		}, CALL_LIVENESS_MS);
+	}
+
+	/** Liveness checks use a channel of their own, answered by the same source guard. */
+	private get livenessMessageName(): string {
+		return `${this.callMessageName}_liveness`;
 	}
 
 	/**
@@ -274,6 +373,12 @@ export class FunctionBridge {
 				return fn(...args);
 			},
 		);
+		this.messenger.on(this.livenessMessageName, (_data, source) => {
+			if (!this.isExpectedSource(source)) {
+				throw new Error("Liveness check rejected from unexpected window");
+			}
+			return true;
+		});
 	}
 
 	/**
@@ -361,6 +466,39 @@ export class FunctionBridge {
 	}
 
 	/**
+	 * Rejects this bridge's in-flight calls to a window whose document was
+	 * replaced. Remote calls have no timeout, so they would otherwise never settle.
+	 *
+	 * @param targetWin - The window the calls were sent to
+	 * @param error - The rejection reason
+	 */
+	rejectRemoteCalls(targetWin: Window, error: Error): void {
+		this.messenger.rejectPending(this.callMessageName, targetWin, error);
+	}
+
+	/**
+	 * Rejects this bridge's calls to a window whose session ended, including
+	 * calls it has not dispatched yet, and later calls until
+	 * {@link FunctionBridge.resumeRemoteSession}.
+	 *
+	 * @param targetWin - The window whose session ended
+	 * @param message - The rejection message
+	 */
+	endRemoteSession(targetWin: Window, message: string): void {
+		this.endedSessions.set(targetWin, message);
+		this.rejectRemoteCalls(targetWin, new Error(message));
+	}
+
+	/**
+	 * Accepts calls to a window again once it starts a new session.
+	 *
+	 * @param targetWin - The window that started a new session
+	 */
+	resumeRemoteSession(targetWin: Window): void {
+		this.endedSessions.delete(targetWin);
+	}
+
+	/**
 	 * Clears all remote function references.
 	 *
 	 * @remarks
@@ -393,15 +531,23 @@ export class FunctionBridge {
 	destroy(): void {
 		this.clearLocal();
 		this.remoteFunctions.clear();
+		for (const watch of this.callWatches.values()) clearTimeout(watch.timer);
+		this.callWatches.clear();
 	}
 }
 
 /**
  * Recursively serializes all functions in an object.
  *
+ * @remarks
+ * Objects other than arrays and dates convert through `toJSON(key)` and
+ * primitive-wrapper unboxing once, as native JSON does. Arrays encode their
+ * indexed entries without calling caller-controlled methods.
+ *
  * @param obj - The object to process
  * @param bridge - The function bridge to use for serialization
- * @param seen - Internal set for cycle detection (do not pass manually)
+ * @param stack - Internal set for cycle detection (do not pass manually)
+ * @param key - Property name passed to `toJSON()`; the root uses `""`
  * @returns A new object with all functions replaced by references
  *
  * @public
@@ -410,60 +556,113 @@ export function serializeFunctions(
 	obj: unknown,
 	bridge: FunctionBridge,
 	stack: WeakSet<object> = new WeakSet(),
+	key = "",
 ): unknown {
-	if (typeof obj === "function") {
-		return bridge.serialize(obj as CallableFunction);
+	// Arrays keep their captured indexed entries and dates keep their framing;
+	// other objects convert like JSON before encoding.
+	if (
+		typeof obj !== "object" ||
+		obj === null ||
+		Array.isArray(obj) ||
+		isDate(obj)
+	) {
+		return serializeConvertedValue(obj, bridge, stack);
 	}
-
-	if (isDate(obj)) {
-		return encodeDateWireValue(obj);
+	const converted = toJsonValue(obj, key);
+	if (converted === obj) return serializeRecord(obj, bridge, stack);
+	// Keep the source on the stack, so a toJSON() result that contains it is a cycle.
+	enterStack(obj, stack, CIRCULAR_OBJECT_ERROR);
+	try {
+		return serializeConvertedValue(converted, bridge, stack);
+	} finally {
+		stack.delete(obj);
 	}
+}
 
-	if (Array.isArray(obj)) {
-		if (stack.has(obj)) {
-			throw new Error(
-				"Circular reference detected in props - arrays cannot contain circular references",
+const CIRCULAR_ARRAY_ERROR =
+	"Circular reference detected in props - arrays cannot contain circular references";
+const CIRCULAR_OBJECT_ERROR =
+	"Circular reference detected in props - objects cannot contain circular references";
+
+/** Adds a container to the traversal stack, rejecting one that is already on it. */
+function enterStack(
+	value: object,
+	stack: WeakSet<object>,
+	error: string,
+): void {
+	if (stack.has(value)) throw new Error(error);
+	stack.add(value);
+}
+
+/**
+ * Serializes a value that has already passed native JSON conversion.
+ * Nested values still convert through {@link serializeFunctions}.
+ */
+function serializeConvertedValue(
+	value: unknown,
+	bridge: FunctionBridge,
+	stack: WeakSet<object>,
+): unknown {
+	if (typeof value === "function") {
+		return bridge.serialize(value as CallableFunction);
+	}
+	if (typeof value !== "object" || value === null) return value;
+	// Arrays are checked first: they never carry the Date brand.
+	if (Array.isArray(value)) return serializeArray(value, bridge, stack);
+	if (isDate(value)) return encodeDateWireValue(value);
+	return serializeRecord(value, bridge, stack);
+}
+
+/** Captures indexed entries once, then encodes them, rejecting undefined entries. */
+function serializeArray(
+	value: unknown[],
+	bridge: FunctionBridge,
+	stack: WeakSet<object>,
+): unknown[] {
+	enterStack(value, stack, CIRCULAR_ARRAY_ERROR);
+	try {
+		const entries: unknown[] = [];
+		const length = value.length;
+		for (let index = 0; index < length; index++) {
+			const entry = value[index];
+			assertDefinedArrayEntry(entry, [String(index)]);
+			entries.push(entry);
+		}
+		const result: unknown[] = [];
+		for (let index = 0; index < entries.length; index++) {
+			const encoded = serializeFunctions(
+				entries[index],
+				bridge,
+				stack,
+				String(index),
 			);
+			// toJSON() can return undefined, which JSON would turn into null.
+			assertDefinedArrayEntry(encoded, [String(index)]);
+			result.push(encoded);
 		}
-		stack.add(obj);
-		try {
-			const entries: unknown[] = [];
-			const length = obj.length;
-			for (let index = 0; index < length; index++) {
-				const entry = obj[index];
-				assertDefinedArrayEntry(entry, [String(index)]);
-				entries.push(entry);
-			}
-			const result: unknown[] = [];
-			for (const entry of entries) {
-				result.push(serializeFunctions(entry, bridge, stack));
-			}
-			return result;
-		} finally {
-			stack.delete(obj);
-		}
+		return result;
+	} finally {
+		stack.delete(value);
 	}
+}
 
-	if (typeof obj === "object" && obj !== null) {
-		if (stack.has(obj)) {
-			throw new Error(
-				"Circular reference detected in props - objects cannot contain circular references",
-			);
+/** Encodes own enumerable fields, skipping unsafe keys and escaping marker shapes. */
+function serializeRecord(
+	value: object,
+	bridge: FunctionBridge,
+	stack: WeakSet<object>,
+): unknown {
+	enterStack(value, stack, CIRCULAR_OBJECT_ERROR);
+	try {
+		const result: Record<string, unknown> = {};
+		for (const [key, entry] of Object.entries(value)) {
+			if (!isSafeObjectKey(key)) continue;
+			result[key] = serializeFunctions(entry, bridge, stack, key);
 		}
-		stack.add(obj);
-		try {
-			const result: Record<string, unknown> = {};
-			for (const [key, value] of Object.entries(obj)) {
-				if (!isSafeObjectKey(key)) continue;
-				result[key] = serializeFunctions(value, bridge, stack);
-			}
-			return escapeWireRecord(result);
-		} finally {
-			stack.delete(obj);
-		}
+		return escapeWireRecord(result);
+	} finally {
+		stack.delete(value);
 	}
-
-	return obj;
 }
 
 /**

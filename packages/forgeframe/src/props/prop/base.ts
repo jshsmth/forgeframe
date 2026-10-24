@@ -90,6 +90,34 @@ export function validateDateBound(date: Date, method: "min" | "max"): number {
 	return time;
 }
 
+/**
+ * One schema refinement. Refinements accumulate: checks run by rank, then in
+ * the order they were added, and the first failure is reported.
+ * @internal
+ */
+export interface SchemaCheck<T> {
+	rank: number;
+	message: string;
+	test: (value: T) => boolean;
+}
+
+/** Adds a refinement without replacing earlier refinements of the same kind. @internal */
+export function addSchemaCheck<T>(
+	checks: readonly SchemaCheck<T>[],
+	check: SchemaCheck<T>,
+): readonly SchemaCheck<T>[] {
+	return [...checks, check].sort((a, b) => a.rank - b.rank);
+}
+
+/** Finds the first failed refinement for a value of the schema's base type. @internal */
+export function findFailedSchemaCheck<T>(
+	checks: readonly SchemaCheck<T>[],
+	value: T,
+): StandardSchemaV1Issue | undefined {
+	const failed = checks.find((check) => !check.test(value));
+	return failed && { message: failed.message };
+}
+
 export type InferSchemaValue<S extends PropSchema<unknown, unknown>> =
 	S extends PropSchema<infer Output, unknown> ? Output : never;
 
@@ -120,6 +148,15 @@ export type InferTupleInputShape<
 > = {
 	-readonly [K in keyof S]: InferSchemaInput<S[K]>;
 };
+
+/**
+ * Output of a schema with a default: `undefined` input is replaced, so
+ * `undefined` remains only when the default value itself can be `undefined`.
+ * @internal
+ */
+export type DefaultedSchemaOutput<T, D> =
+	| Exclude<T, undefined>
+	| (undefined extends D ? undefined : never);
 
 /**
  * Selects a presence action without evaluating defaults or nested schemas.
@@ -248,16 +285,24 @@ export abstract class PropSchema<T, I = T> implements StandardSchemaV1<I, T> {
 	/**
 	 * Sets a default value for this prop.
 	 *
+	 * @remarks
+	 * The default replaces `undefined` input, so the output excludes `undefined`
+	 * unless the default itself can be `undefined`, even after `.optional()`.
+	 *
 	 * @param value - Non-callable default value or a factory that returns the default value.
 	 * Function defaults must use a factory, for example `.default(() => callback)`.
 	 * @returns A cloned schema that uses the default when input is `undefined`.
 	 */
-	default(
-		value: Exclude<T, (...args: never[]) => unknown> | (() => T),
-	): PropSchema<T, I | undefined> {
+	default<D extends Exclude<T, (...args: never[]) => unknown>>(
+		value: D,
+	): PropSchema<DefaultedSchemaOutput<T, D>, I | undefined>;
+	default<D extends T>(
+		value: () => D,
+	): PropSchema<DefaultedSchemaOutput<T, D>, I | undefined>;
+	default(value: T | (() => T)): PropSchema<unknown, I | undefined> {
 		const clone = this._clone();
 		clone._default = value;
-		return clone as PropSchema<T, I | undefined>;
+		return clone;
 	}
 
 	/** @internal */

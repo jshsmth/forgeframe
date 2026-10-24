@@ -75,6 +75,47 @@ describe("React commits across the host boundary", () => {
 		expect(Component.instances).toHaveLength(0);
 	});
 
+	it("attaches the forwarded ref before parent layout effects and honors React 19 ref cleanups", async () => {
+		const definitions = { title: prop.string() };
+		const Component = create({
+			tag: "react-driver-commit-phase-ref",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const Wrapped = createReactComponent(Component, { React });
+		const observed: Array<HTMLDivElement | null> = [];
+		const attached: HTMLDivElement[] = [];
+		const cleanup = vi.fn();
+		const forwardedRef = vi.fn((node: HTMLDivElement | null) => {
+			if (node) attached.push(node);
+			return cleanup;
+		});
+		function Parent() {
+			const ref = React.useRef<HTMLDivElement>(null);
+			React.useLayoutEffect(() => {
+				observed.push(ref.current);
+			}, []);
+			return React.createElement(
+				React.Fragment,
+				null,
+				React.createElement(Wrapped, { title: "layout", ref }),
+				React.createElement(Wrapped, { title: "cleanup", ref: forwardedRef }),
+			);
+		}
+
+		await React.act(async () => {
+			root.render(React.createElement(Parent));
+		});
+		expect(observed).toEqual([container.firstElementChild]);
+		expect(forwardedRef).toHaveBeenCalledExactlyOnceWith(container.children[1]);
+
+		await React.act(async () => root.render(null));
+		expect(cleanup).toHaveBeenCalledOnce();
+		expect(forwardedRef).not.toHaveBeenCalledWith(null);
+		expect(attached).toHaveLength(1);
+		expect(Component.instances).toHaveLength(0);
+	});
+
 	it("uses the latest lifecycle callbacks and ref while equivalent commits avoid host notifications", async () => {
 		const definitions = { title: prop.string() };
 		const Component = create({

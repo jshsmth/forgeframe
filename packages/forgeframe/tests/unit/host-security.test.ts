@@ -291,6 +291,60 @@ describe("Host security", () => {
 		expect(emitSpy).toHaveBeenCalledWith(EVENT.PROPS, { amount: 42 });
 	});
 
+	it.each([
+		{ label: "an empty string", allowed: "" },
+		{ label: "a blank string", allowed: "   " },
+		{
+			label: "an empty array entry",
+			allowed: ["https://trusted.example.com", ""],
+		},
+		{ label: "a non-pattern entry", allowed: [42] },
+		{ label: "null", allowed: null },
+	])(
+		"rejects $label as an allowlist instead of trusting every consumer",
+		({ allowed }) => {
+			vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
+				createAccessibleConsumerWindow("https://evil.example.com"),
+			);
+			window.name = buildWindowName({
+				uid: "host-uid-invalid-allowlist",
+				tag: "secure-component-invalid-allowlist",
+				version: VERSION,
+				context: CONTEXT.IFRAME,
+				consumerDomain: "https://evil.example.com",
+				props: {},
+				exports: VALID_EXPORTS,
+			});
+
+			expect(() =>
+				// @ts-expect-error Invalid JavaScript configuration is rejected at runtime.
+				initHost({}, allowed),
+			).toThrow(
+				"allowedConsumerDomains must be a non-empty origin string, a RegExp, or an array of them",
+			);
+			expect(window.hostProps).toBeUndefined();
+		},
+	);
+
+	it("keeps an empty allowlist array as a policy that admits no consumer", () => {
+		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
+			createAccessibleConsumerWindow("https://trusted.example.com"),
+		);
+		window.name = buildWindowName({
+			uid: "host-uid-empty-allowlist",
+			tag: "secure-component-empty-allowlist",
+			version: VERSION,
+			context: CONTEXT.IFRAME,
+			consumerDomain: "https://trusted.example.com",
+			props: {},
+			exports: VALID_EXPORTS,
+		});
+
+		expect(() => initHost({}, [])).toThrow(
+			'Consumer domain "https://trusted.example.com" is not allowed',
+		);
+	});
+
 	it("should reject disallowed consumer domains during host initialization", () => {
 		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
 			createAccessibleConsumerWindow("https://evil.example.com"),

@@ -454,16 +454,43 @@ export class ConsumerComponent<
 	/**
 	 * Resizes the component to the specified dimensions.
 	 *
+	 * @remarks
+	 * Browsers do not let the consumer resize a cross-origin popup. That call
+	 * rejects without emitting `resize`; the host can resize its own popup with
+	 * `hostProps.resize()`.
+	 *
+	 * A popup that is not open has nothing to resize, so the call does nothing.
+	 *
 	 * @param dimensions - New width and height for the component
+	 * @throws Error if the browser denies resizing the popup window
 	 */
 	async resize(dimensions: Dimensions): Promise<void> {
 		const hostWindow = this.transport ? this.transport.hostWindow : null;
+		if (this.renderer.context === CONTEXT.POPUP && !hostWindow) return;
+		if (!this.renderer.resize(dimensions, hostWindow)) {
+			throw new Error(
+				`Cannot resize the popup for component "${this.options.tag}": the browser blocks resizing a cross-origin window. Call hostProps.resize() from the host instead.`,
+			);
+		}
+		this.emitResize(dimensions);
+	}
+
+	/**
+	 * Applies a host resize request. A popup host has already resized its own
+	 * window, so only an iframe is resized here.
+	 * @internal
+	 */
+	private resizeForHost(dimensions: Dimensions): void {
+		// Without a host window the renderer resizes only an iframe.
+		this.renderer.resize(dimensions, null);
+		this.emitResize(dimensions);
+	}
+
+	/** Notifies resize observers and the onResize prop. @internal */
+	private emitResize(dimensions: Dimensions): void {
 		const callbackProps = this.propsPipeline
 			? this.propsPipeline.props
 			: ({} as P);
-
-		this.renderer.resize(dimensions, hostWindow);
-
 		this.event.emit(EVENT.RESIZE, dimensions);
 		invokePropCallback(
 			callbackProps as Record<string, unknown>,
@@ -798,21 +825,23 @@ export class ConsumerComponent<
 		this.transport.openedHostDomain = this.resolveUrlOrigin(baseUrl);
 		this.transport.activeHostDomain = null;
 
-		this.transport.hostWindow = this.renderer.open({
-			baseUrl,
-			assertActive: () => this.assertRenderActive(),
-			buildUrl: (resolvedBaseUrl) => this.buildUrl(resolvedBaseUrl),
-			buildBodyParams: () => this.buildBodyParams(baseUrl),
-			buildWindowName: () => this.buildWindowName(baseUrl),
-			submitBodyForm: (target, actionUrl, params) =>
-				this.submitBodyForm(target, actionUrl, params),
-			onPopupClose: () => {
-				void this.close();
-			},
-			registerCleanup: (cleanupFn) => {
-				this.cleanup.register(cleanupFn);
-			},
-		});
+		this.transport.attachHostWindow(
+			this.renderer.open({
+				baseUrl,
+				assertActive: () => this.assertRenderActive(),
+				buildUrl: (resolvedBaseUrl) => this.buildUrl(resolvedBaseUrl),
+				buildBodyParams: () => this.buildBodyParams(baseUrl),
+				buildWindowName: () => this.buildWindowName(baseUrl),
+				submitBodyForm: (target, actionUrl, params) =>
+					this.submitBodyForm(target, actionUrl, params),
+				onPopupClose: () => {
+					void this.close();
+				},
+				registerCleanup: (cleanupFn) => {
+					this.cleanup.register(cleanupFn);
+				},
+			}),
+		);
 	}
 
 	/**
@@ -959,7 +988,7 @@ export class ConsumerComponent<
 				this.consumerExports = undefined;
 			},
 			onClose: async () => this.close(),
-			onResize: async (dimensions) => this.resize(dimensions),
+			onResize: async (dimensions) => this.resizeForHost(dimensions),
 			onFocus: async () => this.focus(),
 			onShow: async () => this.show(),
 			onHide: async () => this.hide(),

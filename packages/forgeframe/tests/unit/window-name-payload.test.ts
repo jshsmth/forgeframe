@@ -627,6 +627,16 @@ describe("isHostOfComponent", () => {
 		expect(isHostOfComponent("my-component", win)).toBe(false);
 	});
 
+	it("returns no payload when reading the window name throws", () => {
+		const win = {
+			get name(): string {
+				throw new DOMException("Blocked", "SecurityError");
+			},
+		} as Window;
+		expect(isHostOfComponent("my-component", win)).toBe(false);
+		expect(getInitialPayload(win)).toBeNull();
+	});
+
 	it("should return false for prefixed windows with invalid payloads", () => {
 		const invalidPrefixedWindow = {
 			name: `${WINDOW_NAME_PREFIX}${btoa(

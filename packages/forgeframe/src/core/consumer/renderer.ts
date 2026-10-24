@@ -25,6 +25,9 @@ import type { TemplateContext } from "../../types/templates";
 import type { Dimensions } from "../../types/utility";
 import type { NormalizedOptions } from "./types";
 
+const DETACHED_IFRAME_CONTAINER_ERROR =
+	"Iframe container must be attached to the document";
+
 /**
  * Parameters required to open iframe/popup host content.
  * @internal
@@ -103,15 +106,20 @@ export class ConsumerRenderer<
 			throw new Error("Container is required for rendering");
 		}
 
-		if (typeof container === "string") {
-			const el = document.querySelector(container);
-			if (!el) {
-				throw new Error(`Container "${container}" not found`);
-			}
-			return el as HTMLElement;
+		const element =
+			typeof container === "string"
+				? document.querySelector<HTMLElement>(container)
+				: container;
+		if (!element) {
+			throw new Error(`Container "${container}" not found`);
 		}
 
-		return container;
+		// A detached iframe has no browsing context: it never loads, and a POST
+		// form targeting its name would open an untracked top-level window.
+		if (this.context === CONTEXT.IFRAME && !element.isConnected) {
+			throw new Error(DETACHED_IFRAME_CONTAINER_ERROR);
+		}
+		return element;
 	}
 
 	/**
@@ -319,6 +327,10 @@ export class ConsumerRenderer<
 		}
 
 		params.assertActive();
+		// Templates and lifecycle callbacks can detach the mount after resolution.
+		if (!this.iframe.isConnected) {
+			throw new Error(DETACHED_IFRAME_CONTAINER_ERROR);
+		}
 		if (hasBodyParams) {
 			params.submitBodyForm(this.iframe.name, url, bodyParams);
 		} else {
@@ -448,8 +460,10 @@ export class ConsumerRenderer<
 
 	/**
 	 * Resizes iframe/popup context.
+	 *
+	 * @returns `false` when the browser denied resizing the popup window.
 	 */
-	resize(dimensions: Dimensions, hostWindow: Window | null): void {
+	resize(dimensions: Dimensions, hostWindow: Window | null): boolean {
 		if (this.context === CONTEXT.IFRAME && this.iframe) {
 			resizeIframe(this.iframe, dimensions);
 			if (this.ownedContainer && !this.options.containerTemplate) {
@@ -459,8 +473,9 @@ export class ConsumerRenderer<
 				applyDimensions(this.prerenderElement, dimensions);
 			}
 		} else if (this.context === CONTEXT.POPUP && hostWindow) {
-			resizePopup(hostWindow, dimensions);
+			return resizePopup(hostWindow, dimensions);
 		}
+		return true;
 	}
 
 	/**

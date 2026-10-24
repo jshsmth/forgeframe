@@ -374,6 +374,9 @@ function renderEmbedded() {
 				popupReady: true,
 				hasOpener: window.opener !== null,
 				consumerDomain: hostProps.getConsumerDomain(),
+				// Only the popup itself may resize a cross-origin popup window.
+				resizeSelf: (dimensions: { width: number; height: number }) =>
+					hostProps.resize(dimensions),
 			});
 			return;
 		}

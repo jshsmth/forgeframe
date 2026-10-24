@@ -74,6 +74,54 @@ describe("Messenger", () => {
 				expect.any(Function),
 			);
 		});
+
+		it("does not trust other opaque documents when its own origin is opaque", async () => {
+			const opaque = new Messenger("opaque-uid", mockWindow, "null");
+			const handler = vi.fn(() => ({ ok: true }));
+			opaque.on("probe", handler);
+			try {
+				dispatchMessage(
+					serializeMessage(
+						createRequestMessage(
+							"opaque-request",
+							"probe",
+							{},
+							{
+								uid: "opaque-uid",
+								domain: "null",
+							},
+						),
+					),
+					{ postMessage: vi.fn() } as unknown as Window,
+					"null",
+				);
+				await Promise.resolve();
+				expect(handler).not.toHaveBeenCalled();
+			} finally {
+				opaque.destroy();
+			}
+		});
+
+		it("defers its listener until listen() and attaches it once", () => {
+			const deferredWindow = {
+				addEventListener: vi.fn(),
+				removeEventListener: vi.fn(),
+			} as unknown as Window;
+			const deferred = new Messenger(
+				"deferred-uid",
+				deferredWindow,
+				"https://consumer.com",
+				undefined,
+				false,
+			);
+			expect(deferredWindow.addEventListener).not.toHaveBeenCalled();
+			deferred.listen();
+			deferred.listen();
+			expect(deferredWindow.addEventListener).toHaveBeenCalledOnce();
+			deferred.destroy();
+			deferred.listen();
+			expect(deferredWindow.addEventListener).toHaveBeenCalledOnce();
+		});
 	});
 
 	describe("send", () => {
@@ -376,6 +424,40 @@ describe("Messenger", () => {
 				messenger as unknown as { pending: Map<string, unknown> }
 			).pending;
 			expect(pending.size).toBe(0);
+		});
+	});
+
+	describe("rejectPending", () => {
+		it("rejects only pending requests of the named type sent to that window", async () => {
+			const replaced = { postMessage: vi.fn() } as unknown as Window;
+			const other = { postMessage: vi.fn() } as unknown as Window;
+			const settled = (promise: Promise<unknown>) =>
+				promise.then(
+					() => "resolved",
+					(error: Error) => error.message,
+				);
+			const replacedCall = settled(
+				messenger.send(replaced, "https://host.com", "call", {}, null),
+			);
+			const replacedProps = settled(
+				messenger.send(replaced, "https://host.com", "props", {}, null),
+			);
+			const otherCall = settled(
+				messenger.send(other, "https://host.com", "call", {}, null),
+			);
+			let laterSettled = false;
+			void Promise.all([replacedProps, otherCall]).then(() => {
+				laterSettled = true;
+			});
+
+			messenger.rejectPending("call", replaced, new Error("Host reconnected"));
+
+			await expect(replacedCall).resolves.toBe("Host reconnected");
+			await Promise.resolve();
+			expect(laterSettled).toBe(false);
+			messenger.destroy();
+			await expect(replacedProps).resolves.toBe("Messenger destroyed");
+			await expect(otherCall).resolves.toBe("Messenger destroyed");
 		});
 	});
 

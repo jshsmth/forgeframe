@@ -401,7 +401,7 @@ describe("resizePopup", () => {
 		expect(mockWin.resizeTo).toHaveBeenCalledWith(800, 600);
 	});
 
-	it("should not throw on resize error", () => {
+	it("reports a denied resize without throwing", () => {
 		const mockWin = {
 			outerWidth: 400,
 			outerHeight: 300,
@@ -410,8 +410,29 @@ describe("resizePopup", () => {
 			}),
 		} as unknown as Window;
 
-		expect(() =>
-			resizePopup(mockWin, { width: 600, height: 500 }),
-		).not.toThrow();
+		expect(resizePopup(mockWin, { width: 600, height: 500 })).toBe(false);
+	});
+
+	it("reports cross-origin windows whose outer size cannot be read", () => {
+		const resizeTo = vi.fn();
+		const crossOrigin = {
+			get outerWidth(): number {
+				throw new DOMException("Blocked", "SecurityError");
+			},
+			resizeTo,
+		} as unknown as Window;
+
+		expect(resizePopup(crossOrigin, { height: 500 })).toBe(false);
+		expect(resizeTo).not.toHaveBeenCalled();
+	});
+
+	it("reports an allowed resize", () => {
+		const mockWin = {
+			outerWidth: 400,
+			outerHeight: 300,
+			resizeTo: vi.fn(),
+		} as unknown as Window;
+
+		expect(resizePopup(mockWin, { width: 600 })).toBe(true);
 	});
 });
