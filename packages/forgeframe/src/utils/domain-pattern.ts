@@ -7,6 +7,8 @@
  * window helpers and the messenger preserve identical domain-matching behavior.
  */
 
+import type { DomainMatcher } from "../types/utility";
+
 const wildcardPatternCache = new Map<string, RegExp>();
 const WILDCARD_CACHE_LIMIT = 200;
 
@@ -79,4 +81,27 @@ export function testDomainRegExpStateless(
 	}
 
 	return pattern.test(value);
+}
+
+/**
+ * Rejects matcher values that would silently disable or widen an origin policy.
+ *
+ * @param value - Configured matcher.
+ * @param option - Option name used in the error message.
+ * @throws If the value is not a non-empty string, a `RegExp`, or an array of
+ * them. An empty array is valid and matches no origin.
+ *
+ * @internal
+ */
+export function assertDomainMatcher(
+	value: unknown,
+	option: string,
+): asserts value is DomainMatcher {
+	const isPattern = (entry: unknown): boolean =>
+		entry instanceof RegExp ||
+		(typeof entry === "string" && entry.trim() !== "");
+	if (Array.isArray(value) ? value.every(isPattern) : isPattern(value)) return;
+	throw new Error(
+		`${option} must be a non-empty origin string, a RegExp, or an array of them`,
+	);
 }

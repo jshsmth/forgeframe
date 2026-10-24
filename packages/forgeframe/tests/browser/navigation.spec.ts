@@ -160,6 +160,19 @@ test.beforeAll(async () => {
 				</script>`,
 				);
 			}
+			if (req.url === "/popup-resize") {
+				return respond(
+					res,
+					`<!doctype html><script type="module">
+				import {initHost,prop} from '/library.js';
+				window.resizeCalls = [];
+				const resizeTo = window.resizeTo.bind(window);
+				window.resizeTo = (width, height) => { window.resizeCalls.push([width, height]); resizeTo(width, height); };
+				const host = initHost({count:prop.number(),secret:prop.string(),onComplete:prop.function()}, ['${consumerOrigin}']);
+				await host.ready; window.received = host.hostProps; window.ready = true;
+				</script>`,
+				);
+			}
 			if (req.url === "/retry") {
 				return respond(
 					res,
@@ -1538,6 +1551,64 @@ test("growing a widget also grows its clipping container", async ({ page }) => {
 		wrapperHeight: 500,
 		wrapperWidth: 600,
 	});
+});
+
+test("a cross-origin popup host resizes itself and consumer resizing reports the block", async ({
+	page,
+}) => {
+	const popupEvent = page.waitForEvent("popup");
+	await mount(page, "/popup-resize", "popup");
+	const popup = await popupEvent;
+	expect(
+		await page.evaluate(
+			() => (window as unknown as { outcome: Promise<string> }).outcome,
+		),
+	).toBe("ready");
+	await popup.waitForFunction(
+		() => (window as unknown as { ready: boolean }).ready === true,
+	);
+	type ResizeWindow = {
+		resizes: unknown[];
+		instance: {
+			event: { on(event: string, handler: (data: unknown) => void): void };
+			resize(dimensions: { width: number; height: number }): Promise<void>;
+		};
+	};
+	const consumerResult = await page.evaluate(async () => {
+		const state = window as unknown as ResizeWindow;
+		state.resizes = [];
+		state.instance.event.on("resize", (dimensions) => {
+			state.resizes.push(dimensions);
+		});
+		return state.instance.resize({ width: 600, height: 500 }).then(
+			() => "resolved",
+			(error: Error) => error.message,
+		);
+	});
+	expect(consumerResult).toContain(
+		'Cannot resize the popup for component "browser-navigation-review"',
+	);
+	expect(
+		await page.evaluate(() => (window as unknown as ResizeWindow).resizes),
+	).toEqual([]);
+
+	await popup.evaluate(() =>
+		(
+			window as unknown as {
+				received: {
+					resize(dimensions: { width: number; height: number }): Promise<void>;
+				};
+			}
+		).received.resize({ width: 640, height: 480 }),
+	);
+	expect(
+		await popup.evaluate(
+			() => (window as unknown as { resizeCalls: unknown[] }).resizeCalls,
+		),
+	).toEqual([[640, 480]]);
+	expect(
+		await page.evaluate(() => (window as unknown as ResizeWindow).resizes),
+	).toEqual([{ width: 640, height: 480 }]);
 });
 
 for (const context of ["iframe", "popup"] as const) {

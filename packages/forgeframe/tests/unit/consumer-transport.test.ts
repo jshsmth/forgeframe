@@ -113,7 +113,7 @@ describe("ConsumerTransport", () => {
 	it("withholds bootstrap from other windows and origins, including the consumer's own origin", async () => {
 		const transport = createTransport();
 		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
-		transport.hostWindow = hostWindow;
+		transport.attachHostWindow(hostWindow);
 		const onBootstrap = vi.fn(async () => ({ props: { secret: "private" } }));
 		transport.setupMessageHandlers({ ...createHandlers(), onBootstrap });
 		const handler = getHandler(transport, MESSAGE_NAME.BOOTSTRAP);
@@ -146,7 +146,7 @@ describe("ConsumerTransport", () => {
 	it("releases a full recovery pool only for a verified new bootstrap session", async () => {
 		const transport = createTransport();
 		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
-		transport.hostWindow = hostWindow;
+		transport.attachHostWindow(hostWindow);
 		let rejectBootstrap = false;
 		const onBootstrap = async (
 			_source: HandlerSource,
@@ -197,7 +197,7 @@ describe("ConsumerTransport", () => {
 	it("requires INIT to match the latest verified bootstrap session", async () => {
 		const transport = createTransport();
 		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
-		transport.hostWindow = hostWindow;
+		transport.attachHostWindow(hostWindow);
 		transport.buildWindowName({
 			tag: "host",
 			context: CONTEXT.IFRAME,
@@ -300,7 +300,7 @@ describe("ConsumerTransport", () => {
 
 	it("should retain both callback snapshots after a props delivery attempt fails", async () => {
 		const transport = createTransport();
-		transport.hostWindow = window;
+		transport.attachHostWindow(window);
 
 		const sendSpy = vi.spyOn(transport.messenger, "send");
 		sendSpy.mockResolvedValueOnce(undefined);
@@ -395,7 +395,7 @@ describe("ConsumerTransport", () => {
 		const handlers = createHandlers();
 		const initFailure = new Error("async init failed");
 
-		transport.hostWindow = window;
+		transport.attachHostWindow(window);
 		transport.initPromise = createDeferred<void>();
 		handlers.onInit.mockRejectedValueOnce(initFailure);
 
@@ -434,7 +434,7 @@ describe("ConsumerTransport", () => {
 			.spyOn(transport.messenger, "send")
 			.mockResolvedValue("callback-result");
 
-		transport.hostWindow = hostWindow;
+		transport.attachHostWindow(hostWindow);
 		transport.openedHostDomain = configuredOrigin;
 		transport.setupMessageHandlers(handlers);
 
@@ -477,6 +477,7 @@ describe("ConsumerTransport", () => {
 			redirectedOrigin,
 			MESSAGE_NAME.CALL,
 			{ id: "shared-host-ping", args: [] },
+			null,
 		);
 	});
 });

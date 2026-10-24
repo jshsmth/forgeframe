@@ -277,6 +277,68 @@ describe("prop.string()", () => {
 		expect(schema["~standard"].validate("abc")).toEqual({ value: "abc" });
 		expect(schema["~standard"].validate("abc")).toEqual({ value: "abc" });
 	});
+
+	it("requires every chained pattern, email, and UUID refinement", () => {
+		const corporateEmail = prop
+			.string()
+			.email()
+			.pattern(/@corp\.com$/);
+		expect(corporateEmail["~standard"].validate("@corp.com")).toEqual({
+			issues: [{ message: "Invalid email address" }],
+		});
+		expect(corporateEmail["~standard"].validate("user@other.com")).toEqual({
+			issues: [{ message: "String must match pattern /@corp\\.com$/" }],
+		});
+		expect(corporateEmail["~standard"].validate("user@corp.com")).toEqual({
+			value: "user@corp.com",
+		});
+
+		const lowercaseUuid = prop
+			.string()
+			.uuid()
+			.pattern(/^[^A-F]+$/);
+		expect(
+			lowercaseUuid["~standard"].validate(
+				"550E8400-E29B-41D4-A716-446655440000",
+			),
+		).toHaveProperty("issues");
+		expect(
+			lowercaseUuid["~standard"].validate(
+				"550e8400-e29b-41d4-a716-446655440000",
+			),
+		).toEqual({ value: "550e8400-e29b-41d4-a716-446655440000" });
+	});
+
+	it("keeps every chained length refinement", () => {
+		const schema = prop.string().min(5).nonempty();
+		expect(schema["~standard"].validate("ab")).toEqual({
+			issues: [{ message: "String must be at least 5 characters" }],
+		});
+		expect(schema["~standard"].validate("abcde")).toEqual({ value: "abcde" });
+		expect(prop.string().max(3).min(2)["~standard"].validate("abcd")).toEqual({
+			issues: [{ message: "String must be at most 3 characters" }],
+		});
+		expect(prop.string().length(4).min(2)["~standard"].validate("abc")).toEqual(
+			{ issues: [{ message: "String must be at least 4 characters" }] },
+		);
+	});
+
+	it("checks lengths before URL syntax and patterns regardless of chaining order", () => {
+		const schema = prop
+			.string()
+			.pattern(/^https:/)
+			.url()
+			.min(12);
+		expect(schema["~standard"].validate("ftp://a")).toEqual({
+			issues: [{ message: "String must be at least 12 characters" }],
+		});
+		expect(schema["~standard"].validate("ftp://example.com")).toEqual({
+			issues: [{ message: "Invalid URL" }],
+		});
+		expect(schema["~standard"].validate("http://example.com")).toEqual({
+			issues: [{ message: "String must match pattern /^https:/" }],
+		});
+	});
 });
 
 // ============================================================================
@@ -357,6 +419,38 @@ describe("prop.number()", () => {
 		expect(schema["~standard"].validate(-1)).toEqual({ value: -1 });
 	});
 
+	it("keeps every chained bound", () => {
+		const schema = prop.number().min(10).positive();
+		expect(schema["~standard"].validate(1)).toEqual({
+			issues: [{ message: "Number must be >= 10" }],
+		});
+		expect(schema["~standard"].validate(10)).toEqual({ value: 10 });
+		expect(prop.number().positive().min(-5)["~standard"].validate(-1)).toEqual({
+			issues: [{ message: "Number must be > 0" }],
+		});
+		expect(prop.number().max(-10).negative()["~standard"].validate(-1)).toEqual(
+			{ issues: [{ message: "Number must be <= -10" }] },
+		);
+		expect(prop.number().negative().max(5)["~standard"].validate(0)).toEqual({
+			issues: [{ message: "Number must be < 0" }],
+		});
+		expect(
+			prop.number().nonnegative().int()["~standard"].validate(0.5),
+		).toEqual({ issues: [{ message: "Expected integer" }] });
+	});
+
+	it("names the failed rule for NaN and sign constraints", () => {
+		expect(prop.number()["~standard"].validate(Number.NaN)).toEqual({
+			issues: [{ message: "Expected number, got NaN" }],
+		});
+		expect(prop.number().positive()["~standard"].validate(0)).toEqual({
+			issues: [{ message: "Number must be > 0" }],
+		});
+		expect(prop.number().negative()["~standard"].validate(0)).toEqual({
+			issues: [{ message: "Number must be < 0" }],
+		});
+	});
+
 	it("should support default", () => {
 		const schema = prop.number().default(0);
 		expect(schema["~standard"].validate(undefined)).toEqual({ value: 0 });
@@ -409,6 +503,20 @@ describe("prop.date()", () => {
 		expect(
 			schema["~standard"].validate(new Date("2027-01-01T00:00:00.000Z")),
 		).toHaveProperty("issues");
+	});
+
+	it("keeps every chained date bound", () => {
+		const schema = prop
+			.date()
+			.min(new Date("2026-03-01T00:00:00.000Z"))
+			.min(new Date("2026-01-01T00:00:00.000Z"));
+		expect(
+			schema["~standard"].validate(new Date("2026-02-01T00:00:00.000Z")),
+		).toEqual({
+			issues: [
+				{ message: "Date must be on or after 2026-03-01T00:00:00.000Z" },
+			],
+		});
 	});
 
 	it("should reject invalid min and max bounds when configuring the schema", () => {
@@ -601,6 +709,19 @@ describe("prop.array()", () => {
 		const schema = prop.array().nonempty();
 		expect(schema["~standard"].validate([])).toHaveProperty("issues");
 		expect(schema["~standard"].validate([1])).toEqual({ value: [1] });
+	});
+
+	it("keeps every chained length refinement, including across of()", () => {
+		const schema = prop.array().min(3).nonempty().of(prop.number());
+		expect(schema["~standard"].validate([1])).toEqual({
+			issues: [{ message: "Array must have at least 3 items" }],
+		});
+		expect(schema["~standard"].validate([1, 2, 3])).toEqual({
+			value: [1, 2, 3],
+		});
+		expect(prop.array().max(1).min(0)["~standard"].validate([1, 2])).toEqual({
+			issues: [{ message: "Array must have at most 1 items" }],
+		});
 	});
 
 	it("should support default", () => {

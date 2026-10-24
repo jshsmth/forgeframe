@@ -760,3 +760,29 @@ void OptionalOnlyComponent();
 
 // Explicit component factories preserve the existing optional argument API.
 void ExplicitComponent();
+
+// Wrapped callback defaults are factories, matching schema `.default()`.
+const onCancel = (): void => {};
+const CallbackDefaultComponent = create({
+	tag: "callback-default-component",
+	url: "https://example.com/callback-default",
+	props: {
+		onCancel: {
+			schema: prop.function<() => void>(),
+			default: () => onCancel,
+		},
+	},
+});
+void CallbackDefaultComponent();
+
+create({
+	tag: "direct-callback-default-component",
+	url: "https://example.com/direct-callback-default",
+	props: {
+		onCancel: {
+			schema: prop.function<() => void>(),
+			// @ts-expect-error A callback value would be called as its own default factory.
+			default: onCancel,
+		},
+	},
+});

@@ -30,7 +30,8 @@ function createBridgeWithMessenger() {
 
 	return {
 		messenger,
-		bridge: new FunctionBridge(messenger),
+		// These codec tests never dispatch calls, so no caller is rejected.
+		bridge: new FunctionBridge(messenger, () => true),
 	};
 }
 

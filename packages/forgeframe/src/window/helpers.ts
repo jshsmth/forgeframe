@@ -462,3 +462,31 @@ export function getFrames(win: Window = window): Window[] {
 
 	return frames;
 }
+
+/**
+ * Resolves once a window's document has focus, or after `timeoutMs`.
+ *
+ * @remarks
+ * A focus request from another window can reach this document after it was
+ * acknowledged, and some engines ignore `focus()` inside an unfocused
+ * cross-origin frame. Waiting lets the caller focus an element afterwards.
+ *
+ * @internal
+ */
+export function waitForWindowFocus(
+	win: Window,
+	timeoutMs: number,
+): Promise<void> {
+	// A hidden document cannot gain focus, so there is nothing to wait for.
+	if (win.document.hasFocus() || win.document.visibilityState === "hidden")
+		return Promise.resolve();
+	return new Promise((resolve) => {
+		const done = (): void => {
+			win.removeEventListener("focus", done);
+			clearTimeout(timer);
+			resolve();
+		};
+		const timer = setTimeout(done, timeoutMs);
+		win.addEventListener("focus", done);
+	});
+}

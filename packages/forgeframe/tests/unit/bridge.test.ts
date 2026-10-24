@@ -17,6 +17,9 @@ type GenericFunction = (...args: unknown[]) => unknown;
 /**
  * Creates a messenger test double with handler storage and a `CALL` trigger helper.
  */
+/** Admits every caller where a test exercises serialization rather than source checks. */
+const acceptAnySource = () => true;
+
 const createMockMessenger = () => {
 	const handlers = new Map<string, GenericFunction>();
 
@@ -54,7 +57,10 @@ describe("FunctionBridge", () => {
 
 	beforeEach(() => {
 		messenger = createMockMessenger();
-		bridge = new FunctionBridge(messenger as unknown as Messenger);
+		bridge = new FunctionBridge(
+			messenger as unknown as Messenger,
+			acceptAnySource,
+		);
 	});
 
 	afterEach(() => {
@@ -181,6 +187,7 @@ describe("FunctionBridge", () => {
 				"https://target.com",
 				MESSAGE_NAME.CALL,
 				{ id: "fn-123", args: ["arg1", "arg2"] },
+				null,
 			);
 		});
 
@@ -225,6 +232,7 @@ describe("FunctionBridge", () => {
 				"https://target.com",
 				MESSAGE_NAME.CALL,
 				{ id: "fn-shared", args: ["next-window"] },
+				null,
 			);
 		});
 
@@ -523,7 +531,10 @@ describe("serializeFunctions", () => {
 
 	beforeEach(() => {
 		messenger = createMockMessenger();
-		bridge = new FunctionBridge(messenger as unknown as Messenger);
+		bridge = new FunctionBridge(
+			messenger as unknown as Messenger,
+			acceptAnySource,
+		);
 	});
 
 	afterEach(() => {
@@ -573,6 +584,20 @@ describe("serializeFunctions", () => {
 		expect(FunctionBridge.isFunctionRef(result[0])).toBe(true);
 		expect(result[1]).toBe("string");
 		expect(FunctionBridge.isFunctionRef(result[2])).toBe(true);
+	});
+
+	it("rejects a toJSON() result that contains its own source as a cycle", () => {
+		class SelfReferencing {
+			toJSON() {
+				return { self: this };
+			}
+		}
+		expect(() => serializeFunctions(new SelfReferencing(), bridge)).toThrow(
+			"Circular reference detected in props",
+		);
+		expect(() =>
+			serializeFunctions({ items: [new SelfReferencing()] }, bridge),
+		).toThrow("Circular reference detected in props");
 	});
 
 	it("should preserve primitives", () => {
@@ -652,7 +677,10 @@ describe("deserializeFunctions", () => {
 
 	beforeEach(() => {
 		messenger = createMockMessenger();
-		bridge = new FunctionBridge(messenger as unknown as Messenger);
+		bridge = new FunctionBridge(
+			messenger as unknown as Messenger,
+			acceptAnySource,
+		);
 	});
 
 	afterEach(() => {
@@ -826,9 +854,11 @@ describe("round-trip serialization", () => {
 
 		const consumerBridge = new FunctionBridge(
 			consumerMessenger as unknown as Messenger,
+			acceptAnySource,
 		);
 		const hostBridge = new FunctionBridge(
 			hostMessenger as unknown as Messenger,
+			acceptAnySource,
 		);
 
 		const targetWin = {} as Window;
@@ -854,6 +884,7 @@ describe("round-trip serialization", () => {
 			targetDomain,
 			MESSAGE_NAME.CALL,
 			{ id: serialized.__id__, args: ["arg1"] },
+			null,
 		);
 
 		// Simulate the consumer receiving and handling the call

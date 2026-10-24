@@ -846,9 +846,10 @@ function shouldSendPropToHost<P extends Record<string, unknown>>(
  * Builds URL query parameters from props with queryParam option.
  *
  * @remarks
- * Delivery policy is applied before conversion. `undefined` and function values
- * are omitted. Custom converters receive the prop definition as their `this`
- * receiver; otherwise objects use JSON and other values use string conversion.
+ * Delivery policy is applied before conversion. `undefined`, `null`, and
+ * function values are omitted. Custom converters receive the prop definition as
+ * their `this` receiver; otherwise dates use their ISO string, objects use JSON,
+ * and other values use string conversion.
  *
  * @typeParam P - The props type
  * @param props - Props to convert
@@ -883,6 +884,7 @@ export function propsToQueryParams<P extends Record<string, unknown>, I = P>(
 			typeof definition.queryParam === "function"
 				? definition.queryParam({ value })
 				: serializePropParameter(value);
+		if (paramValue === undefined) continue;
 
 		params.set(paramName, paramValue);
 	}
@@ -894,9 +896,10 @@ export function propsToQueryParams<P extends Record<string, unknown>, I = P>(
  * Builds POST body parameters from props with bodyParam option.
  *
  * @remarks
- * Delivery policy is applied before conversion. `undefined` and function values
- * are omitted. Custom converters receive the prop definition as their `this`
- * receiver; otherwise objects use JSON and other values use string conversion.
+ * Delivery policy is applied before conversion. `undefined`, `null`, and
+ * function values are omitted. Custom converters receive the prop definition as
+ * their `this` receiver; otherwise dates use their ISO string, objects use JSON,
+ * and other values use string conversion.
  *
  * @typeParam P - The props type
  * @param props - Props to convert
@@ -931,6 +934,7 @@ export function propsToBodyParams<P extends Record<string, unknown>, I = P>(
 			typeof definition.bodyParam === "function"
 				? definition.bodyParam({ value })
 				: serializePropParameter(value);
+		if (paramValue === undefined) continue;
 
 		params.set(paramName, paramValue);
 	}
@@ -938,7 +942,13 @@ export function propsToBodyParams<P extends Record<string, unknown>, I = P>(
 	return params;
 }
 
-/** Encodes an admitted query/body value when no custom converter is configured. */
-function serializePropParameter(value: unknown): string {
+/**
+ * Encodes an admitted query/body value when no custom converter is configured.
+ * Dates use their ISO string; `null`, invalid dates, and objects whose JSON
+ * encoding is `undefined` are omitted.
+ */
+function serializePropParameter(value: unknown): string | undefined {
+	if (value === null) return undefined;
+	if (isDate(value)) return value.toJSON() ?? undefined;
 	return typeof value === "object" ? JSON.stringify(value) : String(value);
 }

@@ -581,7 +581,7 @@ test("playground popup scenario runs from a user click and cleans up", async ({
 		popup.on("pageerror", (error) => pageErrors.push(error.message));
 		await expect(page.locator("#run-scenario")).toBeEnabled();
 		expect(await page.locator(".result.fail").allTextContents()).toEqual([]);
-		await expect(page.locator(".result.pass")).toHaveCount(5);
+		await expect(page.locator(".result.pass")).toHaveCount(6);
 		await expect(page.locator(".result.skip")).toHaveCount(0);
 		await expect(page.locator("body")).toHaveAttribute(
 			"data-test-status",

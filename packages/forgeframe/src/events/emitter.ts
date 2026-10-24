@@ -1,5 +1,10 @@
 import type { EventEmitterInterface, EventHandler } from "../types/events";
 
+/** One handler's subscription; its object identity is the registration token. */
+interface ListenerRegistration {
+	once: boolean;
+}
+
 /**
  * A simple typed event emitter for component lifecycle events.
  *
@@ -28,10 +33,14 @@ import type { EventEmitterInterface, EventHandler } from "../types/events";
  */
 export class EventEmitter implements EventEmitterInterface {
 	/**
-	 * Internal storage for event listeners mapped by event name.
+	 * Internal storage for event listeners mapped by event name. Each handler
+	 * has at most one registration per event, whose identity is its token.
 	 * @internal
 	 */
-	private listeners = new Map<string, Map<EventHandler, object>>();
+	private listeners = new Map<
+		string,
+		Map<EventHandler, ListenerRegistration>
+	>();
 
 	/**
 	 * Subscribes a handler to a specific event.
@@ -51,15 +60,7 @@ export class EventEmitter implements EventEmitterInterface {
 	 * @public
 	 */
 	on<T = unknown>(event: string, handler: EventHandler<T>): () => void {
-		let handlers = this.listeners.get(event);
-		if (!handlers) {
-			handlers = new Map();
-			this.listeners.set(event, handlers);
-		}
-		if (!handlers.has(handler as EventHandler))
-			handlers.set(handler as EventHandler, {});
-
-		return () => this.off(event, handler);
+		return this.register(event, handler as EventHandler, false);
 	}
 
 	/**
@@ -84,11 +85,44 @@ export class EventEmitter implements EventEmitterInterface {
 	 * @public
 	 */
 	once<T = unknown>(event: string, handler: EventHandler<T>): () => void {
-		const onceHandler: EventHandler<T> = (data) => {
-			this.off(event, onceHandler);
-			return handler(data);
+		return this.register(event, handler as EventHandler, true);
+	}
+
+	/**
+	 * Adds a registration unless the handler already has one, as DOM listeners do.
+	 * The returned function removes only the registration it was created for.
+	 */
+	private register(
+		event: string,
+		handler: EventHandler,
+		once: boolean,
+	): () => void {
+		let handlers = this.listeners.get(event);
+		if (!handlers) {
+			handlers = new Map();
+			this.listeners.set(event, handlers);
+		}
+		const registration = handlers.get(handler) ?? { once };
+		// Re-setting an existing key keeps its registration and position.
+		handlers.set(handler, registration);
+
+		return () => {
+			const current = this.listeners.get(event);
+			if (current?.get(handler) === registration)
+				this.removeRegistration(event, current, handler);
 		};
-		return this.on(event, onceHandler);
+	}
+
+	/** Removes one handler's registration and drops the event when it has none. */
+	private removeRegistration(
+		event: string,
+		handlers: Map<EventHandler, ListenerRegistration>,
+		handler: EventHandler,
+	): void {
+		handlers.delete(handler);
+		if (handlers.size === 0 && this.listeners.get(event) === handlers) {
+			this.listeners.delete(event);
+		}
 	}
 
 	/**
@@ -118,10 +152,12 @@ export class EventEmitter implements EventEmitterInterface {
 
 		for (const [handler, registration] of [...handlers]) {
 			if (
-				this.listeners.get(event) === handlers &&
-				handlers.get(handler) === registration
+				this.listeners.get(event) !== handlers ||
+				handlers.get(handler) !== registration
 			)
-				this.invokeHandler(event, handler, data);
+				continue;
+			if (registration.once) this.removeRegistration(event, handlers, handler);
+			this.invokeHandler(event, handler, data);
 		}
 	}
 
@@ -157,8 +193,9 @@ export class EventEmitter implements EventEmitterInterface {
 	 * @param handler - The specific handler to remove. If not provided, all handlers for the event are removed.
 	 *
 	 * @remarks
-	 * When a specific handler is removed and it was the last handler for that event,
-	 * the event entry is cleaned up from the internal map.
+	 * Removing a specific handler also cancels its pending `once` registration.
+	 * When it was the last handler for that event, the event entry is cleaned up
+	 * from the internal map.
 	 *
 	 * @example
 	 * ```typescript
@@ -179,10 +216,7 @@ export class EventEmitter implements EventEmitterInterface {
 
 		const handlers = this.listeners.get(event);
 		if (handlers) {
-			handlers.delete(handler as EventHandler);
-			if (handlers.size === 0) {
-				this.listeners.delete(event);
-			}
+			this.removeRegistration(event, handlers, handler as EventHandler);
 		}
 	}
 

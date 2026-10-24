@@ -74,16 +74,6 @@ export interface ConsumerPropsUpdateHooks<P extends Record<string, unknown>> {
 	emitPropsUpdated: (nextProps: P) => void;
 }
 
-/**
- * Hooks required to queue a host sync for the current props snapshot.
- * @internal
- */
-export interface ConsumerPropsSyncHooks<P extends Record<string, unknown>> {
-	assertActive: () => void;
-	shouldSendPropsToHost: () => boolean;
-	sendPropsUpdateToHost: (nextProps: P) => Promise<void>;
-}
-
 function prevalidateProvidedSchemaInputs<
 	P extends Record<string, unknown>,
 	SchemaInputs,
@@ -551,24 +541,6 @@ export class ConsumerPropsPipeline<
 		this.outputValidationKeys = snapshot.outputValidationKeys;
 		this.normalizationPending = false;
 		this.pendingNormalizationError = undefined;
-	}
-
-	/**
-	 * Queues a host synchronization for the current props snapshot.
-	 *
-	 * @remarks
-	 * This shares the same serialization queue as updateProps so function bridge
-	 * batches cannot overlap with user-initiated prop updates.
-	 */
-	syncCurrentPropsToHost(hooks: ConsumerPropsSyncHooks<P>): Promise<void> {
-		return this.queuePropsUpdate(async () => {
-			hooks.assertActive();
-			this.revalidateSchemaValues();
-			hooks.assertActive();
-			if (hooks.shouldSendPropsToHost()) {
-				await hooks.sendPropsUpdateToHost(this.props);
-			}
-		});
 	}
 
 	/**

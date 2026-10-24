@@ -102,6 +102,9 @@ export class ConsumerTransport<
 	/** Whether host initialization handshake has completed. */
 	public hostInitialized = false;
 
+	/** Latest initialization failure the host reported during this handshake. */
+	private hostInitFailure: Error | null = null;
+
 	private requiresBootstrap = false;
 	private bootstrapSessionId: string | null = null;
 	/** Keeps reset intent across bootstrap failures without admitting stale INIT messages. */
@@ -114,11 +117,14 @@ export class ConsumerTransport<
 		private resolveUrlOrigin: (url: string) => string | null,
 	) {
 		const trustedDomains = this.buildTrustedDomains();
+		// Unrendered instances never receive host messages, so listening waits
+		// until host content opens.
 		this.messenger = new Messenger(
 			this.uid,
 			window,
 			getDomain(),
 			trustedDomains,
+			false,
 		);
 		this.bridge = new FunctionBridge(this.messenger, (source) =>
 			this.isHostControlSource(source),
@@ -302,8 +308,10 @@ export class ConsumerTransport<
 			await promiseTimeout(
 				initPromise.promise,
 				timeout,
-				`Host component "${tag}" (uid: ${this.uid}) did not initialize within ${timeout}ms. ` +
-					"Check that the host page loads correctly and calls the initialization code.",
+				() =>
+					`Host component "${tag}" (uid: ${this.uid}) did not initialize within ${timeout}ms. ` +
+					(this.hostInitFailure?.message ??
+						"Check that the host page loads correctly and calls the initialization code."),
 			);
 		} catch (err) {
 			onError(err as Error);
@@ -335,6 +343,13 @@ export class ConsumerTransport<
 					this.localReferenceSessionId !== data.sessionId;
 				this.hostInitialized = false;
 				this.bootstrapSessionId = null;
+				if (resetLocalReferences) {
+					// Calls into the replaced host session can never be answered.
+					this.bridge.rejectRemoteCalls(
+						source.window,
+						new Error("Host reconnected before the call completed"),
+					);
+				}
 				const snapshot = await handlers.onBootstrap(
 					source,
 					resetLocalReferences,
@@ -361,6 +376,7 @@ export class ConsumerTransport<
 				}
 				this.activeHostDomain = source.domain;
 				this.hostInitialized = true;
+				this.hostInitFailure = null;
 				if (this.initPromise) {
 					this.initPromise.resolve();
 				}
@@ -402,11 +418,18 @@ export class ConsumerTransport<
 			return { success: true };
 		});
 
-		this.onHostControl<{ message: string }>(
+		this.onHostControl<{ message: string; initFailed?: boolean }>(
 			MESSAGE_NAME.ERROR,
 			async (errorData) => {
 				const error = new Error(errorData.message);
-				handlers.onError(error);
+				// The host can still retry initialization on the same page, so a
+				// pending handshake keeps waiting and reports this reason once, at
+				// its timeout. Outside a handshake the failure is reported now.
+				if (errorData.initFailed === true && this.initPromise) {
+					this.hostInitFailure = error;
+				} else {
+					handlers.onError(error);
+				}
 				return { success: true };
 			},
 		);
@@ -492,6 +515,15 @@ export class ConsumerTransport<
 					source.domain,
 				),
 		);
+	}
+
+	/**
+	 * Records opened host content and starts listening for its messages.
+	 * Unrendered instances never listen.
+	 */
+	attachHostWindow(hostWindow: Window | null): void {
+		this.hostWindow = hostWindow;
+		if (hostWindow) this.messenger.listen();
 	}
 
 	/**

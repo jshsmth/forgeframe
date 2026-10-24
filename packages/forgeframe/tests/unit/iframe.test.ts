@@ -90,6 +90,38 @@ describe("createIframe", () => {
 		},
 	);
 
+	it.each(["Sandbox", "SANDBOX"])(
+		"keeps a %s attribute instead of widening it to the default sandbox",
+		(attribute) => {
+			const iframe = createIframe({
+				url: "https://example.com",
+				name: "test-iframe",
+				container,
+				dimensions: { width: 100, height: 100 },
+				attributes: { [attribute]: "allow-scripts" },
+			});
+
+			expect(iframe.getAttribute("sandbox")).toBe("allow-scripts");
+		},
+	);
+
+	it.each(["sandbox", "Sandbox"])(
+		"applies the default sandbox when %s is false, which writes no attribute",
+		(attribute) => {
+			const iframe = createIframe({
+				url: "https://example.com",
+				name: "test-iframe",
+				container,
+				dimensions: { width: 100, height: 100 },
+				attributes: { [attribute]: false },
+			});
+
+			expect(iframe.getAttribute("sandbox")).toBe(
+				"allow-scripts allow-same-origin allow-forms allow-popups",
+			);
+		},
+	);
+
 	it("should preserve an explicit empty sandbox attribute", () => {
 		const iframe = createIframe({
 			url: "https://example.com",

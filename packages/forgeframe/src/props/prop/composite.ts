@@ -6,13 +6,20 @@ import type {
 	InferTupleShape,
 } from "./base";
 import {
+	addSchemaCheck,
 	defineDataProperty,
+	findFailedSchemaCheck,
 	getValueKind,
 	isPlainObject,
 	PropSchema,
 	prependIssuePath,
+	type SchemaCheck,
 	validateSchemaSync,
 } from "./base";
+
+/** Array length refinements run minimums, then maximums. */
+const ARRAY_MIN_LENGTH_RANK = 0;
+const ARRAY_MAX_LENGTH_RANK = 1;
 
 /**
  * Schema for array props with optional item validation.
@@ -30,17 +37,11 @@ export class ArraySchema<T = unknown, I = T> extends PropSchema<T[], I[]> {
 	/** @internal */
 	private _itemSchema?: PropSchema<T, I>;
 	/** @internal */
-	private _minLength?: number;
-	/** @internal */
-	private _maxLength?: number;
+	private _checks: readonly SchemaCheck<number>[] = [];
 
 	/** @internal */
 	protected _validate(value: unknown): StandardSchemaV1Result<T[]> {
-		const issues = checkArrayConstraints(
-			value,
-			this._minLength,
-			this._maxLength,
-		);
+		const issues = checkArrayConstraints(value, this._checks);
 		if (issues) return { issues };
 
 		return validateArrayItems(value as unknown[], this._itemSchema);
@@ -50,8 +51,7 @@ export class ArraySchema<T = unknown, I = T> extends PropSchema<T[], I[]> {
 	protected _clone(): ArraySchema<T, I> {
 		const clone = this._copyBaseTo(new ArraySchema<T, I>());
 		clone._itemSchema = this._itemSchema;
-		clone._minLength = this._minLength;
-		clone._maxLength = this._maxLength;
+		clone._checks = this._checks;
 		return clone;
 	}
 
@@ -66,8 +66,14 @@ export class ArraySchema<T = unknown, I = T> extends PropSchema<T[], I[]> {
 	of<U, J = U>(schema: PropSchema<U, J>): ArraySchema<U, J> {
 		const clone = this._copyPresenceTo(new ArraySchema<U, J>());
 		clone._itemSchema = schema;
-		clone._minLength = this._minLength;
-		clone._maxLength = this._maxLength;
+		clone._checks = this._checks;
+		return clone;
+	}
+
+	/** @internal */
+	private _withCheck(check: SchemaCheck<number>): ArraySchema<T, I> {
+		const clone = this._clone();
+		clone._checks = addSchemaCheck(this._checks, check);
 		return clone;
 	}
 
@@ -78,9 +84,11 @@ export class ArraySchema<T = unknown, I = T> extends PropSchema<T[], I[]> {
 	 * @returns A cloned array schema with the minimum length constraint.
 	 */
 	min(length: number): ArraySchema<T, I> {
-		const clone = this._clone();
-		clone._minLength = length;
-		return clone;
+		return this._withCheck({
+			rank: ARRAY_MIN_LENGTH_RANK,
+			message: `Array must have at least ${length} items`,
+			test: (itemCount) => itemCount >= length,
+		});
 	}
 
 	/**
@@ -90,15 +98,17 @@ export class ArraySchema<T = unknown, I = T> extends PropSchema<T[], I[]> {
 	 * @returns A cloned array schema with the maximum length constraint.
 	 */
 	max(length: number): ArraySchema<T, I> {
-		const clone = this._clone();
-		clone._maxLength = length;
-		return clone;
+		return this._withCheck({
+			rank: ARRAY_MAX_LENGTH_RANK,
+			message: `Array must have at most ${length} items`,
+			test: (itemCount) => itemCount <= length,
+		});
 	}
 
 	/**
 	 * Requires a non-empty array.
 	 *
-	 * @returns A cloned array schema with a minimum length of 1.
+	 * @returns A cloned array schema that also requires at least 1 item.
 	 */
 	nonempty(): ArraySchema<T, I> {
 		return this.min(1);
@@ -432,20 +442,13 @@ function validateRecordEntries<T, I>(
 /** Checks outer constraints without executing a nested schema. */
 function checkArrayConstraints(
 	value: unknown,
-	minimum: number | undefined,
-	maximum: number | undefined,
+	lengthChecks: readonly SchemaCheck<number>[],
 ): ReadonlyArray<StandardSchemaV1Issue> | null {
 	if (!Array.isArray(value)) {
 		return [{ message: `Expected array, got ${typeof value}` }];
 	}
-	if (minimum !== undefined && value.length < minimum) {
-		return [{ message: `Array must have at least ${minimum} items` }];
-	}
-	if (maximum !== undefined && value.length > maximum) {
-		return [{ message: `Array must have at most ${maximum} items` }];
-	}
-
-	return null;
+	const issue = findFailedSchemaCheck(lengthChecks, value.length);
+	return issue ? [issue] : null;
 }
 
 /** Checks outer constraints without executing a nested schema. */

@@ -736,8 +736,9 @@ test("failed technical source gives accurate refresh recovery without blocking p
 	)?.[0];
 	if (!sourceChunk) throw new Error("Missing authored consumer source chunk");
 	const pattern = `**/${sourceChunk}`;
-	await page.goto(`${consumerOrigin}/company`);
+	// Abort before navigating, so a preload of the chunk cannot win the race.
 	await page.route(pattern, (route) => route.abort());
+	await page.goto(`${consumerOrigin}/company`);
 	await page.getByRole("button", { name: "Technical", exact: true }).click();
 	await expect(page.locator("#technical-code")).toContainText(
 		"Refresh this page",

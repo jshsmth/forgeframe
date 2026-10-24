@@ -294,6 +294,38 @@ describe("Component Creation", () => {
 		).toThrow("Component url is required");
 	});
 
+	it.each([
+		{ option: "domain", value: "" },
+		{ option: "allowedConsumerDomains", value: " " },
+		{ option: "peerDomains", value: ["https://partner.example.com", ""] },
+		{ option: "allowedConsumerDomains", value: null },
+	] as const)(
+		"rejects $option values that would disable its origin policy: $value",
+		({ option, value }) => {
+			expect(() =>
+				create({
+					tag: "invalid-domain-matcher-component",
+					url: "https://host.example.com/widget",
+					// Invalid JavaScript configuration is rejected at runtime.
+					...({ [option]: value } as object),
+				}),
+			).toThrow(
+				`Component ${option} must be a non-empty origin string, a RegExp, or an array of them`,
+			);
+		},
+	);
+
+	it("accepts an empty allowlist array as a policy that admits no origin", () => {
+		expect(() =>
+			create({
+				tag: "empty-domain-matcher-component",
+				url: "https://host.example.com/widget",
+				allowedConsumerDomains: [],
+				peerDomains: [],
+			}),
+		).not.toThrow();
+	});
+
 	it.each(["onError", "close", "children"])(
 		"omits an undefined reserved definition for %s during declaration",
 		(key) => {
@@ -637,6 +669,29 @@ describe("Component Creation", () => {
 });
 
 describe("Component Instance", () => {
+	it("adds a message listener only when an instance opens host content", async () => {
+		const addEventListener = vi.spyOn(window, "addEventListener");
+		const messageListenerCount = () =>
+			addEventListener.mock.calls.filter(([type]) => type === "message").length;
+		const Component = create({
+			tag: "lazy-message-listener-component",
+			url: "https://host.example.com/widget",
+			timeout: 50,
+		});
+
+		const unrendered = Component();
+		const instance = Component();
+		expect(messageListenerCount()).toBe(0);
+
+		const container = document.createElement("div");
+		document.body.append(container);
+		const rendering = instance.render(container).catch(() => undefined);
+		await vi.waitFor(() => expect(messageListenerCount()).toBe(1));
+		await rendering;
+		await unrendered.close();
+		container.remove();
+	});
+
 	afterEach(() => {
 		clearComponents();
 	});
@@ -2258,6 +2313,7 @@ describe("Host Context Detection", () => {
 				uid: alphaPrimary.uid,
 				tag: "peer-alpha",
 				hostDomain: PEER_HOST_DOMAIN,
+				anyConsumer: false,
 			});
 			const anyConsumerSiblings = getSiblingInstances({
 				uid: alphaPrimary.uid,
@@ -2395,6 +2451,34 @@ describe("Host Context Detection", () => {
 			);
 		});
 
+		it("never lists a peer whose own host is opaque, even when its peerDomains admit the requester", async () => {
+			const PartnerComponent = create({
+				tag: "peer-domains-opaque-peer",
+				url: "https://widgets.myapp.example/widget",
+				peerDomains: "https://*.myapp.example",
+			});
+			const requester = PartnerComponent({});
+			const opaquePeer = PartnerComponent({});
+			const namedPeer = PartnerComponent({});
+			opaquePeer.exports = { secret: "sandboxed document" };
+			setVerifiedHostDomain("https://widgets.myapp.example", requester);
+			setVerifiedHostDomain("null", opaquePeer);
+			setVerifiedHostDomain("https://other.myapp.example", namedPeer);
+
+			expect(
+				getSiblingInstances({
+					uid: requester.uid,
+					tag: "peer-domains-opaque-peer",
+					hostDomain: "https://widgets.myapp.example",
+					anyConsumer: false,
+				}).map((sibling) => sibling.uid),
+			).toEqual([namedPeer.uid]);
+
+			await Promise.all(
+				[requester, opaquePeer, namedPeer].map((instance) => instance.close()),
+			);
+		});
+
 		it("should list same-origin peers whose hosts are still loading without exports", async () => {
 			const LoadingComponent = create({
 				tag: "peer-loading",
@@ -2417,6 +2501,7 @@ describe("Host Context Detection", () => {
 					uid: requester.uid,
 					tag: "peer-loading",
 					hostDomain: PEER_HOST_DOMAIN,
+					anyConsumer: false,
 				}),
 			).toEqual([
 				{ uid: loadingPeer.uid, tag: "peer-loading", exports: undefined },
@@ -2428,6 +2513,7 @@ describe("Host Context Detection", () => {
 					uid: requester.uid,
 					tag: "peer-loading",
 					hostDomain: PEER_HOST_DOMAIN,
+					anyConsumer: false,
 				}),
 			).toEqual([
 				{
@@ -2459,6 +2545,7 @@ describe("Host Context Detection", () => {
 					uid: primary.uid,
 					tag: "peer-index-cleanup",
 					hostDomain: PEER_HOST_DOMAIN,
+					anyConsumer: false,
 				}),
 			).toEqual([
 				expect.objectContaining({
@@ -2474,6 +2561,7 @@ describe("Host Context Detection", () => {
 					uid: primary.uid,
 					tag: "peer-index-cleanup",
 					hostDomain: PEER_HOST_DOMAIN,
+					anyConsumer: false,
 				}),
 			).toEqual([]);
 

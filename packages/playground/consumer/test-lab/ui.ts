@@ -102,7 +102,7 @@ export const SCENARIOS: ScenarioDefinition[] = [
 		id: "popup",
 		title: "Popup end to end",
 		description:
-			"A user-initiated popup opens, handshakes, exports data, focuses, resizes, and closes.",
+			"A user-initiated popup opens, handshakes, exports data, focuses, resizes itself from the host, and closes.",
 		autoRun: false,
 	},
 	{

@@ -24,6 +24,36 @@ import type {
 } from "./utility";
 
 /**
+ * A value after a JSON round trip: `toJSON()` results replace their source,
+ * so `Date` values become ISO strings, and functions are dropped.
+ * @internal
+ */
+type JsonRoundTrip<T> = 0 extends 1 & T
+	? T
+	: T extends { toJSON(...args: never[]): infer Result }
+		? JsonRoundTrip<Result>
+		: T extends (...args: never[]) => unknown
+			? undefined
+			: T extends object
+				? { [K in keyof T]: JsonRoundTrip<T[K]> }
+				: T;
+
+/**
+ * A callback argument that keeps its declared type through JSON. Values that
+ * JSON would change, such as `Date` and functions, are `never`.
+ * @internal
+ */
+type JsonCallArgument<T> = 0 extends 1 & T
+	? T
+	: T extends { toJSON(...args: never[]): unknown }
+		? never
+		: T extends (...args: never[]) => unknown
+			? never
+			: T extends object
+				? { [K in keyof T]: JsonCallArgument<T[K]> }
+				: T;
+
+/**
  * A value received across the component boundary.
  *
  * @remarks
@@ -31,7 +61,11 @@ import type {
  * side, even when their local implementation returns synchronously. Nested
  * objects and arrays retain their shape, and Date props remain Date instances.
  * Callback arguments and results use the JSON message contract; they are not
- * recursively converted into remote function references.
+ * recursively converted into remote function references. For synchronous
+ * signatures, results are typed after JSON conversion (a `Date` becomes an
+ * ISO string), and parameters that JSON would change, such as a `Date`, are
+ * typed `never` so callers cannot pass them. Promise-returning signatures are
+ * kept as declared, so declare them with JSON-compatible types.
  *
  * @typeParam T - The value's type in the window that supplies it.
  * @public
@@ -39,7 +73,9 @@ import type {
 export type RemoteValue<T> = T extends (...args: never[]) => Promise<unknown>
 	? T
 	: T extends (...args: infer Args) => infer Result
-		? (...args: Args) => Promise<Awaited<Result>>
+		? (
+				...args: { [K in keyof Args]: JsonCallArgument<Args[K]> }
+			) => Promise<JsonRoundTrip<Awaited<Result>>>
 		: T extends Date
 			? T
 			: T extends object
@@ -734,6 +770,10 @@ export interface HostPropsBuiltins<P = Record<string, unknown>> {
 
 	/**
 	 * Focus the component window.
+	 *
+	 * @remarks
+	 * Resolves once this window has focus, or after a short wait, so the host
+	 * can then focus one of its own elements.
 	 *
 	 * @returns Promise that resolves when focused
 	 */

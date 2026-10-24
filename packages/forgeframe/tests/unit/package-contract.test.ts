@@ -6,8 +6,10 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { randomBytes } from "node:crypto";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -97,7 +99,37 @@ describe("package contract", () => {
 		expect(releaseCheck).toContain("npm audit");
 		expect(releaseCheck).not.toContain("npm audit --omit=dev");
 		expect(releaseCheck).toContain("npm pack --dry-run -w forgeframe");
+		expect(releaseCheck).toMatch(/npm run build && npm run size/);
 	});
+
+	it.each([
+		{ label: "within", bytes: 1024, succeeds: true },
+		// Random bytes do not compress, so this exceeds both budgets.
+		{ label: "over", bytes: 140 * 1024, succeeds: false },
+	])(
+		"should check the bundle size budget for a bundle $label budget",
+		({ bytes, succeeds }) => {
+			const dir = mkdtempSync(join(tmpdir(), "forgeframe-size-"));
+			try {
+				const bundle = join(dir, "forgeframe.js");
+				writeFileSync(bundle, randomBytes(bytes));
+				const result = spawnSync(
+					process.execPath,
+					[resolve(packageRoot, "scripts/check-bundle-size.mjs"), bundle],
+					{ encoding: "utf8" },
+				);
+				expect(result.error).toBeUndefined();
+				expect(result.status).toBe(succeeds ? 0 : 1);
+				if (!succeeds) {
+					expect(result.stderr).toContain(
+						"Bundle exceeds its minified and gzip budget",
+					);
+				}
+			} finally {
+				rmSync(dir, { recursive: true, force: true });
+			}
+		},
+	);
 
 	it.each([
 		{ refType: "tag", matching: true, succeeds: true },

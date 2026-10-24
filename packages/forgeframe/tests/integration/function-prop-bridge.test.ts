@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { deserializeMessage } from "@/communication/protocol";
-import { create, PROP_SERIALIZATION, prop } from "@/index";
+import { create, initHost, PROP_SERIALIZATION, prop } from "@/index";
 import type { PropsDefinition } from "@/types";
 import {
 	createIframeIntegrationHarness,
@@ -45,6 +45,79 @@ describe("Function prop bridge integration", () => {
 		await harness?.cleanup();
 		harness = null;
 		vi.restoreAllMocks();
+	});
+
+	it("waits for a consumer callback that runs longer than the messaging timeout", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const definitions = {
+			confirm: prop.function<() => Promise<string>>(),
+		};
+		const Component = create({
+			tag: "integration-slow-callback",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		let calls = 0;
+		const instance = Component({
+			confirm: () => {
+				calls++;
+				return new Promise<string>((resolve) => {
+					setTimeout(() => resolve("confirmed"), 30_000);
+				});
+			},
+		});
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			definitions,
+		);
+		await rendering;
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		let settled = false;
+		const result = hostProps.confirm().finally(() => {
+			settled = true;
+		});
+		await vi.advanceTimersByTimeAsync(10_001);
+		expect(settled).toBe(false);
+		await vi.advanceTimersByTimeAsync(20_000);
+		await expect(result).resolves.toBe("confirmed");
+		expect(calls).toBe(1);
+	});
+
+	it("rejects a pending host export call when the host reconnects", async () => {
+		harness = createIframeIntegrationHarness();
+		const activeHarness = harness;
+		const container = document.createElement("div");
+		document.body.append(container);
+		const Component = create<
+			Record<string, never>,
+			{ wait: () => Promise<never> }
+		>({
+			tag: "integration-reconnect-pending-call",
+			url: "https://host.example.com/widget",
+		});
+		const instance = Component();
+		const rendering = instance.render(container);
+		const { host, hostProps } =
+			await activeHarness.bootstrapIframeHost(container);
+		await rendering;
+		await activeHarness.withHostGlobalsAsync(() =>
+			hostProps.export({ wait: () => new Promise<never>(() => {}) }),
+		);
+		const exports = instance.exports;
+		if (!exports) throw new Error("Expected host exports");
+		const pending = exports.wait();
+		await activeHarness.flushMessages();
+
+		activeHarness.withHostGlobals(() => host.destroy());
+		const nextHost = activeHarness.withHostGlobals(() => initHost());
+		if (!nextHost) throw new Error("Expected host reinitialization");
+		await nextHost.ready;
+		await expect(pending).rejects.toThrow(
+			"Host reconnected before the call completed",
+		);
 	});
 
 	it.each([

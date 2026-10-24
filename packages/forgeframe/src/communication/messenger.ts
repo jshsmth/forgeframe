@@ -14,6 +14,7 @@ import {
 	testDomainRegExpStateless,
 } from "../utils/domain-pattern";
 import { normalizeError } from "../utils/error";
+import { isOpaqueOrigin } from "../utils/origin";
 import { createDeferred, type Deferred } from "../utils/promise";
 import { generateShortUID } from "../utils/uid";
 import {
@@ -46,8 +47,9 @@ export type MessageHandler<T = unknown, R = unknown> = (
  * @internal
  */
 interface PendingRequest {
+	name: string;
 	deferred: Deferred<unknown>;
-	timeout: ReturnType<typeof setTimeout>;
+	timeout: ReturnType<typeof setTimeout> | undefined;
 	targetWin: Window;
 	expectedOrigin: string | "*";
 }
@@ -138,23 +140,39 @@ export class Messenger {
 	/**
 	 * Creates a new Messenger instance.
 	 *
+	 * @remarks
+	 * The messenger trusts its own origin, unless that origin is opaque
+	 * (`"null"`): every opaque document serializes the same way, so trusting it
+	 * would admit any sandboxed frame.
+	 *
 	 * @param channelUid - Component channel identifier shared by the paired consumer and host messengers
 	 * @param win - The window to listen for messages on
 	 * @param domain - The origin domain of this messenger
 	 * @param trustedDomains - Optional domains to trust for incoming messages
+	 * @param listenImmediately - Whether to attach the message listener now; otherwise call {@link Messenger.listen}
 	 */
 	constructor(
 		private channelUid: string,
 		private win: Window = window,
 		private domain: string = window.location.origin,
 		trustedDomains?: DomainMatcher,
+		listenImmediately = true,
 	) {
-		this.allowedOrigins.add(domain);
+		if (!isOpaqueOrigin(domain)) this.allowedOrigins.add(domain);
 
 		if (trustedDomains) {
 			this.addTrustedDomain(trustedDomains);
 		}
 
+		if (listenImmediately) this.listen();
+	}
+
+	/**
+	 * Attaches the message listener once; later calls and calls after
+	 * {@link Messenger.destroy} do nothing.
+	 */
+	listen(): void {
+		if (this.listener || this.destroyed) return;
 		this.setupListener();
 	}
 
@@ -239,7 +257,8 @@ export class Messenger {
 	 * @param targetDomain - The target origin domain
 	 * @param name - The message name/type
 	 * @param data - Optional data payload
-	 * @param timeout - Timeout in milliseconds (default: 10000)
+	 * @param timeout - Timeout in milliseconds (default: 10000); `null` waits
+	 * until the response arrives or the request is rejected
 	 * @param onDeliveryAttempt - Internal notification after encoding, immediately before posting
 	 * @returns Promise resolving to the response data
 	 * @throws Error if messenger is destroyed or timeout occurs
@@ -249,7 +268,7 @@ export class Messenger {
 		targetDomain: string,
 		name: string,
 		data?: T,
-		timeout = 10000,
+		timeout: number | null = 10000,
 		onDeliveryAttempt?: () => void,
 	): Promise<R> {
 		if (this.destroyed) {
@@ -265,14 +284,18 @@ export class Messenger {
 		if (this.destroyed) throw new Error("Messenger destroyed");
 
 		const deferred = createDeferred<R>();
-		const timeoutId = setTimeout(() => {
-			this.pending.delete(id);
-			deferred.reject(
-				new Error(`Message "${name}" timed out after ${timeout}ms`),
-			);
-		}, timeout);
+		const timeoutId =
+			timeout === null
+				? undefined
+				: setTimeout(() => {
+						this.pending.delete(id);
+						deferred.reject(
+							new Error(`Message "${name}" timed out after ${timeout}ms`),
+						);
+					}, timeout);
 
 		this.pending.set(id, {
+			name,
 			deferred: deferred as Deferred<unknown>,
 			timeout: timeoutId,
 			targetWin,
@@ -477,6 +500,23 @@ export class Messenger {
 			sourceWin.postMessage(serialized, origin);
 		} catch {
 			/* Window might be closed. */
+		}
+	}
+
+	/**
+	 * Rejects pending requests of one message type sent to a window whose
+	 * document can no longer answer them, such as after the host reconnects.
+	 *
+	 * @param name - The message name/type of the requests to reject
+	 * @param targetWin - The window the requests were sent to
+	 * @param error - The rejection reason
+	 */
+	rejectPending(name: string, targetWin: Window, error: Error): void {
+		for (const [id, pending] of this.pending) {
+			if (pending.name !== name || pending.targetWin !== targetWin) continue;
+			this.pending.delete(id);
+			clearTimeout(pending.timeout);
+			pending.deferred.reject(error);
 		}
 	}
 

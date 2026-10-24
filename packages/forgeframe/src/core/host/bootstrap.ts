@@ -11,11 +11,16 @@ import type { HostPropsDefinition } from "../../types/props";
 import type { HostProps } from "../../types/runtime";
 import type { DomainMatcher } from "../../types/utility";
 import { hasBrowserWindow } from "../../utils/browser";
+import { assertDomainMatcher } from "../../utils/domain-pattern";
 import {
 	consumeInitialPayload,
 	isForgeFrameWindow,
 } from "../../window/name-payload";
 import type { WindowNamePayload } from "../../window/types";
+import {
+	getComponentOptions,
+	getRegisteredComponent,
+} from "../component-registry";
 import { HostComponent } from "./component";
 import { CONSUMER_WINDOW_RESOLUTION_ERROR } from "./security";
 
@@ -60,6 +65,8 @@ export function initHost<P extends Record<string, unknown>, SchemaInputs = P>(
 	options: { deferInit?: boolean } = {},
 ): HostComponent<P, SchemaInputs> | null {
 	if (!hasBrowserWindow()) return null;
+	if (allowedConsumerDomains !== undefined)
+		assertDomainMatcher(allowedConsumerDomains, "allowedConsumerDomains");
 	if (hostInstance) {
 		const configuredHost = hostInstance;
 		try {
@@ -87,7 +94,7 @@ export function initHost<P extends Record<string, unknown>, SchemaInputs = P>(
 		if (hostInstance !== configuredHost) return null;
 
 		try {
-			if (allowedConsumerDomains) {
+			if (allowedConsumerDomains !== undefined) {
 				hostInstance.assertAllowedConsumerDomain(allowedConsumerDomains);
 			}
 		} catch (error) {
@@ -111,7 +118,9 @@ export function initHost<P extends Record<string, unknown>, SchemaInputs = P>(
 		const nextHostInstance = new HostComponent<P, SchemaInputs>(
 			payload,
 			propDefinitions,
-			allowedConsumerDomains,
+			// A bare initHost() keeps the allowlist of a component defined for this
+			// tag, including after that definition rejected the consumer.
+			allowedConsumerDomains ?? definedConsumerAllowlist(payload.tag),
 			options.deferInit ?? false,
 			() => {
 				if (hostInstance === nextHostInstance) clearHostInstance();
@@ -138,6 +147,14 @@ export function initHost<P extends Record<string, unknown>, SchemaInputs = P>(
 	}
 
 	return hostInstance as HostComponent<P, SchemaInputs>;
+}
+
+/** Reads the consumer allowlist declared by a registered component for a tag. */
+function definedConsumerAllowlist(tag: string): DomainMatcher | undefined {
+	const component = getRegisteredComponent(tag);
+	return component
+		? getComponentOptions(component)?.allowedConsumerDomains
+		: undefined;
 }
 
 export function getHost<

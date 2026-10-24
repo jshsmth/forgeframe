@@ -10,6 +10,7 @@
 
 import type { FunctionBridge } from "../../communication/bridge";
 import type { MessageHandler, Messenger } from "../../communication/messenger";
+import type { ContextType } from "../../constants";
 import type { EventEmitter } from "../../events/emitter";
 import type { SerializedProps } from "../../props/types";
 import type { HostPropsDefinition } from "../../types/props";
@@ -55,6 +56,8 @@ export interface HostPropsRuntimeOptions {
 export interface HostTransportOptions {
 	uid: string;
 	tag: string;
+	/** Popup hosts resize their own window; consumers cannot across origins. */
+	context: ContextType;
 	event: EventEmitter;
 	consumerWindow: Window;
 	consumerDomain: string;

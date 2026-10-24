@@ -59,6 +59,36 @@ describe("EventEmitter", () => {
 		expect(added).toHaveBeenCalledExactlyOnceWith("second");
 	});
 
+	it("cancels a pending once() registration through off()", () => {
+		const emitter = new EventEmitter();
+		const handler = vi.fn();
+
+		emitter.once("test", handler);
+		emitter.off("test", handler);
+		emitter.emit("test", "data");
+
+		expect(handler).not.toHaveBeenCalled();
+		expect(emitter.listenerCount("test")).toBe(0);
+	});
+
+	it.each(["on", "once"] as const)(
+		"keeps a newer registration when a stale %s() unsubscribe runs",
+		(method) => {
+			const emitter = new EventEmitter();
+			const handler = vi.fn();
+
+			const stale = emitter[method]("test", handler);
+			if (method === "on") emitter.off("test", handler);
+			else emitter.emit("test", "consumes the once registration");
+			emitter.on("test", handler);
+			stale();
+			emitter.emit("test", "after stale unsubscribe");
+
+			expect(handler).toHaveBeenLastCalledWith("after stale unsubscribe");
+			expect(emitter.listenerCount("test")).toBe(1);
+		},
+	);
+
 	it("should emit events to subscribed handlers", () => {
 		const emitter = new EventEmitter();
 		const handler = vi.fn();

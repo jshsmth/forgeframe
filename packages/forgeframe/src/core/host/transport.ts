@@ -14,14 +14,18 @@ import {
 	serializeFunctions,
 } from "../../communication/bridge";
 import { Messenger } from "../../communication/messenger";
-import { EVENT, MESSAGE_NAME } from "../../constants";
+import { CONTEXT, EVENT, MESSAGE_NAME } from "../../constants";
 import type { SerializedProps } from "../../props/types";
+import { resizePopup } from "../../render/popup";
 import type { GetPeerInstancesOptions, SiblingInfo } from "../../types/runtime";
 import { normalizeError } from "../../utils/error";
 import { generateShortUID } from "../../utils/uid";
-import { getDomain } from "../../window/helpers";
+import { getDomain, waitForWindowFocus } from "../../window/helpers";
 import type { HostBootstrapData } from "../../window/types";
 import type { HostTransportOptions, HostTransportPropsHandler } from "./types";
+
+/** Longest wait in `focus()` for this window to receive the consumer's focus. */
+const FRAME_FOCUS_WAIT_MS = 500;
 
 export class HostTransport {
 	public messenger: Messenger;
@@ -126,12 +130,16 @@ export class HostTransport {
 	async focus(): Promise<void> {
 		window.focus();
 		await this.sendMessage(MESSAGE_NAME.FOCUS, {});
+		// The consumer's frame focus can arrive after its acknowledgement.
+		await waitForWindowFocus(window, FRAME_FOCUS_WAIT_MS);
 	}
 
 	async resize(dimensions: {
 		width?: string | number;
 		height?: string | number;
 	}): Promise<void> {
+		// The consumer cannot resize a cross-origin popup, so the popup resizes itself.
+		if (this.options.context === CONTEXT.POPUP) resizePopup(window, dimensions);
 		await this.sendMessage(MESSAGE_NAME.RESIZE, dimensions);
 	}
 
@@ -147,6 +155,19 @@ export class HostTransport {
 		await this.sendMessage(MESSAGE_NAME.ERROR, {
 			message: error.message,
 		});
+	}
+
+	/**
+	 * Tells the consumer why initialization failed, so it can report the host's
+	 * reason while the page may still retry. Teardown may follow immediately,
+	 * so delivery is best effort.
+	 */
+	reportInitFailure(error: Error): void {
+		if (this.destroyed) return;
+		void this.sendMessage(MESSAGE_NAME.ERROR, {
+			message: `Host initialization failed: ${error.message}`,
+			initFailed: true,
+		}).catch(() => undefined);
 	}
 
 	exportData<T>(exports: T): Promise<void> {
@@ -244,6 +265,8 @@ export class HostTransport {
 				...(this.options.beforeInit ? { sessionId: this.sessionId } : {}),
 			});
 		} catch (error) {
+			// Teardown rejects pending work; that is not an initialization failure.
+			if (this.destroyed) return;
 			const initError = normalizeError(error);
 			this.initError = initError;
 

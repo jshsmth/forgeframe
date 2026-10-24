@@ -18,6 +18,7 @@ const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
 type ConsumerInternals = {
 	transport: {
 		hostWindow: Window | null;
+		attachHostWindow(hostWindow: Window | null): void;
 		openedHostDomain: string | null;
 		messenger: {
 			allowedOrigins: Set<string>;
@@ -220,7 +221,7 @@ describe("Consumer branch coverage and edge paths", () => {
 		expect(focusIframeSpy).toHaveBeenCalledWith(iframe);
 
 		internal.renderer.context = CONTEXT.POPUP;
-		internal.transport.hostWindow = popup;
+		internal.transport.attachHostWindow(popup);
 
 		await consumer.focus();
 		expect(focusPopupSpy).toHaveBeenCalledWith(popup);
@@ -243,7 +244,7 @@ describe("Consumer branch coverage and edge paths", () => {
 			.mockImplementation(() => {});
 		const resizePopupSpy = vi
 			.spyOn(popupRender, "resizePopup")
-			.mockImplementation(() => {});
+			.mockImplementation(() => true);
 
 		internal.renderer.context = CONTEXT.IFRAME;
 		internal.renderer.iframe = iframe;
@@ -260,7 +261,7 @@ describe("Consumer branch coverage and edge paths", () => {
 		expect(hideIframeSpy).toHaveBeenCalledWith(iframe);
 
 		internal.renderer.context = CONTEXT.POPUP;
-		internal.transport.hostWindow = popup;
+		internal.transport.attachHostWindow(popup);
 
 		await consumer.resize({ width: 480, height: 300 });
 		expect(resizePopupSpy).toHaveBeenCalledWith(popup, {
@@ -370,7 +371,7 @@ describe("Consumer branch coverage and edge paths", () => {
 			},
 		);
 
-		getInternals(consumer).transport.hostWindow = window;
+		getInternals(consumer).transport.attachHostWindow(window);
 
 		vi.spyOn(
 			getInternals(consumer).transport.messenger,
@@ -401,7 +402,7 @@ describe("Consumer branch coverage and edge paths", () => {
 			},
 		);
 
-		getInternals(consumer).transport.hostWindow = window;
+		getInternals(consumer).transport.attachHostWindow(window);
 
 		const bridge = getInternals(consumer).transport.bridge;
 
@@ -444,7 +445,7 @@ describe("Consumer branch coverage and edge paths", () => {
 			},
 		);
 
-		getInternals(consumer).transport.hostWindow = window;
+		getInternals(consumer).transport.attachHostWindow(window);
 
 		const bridge = getInternals(consumer).transport.bridge;
 
@@ -669,6 +670,7 @@ describe("Consumer branch coverage and edge paths", () => {
 		const internal = getInternals(consumer);
 		const iframe = document.createElement("iframe");
 		iframe.name = "target-iframe";
+		document.body.append(iframe);
 		internal.renderer.context = CONTEXT.IFRAME;
 		internal.renderer.iframe = iframe;
 
@@ -799,7 +801,7 @@ describe("Consumer branch coverage and edge paths", () => {
 			.mockImplementation(() => {});
 
 		internal.renderer.context = CONTEXT.POPUP;
-		internal.transport.hostWindow = popupWindow;
+		internal.transport.attachHostWindow(popupWindow);
 		internal.renderer.prerenderElement = prerenderElement;
 
 		await (

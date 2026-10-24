@@ -149,6 +149,63 @@ type FullReactComponentProps<
 		? ConsumerPropsInput<P, I, SchemaInputs>
 		: ConsumerPropsUpdate<P, I, SchemaInputs>);
 
+/** Attaches the container element and forwards it to one forwarded ref. @internal */
+type ContainerRefCallback = (
+	node: HTMLDivElement | null,
+) => (() => void) | undefined;
+
+/**
+ * Returns one stable container callback per forwarded ref. Memoizing by ref,
+ * rather than keeping only the latest, means a render React discards cannot
+ * replace the callback of a ref it already committed.
+ * @internal
+ */
+function createContainerRefCache(containerRef: {
+	current: HTMLDivElement | null;
+}): (ref: ReactComponentProps["ref"]) => ContainerRefCallback {
+	const byRef = new WeakMap<object, ContainerRefCallback>();
+	let withoutRef: ContainerRefCallback | undefined;
+	return (ref) => {
+		if (!ref) {
+			withoutRef ??= createContainerRef(containerRef, undefined);
+			return withoutRef;
+		}
+		let callback = byRef.get(ref);
+		if (!callback) {
+			callback = createContainerRef(containerRef, ref);
+			byRef.set(ref, callback);
+		}
+		return callback;
+	};
+}
+
+/**
+ * Creates the container's callback ref, which records the element and forwards
+ * it during React's commit phase, before layout effects run. A forwarded
+ * callback's React 19 cleanup runs on detach in place of a `null` call.
+ * @internal
+ */
+function createContainerRef(
+	containerRef: { current: HTMLDivElement | null },
+	ref: ReactComponentProps["ref"],
+): ContainerRefCallback {
+	return (node) => {
+		containerRef.current = node;
+		if (typeof ref === "function") {
+			const cleanup: unknown = ref(node);
+			if (node && typeof cleanup === "function") {
+				return () => {
+					containerRef.current = null;
+					cleanup();
+				};
+			}
+		} else if (ref) {
+			ref.current = node;
+		}
+		return undefined;
+	};
+}
+
 /** Reports React driver errors without allowing observer failures to break lifecycle work. @internal */
 function reportReactError(
 	callback: ((error: Error) => void) | undefined,
@@ -248,6 +305,9 @@ export interface ReactComponentType<P, E = unknown> {
  * - Error boundary integration via the `onError` callback
  * - Ref forwarding to the container element
  *
+ * The forwarded ref is attached to the container element directly, so it is
+ * set before a parent's layout effects run, and React 19 ref cleanups are honored.
+ *
  * The component automatically cleans up the cross-domain connection when unmounted.
  * Committed prop changes synchronize in order after rendering. Omitted previously
  * observed props reset to their fallbacks; explicit `undefined` remains supplied data.
@@ -324,7 +384,12 @@ export function createReactComponent<
 		const onRenderedRef = useRef<typeof onRendered>(onRendered);
 		const onErrorRef = useRef<typeof onError>(onError);
 		const onCloseRef = useRef<typeof onClose>(onClose);
+		const containerRefCache =
+			useRef<ReturnType<typeof createContainerRefCache>>(null);
 		const [error, setError] = useState<Error | null>(null);
+		// Lazily created once; React re-attaches only when the forwarded ref changes.
+		containerRefCache.current ??= createContainerRefCache(containerRef);
+		const attachContainer = containerRefCache.current(ref);
 
 		const refs = { instanceRef, propSyncRef };
 		const isCurrent = (state: ReactPropSyncState<P, X, I, SchemaInputs>) =>
@@ -377,28 +442,10 @@ export function createReactComponent<
 			if (enqueuePropSnapshot(syncState, nextProps)) void drain(syncState);
 		});
 
-		useEffect(() => {
-			const container = containerRef.current;
-
-			if (typeof ref === "function") {
-				ref(container);
-				return () => {
-					ref(null);
-				};
-			}
-
-			if (ref && typeof ref === "object") {
-				ref.current = container;
-				return () => {
-					ref.current = null;
-				};
-			}
-		}, [ref]);
-
 		return createElement(
 			"div",
 			{
-				ref: containerRef,
+				ref: attachContainer,
 				className,
 				style: error
 					? { color: "red", padding: "16px", ...style }

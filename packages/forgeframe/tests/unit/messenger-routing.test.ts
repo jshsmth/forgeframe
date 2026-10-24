@@ -170,9 +170,17 @@ describe("Messenger instance routing", () => {
 			HOST_ORIGIN,
 			CONSUMER_ORIGIN,
 		);
-		const unrelatedBridge = new FunctionBridge(unrelatedMessenger);
-		const intendedBridge = new FunctionBridge(intendedMessenger);
-		const hostBridge = new FunctionBridge(hostMessenger);
+		// Source admission is covered by bridge tests; this test isolates responses.
+		const acceptAnySource = () => true;
+		const unrelatedBridge = new FunctionBridge(
+			unrelatedMessenger,
+			acceptAnySource,
+		);
+		const intendedBridge = new FunctionBridge(
+			intendedMessenger,
+			acceptAnySource,
+		);
+		const hostBridge = new FunctionBridge(hostMessenger, acceptAnySource);
 		bridges.push(unrelatedBridge, intendedBridge, hostBridge);
 
 		let resolveCallback!: (result: string) => void;

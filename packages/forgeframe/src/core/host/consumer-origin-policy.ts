@@ -43,7 +43,7 @@ export function selectConsumerSecurityContext(
 	verifiedConsumerDomain: string | null,
 ): HostSecurityContext {
 	if (verifiedConsumerDomain) {
-		if (options.allowedConsumerDomains) {
+		if (options.allowedConsumerDomains !== undefined) {
 			assertAllowedConsumerDomain(
 				options.allowedConsumerDomains,
 				verifiedConsumerDomain,
@@ -57,7 +57,7 @@ export function selectConsumerSecurityContext(
 		};
 	}
 
-	if (options.allowedConsumerDomains) {
+	if (options.allowedConsumerDomains !== undefined) {
 		throw new Error(
 			`${CONSUMER_ORIGIN_VERIFICATION_ERROR} for component "${options.tag}"`,
 		);
@@ -92,7 +92,7 @@ export function validateMessagingConsumerContext(
 	) {
 		throw new Error(CONSUMER_ORIGIN_VERIFICATION_ERROR);
 	}
-	if (allowedConsumerDomains) {
+	if (allowedConsumerDomains !== undefined) {
 		assertAllowedConsumerDomain(allowedConsumerDomains, consumerDomain, tag);
 	}
 	return { consumerDomain, consumerDomainVerified: false };

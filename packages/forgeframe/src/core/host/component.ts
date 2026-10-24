@@ -14,6 +14,7 @@ import { EMPTY_PROP_DEFINITIONS } from "../../props/definitions";
 import type { HostPropsDefinition } from "../../types/props";
 import type { HostProps } from "../../types/runtime";
 import type { DomainMatcher } from "../../types/utility";
+import { normalizeError } from "../../utils/error";
 import { matchDomain } from "../../window/helpers";
 import type { WindowNamePayload } from "../../window/types";
 import { HostPropsRuntime } from "./props-runtime";
@@ -94,6 +95,7 @@ export class HostComponent<
 			transport = new HostTransport({
 				uid: this.uid,
 				tag: this.tag,
+				context: payload.context,
 				event: this.event,
 				consumerWindow: this.consumerWindow,
 				consumerDomain: this.consumerDomain,
@@ -197,9 +199,15 @@ export class HostComponent<
 			throw new Error("Invalid consumer bootstrap response");
 		}
 		this.consumerDomainVerified = true;
-		if (this.allowedConsumerDomains)
+		if (this.allowedConsumerDomains !== undefined)
 			this.assertAllowedConsumerDomain(this.allowedConsumerDomains);
-		this.propsRuntime.applyBootstrap(data);
+		try {
+			this.propsRuntime.applyBootstrap(data);
+		} catch (error) {
+			// Only the verified, allowed consumer learns why its props were rejected.
+			this.transport.reportInitFailure(normalizeError(error));
+			throw error;
+		}
 		if (this.destroyed)
 			throw new Error("Host destroyed before bootstrap completed");
 	}

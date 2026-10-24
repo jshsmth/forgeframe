@@ -6,7 +6,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { EVENT, MESSAGE_NAME } from "@/constants";
+import { CONTEXT, EVENT, MESSAGE_NAME } from "@/constants";
 import { HostTransport } from "@/core/host/transport";
 import type { HostTransportOptions } from "@/core/host/types";
 import { EventEmitter } from "@/events/emitter";
@@ -24,6 +24,7 @@ const createdTransports: HostTransport[] = [];
 function createTransport({
 	uid = "host-transport-uid",
 	tag = "host-transport-component",
+	context = CONTEXT.IFRAME,
 	consumerDomain = "https://consumer.example.com",
 	getConsumerDomain,
 	deferInit = true,
@@ -34,6 +35,7 @@ function createTransport({
 	const options: HostTransportOptions = {
 		uid,
 		tag,
+		context,
 		event,
 		consumerWindow,
 		consumerDomain,
@@ -218,6 +220,54 @@ describe("HostTransport", () => {
 		await flushMicrotasks();
 
 		expect(destroyedSendSpy).not.toHaveBeenCalled();
+	});
+
+	it("does not report an INIT rejected by routine teardown as a failure", async () => {
+		const pendingSend = createDeferred<unknown>();
+		const { transport, event } = createTransport();
+		vi.spyOn(transport.messenger, "send").mockReturnValue(pendingSend.promise);
+		const emitSpy = vi.spyOn(event, "emit");
+		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+		transport.flushInit();
+		transport.destroy();
+		pendingSend.reject(new Error("Messenger destroyed"));
+		await flushMicrotasks();
+
+		expect(consoleSpy).not.toHaveBeenCalled();
+		expect(emitSpy).not.toHaveBeenCalledWith(EVENT.ERROR, expect.anything());
+		expect(transport.getInitError()).toBeNull();
+	});
+
+	it("resolves focus() once the window receives focus, or after a bounded wait", async () => {
+		const { transport } = createTransport();
+		vi.spyOn(transport.messenger, "send").mockResolvedValue(undefined);
+		const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		try {
+			let focused = false;
+			const delivered = transport.focus().then(() => {
+				focused = true;
+			});
+			await flushMicrotasks();
+			expect(focused).toBe(false);
+			window.dispatchEvent(new FocusEvent("focus"));
+			await delivered;
+
+			focused = false;
+			const bounded = transport.focus().then(() => {
+				focused = true;
+			});
+			await flushMicrotasks();
+			expect(focused).toBe(false);
+			await vi.advanceTimersByTimeAsync(500);
+			await bounded;
+
+			hasFocus.mockReturnValue(true);
+			await transport.focus();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("should normalize non-Error init failures, emit lifecycle errors, and log the original value", async () => {

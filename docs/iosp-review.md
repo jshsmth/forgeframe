@@ -5,7 +5,7 @@ desc: Runtime callable responsibilities, IOSP classifications, and boundary test
 tags: []
 sources: []
 created: 2026-10-01T01:55:30Z
-updated: 2026-10-23T23:32:14Z
+updated: 2026-10-24T01:16:05Z
 ---
 
 # ForgeFrame callable reference
@@ -47,12 +47,14 @@ Reference guards require the complete own-property wire shape, so records with e
 
 Array encoding reads and checks every indexed entry once before recursive registration, rejecting `undefined` entries and sparse holes in props and exports. It never calls caller-controlled array methods, so arrays with null prototypes or a shadowed `map` encode correctly. Object-field omission and function/`Date` framing are separate rules.
 
+JSON-mode encoding converts objects other than arrays and dates through `toJSON(key)` and primitive unboxing once, as native JSON does, so a class's `toJSON()` decides what crosses; the module-private `serializeConvertedValue` dispatches an already converted value to function framing, `serializeArray`, `Date` framing, or `serializeRecord` (arrays first, since they never carry the `Date` brand), and nested values convert again through `serializeFunctions`. The source object stays on the cycle stack while its `toJSON()` result is encoded, so a result that contains its source is reported as circular. A `toJSON()` that returns `undefined` for an array entry is rejected like an `undefined` entry. Remote wrappers send calls without a timeout, because the callback may still be running in the other window; teardown rejects them, and `rejectRemoteCalls` rejects this bridge's in-flight calls to a host whose document was replaced. The constructor requires a source guard; there is no permissive default.
+
 Local callback admission rejects snapshots over 500 functions without evicting. Batch ownership records new IDs for rollback before delivery; an uncertain delivery keeps references within a 1,000-entry pool. Append-mode peer relays have a cumulative 500-reference bound. Verified reconnect cleanup runs inside the consumer props queue before bootstrap serialization: it releases strong registrations and keeps the weak IDs of props the new document already acknowledged.
 
-- **O:** `isSafeObjectKey`, `FunctionBridge.retainLocalFunction`, `FunctionBridge.findRemoteWrapper`, `FunctionBridge.evictOldestRemote`, `FunctionBridge.assertLocalCapacity`, `FunctionBridge.clearBatch`, `FunctionBridge.createRemoteWrapper`, `FunctionBridge.isFunctionRef`, `FunctionBridge.removeLocal`, `FunctionBridge.startBatch`, `FunctionBridge.staleLocalIds`, `FunctionBridge.clearRemote`, `FunctionBridge.localFunctionCount`, `FunctionBridge.remoteFunctionCount`, `serializeFunctions`, `deserializeFunctions`, `createFunctionRef`.
-- **I:** `FunctionBridge.constructor`, `FunctionBridge.serialize`, `FunctionBridge.deserialize`, `FunctionBridge.createRemoteWrapper.wrapper`, `FunctionBridge.setupCallHandler`, `FunctionBridge.finishBatch`, `FunctionBridge.abortBatch`, `FunctionBridge.clearLocal`, `FunctionBridge.destroy`.
-- **O callbacks:** `FunctionBridge.constructor.callback@107`, `FunctionBridge.setupCallHandler.callback@266`, `FunctionBridge.staleLocalIds.callback@359`.
-- **I callbacks:** `deserializeFunctions.callback@502`.
+- **O:** `isSafeObjectKey`, `FunctionBridge.retainLocalFunction`, `FunctionBridge.findRemoteWrapper`, `FunctionBridge.evictOldestRemote`, `FunctionBridge.assertLocalCapacity`, `FunctionBridge.clearBatch`, `FunctionBridge.createRemoteWrapper`, `FunctionBridge.isFunctionRef`, `FunctionBridge.removeLocal`, `FunctionBridge.startBatch`, `FunctionBridge.staleLocalIds`, `FunctionBridge.clearRemote`, `FunctionBridge.localFunctionCount`, `FunctionBridge.remoteFunctionCount`, `serializeFunctions`, `enterStack`, `serializeConvertedValue`, `serializeArray`, `serializeRecord`, `deserializeFunctions`, `createFunctionRef`.
+- **I:** `FunctionBridge.constructor`, `FunctionBridge.serialize`, `FunctionBridge.rejectRemoteCalls`, `FunctionBridge.deserialize`, `FunctionBridge.createRemoteWrapper.wrapper`, `FunctionBridge.setupCallHandler`, `FunctionBridge.finishBatch`, `FunctionBridge.abortBatch`, `FunctionBridge.clearLocal`, `FunctionBridge.destroy`.
+- **O callbacks:** `FunctionBridge.setupCallHandler.callback@278`, `FunctionBridge.staleLocalIds.callback@371`.
+- **I callbacks:** `deserializeFunctions.callback@584`.
 
 Evidence: [messaging](#evidence-messaging); typecheck.
 
@@ -64,12 +66,12 @@ Evidence: [messaging](#evidence-messaging); typecheck.
 
 ### [communication/messenger.ts](../packages/forgeframe/src/communication/messenger.ts)
 
-Admission precedes decoding, and channel, usable source, expected origin, and pending target identity are each checked explicitly. Request execution and response encoding are cohesive boundary operations; the request workflow and posting are named separately. Trusted-domain recursion is one matcher-registry algorithm.
+Admission precedes decoding, and channel, usable source, expected origin, and pending target identity are each checked explicitly. A messenger never trusts its own origin when that origin is opaque (`"null"`), because every opaque document serializes the same way. Consumers construct their messenger without a listener and attach it once with `listen()` when host content opens. A `null` send timeout waits for the response or for rejection; `rejectPending` rejects one message type's requests to a window whose document can no longer answer, and teardown rejects the rest. Request execution and response encoding are cohesive boundary operations; the request workflow and posting are named separately. Trusted-domain recursion is one matcher-registry algorithm.
 
-- **O:** `isPendingResponseSourceMatch`, `normalizeTargetDomainToExpectedOrigin`, `Messenger.addTrustedDomain`, `Messenger.removeTrustedDomain`, `Messenger.isOriginTrusted`, `Messenger.on`, `Messenger.settlePendingResponse`, `Messenger.executeRequest`, `Messenger.serializeResponse`, `Messenger.postResponse`, `Messenger.isDestroyed`.
-- **I:** `Messenger.constructor`, `Messenger.send`, `Messenger.post`, `Messenger.setupListener`, `Messenger.setupListener.this.listener`, `Messenger.readTrustedMessage`, `Messenger.handleMessage`, `Messenger.handleRequest`, `Messenger.destroy`.
-- **O callbacks:** `Messenger.removeTrustedDomain.callback@198`, `Messenger.removeTrustedDomain.callback@204`, `Messenger.on.callback@340`.
-- **I callbacks:** `Messenger.send.callback@268`.
+- **O:** `isPendingResponseSourceMatch`, `normalizeTargetDomainToExpectedOrigin`, `Messenger.addTrustedDomain`, `Messenger.removeTrustedDomain`, `Messenger.isOriginTrusted`, `Messenger.on`, `Messenger.settlePendingResponse`, `Messenger.executeRequest`, `Messenger.serializeResponse`, `Messenger.postResponse`, `Messenger.rejectPending`, `Messenger.isDestroyed`.
+- **I:** `Messenger.constructor`, `Messenger.listen`, `Messenger.send`, `Messenger.post`, `Messenger.setupListener`, `Messenger.setupListener.this.listener`, `Messenger.readTrustedMessage`, `Messenger.handleMessage`, `Messenger.handleRequest`, `Messenger.destroy`.
+- **O callbacks:** `Messenger.removeTrustedDomain.callback@216`, `Messenger.removeTrustedDomain.callback@222`, `Messenger.on.callback@363`.
+- **I callbacks:** `Messenger.send.callback@290`.
 
 Evidence: [messaging](#evidence-messaging); typecheck.
 
@@ -113,14 +115,14 @@ Evidence: [consumer](#evidence-consumer); typecheck.
 
 ### [core/component.ts](../packages/forgeframe/src/core/component.ts)
 
-Declaration policy receives options; static URL context selection receives the observed origin. Factory construction and host configuration are integrations; getters are short delegates. The factory's host-props cache checks the current singleton before reuse and rebinds after a failed bootstrap is retried. An owner callback removes factory and index identities before destruction observers run, even after public listeners are removed, and propagates to clones; a retained event listener keeps synthetic destroy notifications.
+Declaration policy receives options, including domain-matcher validation, so empty or blank matcher strings throw; static URL context selection receives the observed origin. Factory construction and host configuration are integrations. `configureHostAtDefinition` runs once per definition: it reconfigures a matching active host without changing its INIT timing, or starts the runtime in a host window for the tag, and logs startup failures instead of throwing them. The factory's `isHost()`, `isEmbedded()`, and `hostProps` getters only read the active singleton and window metadata, so after a retry or teardown they follow the current host and never start one. An owner callback removes factory and index identities before destruction observers run, even after public listeners are removed, and propagates to clones; a retained event listener keeps synthetic destroy notifications.
 
 `assertComponentShape` is an **O** declaration policy. Its reserved-definition guard treats `undefined` entries as omitted, matching normalization, and rejects real host-control definitions; `component.test.ts` covers both cases.
 
 - **O:** `assertComponentShape`, `staticUrlValidationContext`, `removeTrackedInstance`, `create.Component.canRenderTo`.
-- **I:** `validateComponentOptions`, `validateStaticComponentUrl`, `create`, `create.untrackInstance`, `create.createTrackedInstance`, `create.canDetectComponentHost`, `create.syncHostProps`, `create.detectHostState`, `create.Component.isHost`, `create.Component.isEmbedded`, `create.get`, `getComponent`, `getRegisteredComponents`, `getComponentInstancesByTag`, `getIndexedComponentInstances`, `destroy`, `destroyByTag`, `destroyAll`, `unregisterComponent`, `clearComponents`.
+- **I:** `validateComponentOptions`, `validateStaticComponentUrl`, `configureHostAtDefinition`, `create`, `create.untrackInstance`, `create.createTrackedInstance`, `create.readHostProps`, `create.detectHostState`, `create.Component.isHost`, `create.Component.isEmbedded`, `create.get`, `getComponent`, `getRegisteredComponents`, `getComponentInstancesByTag`, `getIndexedComponentInstances`, `destroy`, `destroyByTag`, `destroyAll`, `unregisterComponent`, `clearComponents`.
 - **M:** `create.trackInstance`.
-- **I callbacks:** `create.trackInstance.callback@276`, `create.callback@348`, `destroyByTag.callback@495`, `destroyAll.callback@517`.
+- **I callbacks:** `create.trackInstance.callback@319`, `create.callback@365`, `destroyByTag.callback@512`, `destroyAll.callback@534`.
 - **Retained rationale —** `create.trackInstance`: The factory-local guard, list append, index update and destruction subscription share one lifetime. Keep this short ownership adapter next to construction; removal bookkeeping is named separately.
 
 Evidence: [consumer](#evidence-consumer); typecheck.
@@ -129,13 +131,15 @@ Evidence: [consumer](#evidence-consumer); typecheck.
 
 Lifecycle integrations keep their user-callback and cancellation checkpoints. Render guards, task release, and destruction start are named state operations. Rendering captures already admitted prop work after installing its lock, drains it before validation, and pins the validated navigation URL before lifecycle callbacks. Hook proxies wire the props, renderer, and transport runtimes; response construction and browser reads are local operations.
 
+`ConsumerComponent.resize` rejects without notifying when the browser denies resizing a cross-origin popup; `resizeForHost` handles a host's RESIZE request: a popup host has already resized its own window, so it resizes only iframes, then notifies through `emitResize`.
+
 `ConsumerComponent.close` installs its shared completion before calling `performClose`, which sequences close notifications, destruction, and flag release. `destroy` installs its own shared completion before `performDestroy` sequences resource teardown, cleanup, deregistration, and notifications. Both pairs are lifecycle integrations. Reentrant callers, including close calls during failed-render destruction, join the pending completion without repeating the workflow or close events.
 
 - **O:** `ConsumerComponent.uid`, `ConsumerComponent.assertRenderAllowed`, `ConsumerComponent.finishRenderTask`, `ConsumerComponent.applyPropsUpdate.isRendered`, `ConsumerComponent.assertPropsUpdateActive`, `ConsumerComponent.assertStableRenderedOrigin`, `ConsumerComponent.isDestroyed`, `ConsumerComponent.getVerifiedHostDomain`, `ConsumerComponent.getOpenedHostDomain`, `ConsumerComponent.getPeerDomains`, `ConsumerComponent.normalizeOptions`, `ConsumerComponent.createPropContext`, `ConsumerComponent.createConsumerExports`, `ConsumerComponent.createRenderCancellationError`, `ConsumerComponent.isRenderCancelled`, `ConsumerComponent.assertRenderActive`, `ConsumerComponent.beginDestroy`.
-- **I:** `ConsumerComponent.constructor`, `ConsumerComponent.constructor.close`, `ConsumerComponent.constructor.focus`, `ConsumerComponent.render`, `ConsumerComponent.performRender`, `ConsumerComponent.emitRenderStage`, `ConsumerComponent.validateForRender`, `ConsumerComponent.renderTo`, `ConsumerComponent.close`, `ConsumerComponent.performClose`, `ConsumerComponent.focus`, `ConsumerComponent.resize`, `ConsumerComponent.show`, `ConsumerComponent.hide`, `ConsumerComponent.updateProps`, `ConsumerComponent.applyPropsUpdate`, `ConsumerComponent.applyPropsUpdate.assertActive`, `ConsumerComponent.applyPropsUpdate.resolveUrl`, `ConsumerComponent.applyPropsUpdate.resolveUrlOrigin`, `ConsumerComponent.applyPropsUpdate.assertStableRenderedOrigin`, `ConsumerComponent.applyPropsUpdate.syncTrustedDomainForUrl`, `ConsumerComponent.applyPropsUpdate.shouldSendPropsToHost`, `ConsumerComponent.applyPropsUpdate.sendPropsUpdateToHost`, `ConsumerComponent.applyPropsUpdate.emitPropsUpdated`, `ConsumerComponent.sendPropsUpdateToHost`, `ConsumerComponent.clone`, `ConsumerComponent.resolveUrl`, `ConsumerComponent.resolveDimensions`, `ConsumerComponent.resolveUrlOrigin`, `ConsumerComponent.syncTrustedDomainForUrl`, `ConsumerComponent.createPropContext.onError`, `ConsumerComponent.resolveContainer`, `ConsumerComponent.checkEligibility`, `ConsumerComponent.prerender`, `ConsumerComponent.createIframeElement`, `ConsumerComponent.open`, `ConsumerComponent.open.assertActive`, `ConsumerComponent.open.buildUrl`, `ConsumerComponent.open.buildBodyParams`, `ConsumerComponent.open.buildWindowName`, `ConsumerComponent.open.submitBodyForm`, `ConsumerComponent.open.onPopupClose`, `ConsumerComponent.open.registerCleanup`, `ConsumerComponent.buildUrl`, `ConsumerComponent.buildBodyParams`, `ConsumerComponent.submitBodyForm`, `ConsumerComponent.buildWindowName`, `ConsumerComponent.waitForHost`, `ConsumerComponent.setupMessageHandlers`, `ConsumerComponent.setupMessageHandlers.onBootstrap`, `ConsumerComponent.setupMessageHandlers.onReconnect`, `ConsumerComponent.setupMessageHandlers.onClose`, `ConsumerComponent.setupMessageHandlers.onResize`, `ConsumerComponent.setupMessageHandlers.onFocus`, `ConsumerComponent.setupMessageHandlers.onShow`, `ConsumerComponent.setupMessageHandlers.onHide`, `ConsumerComponent.setupMessageHandlers.onError`, `ConsumerComponent.setupMessageHandlers.onExport`, `ConsumerComponent.setupMessageHandlers.onConsumerExport`, `ConsumerComponent.setupMessageHandlers.onGetSiblings`, `ConsumerComponent.setupCleanup`, `ConsumerComponent.teardownRenderResources`, `ConsumerComponent.destroy`, `ConsumerComponent.performDestroy`.
+- **I:** `ConsumerComponent.constructor`, `ConsumerComponent.constructor.close`, `ConsumerComponent.constructor.focus`, `ConsumerComponent.render`, `ConsumerComponent.performRender`, `ConsumerComponent.emitRenderStage`, `ConsumerComponent.validateForRender`, `ConsumerComponent.renderTo`, `ConsumerComponent.close`, `ConsumerComponent.performClose`, `ConsumerComponent.focus`, `ConsumerComponent.resize`, `ConsumerComponent.resizeForHost`, `ConsumerComponent.emitResize`, `ConsumerComponent.show`, `ConsumerComponent.hide`, `ConsumerComponent.updateProps`, `ConsumerComponent.applyPropsUpdate`, `ConsumerComponent.applyPropsUpdate.assertActive`, `ConsumerComponent.applyPropsUpdate.resolveUrl`, `ConsumerComponent.applyPropsUpdate.resolveUrlOrigin`, `ConsumerComponent.applyPropsUpdate.assertStableRenderedOrigin`, `ConsumerComponent.applyPropsUpdate.syncTrustedDomainForUrl`, `ConsumerComponent.applyPropsUpdate.shouldSendPropsToHost`, `ConsumerComponent.applyPropsUpdate.sendPropsUpdateToHost`, `ConsumerComponent.applyPropsUpdate.emitPropsUpdated`, `ConsumerComponent.sendPropsUpdateToHost`, `ConsumerComponent.clone`, `ConsumerComponent.resolveUrl`, `ConsumerComponent.resolveDimensions`, `ConsumerComponent.resolveUrlOrigin`, `ConsumerComponent.syncTrustedDomainForUrl`, `ConsumerComponent.createPropContext.onError`, `ConsumerComponent.resolveContainer`, `ConsumerComponent.checkEligibility`, `ConsumerComponent.prerender`, `ConsumerComponent.createIframeElement`, `ConsumerComponent.open`, `ConsumerComponent.open.assertActive`, `ConsumerComponent.open.buildUrl`, `ConsumerComponent.open.buildBodyParams`, `ConsumerComponent.open.buildWindowName`, `ConsumerComponent.open.submitBodyForm`, `ConsumerComponent.open.onPopupClose`, `ConsumerComponent.open.registerCleanup`, `ConsumerComponent.buildUrl`, `ConsumerComponent.buildBodyParams`, `ConsumerComponent.submitBodyForm`, `ConsumerComponent.buildWindowName`, `ConsumerComponent.waitForHost`, `ConsumerComponent.setupMessageHandlers`, `ConsumerComponent.setupMessageHandlers.onBootstrap`, `ConsumerComponent.setupMessageHandlers.onReconnect`, `ConsumerComponent.setupMessageHandlers.onClose`, `ConsumerComponent.setupMessageHandlers.onResize`, `ConsumerComponent.setupMessageHandlers.onFocus`, `ConsumerComponent.setupMessageHandlers.onShow`, `ConsumerComponent.setupMessageHandlers.onHide`, `ConsumerComponent.setupMessageHandlers.onError`, `ConsumerComponent.setupMessageHandlers.onExport`, `ConsumerComponent.setupMessageHandlers.onConsumerExport`, `ConsumerComponent.setupMessageHandlers.onGetSiblings`, `ConsumerComponent.setupCleanup`, `ConsumerComponent.teardownRenderResources`, `ConsumerComponent.destroy`, `ConsumerComponent.performDestroy`.
 - **M:** `ConsumerComponent.isEligible`, `ConsumerComponent.createPropContext.close`, `ConsumerComponent.createPropContext.focus`.
-- **O callbacks:** `ConsumerComponent.constructor.callback@174`, `ConsumerComponent.constructor.callback@193`, `ConsumerComponent.performRender.callback@348`, `ConsumerComponent.waitForHost.callback@899`.
-- **I callbacks:** `ConsumerComponent.constructor.callback@175`, `ConsumerComponent.constructor.callback@185`, `ConsumerComponent.constructor.callback@192`, `ConsumerComponent.performRender.callback@309`, `ConsumerComponent.prerender.callback@777`, `ConsumerComponent.prerender.callback@778`, `ConsumerComponent.prerender.callback@779`, `ConsumerComponent.setupMessageHandlers.onBootstrap.callback@940`, `ConsumerComponent.setupCleanup.callback@987`.
+- **O callbacks:** `ConsumerComponent.constructor.callback@174`, `ConsumerComponent.constructor.callback@193`, `ConsumerComponent.performRender.callback@348`, `ConsumerComponent.waitForHost.callback@925`.
+- **I callbacks:** `ConsumerComponent.constructor.callback@175`, `ConsumerComponent.constructor.callback@185`, `ConsumerComponent.constructor.callback@192`, `ConsumerComponent.performRender.callback@309`, `ConsumerComponent.prerender.callback@801`, `ConsumerComponent.prerender.callback@802`, `ConsumerComponent.prerender.callback@803`, `ConsumerComponent.setupMessageHandlers.onBootstrap.callback@966`, `ConsumerComponent.setupCleanup.callback@1013`.
 - **Retained rationale —** `ConsumerComponent.isEligible`: Schema preparation followed by one optional eligibility result is a short public adapter; extracting the result wrapper would obscure the contract.
 - **Retained rationale —** `ConsumerComponent.createPropContext.close`: The construction-time gate either records one action or calls close immediately. Keeping the two branches together exposes the synchronous behavior.
 - **Retained rationale —** `ConsumerComponent.createPropContext.focus`: The construction-time gate either records one action or calls focus immediately. Keeping the two branches together exposes the synchronous behavior.
@@ -179,34 +183,35 @@ Preparation, schema and decorator sequencing, validation, candidate construction
 Update admission checks deliverable array values after URL/origin policy and before snapshot commitment; render admission checks them before allocating resources. Arrays produced by host decorators and custom encoders are checked at delivery, after commitment, where a transport failure does not roll back the committed snapshot. [consumer-props-queue.test](../packages/forgeframe/tests/unit/consumer-props-queue.test.ts) covers the queue.
 
 - **O:** `UserNormalizationCallbackFailure.constructor`, `buildPropsSnapshot`, `ConsumerPropsPipeline.restoreSnapshot`, `ConsumerPropsPipeline.adoptNormalizedState`, `ConsumerPropsPipeline.deferFailedNormalization`, `ConsumerPropsPipeline.createSnapshot`, `ConsumerPropsPipeline.preparePropPatch`, `ConsumerPropsPipeline.commitSnapshot`.
-- **I:** `prevalidateProvidedSchemaInputs`, `validateNormalizedSchemaValues`, `ConsumerPropsPipeline.constructor`, `ConsumerPropsPipeline.ensureSchemaValidated`, `ConsumerPropsPipeline.revalidateSchemaValues`, `ConsumerPropsPipeline.buildNextProps`, `ConsumerPropsPipeline.validateDeferredSnapshot`, `ConsumerPropsPipeline.normalizePatchedSnapshot`, `ConsumerPropsPipeline.validatePatchedSnapshot`, `ConsumerPropsPipeline.normalizeInputSnapshot`, `ConsumerPropsPipeline.revalidateSchemaInputs`, `ConsumerPropsPipeline.updateProps`, `ConsumerPropsPipeline.syncCurrentPropsToHost`, `ConsumerPropsPipeline.readCurrentProps`, `ConsumerPropsPipeline.queuePropsUpdate`, `ConsumerPropsPipeline.trackPendingUpdate`.
-- **O callbacks:** `ConsumerPropsPipeline.constructor.callback@195`, `ConsumerPropsPipeline.trackPendingUpdate.callback@615`, `ConsumerPropsPipeline.trackPendingUpdate.callback@616`, `ConsumerPropsPipeline.trackPendingUpdate.callback@621`.
-- **I callbacks:** `ConsumerPropsPipeline.updateProps.callback@511`, `ConsumerPropsPipeline.syncCurrentPropsToHost.callback@564`, `ConsumerPropsPipeline.readCurrentProps.callback@580`.
+- **I:** `prevalidateProvidedSchemaInputs`, `validateNormalizedSchemaValues`, `ConsumerPropsPipeline.constructor`, `ConsumerPropsPipeline.ensureSchemaValidated`, `ConsumerPropsPipeline.revalidateSchemaValues`, `ConsumerPropsPipeline.buildNextProps`, `ConsumerPropsPipeline.validateDeferredSnapshot`, `ConsumerPropsPipeline.normalizePatchedSnapshot`, `ConsumerPropsPipeline.validatePatchedSnapshot`, `ConsumerPropsPipeline.normalizeInputSnapshot`, `ConsumerPropsPipeline.revalidateSchemaInputs`, `ConsumerPropsPipeline.updateProps`, `ConsumerPropsPipeline.readCurrentProps`, `ConsumerPropsPipeline.queuePropsUpdate`, `ConsumerPropsPipeline.trackPendingUpdate`.
+- **O callbacks:** `ConsumerPropsPipeline.constructor.callback@185`, `ConsumerPropsPipeline.trackPendingUpdate.callback@587`, `ConsumerPropsPipeline.trackPendingUpdate.callback@588`, `ConsumerPropsPipeline.trackPendingUpdate.callback@593`.
+- **I callbacks:** `ConsumerPropsPipeline.updateProps.callback@501`, `ConsumerPropsPipeline.readCurrentProps.callback@552`.
 
 Evidence: [consumer](#evidence-consumer); typecheck.
 
 ### [core/consumer/renderer.ts](../packages/forgeframe/src/core/consumer/renderer.ts)
 
-Prerender context construction, mounting, iframe/popup opening, POST submission, and teardown have named entrypoints. `completePrerender` swaps the iframe in, or removes popup loading content, after initialization while keeping the caller's mount and custom shells. POST form work is one browser operation: methods are called through the created form's prototype from the mount document, and construction and submission share a cleanup guard, so named controls cannot mask append, submit, or removal. Resource acquisition and user callbacks have synchronous cancellation checkpoints.
+Prerender context construction, mounting, iframe/popup opening, POST submission, and teardown have named entrypoints. Container resolution rejects a detached container in iframe context, and iframe opening rechecks attachment, because a detached frame has no browsing context and a POST would open an untracked window. `resize` reports `false` when the browser denies resizing a popup. `completePrerender` swaps the iframe in, or removes popup loading content, after initialization while keeping the caller's mount and custom shells. POST form work is one browser operation: methods are called through the created form's prototype from the mount document, and construction and submission share a cleanup guard, so named controls cannot mask append, submit, or removal. Resource acquisition and user callbacks have synchronous cancellation checkpoints.
 
 Loading concealment and restoration are cohesive browser-style operations owned by the renderer. `concealLoadingFrame` captures CSS and conceals the frame: eager frames use `display: none` so custom loading templates gain no extra space, while lazy frames keep their layout and temporarily clear a configured inline `display: none` so navigation can start. Its local `capture` callback performs one style read. After the loader fades, `restoreLoadingFrameStyles` restores the saved styles, and explicit visibility controls take precedence. The reveal predicate and its style-value callback are **O**: only unstyled frames whose current visibility request allows showing get the default reveal animation. Teardown discards saved styles. Prerender applies a pending explicit show once the frame exists, so controls sent before creation behave like later ones.
 
 - **O:** `ConsumerRenderer.constructor`, `ConsumerRenderer.resolveContainer`, `ConsumerRenderer.createTemplateContext`, `ConsumerRenderer.concealLoadingFrame`, `ConsumerRenderer.restoreLoadingFrameStyles`, `ConsumerRenderer.submitBodyForm`.
 - **I:** `ConsumerRenderer.prerender`, `ConsumerRenderer.createTemplateContext.close`, `ConsumerRenderer.createTemplateContext.focus`, `ConsumerRenderer.createIframeElement`, `ConsumerRenderer.open`, `ConsumerRenderer.openIframe`, `ConsumerRenderer.openPopup`, `ConsumerRenderer.completePrerender`, `ConsumerRenderer.focus`, `ConsumerRenderer.resize`, `ConsumerRenderer.show`, `ConsumerRenderer.hide`, `ConsumerRenderer.destroy`.
 - **M:** `ConsumerRenderer.mountPrerenderContent`.
-- **O callbacks:** `ConsumerRenderer.concealLoadingFrame.capture`.
-- **I callbacks:** `ConsumerRenderer.openPopup.callback@357`.
+- **O callbacks:** `ConsumerRenderer.concealLoadingFrame.capture`, `ConsumerRenderer.completePrerender.callback@388`, `ConsumerRenderer.completePrerender.callback@388.callback@391`.
+- **I callbacks:** `ConsumerRenderer.openPopup.callback@369`.
 - **Retained rationale —** `ConsumerRenderer.mountPrerenderContent`: Ownership checks, DOM attachment and cancellation assertions must stay adjacent: cancellation can occur inside DOM/template actions. This short mounting adapter makes those boundaries visible.
 
 Evidence: [render](#evidence-render); typecheck.
 
 ### [core/consumer/siblings.ts](../packages/forgeframe/src/core/consumer/siblings.ts)
 
-Index lookup supplies identities to a data-only peer selection and reference operation. Selection compares each peer's verified host origin (or, while its host loads, its opened origin, without exports), or its `peerDomains` allowance, with the requester's supplied origin; an opaque requester origin selects nothing.
+Index lookup supplies identities, and `observePeerCandidate` reads each instance's verified and opened host origins, `peerDomains`, and exports into a `PeerCandidate`. `selectSiblingInstances` is pure policy over those candidates: it compares each peer's verified host origin (or, while its host loads, its opened origin, without exports), or its `peerDomains` allowance, with the requester's supplied origin. Opaque origins never identify a peer, so an opaque requester selects nothing and a peer whose own host is opaque is never listed, even when its `peerDomains` match. `ConsumerSiblingRequest.anyConsumer` is required.
 
-- **O:** `selectSiblingInstances`.
+- **O:** `observePeerCandidate`, `selectSiblingInstances`.
 - **I:** `getSiblingInstances`.
-- **O callbacks:** `getSiblingInstances.callback@43`.
+- **O callbacks:** `getSiblingInstances.callback@62`.
+- **I callbacks:** `getSiblingInstances.callback@67`.
 
 Evidence: [consumer](#evidence-consumer); typecheck.
 
@@ -214,11 +219,14 @@ Evidence: [consumer](#evidence-consumer); typecheck.
 
 Trusted matcher construction is data-only; window/origin observation and messenger rotation are integrations. Bootstrap and INIT integrations keep explicit source and session admission and state-transition order. Control callbacks select the next protocol action, and their small response literals stay at the handler. Peer discovery sequences the index lookup and recursive serialization through a separate source-guarded relay bridge; its batch bookkeeping is cleared without retiring held snapshots, and reconnect and destroy clear relay identities.
 
+`attachHostWindow` records opened host content and starts the messenger listener, so unrendered instances add no `message` listener. A bootstrap from a new host session asks the prop bridge to reject its pending calls to that window, which the replaced document can no longer answer. An ERROR marked `initFailed` during a pending handshake is recorded instead of reported, because the host can retry on the same page: a successful INIT clears the record, and a handshake timeout reports once with the host's reason. Outside a handshake it is reported at once.
+
 A peer append commits only after the response passes native JSON encoding. If final response encoding fails, only the new registrations are rolled back; held callbacks and capacity stay available for later discoveries.
 
 - **O:** `ConsumerTransport.getHostDomain`, `ConsumerTransport.isHostConnected`, `ConsumerTransport.isHostControlSource`, `ConsumerTransport.resetHostWindow`, `collectTrustedDomains`.
-- **I:** `ConsumerTransport.constructor`, `ConsumerTransport.buildTrustedDomains`, `ConsumerTransport.syncTrustedDomainForUrl`, `ConsumerTransport.serializePropsForHost`, `ConsumerTransport.sendPropsUpdateToHost`, `ConsumerTransport.buildWindowName`, `ConsumerTransport.waitForHost`, `ConsumerTransport.setupMessageHandlers`, `ConsumerTransport.onHostControl`, `ConsumerTransport.destroy`.
-- **I callbacks:** `ConsumerTransport.constructor.callback@123`, `ConsumerTransport.setupMessageHandlers.callback@324`, `ConsumerTransport.setupMessageHandlers.callback@354`, `ConsumerTransport.setupMessageHandlers.callback@354.callback@369`, `ConsumerTransport.setupMessageHandlers.callback@354.callback@369.callback@370`, `ConsumerTransport.setupMessageHandlers.callback@380`, `ConsumerTransport.setupMessageHandlers.callback@385`, `ConsumerTransport.setupMessageHandlers.callback@390`, `ConsumerTransport.setupMessageHandlers.callback@395`, `ConsumerTransport.setupMessageHandlers.callback@400`, `ConsumerTransport.setupMessageHandlers.callback@407`, `ConsumerTransport.setupMessageHandlers.callback@416`, `ConsumerTransport.setupMessageHandlers.callback@432`, `ConsumerTransport.setupMessageHandlers.callback@439`, `ConsumerTransport.onHostControl.callback@471`.
+- **I:** `ConsumerTransport.constructor`, `ConsumerTransport.attachHostWindow`, `ConsumerTransport.buildTrustedDomains`, `ConsumerTransport.syncTrustedDomainForUrl`, `ConsumerTransport.serializePropsForHost`, `ConsumerTransport.sendPropsUpdateToHost`, `ConsumerTransport.buildWindowName`, `ConsumerTransport.waitForHost`, `ConsumerTransport.setupMessageHandlers`, `ConsumerTransport.onHostControl`, `ConsumerTransport.destroy`.
+- **O callbacks:** `ConsumerTransport.waitForHost.callback@311`.
+- **I callbacks:** `ConsumerTransport.constructor.callback@129`, `ConsumerTransport.setupMessageHandlers.callback@332`, `ConsumerTransport.setupMessageHandlers.callback@369`, `ConsumerTransport.setupMessageHandlers.callback@369.callback@385`, `ConsumerTransport.setupMessageHandlers.callback@369.callback@385.callback@386`, `ConsumerTransport.setupMessageHandlers.callback@396`, `ConsumerTransport.setupMessageHandlers.callback@401`, `ConsumerTransport.setupMessageHandlers.callback@406`, `ConsumerTransport.setupMessageHandlers.callback@411`, `ConsumerTransport.setupMessageHandlers.callback@416`, `ConsumerTransport.setupMessageHandlers.callback@423`, `ConsumerTransport.setupMessageHandlers.callback@439`, `ConsumerTransport.setupMessageHandlers.callback@455`, `ConsumerTransport.setupMessageHandlers.callback@462`, `ConsumerTransport.onHostControl.callback@494`.
 
 Evidence: [consumer](#evidence-consumer); typecheck.
 
@@ -238,12 +246,12 @@ Evidence: [host](#evidence-host); typecheck.
 
 ### [core/host/bootstrap.ts](../packages/forgeframe/src/core/host/bootstrap.ts)
 
-The singleton integration reuses and configures an existing runtime or constructs a new one, and allows a retry after failed asynchronous validation. Its ready and destruction callbacks clear only the instance they belong to. Cleanup releases the singleton before destroying resources, which prevents reentrant cleanup and lets public teardown be followed by fresh initialization from retained channel metadata.
+The singleton integration validates a supplied allowlist (empty or blank strings throw; `undefined` is the only "no allowlist" value), then reuses and configures an existing runtime or constructs a new one. A new runtime without a supplied allowlist uses the one registered for its tag (`definedConsumerAllowlist`), so a bare call cannot accept a consumer a definition refused. The integration allows a retry after failed asynchronous validation. Its ready and destruction callbacks clear only the instance they belong to. Cleanup releases the singleton before destroying resources, which prevents reentrant cleanup and lets public teardown be followed by fresh initialization from retained channel metadata.
 
 After readiness, a rejected schema replacement keeps the active runtime; initial configuration failures and consumer-domain rejection tear it down. The failure handler uses a captured runtime and checks singleton identity, so validator teardown cannot mask the schema error or clear a replacement. Successful validation makes the same identity check before asserting the domain or flushing INIT, and returns null after reentrant teardown without affecting a replacement's deferred initialization. Public integration tests cover destroy and replacement with successful and rejected validators.
 
 - **O:** `getHost`.
-- **I:** `readInitialPayload`, `initHost`, `clearHostInstance`.
+- **I:** `readInitialPayload`, `initHost`, `definedConsumerAllowlist`, `clearHostInstance`.
 - **I callbacks:** `initHost.onDestroy`, `initHost.ready.catch`.
 
 Evidence: [host](#evidence-host); typecheck.
@@ -260,11 +268,13 @@ Constructor proxies bind the host's own fields and its props and transport runti
 
 `HostComponent.destroy` sequences transport, observer, and prop cleanup before notifying its bootstrap owner. The owner callback is local to that owner, so stale or repeated destruction cannot clear a replacement host; `consumer-host-handshake.test.ts` covers this.
 
+When host schemas reject the bootstrap snapshot, `initializeFromConsumer` asks the transport to report the failure to the verified, allowed consumer before rejecting `ready`; consumer-domain rejections are not reported.
+
 `HostComponent.hasCompletedBootstrap` reads readiness state. Configuration validates the prop replacement before updating domain configuration. The constructor records legacy completion synchronously after prop validation, independently of deferred INIT delivery. The readiness fulfillment observer (`ready.then`) records messaging-bootstrap completion; its rejection callback leaves an incomplete runtime unready.
 
-- **O:** `HostComponent.hasCompletedBootstrap`, `HostComponent.constructor.ready.then`, `HostComponent.constructor.getConsumerDomain@100`, `HostComponent.constructor.getConsumerWindow`, `HostComponent.constructor.getConsumerDomain@123`, `HostComponent.constructor.isConsumerDomainVerified`, `HostComponent.constructor.getMessenger`, `HostComponent.constructor.getBridge`, `HostComponent.constructor.get@133`, `HostComponent.constructor.get@137`, `HostComponent.constructor.get@141`, `HostComponent.constructor.get@145`, `HostComponent.constructor.isConsumerSource`.
-- **I:** `HostComponent.constructor`, `HostComponent.constructor.close`, `HostComponent.constructor.focus`, `HostComponent.constructor.resize`, `HostComponent.constructor.show`, `HostComponent.constructor.hide`, `HostComponent.constructor.onError`, `HostComponent.constructor.exportData`, `HostComponent.constructor.consumerExport`, `HostComponent.constructor.getPeerInstances`, `HostComponent.constructor.onFirstHostPropsAccess`, `HostComponent.constructor.applySerializedProps`, `HostComponent.initializeFromConsumer`, `HostComponent.hostProps@207`, `HostComponent.hostProps@211`, `HostComponent.flushInit`, `HostComponent.getProps`, `HostComponent.getInitError`, `HostComponent.applyHostConfiguration`, `HostComponent.assertAllowedConsumerDomain`, `HostComponent.assertAllowedConsumerDomain.onConsumerDomainChange`, `HostComponent.destroy`.
-- **O callbacks:** `HostComponent.constructor.callback@102`, `HostComponent.constructor.callback@173`.
+- **O:** `HostComponent.hasCompletedBootstrap`, `HostComponent.constructor.ready.then`, `HostComponent.constructor.getConsumerDomain@102`, `HostComponent.constructor.getConsumerWindow`, `HostComponent.constructor.getConsumerDomain@125`, `HostComponent.constructor.isConsumerDomainVerified`, `HostComponent.constructor.getMessenger`, `HostComponent.constructor.getBridge`, `HostComponent.constructor.get@135`, `HostComponent.constructor.get@139`, `HostComponent.constructor.get@143`, `HostComponent.constructor.get@147`, `HostComponent.constructor.isConsumerSource`.
+- **I:** `HostComponent.constructor`, `HostComponent.constructor.close`, `HostComponent.constructor.focus`, `HostComponent.constructor.resize`, `HostComponent.constructor.show`, `HostComponent.constructor.hide`, `HostComponent.constructor.onError`, `HostComponent.constructor.exportData`, `HostComponent.constructor.consumerExport`, `HostComponent.constructor.getPeerInstances`, `HostComponent.constructor.onFirstHostPropsAccess`, `HostComponent.constructor.applySerializedProps`, `HostComponent.initializeFromConsumer`, `HostComponent.hostProps@215`, `HostComponent.hostProps@219`, `HostComponent.flushInit`, `HostComponent.getProps`, `HostComponent.getInitError`, `HostComponent.applyHostConfiguration`, `HostComponent.assertAllowedConsumerDomain`, `HostComponent.assertAllowedConsumerDomain.onConsumerDomainChange`, `HostComponent.destroy`.
+- **O callbacks:** `HostComponent.constructor.callback@104`, `HostComponent.constructor.callback@175`.
 
 Evidence: [host](#evidence-host); typecheck.
 
@@ -278,14 +288,14 @@ Evidence: [host](#evidence-host), [consumer-origin-policy.test](../packages/forg
 
 ### [core/host/props-runtime.ts](../packages/forgeframe/src/core/host/props-runtime.ts)
 
-Building stable built-in references is separate from consumer snapshot commitment and subscriber notification. Bootstrap schema relaxation operates on supplied data. Stale custom props are found by own-key membership, so inherited names cannot keep an old value. Subscribers run only after reconciliation; notification observes promise and thenable failures without awaiting user work, so acknowledgement and event order are unaffected.
+Building stable built-in references is separate from consumer snapshot commitment (`commitSerializedProps`) and subscriber notification (`publishProps`). An update acknowledged before a messaging bootstrap completes is committed but not published; `applyBootstrap` attaches nested children, marks the runtime initialized, and publishes the final snapshot once, so the first `onProps` call can read `hostProps.children`. Bootstrap schema relaxation operates on supplied data. Stale custom props are found by own-key membership, so inherited names cannot keep an old value. Subscribers run only after reconciliation; notification observes promise and thenable failures without awaiting user work, so acknowledgement and event order are unaffected.
 
 `HostPropsRuntime.filterConsumerOnlyProps` and its filter callback are **O** admission operations that use own-key membership and the delivered definitions; undeclared fields pass through. `deserialize` filters wire snapshots before calling the codec. `applyHostConfiguration` applies the same filter to committed props and validates the candidate against an initialized or already committed bootstrap snapshot before changing definitions or state; it then removes stale keys and reconciles both snapshots without notifying. Built-in controls and retained callbacks keep their identity. Legacy, bootstrap, and live updates use the current definitions even when an acknowledged update arrives before configuration and bootstrap complete. Consumer-only definitions are excluded from host validation, so required local inputs do not block initialization.
 
 Notification snapshots handlers with weak registration tokens. New registrations and cancel-and-register replacements wait for the next notification; cancellation or destruction skips pending delivery. Duplicate registrations keep their original token, and cancellation removes only the registration whose token it captured, so an old or duplicate handle cannot cancel a later registration of the same callback. `onProps` and its cancellation callback are **O** state operations, covered through public update delivery. The snapshot map callback is **O**. The rejection callback in `HostPropsRuntime.notifyPropsHandlers` is an **O** callback boundary: it logs one observer failure and leaves prop state alone.
 
 - **O:** `filterReservedHostPropKeys`, `HostPropsRuntime.constructor`, `HostPropsRuntime.createHostProps.getConsumer`, `HostPropsRuntime.exposeHostProps.set`, `HostPropsRuntime.commitHostProps`, `HostPropsRuntime.notifyPropsHandlers`, `HostPropsRuntime.destroy`, `HostPropsRuntime.onProps`, `HostPropsRuntime.onProps.cancel`, `HostPropsRuntime.removeStaleHostProps`, `HostPropsRuntime.filterConsumerOnlyProps`, `HostPropsRuntime.getDeliveredPropDefinitions`, `relaxSameDomainBootstrapDefinitions`.
-- **I:** `HostPropsRuntime.initializeHostProps`, `HostPropsRuntime.createHostProps`, `HostPropsRuntime.createHostProps.close`, `HostPropsRuntime.createHostProps.focus`, `HostPropsRuntime.createHostProps.resize`, `HostPropsRuntime.createHostProps.show`, `HostPropsRuntime.createHostProps.hide`, `HostPropsRuntime.createHostProps.onProps`, `HostPropsRuntime.createHostProps.onError`, `HostPropsRuntime.createHostProps.getConsumerDomain`, `HostPropsRuntime.createHostProps.export@116`, `HostPropsRuntime.createHostProps.export@119`, `HostPropsRuntime.createHostProps.getPeerInstances`, `HostPropsRuntime.exposeHostProps`, `HostPropsRuntime.exposeHostProps.get`, `HostPropsRuntime.applyHostConfiguration`, `HostPropsRuntime.applyBootstrap`, `HostPropsRuntime.applySerializedProps`, `HostPropsRuntime.deserialize`, `HostPropsRuntime.getBootstrapValidationDefinitions`, `HostPropsRuntime.buildNestedComponents`.
+- **I:** `HostPropsRuntime.initializeHostProps`, `HostPropsRuntime.createHostProps`, `HostPropsRuntime.createHostProps.close`, `HostPropsRuntime.createHostProps.focus`, `HostPropsRuntime.createHostProps.resize`, `HostPropsRuntime.createHostProps.show`, `HostPropsRuntime.createHostProps.hide`, `HostPropsRuntime.createHostProps.onProps`, `HostPropsRuntime.createHostProps.onError`, `HostPropsRuntime.createHostProps.getConsumerDomain`, `HostPropsRuntime.createHostProps.export@116`, `HostPropsRuntime.createHostProps.export@119`, `HostPropsRuntime.createHostProps.getPeerInstances`, `HostPropsRuntime.exposeHostProps`, `HostPropsRuntime.exposeHostProps.get`, `HostPropsRuntime.applyHostConfiguration`, `HostPropsRuntime.applyBootstrap`, `HostPropsRuntime.applySerializedProps`, `HostPropsRuntime.commitSerializedProps`, `HostPropsRuntime.publishProps`, `HostPropsRuntime.deserialize`, `HostPropsRuntime.getBootstrapValidationDefinitions`, `HostPropsRuntime.buildNestedComponents`.
 
 Evidence: [host](#evidence-host); typecheck.
 
@@ -300,13 +310,13 @@ Evidence: [host](#evidence-host); typecheck.
 
 ### [core/host/transport.ts](../packages/forgeframe/src/core/host/transport.ts)
 
-Outbound export batches share a FIFO queue. A serialization failure aborts new bridge registrations, a send failure keeps possibly delivered references, and acknowledged delivery retires stale IDs. The INIT workflow runs `beforeInit`, guards against destruction after its await, captures errors, and reports events. Browser focus is part of the focus integration. Peer lookup sequences a correlated response and recursive decoding through the separate peer-call bridge, so prop and export batches cannot retire relay wrappers.
+Outbound export batches share a FIFO queue. A serialization failure aborts new bridge registrations, a send failure keeps possibly delivered references, and acknowledged delivery retires stale IDs. The INIT workflow runs `beforeInit`, guards against destruction after its await, captures errors, and reports events; a rejection caused by teardown is not an initialization failure and is not logged. `reportInitFailure` sends a best-effort ERROR marked `initFailed`, whose rejection after teardown is ignored. Browser focus is part of the focus integration, which waits briefly for this window to receive the consumer's frame focus before resolving; a popup host resizes its own window before notifying the consumer, which cannot resize it across origins. Peer lookup sequences a correlated response and recursive decoding through the separate peer-call bridge, so prop and export batches cannot retire relay wrappers.
 
 - **O:** `HostTransport.getInitError`.
-- **I:** `HostTransport.constructor`, `HostTransport.registerPropsHandler`, `HostTransport.requestBootstrap`, `HostTransport.updateTrustedConsumerDomain`, `HostTransport.close`, `HostTransport.focus`, `HostTransport.resize`, `HostTransport.show`, `HostTransport.hide`, `HostTransport.onError`, `HostTransport.exportData`, `HostTransport.sendExportBatch`, `HostTransport.consumerExport`, `HostTransport.getPeerInstances`, `HostTransport.destroy`, `HostTransport.sendInit`, `HostTransport.sendMessage`.
+- **I:** `HostTransport.constructor`, `HostTransport.registerPropsHandler`, `HostTransport.requestBootstrap`, `HostTransport.updateTrustedConsumerDomain`, `HostTransport.close`, `HostTransport.focus`, `HostTransport.resize`, `HostTransport.show`, `HostTransport.hide`, `HostTransport.onError`, `HostTransport.reportInitFailure`, `HostTransport.exportData`, `HostTransport.sendExportBatch`, `HostTransport.consumerExport`, `HostTransport.getPeerInstances`, `HostTransport.destroy`, `HostTransport.sendInit`, `HostTransport.sendMessage`.
 - **M:** `HostTransport.handleHostPropsAccess`, `HostTransport.flushInit`, `HostTransport.scheduleDeferredInitFlush`.
-- **O callbacks:** `HostTransport.constructor.callback@53`, `HostTransport.exportData.callback@156`.
-- **I callbacks:** `HostTransport.registerPropsHandler.callback@69`, `HostTransport.exportData.callback@153`, `HostTransport.scheduleDeferredInitFlush.callback@229`.
+- **O callbacks:** `HostTransport.constructor.callback@57`, `HostTransport.reportInitFailure.callback@170`, `HostTransport.exportData.callback@177`.
+- **I callbacks:** `HostTransport.registerPropsHandler.callback@73`, `HostTransport.exportData.callback@174`, `HostTransport.scheduleDeferredInitFlush.callback@250`.
 - **Retained rationale —** `HostTransport.handleHostPropsAccess`: One deferred-init guard and one scheduling call keep accessor-triggered timing visible.
 - **Retained rationale —** `HostTransport.flushInit`: The idempotent guard, flag transition and launch of sendInit are a short atomic scheduling adapter.
 - **Retained rationale —** `HostTransport.scheduleDeferredInitFlush`: A small ownership guard and microtask registration belong together; splitting the flag writes would hide when another flush may be scheduled.
@@ -333,12 +343,12 @@ Evidence: [react](#evidence-react); typecheck.
 
 ### [drivers/react.ts](../packages/forgeframe/src/drivers/react.ts)
 
-Hooks are unconditional and keep their order. Hook callbacks coordinate the lifecycle and queue helpers through current refs; forwarded refs and callback refs keep their timing.
+Hooks are unconditional and keep their order. Hook callbacks coordinate the lifecycle and queue helpers through current refs. The container's ref is a callback created by `createContainerRef` and memoized per forwarded ref by `createContainerRefCache`, so a render React discards cannot replace a committed ref's callback, and React attaches and forwards the element during commit, before layout effects; a forwarded callback's React 19 cleanup replaces the `null` call on detach.
 
-- **O:** `reportReactError`.
-- **I:** `createReactComponent`, `createReactComponent.ForgeFrameComponent`, `createReactComponent.ForgeFrameComponent.isCurrent`, `createReactComponent.ForgeFrameComponent.onDriverError`, `createReactComponent.ForgeFrameComponent.drain`, `createReactComponent.ForgeFrameComponent.callback@343.onRendered`, `createReactComponent.ForgeFrameComponent.callback@343.onClose`, `withReactComponent`, `withReactComponent.createComponent`.
-- **O callbacks:** `reportReactError.callback@169`, `createReactComponent.ForgeFrameComponent.callback@337`, `createReactComponent.ForgeFrameComponent.callback@380`, `createReactComponent.ForgeFrameComponent.callback@380.callback@385`, `createReactComponent.ForgeFrameComponent.callback@380.callback@392`.
-- **I callbacks:** `createReactComponent.ForgeFrameComponent.callback@343`, `createReactComponent.ForgeFrameComponent.callback@343.callback@364`, `createReactComponent.ForgeFrameComponent.callback@370`.
+- **O:** `reportReactError`, `createContainerRefCache`, `createContainerRef`.
+- **I:** `createReactComponent`, `createReactComponent.ForgeFrameComponent`, `createReactComponent.ForgeFrameComponent.isCurrent`, `createReactComponent.ForgeFrameComponent.onDriverError`, `createReactComponent.ForgeFrameComponent.drain`, `createReactComponent.ForgeFrameComponent.callback@408.onRendered`, `createReactComponent.ForgeFrameComponent.callback@408.onClose`, `withReactComponent`, `withReactComponent.createComponent`.
+- **O callbacks:** `reportReactError.callback@226`, `createContainerRefCache.callback@168`, `createContainerRef.callback@192`, `createContainerRef.callback@192.callback@197`, `createReactComponent.ForgeFrameComponent.callback@402`.
+- **I callbacks:** `createReactComponent.ForgeFrameComponent.callback@408`, `createReactComponent.ForgeFrameComponent.callback@408.callback@429`, `createReactComponent.ForgeFrameComponent.callback@435`.
 
 Evidence: [react](#evidence-react); typecheck.
 
@@ -366,14 +376,11 @@ Evidence: [react](#evidence-react); typecheck.
 
 ### [events/emitter.ts](../packages/forgeframe/src/events/emitter.ts)
 
-Listener storage keeps a token per active registration. Emission runs each supplied observer in isolation, from a registration snapshot, in subscription order, and skips registrations removed before their turn, including by bulk removal. New or replaced registrations wait for the next emission, so a rearmed `once` observer cannot loop within one dispatch.
+Listener storage keeps one registration token per handler and event, as DOM listeners do: registering a handler again keeps the first registration, and `off(event, handler)` also cancels a pending `once`. Each returned unsubscribe function removes only the registration it created, so a stale handle cannot remove a newer registration of the same handler. Emission runs each supplied observer in isolation, from a registration snapshot, in subscription order, and skips registrations removed before their turn, including by bulk removal. A `once` registration is removed immediately before its observer runs. New or replaced registrations wait for the next emission, so a rearmed `once` observer cannot loop within one dispatch.
 
-- **O:** `EventEmitter.on`, `EventEmitter.invokeHandler`, `EventEmitter.off`, `EventEmitter.removeAllListeners`, `EventEmitter.listenerCount`.
-- **I:** `EventEmitter.once`, `EventEmitter.emit`.
-- **M:** `EventEmitter.once.onceHandler`.
-- **O callbacks:** `EventEmitter.invokeHandler.callback@143`.
-- **I callbacks:** `EventEmitter.on.callback@62`.
-- **Retained rationale —** `EventEmitter.once.onceHandler`: Unsubscribe immediately before invoking the supplied observer. This short wrapper makes reentrant once semantics explicit.
+- **O:** `EventEmitter.register`, `EventEmitter.register.callback@109`, `EventEmitter.removeRegistration`, `EventEmitter.invokeHandler`, `EventEmitter.off`, `EventEmitter.removeAllListeners`, `EventEmitter.listenerCount`.
+- **I:** `EventEmitter.on`, `EventEmitter.once`, `EventEmitter.emit`.
+- **O callbacks:** `EventEmitter.invokeHandler.callback@179`.
 
 Evidence: [contract](#evidence-contract), [emitter.test](../packages/forgeframe/tests/unit/emitter.test.ts); typecheck.
 
@@ -424,27 +431,28 @@ Evidence: [props](#evidence-props); typecheck.
 
 ### [props/prop/base.ts](../packages/forgeframe/src/props/prop/base.ts)
 
-Presence selection is separate from running default and nested validation. Callable defaults require factories, including on widened optional and nullable builders; scalar defaults are plain values. Decomposition uses free functions so the exported classes keep their members, and the immutable fluent builders below are the deliberate exceptions. Invoking a runtime schema is one validation boundary operation.
+Presence selection is separate from running default and nested validation. Callable defaults require factories, including on widened optional and nullable builders; scalar defaults are plain values, and a default removes `undefined` from the output type unless the default can be `undefined`. Refinements are `SchemaCheck` lists: `addSchemaCheck` appends without replacing earlier checks of the same kind and keeps rank order, and `findFailedSchemaCheck` reports the first failure. Decomposition uses free functions so the exported classes keep their members, and the immutable fluent builders below are the deliberate exceptions. Invoking a runtime schema is one validation boundary operation.
 
-- **O:** `testRegExpStateless`, `validateSchemaSync`, `prependIssuePath`, `getValueKind`, `formatDateForMessage`, `defineDataProperty`, `validateDateBound`, `selectSchemaPresence`, `PropSchema._getDefaultValue`, `PropSchema._copyBaseTo`, `PropSchema._copyPresenceTo`.
+- **O:** `testRegExpStateless`, `validateSchemaSync`, `prependIssuePath`, `getValueKind`, `formatDateForMessage`, `defineDataProperty`, `validateDateBound`, `addSchemaCheck`, `findFailedSchemaCheck`, `selectSchemaPresence`, `PropSchema._getDefaultValue`, `PropSchema._copyBaseTo`, `PropSchema._copyPresenceTo`.
 - **I:** `validateSchemaPresence`, `PropSchema.validate`, `PropSchema._validateInput`.
 - **M:** `PropSchema.optional`, `PropSchema.nullable`, `PropSchema.default`.
-- **I callbacks:** `prependIssuePath.callback@44`, `PropSchema._validateInput.callback@221`, `PropSchema._validateInput.callback@222`.
+- **O callbacks:** `addSchemaCheck.callback@109`, `findFailedSchemaCheck.callback@117`.
+- **I callbacks:** `prependIssuePath.callback@44`, `PropSchema._validateInput.callback@258`, `PropSchema._validateInput.callback@259`.
 - **Retained rationale —** `PropSchema.optional`, `PropSchema.nullable`, `PropSchema.default`: Immutable fluent construction stays local: clone existing schema state, set the selected constraint, return the same typed builder contract. One-line shortcuts retain the fluent vocabulary; an extra wrapper would add indirection.
 
 Evidence: [props](#evidence-props); typecheck.
 
 ### [props/prop/composite.ts](../packages/forgeframe/src/props/prop/composite.ts)
 
-Outer shape and length constraints and strict-key selection are separate from nested schema traversal. Child validation reads own field values and passes omitted fields to presence and default handling as `undefined`. Issue-path accumulation and result assembly are cohesive algorithms. Exported classes keep their members and inference.
+Outer shape and length constraints and strict-key selection are separate from nested schema traversal. Array length refinements accumulate as checks, including across `of()`. Child validation reads own field values and passes omitted fields to presence and default handling as `undefined`. Issue-path accumulation and result assembly are cohesive algorithms. Exported classes keep their members and inference.
 
 `TupleSchema.constructor` copies indexed positions without calling the caller's array iterator. `ObjectSchema.shape` copies own shape entries within its local clone/set/return construction. Caller mutations cannot change these definitions or their presence clones.
 
 - **O:** `TupleSchema.constructor`, `RecordSchema.constructor`, `validateArrayItems`, `validateTupleItems`, `findUnknownObjectKey`, `validateObjectFields`, `validateRecordEntries`, `checkArrayConstraints`, `checkTupleConstraints`, `checkRecordInput`.
 - **I:** `ArraySchema._validate`, `TupleSchema._validate`, `ObjectSchema._validate`, `RecordSchema._validate`.
-- **M:** `ArraySchema._clone`, `ArraySchema.of`, `ArraySchema.min`, `ArraySchema.max`, `ArraySchema.nonempty`, `TupleSchema._clone`, `ObjectSchema._clone`, `ObjectSchema.shape`, `ObjectSchema.strict`, `RecordSchema._clone`.
-- **O callbacks:** `findUnknownObjectKey.callback@379`.
-- **Retained rationale —** `ArraySchema._clone`, `ArraySchema.of`, `ArraySchema.min`, `ArraySchema.max`, `ArraySchema.nonempty`, `TupleSchema._clone`, `ObjectSchema._clone`, `ObjectSchema.shape`, `ObjectSchema.strict`, `RecordSchema._clone`: Immutable fluent construction stays local: clone existing schema state, set the selected constraint, return the same typed builder contract. One-line shortcuts retain the fluent vocabulary; an extra wrapper would add indirection.
+- **M:** `ArraySchema._clone`, `ArraySchema.of`, `ArraySchema._withCheck`, `ArraySchema.min`, `ArraySchema.max`, `ArraySchema.nonempty`, `TupleSchema._clone`, `ObjectSchema._clone`, `ObjectSchema.shape`, `ObjectSchema.strict`, `RecordSchema._clone`.
+- **O callbacks:** `ArraySchema.min.test`, `ArraySchema.max.test`, `findUnknownObjectKey.callback@389`.
+- **Retained rationale —** `ArraySchema._clone`, `ArraySchema.of`, `ArraySchema._withCheck`, `ArraySchema.min`, `ArraySchema.max`, `ArraySchema.nonempty`, `TupleSchema._clone`, `ObjectSchema._clone`, `ObjectSchema.shape`, `ObjectSchema.strict`, `RecordSchema._clone`: Immutable fluent construction stays local: clone existing schema state, set the selected constraint, return the same typed builder contract. One-line shortcuts retain the fluent vocabulary; an extra wrapper would add indirection.
 
 Evidence: [props](#evidence-props); typecheck.
 
@@ -475,14 +483,15 @@ Evidence: [props](#evidence-props); typecheck.
 
 ### [props/prop/primitives.ts](../packages/forgeframe/src/props/prop/primitives.ts)
 
-Scalar validation is cohesive: string trimming and constraints, number bounds and integer checks, and `Date` bounds are algorithms, not workflows. Builder exceptions keep clone/set/return local. Callback default validation sequences one factory evaluation and the result's validation, keeping optional/nullable presence without invoking the returned callback.
+Scalar validation is cohesive: string trimming and constraints, number bounds and integer checks, and `Date` bounds are algorithms, not workflows. Each refinement adds a check instead of overwriting a shared slot, so `.email().pattern()` and `.min(10).positive()` apply both rules. String checks run lengths, then URL syntax, then patterns; number checks run integer, then lower, then upper bounds. Messages name the failed rule, such as `Expected number, got NaN` and `Number must be > 0`. Builder exceptions keep clone/set/return local. Callback default validation sequences one factory evaluation and the result's validation, keeping optional/nullable presence without invoking the returned callback.
 
 Number validation rejects nonfinite values before JSON transport can turn them into `null`. `isHttpUrl` parses absolute HTTP(S) URL syntax. String clones carry this constraint independently of regex patterns, and validation returns the input unchanged.
 
 - **O:** `isHttpUrl`, `StringSchema._validate`, `NumberSchema._validate`, `DateSchema._validate`, `BooleanSchema._validate`, `FunctionSchema._validate`, `AnySchema.constructor`, `AnySchema._validate`.
 - **I:** `FunctionSchema._validateInput`.
-- **M:** `StringSchema._clone`, `StringSchema.min`, `StringSchema.max`, `StringSchema.length`, `StringSchema.pattern`, `StringSchema.email`, `StringSchema.url`, `StringSchema.uuid`, `StringSchema.trim`, `StringSchema.nonempty`, `NumberSchema._clone`, `NumberSchema.min`, `NumberSchema.max`, `NumberSchema.int`, `NumberSchema.positive`, `NumberSchema.nonnegative`, `NumberSchema.negative`, `DateSchema._clone`, `DateSchema.min`, `DateSchema.max`, `BooleanSchema._clone`, `FunctionSchema._clone`, `AnySchema._clone`.
-- **Retained rationale —** `StringSchema._clone`, `StringSchema.min`, `StringSchema.max`, `StringSchema.length`, `StringSchema.pattern`, `StringSchema.email`, `StringSchema.url`, `StringSchema.uuid`, `StringSchema.trim`, `StringSchema.nonempty`, `NumberSchema._clone`, `NumberSchema.min`, `NumberSchema.max`, `NumberSchema.int`, `NumberSchema.positive`, `NumberSchema.nonnegative`, `NumberSchema.negative`, `DateSchema._clone`, `DateSchema.min`, `DateSchema.max`, `BooleanSchema._clone`, `FunctionSchema._clone`, `AnySchema._clone`: Immutable fluent construction stays local: clone existing schema state, set the selected constraint, return the same typed builder contract. One-line shortcuts retain the fluent vocabulary; an extra wrapper would add indirection.
+- **M:** `StringSchema._clone`, `StringSchema._withCheck`, `StringSchema.min`, `StringSchema.max`, `StringSchema.length`, `StringSchema.pattern`, `StringSchema.email`, `StringSchema.url`, `StringSchema.uuid`, `StringSchema.trim`, `StringSchema.nonempty`, `NumberSchema._clone`, `NumberSchema._withCheck`, `NumberSchema.min`, `NumberSchema.max`, `NumberSchema.int`, `NumberSchema.positive`, `NumberSchema.nonnegative`, `NumberSchema.negative`, `DateSchema._clone`, `DateSchema._withCheck`, `DateSchema.min`, `DateSchema.max`, `BooleanSchema._clone`, `FunctionSchema._clone`, `AnySchema._clone`.
+- **O callbacks:** `StringSchema.min.test`, `StringSchema.max.test`, `StringSchema.pattern.test`, `NumberSchema.min.test`, `NumberSchema.max.test`, `NumberSchema.positive.test`, `NumberSchema.negative.test`, `DateSchema.min.test`, `DateSchema.max.test`.
+- **Retained rationale —** `StringSchema._clone`, `StringSchema._withCheck`, `StringSchema.min`, `StringSchema.max`, `StringSchema.length`, `StringSchema.pattern`, `StringSchema.email`, `StringSchema.url`, `StringSchema.uuid`, `StringSchema.trim`, `StringSchema.nonempty`, `NumberSchema._clone`, `NumberSchema._withCheck`, `NumberSchema.min`, `NumberSchema.max`, `NumberSchema.int`, `NumberSchema.positive`, `NumberSchema.nonnegative`, `NumberSchema.negative`, `DateSchema._clone`, `DateSchema._withCheck`, `DateSchema.min`, `DateSchema.max`, `BooleanSchema._clone`, `FunctionSchema._clone`, `AnySchema._clone`: Immutable fluent construction stays local: clone existing schema state, set the selected constraint, return the same typed builder contract. One-line shortcuts retain the fluent vocabulary; an extra wrapper would add indirection.
 
 Evidence: [props](#evidence-props); typecheck.
 
@@ -529,7 +538,7 @@ Reserved attributes are checked before element creation. Style and attribute dec
 - **M:** `createPrerenderIframe`, `applyDimensions`, `applyDefaultSandbox`.
 - **Retained rationale —** `createPrerenderIframe`: One browser action constructs, sizes and mounts the inert placeholder. The dimension adapter is the only package call; another workflow layer would hide the synchronous setup.
 - **Retained rationale —** `applyDimensions`: Two supplied-value guards next to CSS writes preserve partial resize behavior; the reusable conversion already lives in utils/dimension.ts.
-- **Retained rationale —** `applyDefaultSandbox`: One supplied sandbox-presence guard and one DOM write express the whole default policy. Keep explicit empty sandbox distinct from omission.
+- **Retained rationale —** `applyDefaultSandbox`: One sandbox-presence guard and one DOM write express the whole default policy. The guard reads the attribute the element actually has, so HTML's case folding (`Sandbox`) and values that write nothing (`false`) are handled once, where the attributes were applied. Keep explicit empty sandbox distinct from omission.
 
 Evidence: [render](#evidence-render); typecheck.
 
@@ -549,7 +558,7 @@ Evidence: [render](#evidence-render), [popup-layout.test](../packages/forgeframe
 
 ### [render/popup.ts](../packages/forgeframe/src/render/popup.ts)
 
-Opening coordinates geometry with the browser action. Polling is one timer resource with a supplied `onClose` callback; its cancellation closure only clears the owned timer.
+Opening coordinates geometry with the browser action. `resizePopup` reports `false` when the browser denies access to another origin's window. Polling is one timer resource with a supplied `onClose` callback; its cancellation closure only clears the owned timer.
 
 - **O:** `PopupOpenError.constructor`, `closePopup`, `focusPopup`, `isPopupBlocked`, `watchPopupClose`, `watchPopupClose.invokeCallback`, `watchPopupClose.check`, `resizePopup`.
 - **I:** `openPopup`.
@@ -633,10 +642,10 @@ Evidence: [utilities](#evidence-utilities), [dimension.test](../packages/forgefr
 
 ### [utils/domain-pattern.ts](../packages/forgeframe/src/utils/domain-pattern.ts)
 
-Wildcard compilation and stateless regex testing are cohesive algorithms. Keep the compile cache and the `lastIndex` protection.
+Wildcard compilation and stateless regex testing are cohesive algorithms. Keep the compile cache and the `lastIndex` protection. `assertDomainMatcher` rejects configured matchers that would silently disable or widen an origin policy: values other than non-empty strings, `RegExp`s, or arrays of them. An empty array is valid and matches nothing.
 
-- **O:** `escapeRegExp`, `compileWildcardDomainPattern`, `testDomainRegExpStateless`.
-- **O callbacks:** `compileWildcardDomainPattern.callback@41`.
+- **O:** `escapeRegExp`, `compileWildcardDomainPattern`, `testDomainRegExpStateless`, `assertDomainMatcher`, `assertDomainMatcher.isPattern`.
+- **O callbacks:** `compileWildcardDomainPattern.callback@43`.
 
 Evidence: [utilities](#evidence-utilities); typecheck.
 
@@ -654,12 +663,20 @@ Evidence: [error.test](../packages/forgeframe/tests/unit/error.test.ts), [messag
 
 Evidence: [utilities](#evidence-utilities); typecheck.
 
+### [utils/origin.ts](../packages/forgeframe/src/utils/origin.ts)
+
+Origins are serialized strings: the JavaScript `null` means no origin is known yet, and the string `"null"` is the serialization every opaque origin shares. `isOpaqueOrigin` is the one check for the second meaning; messenger trust and peer selection use it so `"null"` never identifies a peer.
+
+- **O:** `isOpaqueOrigin`.
+
+Evidence: [messaging](#evidence-messaging), [consumer](#evidence-consumer); typecheck.
+
 ### [utils/promise.ts](../packages/forgeframe/src/utils/promise.ts)
 
 Deferred creation and timeout wrapping are cohesive platform operations. Executor, timer, and completion callbacks claim resolver references or settle the owned promise; there is no domain workflow.
 
 - **O:** `createDeferred`, `promiseTimeout`.
-- **O callbacks:** `createDeferred.callback@48`, `promiseTimeout.callback@92`, `promiseTimeout.callback@92.callback@93`, `promiseTimeout.callback@92.callback@98`, `promiseTimeout.callback@92.callback@102`.
+- **O callbacks:** `createDeferred.callback@48`, `promiseTimeout.callback@92`, `promiseTimeout.callback@92.callback@93`, `promiseTimeout.callback@92.callback@99`, `promiseTimeout.callback@92.callback@103`.
 
 Evidence: [utilities](#evidence-utilities); typecheck.
 
@@ -693,9 +710,9 @@ Evidence: [utilities](#evidence-utilities), [url.test](../packages/forgeframe/te
 
 The serialization-local `captureReads` proxy records native property reads only after a replacer returns its traversal value, keeping child encoder receivers and conversion order. `Date` framing uses that captured input and the converted JSON value without rerunning getters or encoders, and ignores extra instance fields. `unboxJsonPrimitive` unboxes primitive wrappers with a local dummy encoder and an empty native JSON property list, avoiding exception-driven probes of ordinary records. It reuses the conversion so coercion hooks run once, and reads no ordinary fields, branding getters, or proxy prototype metadata. Arrays bypass the probe to keep traversal and `Date` capture. Native raw JSON objects, detected with `JSON.isRawJSON` when available, bypass proxy wrapping and keep their branding and primitive output, including values from another realm. BASE64 and DOTIFY custom-encoder round trips exercise this boundary.
 
-`assertDefinedArrayEntries` checks normalized container values with cycle-safe traversal and without calling custom JSON encoders. `assertDefinedArrayEntry` also guards bridge arrays, including holes, and prop-codec replacer values before JSON can turn them into `null`. `hasJsonEncoder` inspects descriptors without invoking computed properties, and a non-callable `toJSON` field is ordinary data. BASE64 branches that carry encoders are deferred to the replacer; `isDotifyObjectBranch` mirrors DOTIFY traversal so only its encoded leaves may defer. Top-level arrays and marker-shaped records use the same JSON bridge fallback during admission and serialization.
+`assertDefinedArrayEntries` checks normalized container values with cycle-safe traversal and without calling custom JSON encoders. `assertDefinedArrayEntry` also guards bridge arrays, including holes, and prop-codec replacer values before JSON can turn them into `null`. `hasJsonEncoder` inspects descriptors without invoking computed properties, and a non-callable `toJSON` field is ordinary data. `toJsonValue` applies one native JSON conversion (a callable `toJSON(key)`, then unboxing) for the JSON bridge. `convertsThroughJsonEncoder` mirrors which values each codec converts: BASE64 converts every value, the JSON bridge converts non-array objects, and DOTIFY converts only leaves. Values that convert are deferred to delivery checks; `isDotifyObjectBranch` mirrors DOTIFY traversal so only its encoded leaves may defer. Top-level arrays and marker-shaped records use the same JSON bridge fallback during admission and serialization.
 
-- **O:** `unboxJsonPrimitive`, `needsRecordEscape`, `escapeWireRecord`, `isRecordWireValue`, `assertDefinedArrayEntry`, `assertDefinedArrayEntries`, `hasJsonEncoder`, `isDotifyObjectBranch`, `isObjectRecord`, `hasOwnKey`, `encodeDateWireValue`, `isDateWireValue`, `decodeDateWireValue`, `stringifyWireValue`, `escapeConvertedRecords`, `stringifyWireValue.wireValueReplacer`, `parseWireValue`.
+- **O:** `toJsonValue`, `unboxJsonPrimitive`, `convertsThroughJsonEncoder`, `needsRecordEscape`, `escapeWireRecord`, `isRecordWireValue`, `assertDefinedArrayEntry`, `assertDefinedArrayEntries`, `hasJsonEncoder`, `isDotifyObjectBranch`, `isObjectRecord`, `hasOwnKey`, `encodeDateWireValue`, `isDateWireValue`, `decodeDateWireValue`, `stringifyWireValue`, `escapeConvertedRecords`, `stringifyWireValue.wireValueReplacer`, `parseWireValue`.
 - **O callbacks:** `unboxJsonPrimitive.toJSON`, `stringifyWireValue.captureReads`, `stringifyWireValue.captureReads.get`, `parseWireValue` reviver; both `escapeConvertedRecords` mapping callbacks.
 
 Evidence: [utilities](#evidence-utilities); typecheck.
@@ -704,8 +721,8 @@ Evidence: [utilities](#evidence-utilities); typecheck.
 
 Browser observations, defensive traversal, and window actions are operations. Recursive and iterative ancestry and domain matching are cohesive algorithms; security exceptions are part of their browser boundary.
 
-- **O:** `getDomain`, `isSameDomain`, `matchDomain`, `isWindowClosed`, `getOpener`, `getConsumer`, `getTop`, `isIframe`, `isPopup`, `getAncestor`, `getDistanceToConsumer`, `focusWindow`, `closeWindow`, `getFrames`.
-- **O callbacks:** `matchDomain.callback@116`.
+- **O:** `getDomain`, `isSameDomain`, `matchDomain`, `isWindowClosed`, `getOpener`, `getConsumer`, `getTop`, `isIframe`, `isPopup`, `getAncestor`, `getDistanceToConsumer`, `focusWindow`, `closeWindow`, `getFrames`, `waitForWindowFocus`.
+- **O callbacks:** `matchDomain.callback@116`, `waitForWindowFocus.callback@483`, `waitForWindowFocus.callback@483.done`.
 
 Evidence: [utilities](#evidence-utilities); typecheck.
 
@@ -717,10 +734,10 @@ Evidence: [utilities](#evidence-utilities); typecheck.
 
 ### [window/name-payload.ts](../packages/forgeframe/src/window/name-payload.ts)
 
-Payload shape, framing, and validation are separate from mutating the browser window name. Keeping channel-only metadata is a data operation; consuming the payload coordinates the destructive read with reconnect identity.
+Payload shape, framing, and validation are separate from mutating the browser window name. Reading a window name that throws yields no payload. Keeping channel-only metadata is a data operation; consuming the payload coordinates the destructive read with reconnect identity.
 
-- **O:** `buildWindowName`, `parseWindowName`, `isObjectRecord`, `isValidSerializedProps`, `isValidConsumerExports`, `isValidHostComponentRef`, `isValidChildrenMap`, `isValidWindowNamePayload`, `isForgeFrameWindow`, `isHostOfComponent`, `encodePayload`, `decodePayload`, `createWindowPayload`, `retainChannelMetadata`.
-- **I:** `updateWindowName`, `getInitialPayload`, `consumeInitialPayload`, `clearInitialPayload`.
+- **O:** `buildWindowName`, `parseWindowName`, `isObjectRecord`, `isValidSerializedProps`, `isValidConsumerExports`, `isValidHostComponentRef`, `isValidChildrenMap`, `isValidWindowNamePayload`, `isForgeFrameWindow`, `encodePayload`, `decodePayload`, `createWindowPayload`, `retainChannelMetadata`.
+- **I:** `updateWindowName`, `isHostOfComponent`, `getInitialPayload`, `consumeInitialPayload`, `clearInitialPayload`.
 - **O callbacks:** `isValidConsumerExports.callback@111`, `isValidChildrenMap.callback@169`.
 
 Evidence: [utilities](#evidence-utilities); typecheck.

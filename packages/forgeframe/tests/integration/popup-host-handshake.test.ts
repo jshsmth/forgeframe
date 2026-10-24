@@ -5,7 +5,7 @@
  * through the real popup messaging pipeline.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { create, PopupOpenError, prop } from "@/index";
+import { create, EVENT, PopupOpenError, prop } from "@/index";
 import type { PropsDefinition } from "@/types";
 import {
 	createPopupIntegrationHarness,
@@ -72,6 +72,71 @@ describe("Popup host handshake integration", () => {
 		await harness.withHostGlobalsAsync(() => hostProps.export({ ready: true }));
 
 		expect(instance.exports).toEqual({ ready: true });
+	});
+
+	it("resizes a cross-origin popup from the host and rejects consumer-initiated resizing", async () => {
+		harness = createPopupIntegrationHarness();
+		const activeHarness = harness;
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+		const PopupComponent = create<PopupProps>({
+			tag: "integration-popup-resize-component",
+			url: "https://host.example.com/widget",
+			props: POPUP_PROP_DEFINITIONS,
+		});
+		const instance = PopupComponent({ amount: 1, message: "resize" });
+		const renderPromise = instance.render(container, "popup");
+		const { hostProps } = await activeHarness.bootstrapPopupHost(
+			POPUP_PROP_DEFINITIONS,
+		);
+		await renderPromise;
+
+		// Only the popup's own document may resize it; other origins get a SecurityError.
+		const hostResizes: Array<[number, number]> = [];
+		let deniedAccesses = 0;
+		const fromHost = () => globalThis.window === activeHarness.hostWindow;
+		const denyOtherOrigins = <T>(read: () => T) => {
+			if (!fromHost()) {
+				deniedAccesses++;
+				throw new DOMException("Blocked cross-origin access", "SecurityError");
+			}
+			return read();
+		};
+		Object.defineProperties(activeHarness.hostWindow, {
+			outerWidth: {
+				configurable: true,
+				get: () => denyOtherOrigins(() => 500),
+			},
+			outerHeight: {
+				configurable: true,
+				get: () => denyOtherOrigins(() => 500),
+			},
+			resizeTo: {
+				configurable: true,
+				value: (width: number, height: number) =>
+					denyOtherOrigins(() => hostResizes.push([width, height])),
+			},
+		});
+		const resized = vi.fn();
+		instance.event.on(EVENT.RESIZE, resized);
+
+		await expect(instance.resize({ width: 600, height: 400 })).rejects.toThrow(
+			'Cannot resize the popup for component "integration-popup-resize-component"',
+		);
+		expect(resized).not.toHaveBeenCalled();
+
+		// Start the host call with host globals only; the consumer then handles RESIZE.
+		const deniedBeforeHostResize = deniedAccesses;
+		await activeHarness.withHostGlobals(() =>
+			hostProps.resize({ width: 640, height: 480 }),
+		);
+		expect(hostResizes).toEqual([[640, 480]]);
+		// The consumer does not retry a resize the host already applied.
+		expect(deniedAccesses).toBe(deniedBeforeHostResize);
+		expect(resized).toHaveBeenCalledExactlyOnceWith({
+			width: 640,
+			height: 480,
+		});
 	});
 
 	it("should remove popup loading artifacts and close the popup after initialization fails", async () => {

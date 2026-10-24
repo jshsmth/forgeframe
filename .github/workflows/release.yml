@@ -7,11 +7,17 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  github-release:
+  publish:
     runs-on: ubuntu-latest
+
+    permissions:
+      # Create the GitHub release.
+      contents: write
+      # Authenticate to npm through trusted publishing and sign provenance.
+      id-token: write
 
     steps:
       - name: Checkout repository
@@ -23,15 +29,26 @@ jobs:
           node-version: 24
           check-latest: true
           cache: npm
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Validate release tag matches package version
         run: node packages/forgeframe/scripts/check-release-tag.mjs
 
+      - name: Use an npm version that supports trusted publishing
+        run: npm install -g npm@^11.5.1
+
       - name: Install dependencies
         run: npm ci
 
-      - name: Validate release
-        run: npm run release:check
+      - name: Install browser engines
+        run: npx playwright install --with-deps chromium firefox webkit
+
+      - name: Run browser suite
+        run: npm run test:browser
+
+      # prepublishOnly runs `npm run release:check` before anything is uploaded.
+      - name: Publish to npm with provenance
+        run: npm publish -w forgeframe --provenance
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2

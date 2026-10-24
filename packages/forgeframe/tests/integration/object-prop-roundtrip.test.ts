@@ -250,3 +250,121 @@ describe("Ordinary object prop round trips", () => {
 		);
 	});
 });
+
+describe("JSON encoder conversion", () => {
+	let harness: IframeIntegrationHarness | null = null;
+
+	afterEach(async () => {
+		await harness?.cleanup();
+		harness = null;
+	});
+
+	class Session {
+		constructor(
+			readonly userId: string,
+			readonly refreshToken: string,
+		) {}
+		toJSON(key: string) {
+			keys.push(key);
+			return { userId: this.userId };
+		}
+	}
+	const keys: string[] = [];
+
+	// DOTIFY walks a root's own fields by design and converts only its leaves.
+	it.each([PROP_SERIALIZATION.JSON, PROP_SERIALIZATION.BASE64])(
+		"delivers only toJSON() output for class instances in %s props at bootstrap and update",
+		async (serialization) => {
+			harness = createIframeIntegrationHarness();
+			keys.length = 0;
+			const container = document.createElement("div");
+			document.body.append(container);
+			const definitions = {
+				session: { schema: prop.any(), serialization },
+				nested: { schema: prop.any(), serialization },
+			};
+			const Component = create({
+				tag: `tojson-class-${serialization}`,
+				url: "https://host.example.com/widget",
+				props: definitions,
+			});
+			const instance = Component({
+				session: new Session("user-1", "secret-1"),
+				nested: { session: new Session("user-2", "secret-2") },
+			});
+			const rendering = instance.render(container);
+			const { hostProps } = await harness.bootstrapIframeHost(
+				container,
+				definitions,
+			);
+			await rendering;
+
+			expect(hostProps.session).toEqual({ userId: "user-1" });
+			expect(hostProps.nested).toEqual({ session: { userId: "user-2" } });
+			expect(keys).toEqual(["", "session"]);
+
+			await instance.updateProps({
+				session: new Session("user-3", "secret-3"),
+			});
+			expect(hostProps.session).toEqual({ userId: "user-3" });
+			expect(JSON.stringify(hostProps)).not.toContain("secret");
+		},
+	);
+
+	it("converts URLs and boxed primitives in JSON props as native JSON does", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const definitions = {
+			link: prop.any(),
+			values: prop.any(),
+		};
+		const Component = create({
+			tag: "tojson-native-values",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const instance = Component({
+			link: new URL("https://example.com/path?q=1"),
+			values: {
+				text: new String("ab"),
+				count: new Number(2),
+				flag: new Boolean(false),
+				items: [new String("c")],
+			},
+		});
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			definitions,
+		);
+		await rendering;
+
+		expect(hostProps.link).toBe("https://example.com/path?q=1");
+		expect(hostProps.values).toEqual({
+			text: "ab",
+			count: 2,
+			flag: false,
+			items: ["c"],
+		});
+	});
+
+	it("delivers only toJSON() output for class instances in host exports", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const Component = create({
+			tag: "tojson-host-export",
+			url: "https://host.example.com/widget",
+		});
+		const instance = Component();
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(container);
+		await rendering;
+
+		await harness.withHostGlobalsAsync(() =>
+			hostProps.export({ session: new Session("user-4", "secret-4") }),
+		);
+		expect(instance.exports).toEqual({ session: { userId: "user-4" } });
+	});
+});

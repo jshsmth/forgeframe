@@ -17,6 +17,7 @@ import {
 	escapeWireRecord,
 	isDateWireValue,
 	isRecordWireValue,
+	toJsonValue,
 } from "../utils/wire-value";
 import type { MessageHandler, Messenger } from "./messenger";
 import type { FunctionRef } from "./types";
@@ -61,7 +62,10 @@ function isSafeObjectKey(key: string): boolean {
  *
  * @example
  * ```typescript
- * const bridge = new FunctionBridge(messenger);
+ * const bridge = new FunctionBridge(
+ *   messenger,
+ *   (source) => source.window === hostWindow && source.domain === hostOrigin,
+ * );
  *
  * // Serialize a local function
  * const ref = bridge.serialize(() => console.log('Hello'));
@@ -97,14 +101,15 @@ export class FunctionBridge {
 	 * Creates a new FunctionBridge instance.
 	 *
 	 * @param messenger - The messenger to use for cross-domain calls
-	 * @param isExpectedSource - Admits browser-verified callers for this bridge.
+	 * @param isExpectedSource - Admits browser-verified callers for this bridge;
+	 * there is no permissive default.
 	 * @param callMessageName - Internal call channel, separating peer relays from prop/export batches.
 	 */
 	constructor(
 		private messenger: Messenger,
 		private isExpectedSource: (
 			source: Parameters<MessageHandler>[1],
-		) => boolean = () => true,
+		) => boolean,
 		private callMessageName: string = MESSAGE_NAME.CALL,
 	) {
 		this.setupCallHandler();
@@ -219,16 +224,23 @@ export class FunctionBridge {
 		if (oldestKey) this.remoteFunctions.delete(oldestKey);
 	}
 
+	/**
+	 * Remote calls have no timeout: the callback may still be running in the
+	 * other window, so they settle with its result or reject on teardown.
+	 */
 	private createRemoteWrapper(
 		ref: FunctionRef,
 		targetWin: Window,
 		targetDomain: string,
 	): CallableFunction {
 		const wrapper = async (...args: unknown[]): Promise<unknown> =>
-			this.messenger.send(targetWin, targetDomain, this.callMessageName, {
-				id: ref.__id__,
-				args,
-			});
+			this.messenger.send(
+				targetWin,
+				targetDomain,
+				this.callMessageName,
+				{ id: ref.__id__, args },
+				null,
+			);
 		Object.defineProperty(wrapper, "name", {
 			value: ref.__name__,
 			configurable: true,
@@ -361,6 +373,17 @@ export class FunctionBridge {
 	}
 
 	/**
+	 * Rejects this bridge's in-flight calls to a window whose document was
+	 * replaced. Remote calls have no timeout, so they would otherwise never settle.
+	 *
+	 * @param targetWin - The window the calls were sent to
+	 * @param error - The rejection reason
+	 */
+	rejectRemoteCalls(targetWin: Window, error: Error): void {
+		this.messenger.rejectPending(this.callMessageName, targetWin, error);
+	}
+
+	/**
 	 * Clears all remote function references.
 	 *
 	 * @remarks
@@ -399,9 +422,15 @@ export class FunctionBridge {
 /**
  * Recursively serializes all functions in an object.
  *
+ * @remarks
+ * Objects other than arrays and dates convert through `toJSON(key)` and
+ * primitive-wrapper unboxing once, as native JSON does. Arrays encode their
+ * indexed entries without calling caller-controlled methods.
+ *
  * @param obj - The object to process
  * @param bridge - The function bridge to use for serialization
- * @param seen - Internal set for cycle detection (do not pass manually)
+ * @param stack - Internal set for cycle detection (do not pass manually)
+ * @param key - Property name passed to `toJSON()`; the root uses `""`
  * @returns A new object with all functions replaced by references
  *
  * @public
@@ -410,60 +439,113 @@ export function serializeFunctions(
 	obj: unknown,
 	bridge: FunctionBridge,
 	stack: WeakSet<object> = new WeakSet(),
+	key = "",
 ): unknown {
-	if (typeof obj === "function") {
-		return bridge.serialize(obj as CallableFunction);
+	// Arrays keep their captured indexed entries and dates keep their framing;
+	// other objects convert like JSON before encoding.
+	if (
+		typeof obj !== "object" ||
+		obj === null ||
+		Array.isArray(obj) ||
+		isDate(obj)
+	) {
+		return serializeConvertedValue(obj, bridge, stack);
 	}
-
-	if (isDate(obj)) {
-		return encodeDateWireValue(obj);
+	const converted = toJsonValue(obj, key);
+	if (converted === obj) return serializeRecord(obj, bridge, stack);
+	// Keep the source on the stack, so a toJSON() result that contains it is a cycle.
+	enterStack(obj, stack, CIRCULAR_OBJECT_ERROR);
+	try {
+		return serializeConvertedValue(converted, bridge, stack);
+	} finally {
+		stack.delete(obj);
 	}
+}
 
-	if (Array.isArray(obj)) {
-		if (stack.has(obj)) {
-			throw new Error(
-				"Circular reference detected in props - arrays cannot contain circular references",
+const CIRCULAR_ARRAY_ERROR =
+	"Circular reference detected in props - arrays cannot contain circular references";
+const CIRCULAR_OBJECT_ERROR =
+	"Circular reference detected in props - objects cannot contain circular references";
+
+/** Adds a container to the traversal stack, rejecting one that is already on it. */
+function enterStack(
+	value: object,
+	stack: WeakSet<object>,
+	error: string,
+): void {
+	if (stack.has(value)) throw new Error(error);
+	stack.add(value);
+}
+
+/**
+ * Serializes a value that has already passed native JSON conversion.
+ * Nested values still convert through {@link serializeFunctions}.
+ */
+function serializeConvertedValue(
+	value: unknown,
+	bridge: FunctionBridge,
+	stack: WeakSet<object>,
+): unknown {
+	if (typeof value === "function") {
+		return bridge.serialize(value as CallableFunction);
+	}
+	if (typeof value !== "object" || value === null) return value;
+	// Arrays are checked first: they never carry the Date brand.
+	if (Array.isArray(value)) return serializeArray(value, bridge, stack);
+	if (isDate(value)) return encodeDateWireValue(value);
+	return serializeRecord(value, bridge, stack);
+}
+
+/** Captures indexed entries once, then encodes them, rejecting undefined entries. */
+function serializeArray(
+	value: unknown[],
+	bridge: FunctionBridge,
+	stack: WeakSet<object>,
+): unknown[] {
+	enterStack(value, stack, CIRCULAR_ARRAY_ERROR);
+	try {
+		const entries: unknown[] = [];
+		const length = value.length;
+		for (let index = 0; index < length; index++) {
+			const entry = value[index];
+			assertDefinedArrayEntry(entry, [String(index)]);
+			entries.push(entry);
+		}
+		const result: unknown[] = [];
+		for (let index = 0; index < entries.length; index++) {
+			const encoded = serializeFunctions(
+				entries[index],
+				bridge,
+				stack,
+				String(index),
 			);
+			// toJSON() can return undefined, which JSON would turn into null.
+			assertDefinedArrayEntry(encoded, [String(index)]);
+			result.push(encoded);
 		}
-		stack.add(obj);
-		try {
-			const entries: unknown[] = [];
-			const length = obj.length;
-			for (let index = 0; index < length; index++) {
-				const entry = obj[index];
-				assertDefinedArrayEntry(entry, [String(index)]);
-				entries.push(entry);
-			}
-			const result: unknown[] = [];
-			for (const entry of entries) {
-				result.push(serializeFunctions(entry, bridge, stack));
-			}
-			return result;
-		} finally {
-			stack.delete(obj);
-		}
+		return result;
+	} finally {
+		stack.delete(value);
 	}
+}
 
-	if (typeof obj === "object" && obj !== null) {
-		if (stack.has(obj)) {
-			throw new Error(
-				"Circular reference detected in props - objects cannot contain circular references",
-			);
+/** Encodes own enumerable fields, skipping unsafe keys and escaping marker shapes. */
+function serializeRecord(
+	value: object,
+	bridge: FunctionBridge,
+	stack: WeakSet<object>,
+): unknown {
+	enterStack(value, stack, CIRCULAR_OBJECT_ERROR);
+	try {
+		const result: Record<string, unknown> = {};
+		for (const [key, entry] of Object.entries(value)) {
+			if (!isSafeObjectKey(key)) continue;
+			result[key] = serializeFunctions(entry, bridge, stack, key);
 		}
-		stack.add(obj);
-		try {
-			const result: Record<string, unknown> = {};
-			for (const [key, value] of Object.entries(obj)) {
-				if (!isSafeObjectKey(key)) continue;
-				result[key] = serializeFunctions(value, bridge, stack);
-			}
-			return escapeWireRecord(result);
-		} finally {
-			stack.delete(obj);
-		}
+		return escapeWireRecord(result);
+	} finally {
+		stack.delete(value);
 	}
-
-	return obj;
 }
 
 /**

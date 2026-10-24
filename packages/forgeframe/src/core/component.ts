@@ -24,7 +24,9 @@ import type {
 	InferablePropsDefinition,
 	InferredComponentOptions,
 } from "../types/runtime";
+import type { DomainMatcher } from "../types/utility";
 import { hasBrowserWindow } from "../utils/browser";
+import { assertDomainMatcher } from "../utils/domain-pattern";
 import { resolveComponentHostUrl } from "../utils/url";
 import { isHostOfComponent } from "../window/name-payload";
 import {
@@ -117,6 +119,15 @@ function assertComponentShape<P, I, SchemaInputs>(
 		);
 	}
 
+	for (const option of [
+		"domain",
+		"allowedConsumerDomains",
+		"peerDomains",
+	] as const) {
+		if (options[option] !== undefined)
+			assertDomainMatcher(options[option], `Component ${option}`);
+	}
+
 	if (options.props) {
 		for (const key of Object.keys(options.props)) {
 			if (
@@ -165,6 +176,39 @@ function staticUrlValidationContext(
 		baseUrl: browserBaseUrl ?? "https://forgeframe.invalid",
 		enforceDomain: browserBaseUrl !== null || absolute,
 	};
+}
+
+/**
+ * Applies a host-side definition once, when the component is defined.
+ *
+ * @remarks
+ * A matching active host is reconfigured without changing its INIT timing, so
+ * an earlier `initHost(..., { deferInit: true })` stays deferred. Otherwise a
+ * host window for this tag starts its runtime. Failures are reported instead of
+ * thrown, so defining a component never breaks module evaluation; a later
+ * explicit `initHost()` reports the same failure to its caller.
+ */
+function configureHostAtDefinition<
+	P extends Record<string, unknown>,
+	SchemaInputs,
+>(
+	tag: string,
+	propDefinitions: HostPropsDefinition<P, SchemaInputs> | undefined,
+	allowedConsumerDomains: DomainMatcher | undefined,
+): void {
+	if (!hasBrowserWindow()) return;
+	const activeHost = getHost<P, SchemaInputs>();
+	const configuresActiveHost = activeHost?.hostProps.tag === tag;
+	if (!configuresActiveHost && (activeHost || !isHostOfComponent(tag))) return;
+	try {
+		initHost<P, SchemaInputs>(
+			propDefinitions,
+			allowedConsumerDomains,
+			configuresActiveHost ? { deferInit: true } : {},
+		);
+	} catch (error) {
+		console.error(`Failed to initialize host for component "${tag}":`, error);
+	}
 }
 
 /** Removes one identity from the factory-owned list. */
@@ -254,7 +298,6 @@ export function create<
 
 	const instances: ForgeFrameComponentInstance<P, X, I, SchemaInputs>[] = [];
 	const componentTag = options.tag;
-	let componentHostProps: HostProps<P> | undefined;
 
 	function untrackInstance(
 		instance: ConsumerComponent<P, X, I, SchemaInputs>,
@@ -294,50 +337,24 @@ export function create<
 		);
 	}
 
-	const canDetectComponentHost = (): boolean => {
-		return hasBrowserWindow() && isHostOfComponent(options.tag);
-	};
-
-	const syncHostProps = (): HostProps<P> | undefined => {
+	/** Reads the active host runtime for this tag without creating or configuring one. */
+	const readHostProps = (): HostProps<P> | undefined => {
+		// initHost() only creates a host in a browser, so no extra check is needed.
 		const activeHost = getHost<P, SchemaInputs>();
-		if (componentHostProps && activeHost?.hostProps === componentHostProps) {
-			return componentHostProps;
-		}
-		componentHostProps = undefined;
-
-		if (activeHost?.hostProps.tag === options.tag) {
-			const configuredHost = initHost<P, SchemaInputs>(
-				runtimeOptions.props as
-					| HostPropsDefinition<P, SchemaInputs>
-					| undefined,
-				options.allowedConsumerDomains,
-			);
-			componentHostProps = configuredHost?.hostProps;
-			return componentHostProps;
-		}
-
-		if (!canDetectComponentHost()) {
-			return undefined;
-		}
-
-		const host = initHost<P, SchemaInputs>(
-			runtimeOptions.props as HostPropsDefinition<P, SchemaInputs> | undefined,
-			options.allowedConsumerDomains,
-		);
-		if (!host) {
-			return undefined;
-		}
-
-		componentHostProps = host.hostProps;
-		return componentHostProps;
+		return activeHost?.hostProps.tag === options.tag
+			? activeHost.hostProps
+			: undefined;
 	};
 
-	syncHostProps();
+	const detectHostState = (): boolean =>
+		readHostProps() !== undefined ||
+		(hasBrowserWindow() && isHostOfComponent(options.tag));
 
-	const detectHostState = (): boolean => {
-		syncHostProps();
-		return componentHostProps !== undefined || canDetectComponentHost();
-	};
+	configureHostAtDefinition(
+		options.tag,
+		runtimeOptions.props as HostPropsDefinition<P, SchemaInputs> | undefined,
+		options.allowedConsumerDomains,
+	);
 
 	/**
 	 * Component factory function that creates new instances.
@@ -364,7 +381,7 @@ export function create<
 	Object.defineProperty(Component, "hostProps", {
 		configurable: true,
 		enumerable: true,
-		get: () => syncHostProps(),
+		get: () => readHostProps(),
 	});
 
 	Component.canRenderTo = async (win: Window): Promise<boolean> => {

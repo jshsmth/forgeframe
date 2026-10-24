@@ -27,6 +27,7 @@ type DirectHandler = (data: unknown, source?: HandlerSource) => unknown;
 type ConsumerInternals = {
 	transport: {
 		hostWindow: Window | null;
+		attachHostWindow(hostWindow: Window | null): void;
 		openedHostDomain: string | null;
 		hostInitialized: boolean;
 		initPromise: {
@@ -80,6 +81,28 @@ function createConsumer(
 	);
 	createdConsumers.push(consumer);
 	return consumer;
+}
+
+/**
+ * Tracks factory-created instances so the file's cleanup closes them, even
+ * when an assertion fails before the end of a test.
+ */
+function trackInstances<T extends object>(...instances: T[]): T[] {
+	createdConsumers.push(
+		...(instances as unknown as Array<
+			ConsumerComponent<Record<string, unknown>>
+		>),
+	);
+	return instances;
+}
+
+/** Connects a host window to an instance so its host-control handlers accept messages. */
+function connectHostWindow(instance: object): Window {
+	const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+	getInternals(
+		instance as ConsumerComponent<Record<string, unknown>>,
+	).transport.attachHostWindow(hostWindow);
+	return hostWindow;
 }
 
 /**
@@ -189,7 +212,7 @@ describe("Consumer lifecycle behavior", () => {
 		const internal = getInternals(consumer);
 		const waitForHost = internal.waitForHost;
 		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
-		internal.transport.hostWindow = hostWindow;
+		internal.transport.attachHostWindow(hostWindow);
 
 		const waitPromise = waitForHost.call(consumer);
 		const initHandler = getHandlers(consumer).get(MESSAGE_NAME.INIT);
@@ -209,7 +232,7 @@ describe("Consumer lifecycle behavior", () => {
 		const internal = getInternals(consumer);
 		const waitForHost = internal.waitForHost;
 		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
-		internal.transport.hostWindow = hostWindow;
+		internal.transport.attachHostWindow(hostWindow);
 		const initHandler = getHandlers(consumer).get(MESSAGE_NAME.INIT);
 
 		expect(initHandler).toBeDefined();
@@ -235,7 +258,7 @@ describe("Consumer lifecycle behavior", () => {
 			postMessage: vi.fn(),
 			location: { origin: window.location.origin },
 		} as unknown as Window;
-		internal.transport.hostWindow = hostWindow;
+		internal.transport.attachHostWindow(hostWindow);
 		const bootstrap = getHandlers(consumer).get(MESSAGE_NAME.BOOTSTRAP);
 		await expect(
 			bootstrap?.(
@@ -269,7 +292,7 @@ describe("Consumer lifecycle behavior", () => {
 			.spyOn(internal.transport.messenger, "send")
 			.mockResolvedValue(undefined);
 
-		internal.transport.hostWindow = hostWindow;
+		internal.transport.attachHostWindow(hostWindow);
 		internal.transport.openedHostDomain = configuredOrigin;
 
 		dispatchHostMessage(MESSAGE_NAME.INIT, hostWindow, {
@@ -430,7 +453,7 @@ describe("Consumer lifecycle behavior", () => {
 		const internal = getInternals(consumer);
 		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
 		const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
-		internal.transport.hostWindow = hostWindow;
+		internal.transport.attachHostWindow(hostWindow);
 
 		dispatchHostMessage(MESSAGE_NAME.INIT, spoofedWindow, {
 			claimedUid: consumer.uid,
@@ -457,7 +480,7 @@ describe("Consumer lifecycle behavior", () => {
 		const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
 		const originalClose = consumer.close.bind(consumer);
 		const closeSpy = vi.spyOn(consumer, "close").mockResolvedValue(undefined);
-		internal.transport.hostWindow = hostWindow;
+		internal.transport.attachHostWindow(hostWindow);
 
 		dispatchHostMessage(MESSAGE_NAME.CLOSE, spoofedWindow, {
 			claimedUid: consumer.uid,
@@ -484,10 +507,11 @@ describe("Consumer lifecycle behavior", () => {
 		const handlers = getHandlers(consumer);
 		const internal = getInternals(consumer);
 		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
-		internal.transport.hostWindow = hostWindow;
+		internal.transport.attachHostWindow(hostWindow);
 
 		const closeSpy = vi.spyOn(consumer, "close").mockResolvedValue(undefined);
-		const resizeSpy = vi.spyOn(consumer, "resize").mockResolvedValue(undefined);
+		const resized = vi.fn();
+		consumer.event.on(EVENT.RESIZE, resized);
 		const focusSpy = vi.spyOn(consumer, "focus").mockResolvedValue(undefined);
 		const showSpy = vi.spyOn(consumer, "show").mockResolvedValue(undefined);
 		const hideSpy = vi.spyOn(consumer, "hide").mockResolvedValue(undefined);
@@ -524,7 +548,7 @@ describe("Consumer lifecycle behavior", () => {
 		).resolves.toEqual({ success: true });
 
 		expect(closeSpy).toHaveBeenCalledTimes(1);
-		expect(resizeSpy).toHaveBeenCalledWith({ width: 420, height: 240 });
+		expect(resized).toHaveBeenCalledWith({ width: 420, height: 240 });
 		expect(focusSpy).toHaveBeenCalledTimes(1);
 		expect(showSpy).toHaveBeenCalledTimes(1);
 		expect(hideSpy).toHaveBeenCalledTimes(1);
@@ -536,7 +560,7 @@ describe("Consumer lifecycle behavior", () => {
 		const internal = getInternals(consumer);
 		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
 		const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
-		internal.transport.hostWindow = hostWindow;
+		internal.transport.attachHostWindow(hostWindow);
 
 		dispatchHostMessage(MESSAGE_NAME.ERROR, spoofedWindow, {
 			data: { message: "spoofed host failed" },
@@ -564,7 +588,7 @@ describe("Consumer lifecycle behavior", () => {
 		const internal = getInternals(consumer);
 		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
 		const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
-		internal.transport.hostWindow = hostWindow;
+		internal.transport.attachHostWindow(hostWindow);
 
 		dispatchHostMessage(MESSAGE_NAME.EXPORT, spoofedWindow, {
 			data: { ready: false },
@@ -590,7 +614,7 @@ describe("Consumer lifecycle behavior", () => {
 		const internal = getInternals(consumer);
 		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
 		const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
-		internal.transport.hostWindow = hostWindow;
+		internal.transport.attachHostWindow(hostWindow);
 
 		dispatchHostMessage(MESSAGE_NAME.CONSUMER_EXPORT, spoofedWindow, {
 			data: { token: "spoofed" },
@@ -620,18 +644,16 @@ describe("Consumer lifecycle behavior", () => {
 			},
 		});
 
-		const requester = PeerComponent({ amount: 1 });
-		const sibling = PeerComponent({ amount: 2 });
+		const [requester, sibling] = trackInstances(
+			PeerComponent({ amount: 1 }),
+			PeerComponent({ amount: 2 }),
+		);
 		requester.exports = { id: "a" };
 		sibling.exports = { id: "b" };
 		setVerifiedHostDomain("https://host.example.com", requester, sibling);
 
-		const internal = getInternals(
-			requester as unknown as ConsumerComponent<Record<string, unknown>>,
-		);
-		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+		const hostWindow = connectHostWindow(requester);
 		const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
-		internal.transport.hostWindow = hostWindow;
 
 		dispatchHostMessage(MESSAGE_NAME.GET_SIBLINGS, spoofedWindow, {
 			data: {
@@ -660,8 +682,6 @@ describe("Consumer lifecycle behavior", () => {
 				exports: { id: "b" },
 			},
 		]);
-
-		await Promise.all([requester.close(), sibling.close()]);
 	});
 
 	it("should scope GET_SIBLINGS to the requester's own identity and verified host origin", async () => {
@@ -674,10 +694,13 @@ describe("Consumer lifecycle behavior", () => {
 			url: "https://victim.example.com/widget",
 		});
 
-		const requester = RequesterComponent();
-		const sameOriginSibling = RequesterComponent();
-		const victim = VictimComponent();
-		const victimSibling = VictimComponent();
+		const [requester, sameOriginSibling, victim, victimSibling] =
+			trackInstances(
+				RequesterComponent(),
+				RequesterComponent(),
+				VictimComponent(),
+				VictimComponent(),
+			);
 		sameOriginSibling.exports = { id: "same-origin" };
 		victim.exports = { secret: "victim" };
 		victimSibling.exports = { secret: "victim-sibling" };
@@ -687,12 +710,7 @@ describe("Consumer lifecycle behavior", () => {
 			sameOriginSibling,
 		);
 		setVerifiedHostDomain("https://victim.example.com", victim, victimSibling);
-
-		const internal = getInternals(
-			requester as unknown as ConsumerComponent<Record<string, unknown>>,
-		);
-		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
-		internal.transport.hostWindow = hostWindow;
+		const hostWindow = connectHostWindow(requester);
 
 		// A host claiming another component's uid and tag still sees only its own peers.
 		dispatchHostMessage(MESSAGE_NAME.GET_SIBLINGS, hostWindow, {
@@ -726,12 +744,6 @@ describe("Consumer lifecycle behavior", () => {
 				exports: { id: "same-origin" },
 			},
 		]);
-
-		await Promise.all(
-			[requester, sameOriginSibling, victim, victimSibling].map((instance) =>
-				instance.close(),
-			),
-		);
 	});
 
 	it("should give opaque-origin hosts no peers even when both report the null origin", async () => {
@@ -740,17 +752,14 @@ describe("Consumer lifecycle behavior", () => {
 			url: "https://host.example.com/opaque",
 			domain: "*",
 		});
-		const requester = OpaqueComponent();
-		const otherProvider = OpaqueComponent();
+		const [requester, otherProvider] = trackInstances(
+			OpaqueComponent(),
+			OpaqueComponent(),
+		);
 		otherProvider.exports = { secret: "other-provider" };
 		// Sandboxed frames without allow-same-origin all serialize as "null".
 		setVerifiedHostDomain("null", requester, otherProvider);
-
-		const internal = getInternals(
-			requester as unknown as ConsumerComponent<Record<string, unknown>>,
-		);
-		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
-		internal.transport.hostWindow = hostWindow;
+		const hostWindow = connectHostWindow(requester);
 
 		for (const options of [undefined, { anyConsumer: true }]) {
 			dispatchHostMessage(MESSAGE_NAME.GET_SIBLINGS, hostWindow, {
@@ -762,8 +771,6 @@ describe("Consumer lifecycle behavior", () => {
 
 			expect(readResponseData(hostWindow)).toEqual([]);
 		}
-
-		await Promise.all([requester.close(), otherProvider.close()]);
 	});
 
 	it("should treat malformed GET_SIBLINGS data as a same-tag lookup", async () => {
@@ -775,9 +782,11 @@ describe("Consumer lifecycle behavior", () => {
 			tag: "peer-scope-malformed-other",
 			url: "https://host.example.com/other",
 		});
-		const requester = PeerComponent();
-		const sibling = PeerComponent();
-		const otherTag = OtherComponent();
+		const [requester, sibling, otherTag] = trackInstances(
+			PeerComponent(),
+			PeerComponent(),
+			OtherComponent(),
+		);
 		sibling.exports = { id: "sibling" };
 		otherTag.exports = { id: "other-tag" };
 		setVerifiedHostDomain(
@@ -787,13 +796,11 @@ describe("Consumer lifecycle behavior", () => {
 			otherTag,
 		);
 
-		const consumer = requester as unknown as ConsumerComponent<
-			Record<string, unknown>
-		>;
-		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
-		getInternals(consumer).transport.hostWindow = hostWindow;
+		const hostWindow = connectHostWindow(requester);
 		const handler = requireValue(
-			getHandlers(consumer).get(MESSAGE_NAME.GET_SIBLINGS),
+			getHandlers(
+				requester as unknown as ConsumerComponent<Record<string, unknown>>,
+			).get(MESSAGE_NAME.GET_SIBLINGS),
 		);
 
 		for (const data of [
@@ -814,10 +821,6 @@ describe("Consumer lifecycle behavior", () => {
 				},
 			]);
 		}
-
-		await Promise.all(
-			[requester, sibling, otherTag].map((instance) => instance.close()),
-		);
 	});
 
 	it("should throw when open is called in iframe context without prerender iframe", async () => {
@@ -1000,6 +1003,7 @@ describe("Consumer lifecycle behavior", () => {
 		const consumer = createConsumer();
 		const internal = getInternals(consumer);
 		const container = document.createElement("div");
+		document.body.append(container);
 		let releasePrerender: (() => void) | undefined;
 
 		const prerenderSpy = vi.spyOn(internal, "prerender").mockImplementation(
@@ -1031,6 +1035,7 @@ describe("Consumer lifecycle behavior", () => {
 		const consumer = createConsumer();
 		const internal = getInternals(consumer);
 		const container = document.createElement("div");
+		document.body.append(container);
 		let releasePrerender: (() => void) | undefined;
 		let reentrantRender: Promise<void> | undefined;
 		let propUpdateResult: Promise<string> | undefined;
@@ -1441,7 +1446,7 @@ describe("Consumer lifecycle behavior", () => {
 			location: { origin: "https://host.example.com" },
 		} as unknown as Window;
 		const internal = getInternals(consumer);
-		internal.transport.hostWindow = hostWindow;
+		internal.transport.attachHostWindow(hostWindow);
 		internal.transport.openedHostDomain = "https://host.example.com";
 
 		const previousProps = { ...internal.propsPipeline.props };
@@ -1474,7 +1479,7 @@ describe("Consumer lifecycle behavior", () => {
 			location: { origin: "https://host.example.com" },
 		} as unknown as Window;
 		const internal = getInternals(consumer);
-		internal.transport.hostWindow = hostWindow;
+		internal.transport.attachHostWindow(hostWindow);
 		internal.transport.openedHostDomain = "https://host.example.com";
 
 		const sendSpy = vi
@@ -1504,7 +1509,7 @@ describe("Consumer lifecycle behavior", () => {
 		);
 
 		const internal = getInternals(consumer);
-		internal.transport.hostWindow = { closed: true } as unknown as Window;
+		internal.transport.attachHostWindow({ closed: true } as unknown as Window);
 		internal.transport.openedHostDomain = "https://host.example.com";
 
 		const sendSpy = vi

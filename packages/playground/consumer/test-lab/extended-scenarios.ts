@@ -1163,6 +1163,7 @@ interface PopupExports {
 	popupReady: boolean;
 	hasOpener: boolean;
 	consumerDomain: string;
+	resizeSelf: (dimensions: { width: number; height: number }) => Promise<void>;
 }
 
 export async function runPopupScenario(
@@ -1217,10 +1218,22 @@ export async function runPopupScenario(
 		);
 
 		await instance.focus();
-		await instance.resize({ width: 540, height: 440 });
+		// Browsers block resizing another origin's window, so the consumer call
+		// is refused and the host resizes its own popup instead.
+		results.push(
+			await expectFailure(
+				"Consumer resize of a cross-origin popup is refused",
+				() => instance.resize({ width: 540, height: 440 }),
+				"Cannot resize the popup",
+			),
+		);
+		await requireValue(instance.exports).resizeSelf({
+			width: 540,
+			height: 440,
+		});
 		results.push(
 			assertResult(
-				"Popup focus and resize controls remain operational",
+				"Popup focus and host-driven resize remain operational",
 				focusEvents === 1 && resizeEvents === 1,
 				`focus events: ${focusEvents}; resize events: ${resizeEvents}`,
 			),

@@ -76,6 +76,27 @@ export const assertDefaultedRecordOutput: Assert<
 	IsEqual<InferOutput<typeof _defaultedRecordSchema>, Record<string, number>>
 > = true;
 
+const _optionalDefaultedSchema = prop.number().optional().default(0);
+const _optionalUndefinedDefaultSchema = prop
+	.function<() => void>()
+	.optional()
+	.default(() => undefined);
+
+export const assertOptionalDefaultedOutput: Assert<
+	IsEqual<InferOutput<typeof _optionalDefaultedSchema>, number>
+> = true;
+
+export const assertOptionalDefaultedInput: Assert<
+	IsEqual<InferInput<typeof _optionalDefaultedSchema>, number | undefined>
+> = true;
+
+export const assertOptionalUndefinedDefaultOutput: Assert<
+	IsEqual<
+		InferOutput<typeof _optionalUndefinedDefaultSchema>,
+		(() => void) | undefined
+	>
+> = true;
+
 export const assertDateOutput: Assert<
 	IsEqual<InferOutput<typeof _dateSchema>, Date>
 > = true;
