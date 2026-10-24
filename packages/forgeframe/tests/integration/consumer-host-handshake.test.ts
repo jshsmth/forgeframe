@@ -9,6 +9,7 @@ import { z } from "zod";
 import { deserializeMessage } from "@/communication/protocol";
 import { MESSAGE_NAME } from "@/constants";
 import { deleteRegisteredComponent } from "@/core/component-registry";
+import { getHost } from "@/core/host/bootstrap";
 import { create, EVENT, getHostProps, initHost, prop } from "@/index";
 import type { HostProps, PropsDefinition } from "@/types";
 import {
@@ -329,6 +330,44 @@ describe("Consumer/host handshake integration", () => {
 				message: expect.stringContaining("is not allowed"),
 			}),
 		);
+	});
+
+	it("keeps a host-side definition's prop schema when a bare initHost() retries after validation fails", async () => {
+		harness = createIframeIntegrationHarness();
+		const activeHarness = harness;
+		const tag = "host-definition-schema-retry";
+		const Consumer = create({
+			tag,
+			url: "https://host.example.com/widget",
+			props: { amount: prop.number() },
+		});
+		const container = document.createElement("div");
+		document.body.append(container);
+		void Consumer({ amount: 10 })
+			.render(container)
+			.catch(() => {});
+		activeHarness.attachHostToIframe(
+			await activeHarness.waitForIframe(container),
+		);
+		// The host bundle registers its own definition of the same tag.
+		deleteRegisteredComponent(tag);
+		vi.spyOn(console, "error").mockImplementation(() => {});
+
+		const failed = activeHarness.withHostGlobals(() => {
+			create({
+				tag,
+				url: "https://host.example.com/widget",
+				props: { amount: prop.number().min(100) },
+			});
+			return getHost();
+		});
+		await expect(failed?.ready).rejects.toThrow("Number must be >= 100");
+		await activeHarness.flushMessages();
+
+		const retried = activeHarness.withHostGlobals(() => initHost());
+		if (!retried) throw new Error("Expected the retried host");
+		await expect(retried.ready).rejects.toThrow("Number must be >= 100");
+		expect(getHost()).toBeNull();
 	});
 
 	it("rejects oversized bootstrap metadata before installing a host and accepts a valid retry", async () => {

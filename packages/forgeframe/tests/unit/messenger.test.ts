@@ -8,9 +8,11 @@ import { Messenger } from "@/communication/messenger";
 import {
 	createRequestMessage,
 	createResponseMessage,
+	deserializeMessage,
 	serializeMessage,
 } from "@/communication/protocol";
 import { MESSAGE_TYPE } from "@/constants";
+import { createDeferred } from "@/utils/promise";
 
 describe("Messenger", () => {
 	let messenger: Messenger;
@@ -458,6 +460,46 @@ describe("Messenger", () => {
 			messenger.destroy();
 			await expect(replacedProps).resolves.toBe("Messenger destroyed");
 			await expect(otherCall).resolves.toBe("Messenger destroyed");
+		});
+	});
+
+	describe("rejectInbound", () => {
+		it("answers running requests of the named type once, with the error", async () => {
+			const caller = { postMessage: vi.fn() } as unknown as Window;
+			const finishCall = createDeferred<string>();
+			const finishProps = createDeferred<string>();
+			messenger.on("call", () => finishCall.promise);
+			messenger.on("props", () => finishProps.promise);
+			const source = { uid: "test-uid", domain: "https://host.com" };
+			dispatchMessage(
+				serializeMessage(createRequestMessage("call-1", "call", {}, source)),
+				caller,
+			);
+			dispatchMessage(
+				serializeMessage(createRequestMessage("props-1", "props", {}, source)),
+				caller,
+			);
+			await Promise.resolve();
+
+			messenger.rejectInbound("call", new Error("Host was destroyed"));
+			finishCall.resolve("late");
+			finishProps.resolve("done");
+			await vi.waitFor(() =>
+				expect(caller.postMessage).toHaveBeenCalledTimes(2),
+			);
+			await Promise.resolve();
+
+			const responses = vi
+				.mocked(caller.postMessage)
+				.mock.calls.map(([data]) => deserializeMessage(data));
+			expect(responses).toEqual([
+				expect.objectContaining({
+					id: "call-1",
+					type: MESSAGE_TYPE.RESPONSE,
+					error: expect.objectContaining({ message: "Host was destroyed" }),
+				}),
+				expect.objectContaining({ id: "props-1", data: "done" }),
+			]);
 		});
 	});
 

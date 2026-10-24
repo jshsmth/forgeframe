@@ -5,7 +5,7 @@ desc: Runtime callable responsibilities, IOSP classifications, and boundary test
 tags: []
 sources: []
 created: 2026-10-01T01:55:30Z
-updated: 2026-10-24T01:16:05Z
+updated: 2026-10-24T03:11:30Z
 ---
 
 # ForgeFrame callable reference
@@ -47,14 +47,14 @@ Reference guards require the complete own-property wire shape, so records with e
 
 Array encoding reads and checks every indexed entry once before recursive registration, rejecting `undefined` entries and sparse holes in props and exports. It never calls caller-controlled array methods, so arrays with null prototypes or a shadowed `map` encode correctly. Object-field omission and function/`Date` framing are separate rules.
 
-JSON-mode encoding converts objects other than arrays and dates through `toJSON(key)` and primitive unboxing once, as native JSON does, so a class's `toJSON()` decides what crosses; the module-private `serializeConvertedValue` dispatches an already converted value to function framing, `serializeArray`, `Date` framing, or `serializeRecord` (arrays first, since they never carry the `Date` brand), and nested values convert again through `serializeFunctions`. The source object stays on the cycle stack while its `toJSON()` result is encoded, so a result that contains its source is reported as circular. A `toJSON()` that returns `undefined` for an array entry is rejected like an `undefined` entry. Remote wrappers send calls without a timeout, because the callback may still be running in the other window; teardown rejects them, and `rejectRemoteCalls` rejects this bridge's in-flight calls to a host whose document was replaced. The constructor requires a source guard; there is no permissive default.
+JSON-mode encoding converts objects other than arrays and dates through `toJSON(key)` and primitive unboxing once, as native JSON does, so a class's `toJSON()` decides what crosses; the module-private `serializeConvertedValue` dispatches an already converted value to function framing, `serializeArray`, `Date` framing, or `serializeRecord` (arrays first, since they never carry the `Date` brand), and nested values convert again through `serializeFunctions`. The source object stays on the cycle stack while its `toJSON()` result is encoded, so a result that contains its source is reported as circular. A `toJSON()` that returns `undefined` for an array entry is rejected like an `undefined` entry. Remote wrappers send calls without a timeout, because the callback may still be running in the other window; teardown rejects them, and `rejectRemoteCalls` rejects this bridge's in-flight calls to a host whose document was replaced. `rejectLocalCalls` answers callers whose calls into this window are still running, before host teardown removes the handlers. The constructor requires a source guard; there is no permissive default.
 
 Local callback admission rejects snapshots over 500 functions without evicting. Batch ownership records new IDs for rollback before delivery; an uncertain delivery keeps references within a 1,000-entry pool. Append-mode peer relays have a cumulative 500-reference bound. Verified reconnect cleanup runs inside the consumer props queue before bootstrap serialization: it releases strong registrations and keeps the weak IDs of props the new document already acknowledged.
 
 - **O:** `isSafeObjectKey`, `FunctionBridge.retainLocalFunction`, `FunctionBridge.findRemoteWrapper`, `FunctionBridge.evictOldestRemote`, `FunctionBridge.assertLocalCapacity`, `FunctionBridge.clearBatch`, `FunctionBridge.createRemoteWrapper`, `FunctionBridge.isFunctionRef`, `FunctionBridge.removeLocal`, `FunctionBridge.startBatch`, `FunctionBridge.staleLocalIds`, `FunctionBridge.clearRemote`, `FunctionBridge.localFunctionCount`, `FunctionBridge.remoteFunctionCount`, `serializeFunctions`, `enterStack`, `serializeConvertedValue`, `serializeArray`, `serializeRecord`, `deserializeFunctions`, `createFunctionRef`.
-- **I:** `FunctionBridge.constructor`, `FunctionBridge.serialize`, `FunctionBridge.rejectRemoteCalls`, `FunctionBridge.deserialize`, `FunctionBridge.createRemoteWrapper.wrapper`, `FunctionBridge.setupCallHandler`, `FunctionBridge.finishBatch`, `FunctionBridge.abortBatch`, `FunctionBridge.clearLocal`, `FunctionBridge.destroy`.
+- **I:** `FunctionBridge.constructor`, `FunctionBridge.serialize`, `FunctionBridge.rejectRemoteCalls`, `FunctionBridge.rejectLocalCalls`, `FunctionBridge.deserialize`, `FunctionBridge.createRemoteWrapper.wrapper`, `FunctionBridge.setupCallHandler`, `FunctionBridge.finishBatch`, `FunctionBridge.abortBatch`, `FunctionBridge.clearLocal`, `FunctionBridge.destroy`.
 - **O callbacks:** `FunctionBridge.setupCallHandler.callback@278`, `FunctionBridge.staleLocalIds.callback@371`.
-- **I callbacks:** `deserializeFunctions.callback@584`.
+- **I callbacks:** `deserializeFunctions.callback@595`.
 
 Evidence: [messaging](#evidence-messaging); typecheck.
 
@@ -66,12 +66,12 @@ Evidence: [messaging](#evidence-messaging); typecheck.
 
 ### [communication/messenger.ts](../packages/forgeframe/src/communication/messenger.ts)
 
-Admission precedes decoding, and channel, usable source, expected origin, and pending target identity are each checked explicitly. A messenger never trusts its own origin when that origin is opaque (`"null"`), because every opaque document serializes the same way. Consumers construct their messenger without a listener and attach it once with `listen()` when host content opens. A `null` send timeout waits for the response or for rejection; `rejectPending` rejects one message type's requests to a window whose document can no longer answer, and teardown rejects the rest. Request execution and response encoding are cohesive boundary operations; the request workflow and posting are named separately. Trusted-domain recursion is one matcher-registry algorithm.
+Admission precedes decoding, and channel, usable source, expected origin, and pending target identity are each checked explicitly. A messenger never trusts its own origin when that origin is opaque (`"null"`), because every opaque document serializes the same way. Consumers construct their messenger without a listener and attach it once with `listen()` when host content opens. A `null` send timeout waits for the response or for rejection; `rejectPending` rejects one message type's requests to a window whose document can no longer answer, and teardown rejects the rest. Received requests stay tracked while their handlers run; `rejectInbound` answers one message type's running requests with an error and suppresses their later results, while requests still running at `destroy` keep their eventual response. Request execution and response encoding are cohesive boundary operations; the request workflow and posting are named separately. Trusted-domain recursion is one matcher-registry algorithm.
 
 - **O:** `isPendingResponseSourceMatch`, `normalizeTargetDomainToExpectedOrigin`, `Messenger.addTrustedDomain`, `Messenger.removeTrustedDomain`, `Messenger.isOriginTrusted`, `Messenger.on`, `Messenger.settlePendingResponse`, `Messenger.executeRequest`, `Messenger.serializeResponse`, `Messenger.postResponse`, `Messenger.rejectPending`, `Messenger.isDestroyed`.
-- **I:** `Messenger.constructor`, `Messenger.listen`, `Messenger.send`, `Messenger.post`, `Messenger.setupListener`, `Messenger.setupListener.this.listener`, `Messenger.readTrustedMessage`, `Messenger.handleMessage`, `Messenger.handleRequest`, `Messenger.destroy`.
-- **O callbacks:** `Messenger.removeTrustedDomain.callback@216`, `Messenger.removeTrustedDomain.callback@222`, `Messenger.on.callback@363`.
-- **I callbacks:** `Messenger.send.callback@290`.
+- **I:** `Messenger.constructor`, `Messenger.listen`, `Messenger.send`, `Messenger.post`, `Messenger.setupListener`, `Messenger.setupListener.this.listener`, `Messenger.readTrustedMessage`, `Messenger.handleMessage`, `Messenger.handleRequest`, `Messenger.respond`, `Messenger.rejectInbound`, `Messenger.destroy`.
+- **O callbacks:** `Messenger.removeTrustedDomain.callback@229`, `Messenger.removeTrustedDomain.callback@235`, `Messenger.on.callback@376`.
+- **I callbacks:** `Messenger.send.callback@303`.
 
 Evidence: [messaging](#evidence-messaging); typecheck.
 
@@ -246,12 +246,12 @@ Evidence: [host](#evidence-host); typecheck.
 
 ### [core/host/bootstrap.ts](../packages/forgeframe/src/core/host/bootstrap.ts)
 
-The singleton integration validates a supplied allowlist (empty or blank strings throw; `undefined` is the only "no allowlist" value), then reuses and configures an existing runtime or constructs a new one. A new runtime without a supplied allowlist uses the one registered for its tag (`definedConsumerAllowlist`), so a bare call cannot accept a consumer a definition refused. The integration allows a retry after failed asynchronous validation. Its ready and destruction callbacks clear only the instance they belong to. Cleanup releases the singleton before destroying resources, which prevents reentrant cleanup and lets public teardown be followed by fresh initialization from retained channel metadata.
+The singleton integration validates a supplied allowlist (empty or blank strings throw; `undefined` is the only "no allowlist" value), then reuses and configures an existing runtime or constructs a new one. A new runtime without supplied prop definitions or allowlist uses those of the component registered for its tag (`definedComponentOptions`), so a bare call cannot accept props or a consumer that definition refused. The integration allows a retry after failed asynchronous validation. Its ready and destruction callbacks clear only the instance they belong to. Cleanup releases the singleton before destroying resources, which prevents reentrant cleanup and lets public teardown be followed by fresh initialization from retained channel metadata.
 
 After readiness, a rejected schema replacement keeps the active runtime; initial configuration failures and consumer-domain rejection tear it down. The failure handler uses a captured runtime and checks singleton identity, so validator teardown cannot mask the schema error or clear a replacement. Successful validation makes the same identity check before asserting the domain or flushing INIT, and returns null after reentrant teardown without affecting a replacement's deferred initialization. Public integration tests cover destroy and replacement with successful and rejected validators.
 
 - **O:** `getHost`.
-- **I:** `readInitialPayload`, `initHost`, `definedConsumerAllowlist`, `clearHostInstance`.
+- **I:** `readInitialPayload`, `initHost`, `definedComponentOptions`, `clearHostInstance`.
 - **I callbacks:** `initHost.onDestroy`, `initHost.ready.catch`.
 
 Evidence: [host](#evidence-host); typecheck.
@@ -310,13 +310,13 @@ Evidence: [host](#evidence-host); typecheck.
 
 ### [core/host/transport.ts](../packages/forgeframe/src/core/host/transport.ts)
 
-Outbound export batches share a FIFO queue. A serialization failure aborts new bridge registrations, a send failure keeps possibly delivered references, and acknowledged delivery retires stale IDs. The INIT workflow runs `beforeInit`, guards against destruction after its await, captures errors, and reports events; a rejection caused by teardown is not an initialization failure and is not logged. `reportInitFailure` sends a best-effort ERROR marked `initFailed`, whose rejection after teardown is ignored. Browser focus is part of the focus integration, which waits briefly for this window to receive the consumer's frame focus before resolving; a popup host resizes its own window before notifying the consumer, which cannot resize it across origins. Peer lookup sequences a correlated response and recursive decoding through the separate peer-call bridge, so prop and export batches cannot retire relay wrappers.
+Outbound export batches share a FIFO queue. A serialization failure aborts new bridge registrations, a send failure keeps possibly delivered references, and acknowledged delivery retires stale IDs. The INIT workflow runs `beforeInit`, guards against destruction after its await, captures errors, and reports events; a rejection caused by teardown is not an initialization failure and is not logged. `reportInitFailure` sends a best-effort ERROR marked `initFailed`, whose rejection after teardown is ignored. Teardown answers the consumer's calls into host functions that are still running before destroying the messenger, because those calls wait without a timeout. Browser focus is part of the focus integration, which waits briefly for this window to receive the consumer's frame focus before resolving; a popup host resizes its own window before notifying the consumer, which cannot resize it across origins. Peer lookup sequences a correlated response and recursive decoding through the separate peer-call bridge, so prop and export batches cannot retire relay wrappers.
 
 - **O:** `HostTransport.getInitError`.
 - **I:** `HostTransport.constructor`, `HostTransport.registerPropsHandler`, `HostTransport.requestBootstrap`, `HostTransport.updateTrustedConsumerDomain`, `HostTransport.close`, `HostTransport.focus`, `HostTransport.resize`, `HostTransport.show`, `HostTransport.hide`, `HostTransport.onError`, `HostTransport.reportInitFailure`, `HostTransport.exportData`, `HostTransport.sendExportBatch`, `HostTransport.consumerExport`, `HostTransport.getPeerInstances`, `HostTransport.destroy`, `HostTransport.sendInit`, `HostTransport.sendMessage`.
 - **M:** `HostTransport.handleHostPropsAccess`, `HostTransport.flushInit`, `HostTransport.scheduleDeferredInitFlush`.
 - **O callbacks:** `HostTransport.constructor.callback@57`, `HostTransport.reportInitFailure.callback@170`, `HostTransport.exportData.callback@177`.
-- **I callbacks:** `HostTransport.registerPropsHandler.callback@73`, `HostTransport.exportData.callback@174`, `HostTransport.scheduleDeferredInitFlush.callback@250`.
+- **I callbacks:** `HostTransport.registerPropsHandler.callback@73`, `HostTransport.exportData.callback@174`, `HostTransport.scheduleDeferredInitFlush.callback@253`.
 - **Retained rationale —** `HostTransport.handleHostPropsAccess`: One deferred-init guard and one scheduling call keep accessor-triggered timing visible.
 - **Retained rationale —** `HostTransport.flushInit`: The idempotent guard, flag transition and launch of sendInit are a short atomic scheduling adapter.
 - **Retained rationale —** `HostTransport.scheduleDeferredInitFlush`: A small ownership guard and microtask registration belong together; splitting the flag writes would hide when another flush may be scheduled.

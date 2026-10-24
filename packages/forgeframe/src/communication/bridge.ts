@@ -384,6 +384,17 @@ export class FunctionBridge {
 	}
 
 	/**
+	 * Answers calls to this bridge's local functions that are still running
+	 * with an error, before this window stops serving them. Remote calls have
+	 * no timeout, so their callers would otherwise never settle.
+	 *
+	 * @param error - The error sent to each caller
+	 */
+	rejectLocalCalls(error: Error): void {
+		this.messenger.rejectInbound(this.callMessageName, error);
+	}
+
+	/**
 	 * Clears all remote function references.
 	 *
 	 * @remarks

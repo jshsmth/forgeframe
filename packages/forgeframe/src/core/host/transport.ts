@@ -236,6 +236,9 @@ export class HostTransport {
 
 		this.destroyed = true;
 		this.deferredInitFlushScheduled = false;
+		this.bridge.rejectLocalCalls(
+			new Error("Host was destroyed before the call completed"),
+		);
 		this.messenger.destroy();
 		this.bridge.destroy();
 		this.peerBridge.destroy();

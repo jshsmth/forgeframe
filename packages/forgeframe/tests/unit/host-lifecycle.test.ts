@@ -198,6 +198,33 @@ describe("Host lifecycle behavior", () => {
 		},
 	);
 
+	it("keeps a rejecting definition's prop schema when a bare initHost() retries a legacy payload", () => {
+		const payload = createPayload({ tag: "legacy-definition-schema-retry" });
+		window.name = buildWindowName(payload);
+		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
+		const consoleError = vi
+			.spyOn(console, "error")
+			.mockImplementation(() => {});
+		try {
+			create({
+				tag: payload.tag,
+				url: "https://host.example.com/widget",
+				props: { amount: prop.number().min(100) },
+			});
+			expect(consoleError).toHaveBeenCalledWith(
+				`Failed to initialize host for component "${payload.tag}":`,
+				expect.objectContaining({
+					message: expect.stringContaining("Number must be >= 100"),
+				}),
+			);
+
+			expect(() => initHost()).toThrow("Number must be >= 100");
+			expect(getHostProps()).toBeUndefined();
+		} finally {
+			deleteRegisteredComponent(payload.tag);
+		}
+	});
+
 	it("reconciles late private fields only after replacement validation succeeds", () => {
 		const host = createHost({
 			payload: createPayload({

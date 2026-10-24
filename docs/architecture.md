@@ -5,7 +5,7 @@ desc: Consumer and host state ownership, transport contracts, and lifecycle flow
 tags: []
 sources: []
 created: 2026-10-01T01:55:30Z
-updated: 2026-10-24T01:16:05Z
+updated: 2026-10-24T03:11:30Z
 ---
 
 # ForgeFrame architecture
@@ -112,7 +112,7 @@ After readiness, a rejected public `initHost()` schema replacement keeps the act
 
 Admission rejects self-sent and untrusted traffic before decoding, then checks channel identity and a usable event source. Responses must also match the pending request's target window and expected origin. Request handlers receive browser-verified source metadata, not the metadata claimed in the envelope.
 
-The request integration runs the handler, builds a response, and posts it. If the result cannot be serialized, an error response is sent instead. Timeouts and teardown reject pending requests. Remote callback calls (CALL and PEER_CALL) have no timeout, because the callback may still be running in the other window: they settle with its result, or reject on teardown or, for consumer calls, when the host reconnects with a new session.
+The request integration runs the handler, builds a response, and posts it. If the result cannot be serialized, an error response is sent instead. Timeouts and teardown reject pending requests. Remote callback calls (CALL and PEER_CALL) have no timeout, because the callback may still be running in the other window: they settle with its result, or reject on teardown or, for consumer calls, when the host reconnects with a new session. Host teardown first answers the consumer's calls that are still running in the host with an error and does not send their later results.
 
 Messenger requests encode the full envelope before allocating a pending request and signal the delivery attempt immediately before posting. Prop and export batches abort newly registered callbacks when encoding fails before that point, and conservatively keep them after a post was attempted. Unknown thrown values are normalized without letting diagnostic coercion throw, so callback errors always reach the response path.
 

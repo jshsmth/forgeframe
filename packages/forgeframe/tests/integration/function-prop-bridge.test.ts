@@ -5,6 +5,7 @@
  * bridge, including async results and thrown errors.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { FunctionBridge } from "@/communication/bridge";
 import { deserializeMessage } from "@/communication/protocol";
 import { create, initHost, PROP_SERIALIZATION, prop } from "@/index";
 import type { PropsDefinition } from "@/types";
@@ -111,6 +112,9 @@ describe("Function prop bridge integration", () => {
 		const pending = exports.wait();
 		await activeHarness.flushMessages();
 
+		// A replaced document stops answering without running host teardown.
+		const { bridge } = host as unknown as { bridge: FunctionBridge };
+		vi.spyOn(bridge, "rejectLocalCalls").mockImplementation(() => {});
 		activeHarness.withHostGlobals(() => host.destroy());
 		const nextHost = activeHarness.withHostGlobals(() => initHost());
 		if (!nextHost) throw new Error("Expected host reinitialization");
@@ -118,6 +122,50 @@ describe("Function prop bridge integration", () => {
 		await expect(pending).rejects.toThrow(
 			"Host reconnected before the call completed",
 		);
+	});
+
+	it("rejects a running host export call when the host is destroyed", async () => {
+		harness = createIframeIntegrationHarness();
+		const activeHarness = harness;
+		const container = document.createElement("div");
+		document.body.append(container);
+		const Component = create<
+			Record<string, never>,
+			{ wait: () => Promise<string> }
+		>({
+			tag: "integration-destroy-running-call",
+			url: "https://host.example.com/widget",
+		});
+		const instance = Component();
+		const rendering = instance.render(container);
+		const { host, hostProps } =
+			await activeHarness.bootstrapIframeHost(container);
+		await rendering;
+		let finish: (value: string) => void = () => {};
+		await activeHarness.withHostGlobalsAsync(() =>
+			hostProps.export({
+				wait: () =>
+					new Promise<string>((resolve) => {
+						finish = resolve;
+					}),
+			}),
+		);
+		const exports = instance.exports;
+		if (!exports) throw new Error("Expected host exports");
+		const pending = exports.wait();
+		await activeHarness.flushMessages();
+
+		const rejection = expect(pending).rejects.toThrow(
+			"Host was destroyed before the call completed",
+		);
+		activeHarness.withHostGlobals(() => host.destroy());
+		await activeHarness.flushMessages();
+		await rejection;
+		// The call already settled; a late result from the torn-down host is not sent.
+		const posted = vi.spyOn(activeHarness.consumerWindow, "postMessage");
+		finish("late");
+		await activeHarness.flushMessages();
+		expect(posted).not.toHaveBeenCalled();
 	});
 
 	it.each([
