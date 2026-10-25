@@ -113,7 +113,8 @@ export class EventEmitter<Events extends object> {
 	 * Emits an event, invoking all registered handlers with the provided data.
 	 *
 	 * @param event - The name of the event to emit
-	 * @param data - Data to pass to all registered handlers
+	 * @param data - Data to pass to all registered handlers; `undefined` for
+	 * events without a payload, so every payload-carrying event must supply one
 	 *
 	 * @remarks
 	 * Handlers are invoked synchronously in the order they were registered.
@@ -124,7 +125,7 @@ export class EventEmitter<Events extends object> {
 	 *
 	 * @internal
 	 */
-	emit<K extends keyof Events>(event: K, data?: Events[K]): void {
+	emit<K extends keyof Events>(event: K, data: Events[K]): void {
 		const handlers = this.listeners.get(event);
 		if (!handlers) return;
 

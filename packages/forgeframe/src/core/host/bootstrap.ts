@@ -9,7 +9,7 @@
  * narrow `Host` object.
  */
 
-import { EVENT, PROTOCOL_VERSION } from "../../constants";
+import { PROTOCOL_VERSION } from "../../constants";
 import { createEventSubscriber } from "../../events/emitter";
 import type {
 	ForgeFrameComponent,
@@ -23,6 +23,7 @@ import {
 } from "../../window/name-payload";
 import type { WindowNamePayload } from "../../window/types";
 import { HostComponent } from "./component";
+import { describeUnknownHostEvent, HOST_EVENT_NAMES } from "./events";
 import {
 	type HostStartOptions,
 	readInitHostArguments,
@@ -224,15 +225,6 @@ function startHostRuntime(
 		if (hostInstance === runtime) clearHostInstance();
 	});
 	return runtime;
-}
-
-const HOST_EVENT_NAMES: ReadonlySet<string> = new Set([EVENT.ERROR]);
-
-function describeUnknownHostEvent(event: string): string {
-	if (event === "props") {
-		return 'The host "props" event was removed in ForgeFrame 2; use hostProps.onProps(handler) instead';
-	}
-	return `Host events support "error", not "${event}"`;
 }
 
 /** Exposes only the documented `Host` members of one runtime. */

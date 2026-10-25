@@ -1,4 +1,11 @@
-import { CONTEXT, closeAll, create, prop } from "forgeframe";
+import {
+	CONTEXT,
+	type ComponentEvents,
+	closeAll,
+	create,
+	type EventSubscriber,
+	prop,
+} from "forgeframe";
 import { requireValue } from "../../require-value";
 import type { TestResult } from "./types";
 
@@ -1336,7 +1343,7 @@ async function expectFailure(
 
 /** The part of an instance that announces host exports. */
 interface ExportsSource {
-	event: { on(event: "exports", handler: () => void): () => void };
+	event: Pick<EventSubscriber<Pick<ComponentEvents, "exports">>, "on">;
 }
 
 /**

@@ -100,7 +100,7 @@ export class HostPropsRuntime<
 		);
 		this.initialized = true;
 		this.pendingBootstrapProps = null;
-		this.publishProps(nextProps);
+		this.notifyPropsHandlers(nextProps);
 	}
 
 	/**
@@ -111,7 +111,7 @@ export class HostPropsRuntime<
 	 */
 	applySerializedProps(serializedProps: SerializedProps): { success: true } {
 		const nextProps = this.commitSerializedProps(serializedProps);
-		if (this.initialized) this.publishProps(nextProps);
+		if (this.initialized) this.notifyPropsHandlers(nextProps);
 		return { success: true };
 	}
 
@@ -142,11 +142,6 @@ export class HostPropsRuntime<
 			this.options.event.emit(EVENT.ERROR, propsError);
 			throw propsError;
 		}
-	}
-
-	/** Notifies `onProps` subscribers of one committed snapshot. */
-	private publishProps(nextProps: RemoteValue<P>): void {
-		this.notifyPropsHandlers(nextProps);
 	}
 
 	private commitHostProps(

@@ -522,8 +522,7 @@ describe("Component Creation", () => {
 		});
 	});
 
-	it("should allow construction-time PropContext.onError from value and default resolvers", () => {
-		const consoleSpy = vi.spyOn(console, "error");
+	it("should deliver construction-time PropContext.onError reports after the factory returns", async () => {
 		const valueResolverError = new Error("value resolver error");
 		const defaultResolverError = new Error("default resolver error");
 		const ResolverComponent = create<Record<string, unknown>>({
@@ -547,12 +546,15 @@ describe("Component Creation", () => {
 			},
 		});
 
-		// Nothing can subscribe before construction, so these reports reach no
-		// listener; construction still completes.
 		const instance = ResolverComponent({});
+		const errors: Error[] = [];
+		instance.event.on("error", (error) => {
+			errors.push(error);
+		});
 		const internal = getConsumerInternals(instance);
+		await Promise.resolve();
 
-		expect(consoleSpy).not.toHaveBeenCalled();
+		expect(errors).toEqual([valueResolverError, defaultResolverError]);
 		expect(internal.propsPipeline.props.computed).toBe("computed-value");
 		expect(internal.propsPipeline.props.fallback).toBe("default-value");
 	});

@@ -272,7 +272,7 @@ A render emits `render`, then `rendered`. A close emits `close`, then `closed`.
 | `rendered` | none | The host initialized and the component is visible, before `render()` resolves |
 | `close` | none | Closing starts, from `close()`, the host's `close()`, or the user closing the popup |
 | `closed` | none | Teardown finished. Always the last event; it also follows a failed render, without `close` |
-| `error` | `Error` | The handshake timed out, or the host called `hostProps.reportError()` |
+| `error` | `Error` | The handshake timed out, the host called `hostProps.reportError()`, or a prop callback called its context's `onError()` |
 | `props` | props | A props update was committed and, when a host is connected, acknowledged |
 | `resize` | `Dimensions` | A resize from the consumer or the host was applied |
 | `focus` | none | A focus request was applied to a mounted iframe or an open popup |

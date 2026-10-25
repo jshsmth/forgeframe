@@ -64,6 +64,31 @@ describe("Lifecycle events integration", () => {
 		]);
 	});
 
+	it("emits closed without close when a failed render tears the instance down", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const failure = new Error("Expected template failure");
+		const instance = create({
+			tag: "integration-failed-render-events",
+			url: HOST_URL,
+			prerenderTemplate: () => {
+				throw failure;
+			},
+		})();
+		const events: string[] = [];
+		for (const name of [EVENT.RENDER, EVENT.CLOSE, EVENT.CLOSED] as const) {
+			instance.event.on(name, () => {
+				events.push(name);
+			});
+		}
+
+		await expect(instance.render(container)).rejects.toBe(failure);
+
+		expect(events).toEqual([EVENT.RENDER, EVENT.CLOSED]);
+		expect(container.querySelector("iframe")).toBeNull();
+	});
+
 	it("emits exports after instance.exports is set, again on re-export, and not on reconnect", async () => {
 		const iframeHarness = createIframeIntegrationHarness();
 		harness = iframeHarness;

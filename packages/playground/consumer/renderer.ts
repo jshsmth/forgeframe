@@ -274,11 +274,12 @@ export async function renderComponent() {
 		newInstance.event.on("rendered", () => {
 			log("Event: rendered", "success");
 		});
-		newInstance.event.on("close", () => {
-			log("Event: close", "info");
-		});
 		newInstance.event.on("closed", () => {
 			log("Event: closed", "info");
+		});
+		// Reset when closing starts, so Render works again without waiting for teardown.
+		newInstance.event.on("close", () => {
+			log("Event: close", "info");
 			setInstance(null);
 			renderPropsBar(config);
 			setStatus("Closed", "idle");

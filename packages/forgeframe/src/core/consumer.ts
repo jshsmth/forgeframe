@@ -306,7 +306,7 @@ export class ConsumerComponent<
 		this.renderer.container = this.resolveContainer(container);
 
 		try {
-			this.emitter.emit(EVENT.RENDER);
+			this.emitter.emit(EVENT.RENDER, undefined);
 			this.assertRenderActive();
 
 			await this.prerender();
@@ -320,7 +320,7 @@ export class ConsumerComponent<
 
 			this.rendered = true;
 
-			this.emitter.emit(EVENT.RENDERED);
+			this.emitter.emit(EVENT.RENDERED, undefined);
 		} catch (err) {
 			const renderWasCancelled = this.isRenderCancelled();
 			await this.destroy().catch(() => undefined);
@@ -361,7 +361,7 @@ export class ConsumerComponent<
 	/** Completes the one admitted close operation before its shared promise settles. */
 	private async performClose(): Promise<void> {
 		try {
-			this.emitter.emit(EVENT.CLOSE);
+			this.emitter.emit(EVENT.CLOSE, undefined);
 
 			await this.destroy();
 		} finally {
@@ -378,7 +378,7 @@ export class ConsumerComponent<
 	 */
 	async focus(): Promise<void> {
 		if (this.renderer.focus(this.transport.hostWindow)) {
-			this.emitter.emit(EVENT.FOCUS);
+			this.emitter.emit(EVENT.FOCUS, undefined);
 		}
 	}
 
@@ -633,7 +633,13 @@ export class ConsumerComponent<
 				}
 				return this.focus();
 			},
-			onError: (err: Error) => this.emitter.emit(EVENT.ERROR, err),
+			onError: (err: Error) => {
+				// Nothing can subscribe during construction, so a report made then is
+				// delivered once the caller has had a chance to subscribe.
+				if (this.constructing)
+					queueMicrotask(() => this.emitter.emit(EVENT.ERROR, err));
+				else this.emitter.emit(EVENT.ERROR, err);
+			},
 			container: this.renderer.container,
 			uid: this.uid,
 			tag: this.options.tag,
@@ -871,7 +877,7 @@ export class ConsumerComponent<
 		await this.cleanup.cleanup();
 
 		this.untrackInstance?.(this);
-		this.emitter.emit(EVENT.CLOSED);
+		this.emitter.emit(EVENT.CLOSED, undefined);
 		this.emitter.dispose();
 	}
 
