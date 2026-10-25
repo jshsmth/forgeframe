@@ -45,7 +45,7 @@ export interface StandardSchemaV1<Input = unknown, Output = Input> {
  * @typeParam Input - The input type the schema accepts
  * @typeParam Output - The output type after validation/transformation
  *
- * @internal
+ * @public
  */
 export interface StandardSchemaV1Props<Input = unknown, Output = Input> {
 	/** The version of the Standard Schema specification (always 1) */
@@ -70,7 +70,7 @@ export interface StandardSchemaV1Props<Input = unknown, Output = Input> {
  * @typeParam Input - The input type
  * @typeParam Output - The output type
  *
- * @internal
+ * @public
  */
 export interface StandardSchemaV1Types<Input = unknown, Output = Input> {
 	/** The input type (for type inference only) */
@@ -84,7 +84,7 @@ export interface StandardSchemaV1Types<Input = unknown, Output = Input> {
  *
  * @typeParam Output - The output type on success
  *
- * @internal
+ * @public
  */
 export type StandardSchemaV1Result<Output> =
 	| StandardSchemaV1SuccessResult<Output>
@@ -95,7 +95,7 @@ export type StandardSchemaV1Result<Output> =
  *
  * @typeParam Output - The output type
  *
- * @internal
+ * @public
  */
 export interface StandardSchemaV1SuccessResult<Output> {
 	/** The validated and potentially transformed value */
@@ -107,7 +107,7 @@ export interface StandardSchemaV1SuccessResult<Output> {
 /**
  * A failed validation result containing validation issues.
  *
- * @internal
+ * @public
  */
 export interface StandardSchemaV1FailureResult {
 	/** Array of validation issues */
@@ -119,7 +119,7 @@ export interface StandardSchemaV1FailureResult {
 /**
  * A validation issue from a Standard Schema.
  *
- * @internal
+ * @public
  */
 export interface StandardSchemaV1Issue {
 	/** Human-readable error message */
@@ -135,7 +135,7 @@ export interface StandardSchemaV1Issue {
 /**
  * A path segment for nested validation issues.
  *
- * @internal
+ * @public
  */
 export interface StandardSchemaV1PathSegment {
 	/** The property key in an object path segment */
@@ -160,7 +160,7 @@ export interface StandardSchemaV1PathSegment {
  * type Input = InferInput<typeof schema>; // string
  * ```
  *
- * @internal
+ * @public
  */
 export type InferInput<Schema extends StandardSchemaV1> =
 	Schema extends StandardSchemaV1<infer I, unknown> ? I : never;
@@ -177,7 +177,7 @@ export type InferInput<Schema extends StandardSchemaV1> =
  * type Output = InferOutput<typeof schema>; // number
  * ```
  *
- * @internal
+ * @public
  */
 export type InferOutput<Schema extends StandardSchemaV1> =
 	Schema extends StandardSchemaV1<unknown, infer O> ? O : never;
