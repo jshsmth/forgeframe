@@ -83,10 +83,13 @@ function isContext(value: unknown): value is ContextType {
  * @returns The classification the host start-up reacts to.
  *
  * @remarks
- * A payload is recognised as ForgeFrame's when it is an object with a non-empty
- * `tag`. Its `protocolVersion` must then be missing or a positive integer to
- * count as another protocol; any other value, and a current payload with
- * missing or malformed metadata, is invalid.
+ * A payload counts as another protocol only when its `protocolVersion` is
+ * missing or a positive integer. An older payload (no protocol, 1 or 2) must
+ * also carry the channel fields every older consumer wrote: a non-empty `uid`
+ * and `tag`, a valid `context`, and a non-empty `consumerDomain`. A newer
+ * payload needs only a non-empty `tag`, because its other fields are unknown.
+ * Anything else, including a current payload with missing or malformed
+ * metadata, is invalid.
  *
  * @internal
  */
@@ -97,20 +100,18 @@ export function classifyWindowNamePayload(
 		return INVALID_PAYLOAD;
 	}
 
-	const { protocolVersion } = value;
+	const { uid, tag, protocolVersion, context, consumerDomain } = value;
+	const hasChannelFields =
+		isNonEmptyString(uid) &&
+		isContext(context) &&
+		isNonEmptyString(consumerDomain);
 	if (protocolVersion === PROTOCOL_VERSION) {
-		const { uid, tag, context, consumerDomain } = value;
-		if (
-			!isNonEmptyString(uid) ||
-			!isContext(context) ||
-			!isNonEmptyString(consumerDomain)
-		) {
-			return INVALID_PAYLOAD;
-		}
-		return {
-			kind: "current",
-			payload: { uid, tag, protocolVersion, context, consumerDomain },
-		};
+		return hasChannelFields
+			? {
+					kind: "current",
+					payload: { uid, tag, protocolVersion, context, consumerDomain },
+				}
+			: INVALID_PAYLOAD;
 	}
 
 	if (
@@ -123,10 +124,15 @@ export function classifyWindowNamePayload(
 	) {
 		return INVALID_PAYLOAD;
 	}
+	const isNewer =
+		protocolVersion !== undefined && protocolVersion > PROTOCOL_VERSION;
+	if (!isNewer && !hasChannelFields) {
+		return INVALID_PAYLOAD;
+	}
 
 	return {
 		kind: "unsupported",
-		tag: value.tag,
+		tag,
 		protocolVersion,
 		version: isNonEmptyString(value.version) ? value.version : undefined,
 	};

@@ -1,6 +1,5 @@
 import type { DomainMatcher } from "../../types/utility";
 import { matchDomain } from "../../window/helpers";
-import type { HostSecurityContext } from "./types";
 
 export const CONSUMER_ORIGIN_VERIFICATION_ERROR =
 	"Could not verify consumer origin";
@@ -32,13 +31,14 @@ export function assertAllowedConsumerDomain(
  * Checks an exact HTTP(S) origin and optional allowlist for messaging bootstrap.
  * A valid origin string does not establish peer identity: the returned target
  * stays unverified until the bootstrap exchange verifies the source window.
+ * @returns The origin, unchanged, to use as the messaging target.
  * @internal
  */
 export function validateMessagingConsumerContext(
 	consumerDomain: string,
 	allowedConsumerDomains: DomainMatcher | undefined,
 	tag: string,
-): HostSecurityContext {
+): string {
 	let origin: URL;
 	try {
 		origin = new URL(consumerDomain);
@@ -54,5 +54,5 @@ export function validateMessagingConsumerContext(
 	if (allowedConsumerDomains !== undefined) {
 		assertAllowedConsumerDomain(allowedConsumerDomains, consumerDomain, tag);
 	}
-	return { consumerDomain };
+	return consumerDomain;
 }

@@ -201,7 +201,7 @@ describe("classifyWindowNamePayload", () => {
 	])("should omit %s from an unsupported payload", (_label, version) => {
 		expect(
 			classifyWindowNamePayload({
-				tag: "test-component",
+				...createPayload(),
 				protocolVersion: 2,
 				...version,
 			}),
@@ -232,8 +232,39 @@ describe("classifyWindowNamePayload", () => {
 			"a missing consumer domain",
 			{ ...createPayload(), consumerDomain: undefined },
 		],
+		["no protocol and only a tag", { tag: "test-component" }],
+		[
+			"protocol 2 and no uid",
+			{ ...createPayload(), protocolVersion: 2, uid: undefined },
+		],
+		[
+			"protocol 1 and an invalid context",
+			{ ...createPayload(), protocolVersion: 1, context: "modal" },
+		],
+		[
+			"no protocol and no consumer domain",
+			{
+				...createPayload(),
+				protocolVersion: undefined,
+				consumerDomain: undefined,
+			},
+		],
 	])("should classify a payload with %s as invalid", (_label, value) => {
 		expect(classifyWindowNamePayload(value)).toEqual({ kind: "invalid" });
+	});
+
+	it("should report a newer payload by its tag alone, since its other fields are unknown", () => {
+		expect(
+			classifyWindowNamePayload({
+				tag: "test-component",
+				protocolVersion: PROTOCOL_VERSION + 1,
+			}),
+		).toEqual({
+			kind: "unsupported",
+			tag: "test-component",
+			protocolVersion: PROTOCOL_VERSION + 1,
+			version: undefined,
+		});
 	});
 });
 

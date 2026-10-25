@@ -3,9 +3,9 @@
  * Host-side consumer window and origin verification helpers.
  *
  * @remarks
- * This internal module resolves the consumer window, derives browser-verifiable
- * origins, and applies allowlist checks so host bootstrap and reconfiguration
- * can share one security policy.
+ * This internal module resolves the consumer window and reads the consumer
+ * origin when the browser exposes it, then passes that observation to the
+ * pure policy in `consumer-origin-policy.ts` to select the messaging target.
  */
 
 import type { DomainMatcher } from "../../types/utility";
@@ -15,7 +15,6 @@ import {
 	isIframe,
 	isPopup,
 } from "../../window/helpers";
-import type { HostSecurityContext } from "./types";
 
 export const CONSUMER_WINDOW_RESOLUTION_ERROR =
 	"Could not resolve consumer window";
@@ -58,13 +57,16 @@ export function getAccessibleConsumerOrigin(
 	}
 }
 
-/** Selects an exact messaging target; the bootstrap response verifies it. */
+/**
+ * Selects an exact messaging target origin; the bootstrap response verifies it.
+ * A directly readable consumer origin wins over the payload's claimed origin.
+ */
 export function resolveMessagingConsumerContext(options: {
 	consumerWindow: Window;
 	claimedConsumerDomain: string;
 	allowedConsumerDomains?: DomainMatcher;
 	tag: string;
-}): HostSecurityContext {
+}): string {
 	const consumerDomain =
 		getAccessibleConsumerOrigin(options.consumerWindow) ??
 		options.claimedConsumerDomain;

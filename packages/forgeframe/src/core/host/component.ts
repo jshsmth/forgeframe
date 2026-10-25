@@ -14,8 +14,9 @@ import type { HostPropsDefinition } from "../../types/props";
 import type { HostProps } from "../../types/runtime";
 import type { DomainMatcher } from "../../types/utility";
 import { normalizeError } from "../../utils/error";
-import { matchDomain } from "../../window/helpers";
 import type { WindowNamePayload } from "../../window/types";
+// Aliased so the method that delegates to it does not read as recursion.
+import { assertAllowedConsumerDomain as assertConsumerDomainAllowed } from "./consumer-origin-policy";
 import { HostPropsRuntime } from "./props-runtime";
 import {
 	resolveConsumerWindow,
@@ -76,7 +77,7 @@ export class HostComponent<
 				claimedConsumerDomain: payload.consumerDomain,
 				allowedConsumerDomains: this.allowedConsumerDomains,
 				tag: this.tag,
-			}).consumerDomain;
+			});
 
 			transport = new HostTransport({
 				uid: this.uid,
@@ -216,11 +217,11 @@ export class HostComponent<
 	}
 
 	assertAllowedConsumerDomain(allowedConsumerDomains: DomainMatcher): void {
-		if (!matchDomain(allowedConsumerDomains, this.consumerDomain)) {
-			throw new Error(
-				`Consumer domain "${this.consumerDomain}" is not allowed for component "${this.tag}"`,
-			);
-		}
+		assertConsumerDomainAllowed(
+			allowedConsumerDomains,
+			this.consumerDomain,
+			this.tag,
+		);
 	}
 
 	destroy(): void {

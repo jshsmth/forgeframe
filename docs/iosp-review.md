@@ -5,7 +5,7 @@ desc: Runtime callable responsibilities, IOSP classifications, and boundary test
 tags: []
 sources: []
 created: 2026-10-01T01:55:30Z
-updated: 2026-10-25T09:31:02Z
+updated: 2026-10-25T11:03:09Z
 ---
 
 # ForgeFrame callable reference
@@ -268,17 +268,17 @@ Constructor proxies bind the host's own fields and its props and transport runti
 
 When host schemas reject the bootstrap snapshot, `initializeFromConsumer` asks the transport to report the failure to the verified, allowed consumer before rejecting `ready`; consumer-domain rejections are not reported.
 
-`HostComponent.hasCompletedBootstrap` reads readiness state. Configuration validates the prop replacement before updating domain configuration. The readiness fulfillment observer (`ready.then`) records bootstrap completion; its rejection callback leaves an incomplete runtime unready. `assertAllowedConsumerDomain` matches an allowlist directly against the messaging consumer origin.
+`HostComponent.hasCompletedBootstrap` reads readiness state. Configuration validates the prop replacement before updating domain configuration. The readiness fulfillment observer (`ready.then`) records bootstrap completion; its rejection callback leaves an incomplete runtime unready. `assertAllowedConsumerDomain` passes the messaging consumer origin to the shared allowlist policy in `consumer-origin-policy.ts`.
 
-- **O:** `HostComponent.hasCompletedBootstrap`, `HostComponent.assertAllowedConsumerDomain`, `HostComponent.constructor.ready.then`, `HostComponent.constructor.getConsumerDomain@87`, `HostComponent.constructor.beforeInit`, `HostComponent.constructor.getConsumerWindow`, `HostComponent.constructor.getConsumerDomain@110`, `HostComponent.constructor.getBridge`, `HostComponent.constructor.get@118`, `HostComponent.constructor.get@122`, `HostComponent.constructor.isConsumerSource`.
-- **I:** `HostComponent.constructor`, `HostComponent.constructor.close`, `HostComponent.constructor.focus`, `HostComponent.constructor.resize`, `HostComponent.constructor.show`, `HostComponent.constructor.hide`, `HostComponent.constructor.onError`, `HostComponent.constructor.exportData`, `HostComponent.constructor.consumerExport`, `HostComponent.constructor.getPeerInstances`, `HostComponent.constructor.onFirstHostPropsAccess`, `HostComponent.constructor.applySerializedProps`, `HostComponent.initializeFromConsumer`, `HostComponent.hostProps@180`, `HostComponent.hostProps@184`, `HostComponent.flushInit`, `HostComponent.getProps`, `HostComponent.getInitError`, `HostComponent.applyHostConfiguration`, `HostComponent.destroy`.
-- **O callbacks:** `HostComponent.constructor.callback@141`.
+- **O:** `HostComponent.hasCompletedBootstrap`, `HostComponent.constructor.ready.then`, `HostComponent.constructor.getConsumerDomain@88`, `HostComponent.constructor.beforeInit`, `HostComponent.constructor.getConsumerWindow`, `HostComponent.constructor.getConsumerDomain@111`, `HostComponent.constructor.getBridge`, `HostComponent.constructor.get@119`, `HostComponent.constructor.get@123`, `HostComponent.constructor.isConsumerSource`.
+- **I:** `HostComponent.constructor`, `HostComponent.constructor.close`, `HostComponent.constructor.focus`, `HostComponent.constructor.resize`, `HostComponent.constructor.show`, `HostComponent.constructor.hide`, `HostComponent.constructor.onError`, `HostComponent.constructor.exportData`, `HostComponent.constructor.consumerExport`, `HostComponent.constructor.getPeerInstances`, `HostComponent.constructor.onFirstHostPropsAccess`, `HostComponent.constructor.applySerializedProps`, `HostComponent.initializeFromConsumer`, `HostComponent.hostProps@181`, `HostComponent.hostProps@185`, `HostComponent.flushInit`, `HostComponent.getProps`, `HostComponent.getInitError`, `HostComponent.applyHostConfiguration`, `HostComponent.assertAllowedConsumerDomain`, `HostComponent.destroy`.
+- **O callbacks:** `HostComponent.constructor.callback@142`.
 
 Evidence: [host](#evidence-host); typecheck.
 
 ### [core/host/consumer-origin-policy.ts](../packages/forgeframe/src/core/host/consumer-origin-policy.ts)
 
-All trust policy works from supplied origins and options. A messaging target must be an exact HTTP(S) origin that passes the allowlist, and stays provisional until the bootstrap exchange verifies the source window.
+All trust policy works from supplied origins and options. A messaging target must be an exact HTTP(S) origin that passes the allowlist, and stays provisional until the bootstrap exchange verifies the source window. `validateMessagingConsumerContext` returns that origin unchanged. `assertAllowedConsumerDomain` is the one allowlist check: the messaging context and a host's later allowlist recheck both use it.
 
 - **O:** `assertAllowedConsumerDomain`, `validateMessagingConsumerContext`.
 
@@ -711,7 +711,7 @@ Evidence: [utilities](#evidence-utilities); typecheck.
 
 ### [window/name-payload.ts](../packages/forgeframe/src/window/name-payload.ts)
 
-Envelope framing is separate from protocol classification. `classifyWindowNamePayload` is pure policy over a decoded value: current protocol 3 metadata (copied without unknown fields), a recognisable payload from another protocol with its protocol and package version, or invalid. Reading never writes `window.name`; a name that throws or lacks the prefix yields null, and an undecodable or oversized one is invalid.
+Envelope framing is separate from protocol classification. `classifyWindowNamePayload` is pure policy over a decoded value: current protocol 3 metadata (copied without unknown fields), a payload from another protocol with its protocol and package version, or invalid. An older payload is recognised only when it carries the channel fields every older consumer wrote (uid, tag, context, consumer domain); a newer one needs only its tag. Reading never writes `window.name`; a name that throws or lacks the prefix yields null, and an undecodable or oversized one is invalid.
 
 - **O:** `buildWindowName`, `isObjectRecord`, `isNonEmptyString`, `isContext`, `classifyWindowNamePayload`, `isForgeFrameWindow`, `encodePayload`, `decodePayload`, `createWindowPayload`.
 - **I:** `isHostOfComponent`, `readWindowNamePayload`.

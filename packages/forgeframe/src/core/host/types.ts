@@ -22,11 +22,6 @@ import type { Dimensions } from "../../types/utility";
 
 export type VerifiedMessageSource = Parameters<MessageHandler>[1];
 
-/** An exact consumer origin selected as the messaging target. */
-export interface HostSecurityContext {
-	consumerDomain: string;
-}
-
 export interface HostPropsRuntimeControls {
 	close(): Promise<void>;
 	focus(): Promise<void>;

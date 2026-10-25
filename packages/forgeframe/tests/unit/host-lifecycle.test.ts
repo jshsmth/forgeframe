@@ -527,6 +527,36 @@ describe("Host lifecycle behavior", () => {
 		);
 	});
 
+	it("validates late configuration of a verified same-origin host without relaxing required sameDomain props", async () => {
+		window.name = buildWindowName(
+			createPayload({ consumerDomain: window.location.origin }),
+		);
+		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
+		vi.spyOn(Messenger.prototype, "send").mockResolvedValueOnce({
+			props: { label: "visible" },
+		});
+		const host = requireValue(
+			initHost({ label: prop.string() }, undefined, { deferInit: true }),
+		);
+		await host.ready;
+		expect(host.hostProps.getConsumerDomain()).toBe(window.location.origin);
+		vi.spyOn(console, "error").mockImplementation(() => {});
+
+		// Bootstrap and updates would reject this snapshot, so late configuration does too.
+		expect(() =>
+			initHost(
+				{
+					label: prop.string(),
+					secret: { schema: prop.string(), sameDomain: true, required: true },
+				},
+				undefined,
+				{ deferInit: true },
+			),
+		).toThrow('Prop "secret" is required but was not provided');
+		expect(getHostProps()).toBe(host.hostProps);
+		expect(host.hostProps.label).toBe("visible");
+	});
+
 	it("should still reject missing required sameDomain props for cross-origin hosts", async () => {
 		const crossOriginConsumerWindow = {
 			postMessage: vi.fn(),
