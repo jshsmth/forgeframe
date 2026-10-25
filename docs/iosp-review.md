@@ -5,7 +5,7 @@ desc: Runtime callable responsibilities, IOSP classifications, and boundary test
 tags: []
 sources: []
 created: 2026-10-01T01:55:30Z
-updated: 2026-10-25T06:48:52Z
+updated: 2026-10-25T07:55:53Z
 ---
 
 # ForgeFrame callable reference
@@ -689,13 +689,13 @@ Evidence: [utilities](#evidence-utilities), [url.test](../packages/forgeframe/te
 
 ### [utils/wire-value.ts](../packages/forgeframe/src/utils/wire-value.ts)
 
-`Date` framing, record escaping, and array admission are codec operations; keep malformed-`Date` handling together. Escaping applies to ordinary records shaped like function, `Date`, or escaped-record markers once their fields are encoded; other records, including the former BASE64 and DOTIFY wrapper shapes, are ordinary data.
+`Date` framing, record escaping, and array admission are codec operations; keep malformed-`Date` handling together. Escaping applies to ordinary records shaped like function, `Date`, or escaped-record markers once their fields are encoded; other records, including the former BASE64 and DOTIFY wrapper shapes, are ordinary data. Encoded records keep native raw JSON unchanged, so `toWrittenJsonValue` reads a marker field as the receiver will parse it, and a raw JSON `"function"`, `"date"` or `"record"` marker is escaped like the plain string.
 
 `toJsonValue` applies one native JSON conversion (a callable `toJSON(key)`, then unboxing) for the bridge. `unboxJsonPrimitive` unboxes primitive wrappers with a local dummy encoder and an empty native JSON property list, avoiding exception-driven probes of ordinary records. It reuses the conversion so coercion hooks run once, and reads no ordinary fields, branding getters, or proxy prototype metadata. Arrays returned by `toJSON()` bypass the probe, so their entries are still bridged. `isRawJsonValue` detects native raw JSON with `JSON.isRawJSON`, resolved once at module load when the runtime has it, including values from another realm, so the bridge can pass it through.
 
 `assertDefinedArrayEntries` checks normalized container values with cycle-safe traversal and without calling custom JSON encoders. It mirrors the bridge: arrays are read entry by entry, `convertsThroughJsonEncoder` defers a non-array object with a callable `toJSON` to delivery checks after its encoder runs, and `__proto__` fields are skipped because encoding omits them. `assertDefinedArrayEntry` also guards bridge arrays, including holes, before JSON can turn entries into `null`. `hasJsonEncoder` inspects descriptors without invoking computed properties, and a non-callable `toJSON` field is ordinary data.
 
-- **O:** `needsRecordEscape`, `escapeWireRecord`, `isRecordWireValue`, `assertDefinedArrayEntry`, `assertDefinedArrayEntries`, `convertsThroughJsonEncoder`, `hasJsonEncoder`, `isObjectRecord`, `hasOwnKey`, `encodeDateWireValue`, `isDateWireValue`, `decodeDateWireValue`, `isRawJsonValue`, `toJsonValue`, `unboxJsonPrimitive`.
+- **O:** `needsRecordEscape`, `toWrittenJsonValue`, `escapeWireRecord`, `isRecordWireValue`, `assertDefinedArrayEntry`, `assertDefinedArrayEntries`, `convertsThroughJsonEncoder`, `hasJsonEncoder`, `isObjectRecord`, `hasOwnKey`, `encodeDateWireValue`, `isDateWireValue`, `decodeDateWireValue`, `isRawJsonValue`, `toJsonValue`, `unboxJsonPrimitive`.
 - **O callbacks:** `needsRecordEscape.callback@20`, `unboxJsonPrimitive.toJSON`.
 
 Evidence: [utilities](#evidence-utilities); typecheck.
