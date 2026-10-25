@@ -10,7 +10,7 @@ export const CONSUMER_ORIGIN_VERIFICATION_ERROR =
  * @internal
  */
 export function assertAllowedConsumerDomain(
-	allowedConsumerDomains: DomainMatcher,
+	consumerOrigins: DomainMatcher,
 	consumerDomain: string,
 	tag: string,
 ): void {
@@ -20,7 +20,7 @@ export function assertAllowedConsumerDomain(
 		);
 	}
 
-	if (!matchDomain(allowedConsumerDomains, consumerDomain)) {
+	if (!matchDomain(consumerOrigins, consumerDomain)) {
 		throw new Error(
 			`Consumer domain "${consumerDomain}" is not allowed for component "${tag}"`,
 		);
@@ -36,7 +36,7 @@ export function assertAllowedConsumerDomain(
  */
 export function validateMessagingConsumerContext(
 	consumerDomain: string,
-	allowedConsumerDomains: DomainMatcher,
+	consumerOrigins: DomainMatcher,
 	tag: string,
 ): string {
 	let origin: URL;
@@ -51,6 +51,6 @@ export function validateMessagingConsumerContext(
 	) {
 		throw new Error(CONSUMER_ORIGIN_VERIFICATION_ERROR);
 	}
-	assertAllowedConsumerDomain(allowedConsumerDomains, consumerDomain, tag);
+	assertAllowedConsumerDomain(consumerOrigins, consumerDomain, tag);
 	return consumerDomain;
 }

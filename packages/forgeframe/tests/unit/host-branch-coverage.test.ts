@@ -55,7 +55,7 @@ function createHost({
 		consumerWindow,
 	);
 
-	return new HostComponent(payload, {}, "*", autoInit);
+	return new HostComponent(payload, { consumerOrigins: "*", autoInit });
 }
 
 /**
@@ -118,6 +118,46 @@ describe("Host branch coverage and edge paths", () => {
 			undefined,
 		]);
 	});
+
+	it.each([
+		{ autoInit: true, failure: "an invalid response" },
+		{ autoInit: false, failure: "an invalid response" },
+		{ autoInit: true, failure: "a failed request" },
+		{ autoInit: false, failure: "a failed request" },
+	] as const)(
+		"reports a bootstrap with $failure once on the error event (autoInit: $autoInit)",
+		async ({ autoInit, failure }) => {
+			window.name = buildWindowName(createPayload());
+			vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
+			const send = vi.spyOn(Messenger.prototype, "send");
+			if (failure === "a failed request")
+				send.mockRejectedValueOnce(new Error("Consumer did not respond"));
+			else send.mockResolvedValueOnce(undefined);
+			vi.spyOn(console, "error").mockImplementation(() => {});
+			const host = requireValue(
+				initHost({ consumerOrigins: window.location.origin, autoInit }),
+			);
+			const errors: unknown[] = [];
+			host.on("error", (payload) => {
+				errors.push(payload);
+			});
+			if (!autoInit) host.init();
+
+			await expect(host.ready).rejects.toThrow();
+			await Promise.resolve();
+
+			const reason =
+				failure === "a failed request"
+					? "Consumer did not respond"
+					: "Invalid consumer bootstrap response";
+			expect(errors).toEqual([
+				expect.objectContaining({
+					type: "init_failed",
+					message: `Failed to initialize host component: ${reason}`,
+				}),
+			]);
+		},
+	);
 
 	it("reports INIT delivery failures on the host error event", async () => {
 		window.name = buildWindowName(createPayload());

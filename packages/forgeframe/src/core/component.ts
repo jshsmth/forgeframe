@@ -9,7 +9,10 @@
  */
 
 import { CONTEXT } from "../constants";
-import { assertNoRemovedPropOptions } from "../props/removed-options";
+import {
+	assertNoRemovedPropOptions,
+	hasOwnDeclaredField,
+} from "../props/removed-options";
 import type { StandardSchemaV1 } from "../props/schema";
 import type {
 	InferPropsDefinition,
@@ -112,10 +115,7 @@ function assertComponentShape<P, I, SchemaInputs>(
 
 	// The host enforces its consumer allowlist; a definition-side one would be
 	// silently ignored.
-	if (
-		(options as { allowedConsumerDomains?: unknown }).allowedConsumerDomains !==
-		undefined
-	) {
+	if (hasOwnDeclaredField(options, "allowedConsumerDomains")) {
 		throw new Error(
 			'Component option "allowedConsumerDomains" was removed. Pass the allowlist to the host instead: initHost(Component, { consumerOrigins }).',
 		);

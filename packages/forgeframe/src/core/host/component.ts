@@ -14,7 +14,7 @@ import type { HostPropsDefinition } from "../../types/props";
 import type { HostProps } from "../../types/runtime";
 import type { DomainMatcher } from "../../types/utility";
 import { normalizeError } from "../../utils/error";
-import type { WindowNamePayload } from "../../window/types";
+import type { HostBootstrapData, WindowNamePayload } from "../../window/types";
 import { assertAllowedConsumerDomain } from "./consumer-origin-policy";
 import { HostPropsRuntime } from "./props-runtime";
 import {
@@ -22,6 +22,7 @@ import {
 	resolveMessagingConsumerContext,
 } from "./security";
 import { HostTransport } from "./transport";
+import type { HostRuntimeOptions } from "./types";
 
 export class HostComponent<
 	P extends Record<string, unknown>,
@@ -46,28 +47,20 @@ export class HostComponent<
 
 	private destroyed = false;
 
-	/**
-	 * Selects and checks the consumer origin, then requests BOOTSTRAP.
-	 *
-	 * @param consumerOrigins - Checked against the selected consumer origin
-	 * before BOOTSTRAP is sent.
-	 * @param autoInit - Sends INIT as soon as `ready` resolves; otherwise INIT
-	 * waits for {@link HostComponent.init}.
-	 * @param onDestroy - Runs first in `destroy()`, before resources are released.
-	 */
+	private readonly consumerOrigins: DomainMatcher;
+
+	private readonly onDestroy?: () => void;
+
+	/** Selects and checks the consumer origin, then requests BOOTSTRAP. */
 	constructor(
 		payload: WindowNamePayload,
-		propDefinitions: HostPropsDefinition<
-			P,
-			SchemaInputs
-		> = EMPTY_PROP_DEFINITIONS as HostPropsDefinition<P, SchemaInputs>,
-		private readonly consumerOrigins: DomainMatcher,
-		autoInit = true,
-		private readonly onDestroy?: () => void,
+		options: HostRuntimeOptions<P, SchemaInputs>,
 	) {
 		this.uid = payload.uid;
 		this.tag = payload.tag;
 		this.event = new EventEmitter();
+		this.consumerOrigins = options.consumerOrigins;
+		this.onDestroy = options.onDestroy;
 
 		let transport: HostTransport | null = null;
 		let propsRuntime: HostPropsRuntime<P, SchemaInputs> | null = null;
@@ -79,7 +72,7 @@ export class HostComponent<
 			this.consumerDomain = resolveMessagingConsumerContext({
 				consumerWindow: this.consumerWindow,
 				claimedConsumerDomain: payload.consumerDomain,
-				allowedConsumerDomains: this.consumerOrigins,
+				consumerOrigins: this.consumerOrigins,
 				tag: this.tag,
 			});
 
@@ -94,26 +87,30 @@ export class HostComponent<
 			});
 			this.transport = transport;
 
-			propsRuntime = new HostPropsRuntime(propDefinitions, {
-				uid: this.uid,
-				tag: this.tag,
-				event: this.event,
-				controls: {
-					close: () => this.transport.close(),
-					focus: () => this.transport.focus(),
-					resize: (dimensions) => this.transport.resize(dimensions),
-					show: () => this.transport.show(),
-					hide: () => this.transport.hide(),
-					onError: (error) => this.transport.onError(error),
-					exportData: <T>(exports: T) => this.transport.exportData(exports),
-					consumerExport: <T>(data: T) => this.transport.consumerExport(data),
-					getPeerInstances: (options) =>
-						this.transport.getPeerInstances(options),
+			propsRuntime = new HostPropsRuntime(
+				options.props ??
+					(EMPTY_PROP_DEFINITIONS as HostPropsDefinition<P, SchemaInputs>),
+				{
+					uid: this.uid,
+					tag: this.tag,
+					event: this.event,
+					controls: {
+						close: () => this.transport.close(),
+						focus: () => this.transport.focus(),
+						resize: (dimensions) => this.transport.resize(dimensions),
+						show: () => this.transport.show(),
+						hide: () => this.transport.hide(),
+						onError: (error) => this.transport.onError(error),
+						exportData: <T>(exports: T) => this.transport.exportData(exports),
+						consumerExport: <T>(data: T) => this.transport.consumerExport(data),
+						getPeerInstances: (options) =>
+							this.transport.getPeerInstances(options),
+					},
+					getConsumerWindow: () => this.consumerWindow,
+					getConsumerDomain: () => this.consumerDomain,
+					getBridge: () => this.transport.bridge,
 				},
-				getConsumerWindow: () => this.consumerWindow,
-				getConsumerDomain: () => this.consumerDomain,
-				getBridge: () => this.transport.bridge,
-			});
+			);
 			this.propsRuntime = propsRuntime;
 			Object.defineProperties(this, {
 				messenger: {
@@ -138,7 +135,7 @@ export class HostComponent<
 			// rejection when the embedding consumer has already closed.
 			void this.ready.catch(() => undefined);
 
-			if (autoInit) {
+			if (options.autoInit ?? true) {
 				this.init();
 			}
 		} catch (error) {
@@ -150,24 +147,7 @@ export class HostComponent<
 	}
 
 	private async initializeFromConsumer(): Promise<HostProps<P>> {
-		const data = await this.transport.requestBootstrap();
-		if (this.destroyed)
-			throw new Error("Host destroyed before bootstrap completed");
-		if (
-			!data ||
-			typeof data.props !== "object" ||
-			data.props === null ||
-			Array.isArray(data.props)
-		) {
-			throw new Error("Invalid consumer bootstrap response");
-		}
-		// Defence in depth: the origin was checked before BOOTSTRAP was sent, and
-		// the messenger accepts this response only from that origin.
-		assertAllowedConsumerDomain(
-			this.consumerOrigins,
-			this.consumerDomain,
-			this.tag,
-		);
+		const data = await this.receiveBootstrap();
 		try {
 			this.propsRuntime.applyBootstrap(data);
 		} catch (error) {
@@ -178,6 +158,41 @@ export class HostComponent<
 		if (this.destroyed)
 			throw new Error("Host destroyed before bootstrap completed");
 		return this.propsRuntime.hostProps;
+	}
+
+	/**
+	 * Requests BOOTSTRAP and checks the response before any props are applied.
+	 *
+	 * @remarks
+	 * A failure here is reported on the `error` event, unless the host was
+	 * destroyed; a schema rejection is reported by the props runtime instead.
+	 */
+	private async receiveBootstrap(): Promise<HostBootstrapData> {
+		try {
+			const data = await this.transport.requestBootstrap();
+			if (this.destroyed)
+				throw new Error("Host destroyed before bootstrap completed");
+			if (
+				!data ||
+				typeof data.props !== "object" ||
+				data.props === null ||
+				Array.isArray(data.props)
+			) {
+				throw new Error("Invalid consumer bootstrap response");
+			}
+			// Defence in depth: the origin was checked before BOOTSTRAP was sent, and
+			// the messenger accepts this response only from that origin.
+			assertAllowedConsumerDomain(
+				this.consumerOrigins,
+				this.consumerDomain,
+				this.tag,
+			);
+			return data;
+		} catch (error) {
+			if (!this.destroyed)
+				this.transport.emitInitFailure(normalizeError(error));
+			throw error;
+		}
 	}
 
 	public get hostProps(): HostProps<P> {

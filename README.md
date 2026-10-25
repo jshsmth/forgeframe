@@ -654,6 +654,8 @@ Only one host can be active in a window. A second `initHost()` call throws while
 
 Only channel metadata stays in `window.name`, so reloads and later host documents can reconnect and receive the latest props. Browser policies that clear window names across sites can prevent reconnection.
 
+`host.on('error')` reports each failed start once. A schema rejection reports its validation `Error`. Any other failure, such as a failed BOOTSTRAP request or an invalid bootstrap response, reports an `init_failed` record, as INIT delivery failures do.
+
 If the host's schemas reject the consumer's props, `ready` rejects and the host tells the consumer why. The consumer keeps waiting, so a same-page `initHost()` retry can still connect without any error being reported; if none succeeds, `render()` rejects at its `timeout`, and its single `error` event and `onError` call include `Host initialization failed: ...`.
 
 `host.destroy()` can be called more than once. Controls on the old `hostProps` reject afterwards, and destroying a stale host never affects a newer one.
@@ -1087,6 +1089,8 @@ const host = initHost(PaymentForm, { consumerOrigins: ['https://shop.example.com
 ```
 
 **Open widgets that omitted the allowlist.** Before: `initHost(definitions)`. After: `initHost(Component, { consumerOrigins: '*' })`.
+
+**Host prop definitions.** `initHost({ props })` checks its definitions as `create()` does: it throws for a definition of a reserved built-in name, such as `close` or `children`, which v1 silently dropped, and for `props` that are not a definitions object.
 
 **Reading props.** Before: `window.hostProps.amount`, `getHostProps()`, `Component.hostProps` or `host.getProps()`. After: `(await host.ready).amount`, or `host.hostProps.amount` once `ready` has resolved.
 

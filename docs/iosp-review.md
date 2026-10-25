@@ -5,7 +5,7 @@ desc: Runtime callable responsibilities, IOSP classifications, and boundary test
 tags: []
 sources: []
 created: 2026-10-01T01:55:30Z
-updated: 2026-10-25T12:13:28Z
+updated: 2026-10-25T12:32:45Z
 ---
 
 # ForgeFrame callable reference
@@ -244,14 +244,12 @@ Evidence: [host](#evidence-host); typecheck.
 
 ### [core/host/bootstrap.ts](../packages/forgeframe/src/core/host/bootstrap.ts)
 
-`initHost()` is the only host start path. `readInitHostArguments` checks the call shape before any environment check: a component must carry registered options, a tag-agnostic call takes one options object, and a second positional argument (the v1 allowlist position) throws. `readInitHostOptions` is **O** declaration policy over the supplied options: it accepts only `consumerOrigins`, `autoInit`, and, in the tag-agnostic form, `props`; validates the required matcher; and applies the shared reserved-name and removed-option policies to supplied definitions. Each error names the v2 call shape.
+`initHost()` is the only host start path. `init-host-arguments.ts` checks the call shape before any environment check and resolves what the host starts with. The integration then returns null without browser globals, throws while a host is active, reads the channel metadata, and in the component form throws when the payload's tag differs. It never consults the registry for another component's definitions and never reconfigures a running host. `readInitialPayload` classifies the current `window.name` on every new start and never rewrites it: a payload from another protocol throws the upgrade error that `describeUnsupportedPayload` words, before any host state exists or anything is sent to the unverified consumer, and an invalid payload is logged and yields null. `hasConsumerWindow` checks first that a parent or opener exists: a stale older payload in a window with neither has no consumer to upgrade, so it yields null, as a current payload without a consumer window does. There is no pending copy of the payload, so a retry after a failed start or failed asynchronous validation, and a start after `destroy()`, reread the retained channel metadata.
 
-The integration then returns null without browser globals, throws while a host is active, reads the channel metadata, and in the component form throws when the payload's tag differs. It never consults the registry for another component's definitions and never reconfigures a running host. `readInitialPayload` classifies the current `window.name` on every new start and never rewrites it: a payload from another protocol throws the upgrade error that `describeUnsupportedPayload` words, before any host state exists or anything is sent to the unverified consumer, and an invalid payload is logged and yields null. `hasConsumerWindow` checks first that a parent or opener exists: a stale older payload in a window with neither has no consumer to upgrade, so it yields null, as a current payload without a consumer window does. There is no pending copy of the payload, so a retry after a failed start or failed asynchronous validation, and a start after `destroy()`, reread the retained channel metadata.
+`startHostRuntime` passes the resolved start options to the runtime and makes it the active host from construction until it is destroyed or its start fails. A consumer-window resolution failure yields null; a disallowed consumer origin throws from construction and leaves no active host. Its ready callback is registered before the caller can observe `ready`, so a rejection releases the singleton before the caller's handlers run. The destruction callback is an **O** identity-guarded state transition, so stale or repeated destruction cannot clear a replacement host. `createHost` returns a frozen object with only `ready`, `hostProps`, `init`, `destroy` and `on`; `on` admits only the `props` and `error` events before registering on the runtime's emitter.
 
-`startHostRuntime` makes the runtime the active host from construction until it is destroyed or its start fails. A consumer-window resolution failure yields null; a disallowed consumer origin throws from construction and leaves no active host. Its ready callback is registered before the caller can observe `ready`, so a rejection releases the singleton before the caller's handlers run. The destruction callback is an **O** identity-guarded state transition, so stale or repeated destruction cannot clear a replacement host. `createHost` returns a frozen object with only `ready`, `hostProps`, `init`, `destroy` and `on`; `on` admits only the `props` and `error` events before registering on the runtime's emitter.
-
-- **O:** `readInitHostOptions`, `describeUnsupportedPayload`, `getHost`.
-- **I:** `readInitHostArguments`, `readInitialPayload`, `hasConsumerWindow`, `initHost`, `startHostRuntime`, `createHost`, `createHost.on`, `createHost.init`, `createHost.destroy`, `clearHostInstance`.
+- **O:** `describeUnsupportedPayload`, `getHost`.
+- **I:** `readInitialPayload`, `hasConsumerWindow`, `initHost`, `startHostRuntime`, `createHost`, `createHost.on`, `createHost.init`, `createHost.destroy`, `clearHostInstance`.
 - **O callbacks:** `startHostRuntime.onDestroy`.
 - **I callbacks:** `startHostRuntime.ready.catch`.
 
@@ -259,7 +257,7 @@ Evidence: [host](#evidence-host); typecheck.
 
 ### [core/host/builtin-keys.ts](../packages/forgeframe/src/core/host/builtin-keys.ts)
 
-The reserved built-in names and the declaration policy that rejects definitions for them. `create()` and `initHost()` share the policy; entries set to `undefined` count as omitted.
+The reserved built-in names and the declaration policy that rejects definitions for them. `create()` and `initHost()` share the policy, which reads fields by the own-field rule in `props/removed-options.ts`: entries set to `undefined` count as omitted, and accessors are not invoked.
 
 - **O:** `assertNoReservedPropDefinitions`.
 
@@ -271,11 +269,11 @@ Constructor proxies bind the host's own fields and its props and transport runti
 
 `HostComponent.destroy` notifies its bootstrap owner first, then sequences transport, observer, and prop cleanup. The owner callback is local to that owner, so stale or repeated destruction cannot clear a replacement host; `consumer-host-handshake.test.ts` covers this.
 
-When host schemas reject the bootstrap snapshot, `initializeFromConsumer` asks the transport to report the failure to the verified, allowed consumer before rejecting `ready`; consumer-domain rejections are not reported. After the bootstrap response, it passes the messaging consumer origin to the shared allowlist policy in `consumer-origin-policy.ts` again, as defence in depth.
+The constructor takes one options object (`HostRuntimeOptions`: definitions, `consumerOrigins`, `autoInit`, and the owner's destruction callback). `receiveBootstrap` requests BOOTSTRAP, checks the response's shape, and passes the messaging consumer origin to the shared allowlist policy in `consumer-origin-policy.ts` again, as defence in depth. Any failure there, apart from destruction, is reported as an `init_failed` record on the `error` event before `ready` rejects. When host schemas reject the bootstrap snapshot, the props runtime reports the `Error` instead, and `initializeFromConsumer` asks the transport to tell the verified, allowed consumer why; consumer-domain rejections are not reported to the consumer.
 
-- **O:** `HostComponent.constructor.getConsumerDomain@92`, `HostComponent.constructor.beforeInit`, `HostComponent.constructor.getConsumerWindow`, `HostComponent.constructor.getConsumerDomain@114`, `HostComponent.constructor.getBridge`, `HostComponent.constructor.get@121`, `HostComponent.constructor.get@125`, `HostComponent.constructor.isConsumerSource`.
-- **I:** `HostComponent.constructor`, `HostComponent.constructor.close`, `HostComponent.constructor.focus`, `HostComponent.constructor.resize`, `HostComponent.constructor.show`, `HostComponent.constructor.hide`, `HostComponent.constructor.onError`, `HostComponent.constructor.exportData`, `HostComponent.constructor.consumerExport`, `HostComponent.constructor.getPeerInstances`, `HostComponent.constructor.applySerializedProps`, `HostComponent.initializeFromConsumer`, `HostComponent.hostProps`, `HostComponent.init`, `HostComponent.destroy`.
-- **O callbacks:** `HostComponent.constructor.callback@139`.
+- **O:** `HostComponent.constructor.getConsumerDomain@85`, `HostComponent.constructor.beforeInit`, `HostComponent.constructor.getConsumerWindow`, `HostComponent.constructor.getConsumerDomain@110`, `HostComponent.constructor.getBridge`, `HostComponent.constructor.get@118`, `HostComponent.constructor.get@122`, `HostComponent.constructor.isConsumerSource`.
+- **I:** `HostComponent.constructor`, `HostComponent.constructor.close`, `HostComponent.constructor.focus`, `HostComponent.constructor.resize`, `HostComponent.constructor.show`, `HostComponent.constructor.hide`, `HostComponent.constructor.onError`, `HostComponent.constructor.exportData`, `HostComponent.constructor.consumerExport`, `HostComponent.constructor.getPeerInstances`, `HostComponent.constructor.applySerializedProps`, `HostComponent.initializeFromConsumer`, `HostComponent.receiveBootstrap`, `HostComponent.hostProps`, `HostComponent.init`, `HostComponent.destroy`.
+- **O callbacks:** `HostComponent.constructor.callback@136`.
 
 Evidence: [host](#evidence-host); typecheck.
 
@@ -286,6 +284,15 @@ All trust policy works from supplied origins and options. A messaging target mus
 - **O:** `assertAllowedConsumerDomain`, `validateMessagingConsumerContext`.
 
 Evidence: [host](#evidence-host), [consumer-origin-policy.test](../packages/forgeframe/tests/unit/consumer-origin-policy.test.ts); typecheck.
+
+### [core/host/init-host-arguments.ts](../packages/forgeframe/src/core/host/init-host-arguments.ts)
+
+`initHost()` call-shape policy, checked before any environment check, so a v1 call shape fails closed everywhere. `readInitHostArguments` resolves the component form's tag and definitions through the registry: a component must carry registered options and takes one options object, and a tag-agnostic call that adds a second positional argument (the v1 allowlist position) throws. `readInitHostOptions` is **O** declaration policy over the supplied options: it accepts only `consumerOrigins`, `autoInit`, and, in the tag-agnostic form, `props`; validates the required matcher; defaults `autoInit`; and applies the shared reserved-name and removed-option policies to supplied definitions. `callShapeError` appends the v2 call shapes, so every argument error names them; the shared reserved-name and removed-option errors name the prop instead.
+
+- **O:** `callShapeError`, `readInitHostOptions`.
+- **I:** `readInitHostArguments`.
+
+Evidence: [host](#evidence-host); typecheck.
 
 ### [core/host/props-runtime.ts](../packages/forgeframe/src/core/host/props-runtime.ts)
 
@@ -311,12 +318,13 @@ Evidence: [host](#evidence-host); typecheck.
 
 ### [core/host/transport.ts](../packages/forgeframe/src/core/host/transport.ts)
 
-Outbound export batches share a FIFO queue. A serialization failure aborts new bridge registrations, a send failure keeps possibly delivered references, and acknowledged delivery retires stale IDs. `sendInitOnce` launches the INIT workflow at most once and never after teardown; the coordinator calls it from `init()`. The workflow awaits `beforeInit` (the verified bootstrap); a rejected start sends and reports nothing, because `ready` already reports it. It then guards against destruction after its await, sends INIT with only the session ID, captures errors, and reports events; a rejection caused by teardown is not an initialization failure and is not logged. `reportInitFailure` sends a best-effort ERROR marked `initFailed`, whose rejection after teardown is ignored. Teardown posts a best-effort one-way TEARDOWN notice before destroying the messenger, because the consumer's calls wait without a timeout and calls not yet dispatched would never be answered. Browser focus is part of the focus integration, which waits briefly for this window to receive the consumer's frame focus before resolving, unless the consumer's acknowledgement reports that its page has no focus to pass on; a popup host resizes its own window before notifying the consumer, which cannot resize it across origins. Peer lookup sends only the caller's options, sequences a correlated response and recursive decoding through the separate peer-call bridge, so prop and export batches cannot retire relay wrappers.
+Outbound export batches share a FIFO queue. A serialization failure aborts new bridge registrations, a send failure keeps possibly delivered references, and acknowledged delivery retires stale IDs. `sendInitOnce` launches the INIT workflow at most once and never after teardown; the coordinator calls it from `init()`. The workflow awaits `beforeInit` (the verified bootstrap); a rejected start sends and reports nothing, because the coordinator reports failed starts. `emitInitFailure` is the one place that builds the `init_failed` record, for failed starts and INIT delivery failures. It then guards against destruction after its await, sends INIT with only the session ID, captures errors, and reports events; a rejection caused by teardown is not an initialization failure and is not logged. `reportInitFailure` sends a best-effort ERROR marked `initFailed`, whose rejection after teardown is ignored. Teardown posts a best-effort one-way TEARDOWN notice before destroying the messenger, because the consumer's calls wait without a timeout and calls not yet dispatched would never be answered. Browser focus is part of the focus integration, which waits briefly for this window to receive the consumer's frame focus before resolving, unless the consumer's acknowledgement reports that its page has no focus to pass on; a popup host resizes its own window before notifying the consumer, which cannot resize it across origins. Peer lookup sends only the caller's options, sequences a correlated response and recursive decoding through the separate peer-call bridge, so prop and export batches cannot retire relay wrappers.
 
+- **O:** `HostTransport.emitInitFailure`.
 - **I:** `HostTransport.constructor`, `HostTransport.registerPropsHandler`, `HostTransport.requestBootstrap`, `HostTransport.close`, `HostTransport.focus`, `HostTransport.resize`, `HostTransport.show`, `HostTransport.hide`, `HostTransport.onError`, `HostTransport.reportInitFailure`, `HostTransport.exportData`, `HostTransport.sendExportBatch`, `HostTransport.consumerExport`, `HostTransport.getPeerInstances`, `HostTransport.destroy`, `HostTransport.sendInit`, `HostTransport.sendMessage`.
 - **M:** `HostTransport.sendInitOnce`.
-- **O callbacks:** `HostTransport.constructor.callback@53`, `HostTransport.constructor.callback@59`, `HostTransport.reportInitFailure.callback@155`, `HostTransport.exportData.callback@162`.
-- **I callbacks:** `HostTransport.registerPropsHandler.callback@69`, `HostTransport.exportData.callback@159`.
+- **O callbacks:** `HostTransport.constructor.callback@53`, `HostTransport.constructor.callback@59`, `HostTransport.reportInitFailure.callback@164`, `HostTransport.exportData.callback@171`.
+- **I callbacks:** `HostTransport.registerPropsHandler.callback@69`, `HostTransport.exportData.callback@168`.
 - **Retained rationale —** `HostTransport.sendInitOnce`: The idempotent guard, flag transition and launch of sendInit are a short atomic adapter.
 
 Evidence: [host](#evidence-host); typecheck.
@@ -483,9 +491,9 @@ Evidence: [props](#evidence-props); typecheck.
 
 ### [props/removed-options.ts](../packages/forgeframe/src/props/removed-options.ts)
 
-Removed-option admission is pure declaration policy over a supplied definitions record. `create()` and `initHost()` share it and call it before registering a factory or creating a host runtime. It skips direct Standard Schemas and `undefined` entries and reads own property descriptors, so accessor-defined entries are not invoked; a data field set to `undefined` counts as omitted. `component.test.ts` and the handshake integration suite cover both entry points.
+Removed-option admission is pure declaration policy over a supplied definitions record. `create()` and `initHost()` share it and call it before registering a factory or creating a host runtime. It skips direct Standard Schemas and `undefined` entries and reads own property descriptors, so accessor-defined entries are not invoked; a data field set to `undefined` counts as omitted. `hasOwnDeclaredField` is that own-field rule; the reserved-name policy and `create()`'s `allowedConsumerDomains` check read fields through it too. `component.test.ts` and the handshake integration suite cover both entry points.
 
-- **O:** `assertNoRemovedPropOptions`.
+- **O:** `hasOwnDeclaredField`, `assertNoRemovedPropOptions`.
 
 Evidence: [props](#evidence-props); typecheck.
 

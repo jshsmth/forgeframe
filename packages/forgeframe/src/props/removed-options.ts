@@ -4,10 +4,29 @@
  *
  * @remarks
  * `create()` and `initHost()` share this check, so definition modules used by
- * both the consumer and the host fail the same way on either side.
+ * both the consumer and the host fail the same way on either side. Other
+ * declaration checks read fields through the same own-field rule.
  */
 
 import { isStandardSchema } from "./schema";
+
+/**
+ * Reports whether a declaration sets one of its own fields.
+ *
+ * @remarks
+ * Only own fields count, so inherited values are ignored. The descriptor is
+ * read instead of the value, so an accessor is never invoked and counts as
+ * set; a data field set to `undefined` counts as omitted.
+ *
+ * @internal
+ */
+export function hasOwnDeclaredField(target: object, key: PropertyKey): boolean {
+	const descriptor = Object.getOwnPropertyDescriptor(target, key);
+	return (
+		descriptor !== undefined &&
+		(!("value" in descriptor) || descriptor.value !== undefined)
+	);
+}
 
 /**
  * Throws when a wrapped prop definition still sets a removed option.
@@ -33,14 +52,7 @@ export function assertNoRemovedPropOptions(definitions: object): void {
 			isStandardSchema(definition)
 		)
 			continue;
-		const serialization = Object.getOwnPropertyDescriptor(
-			definition,
-			"serialization",
-		);
-		if (
-			serialization &&
-			(!("value" in serialization) || serialization.value !== undefined)
-		) {
+		if (hasOwnDeclaredField(definition, "serialization")) {
 			throw new Error(
 				`Prop "${key}" uses the removed "serialization" option. ForgeFrame 2 always sends props as JSON; remove the option.`,
 			);
