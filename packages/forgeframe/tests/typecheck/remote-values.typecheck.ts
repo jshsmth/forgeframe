@@ -1,5 +1,11 @@
 /** Public cross-window values preserve data shapes and expose asynchronous callbacks. */
-import { create, type HostProps, prop, type RemoteValue } from "@/index";
+import {
+	create,
+	type HostProps,
+	initHost,
+	prop,
+	type RemoteValue,
+} from "@/index";
 
 type Props = {
 	count: () => number;
@@ -79,8 +85,9 @@ const InferredComponent = create({
 	props: { count: prop.function<() => number>() },
 });
 void InferredComponent({ count: () => 42 });
-const inferredCount: Promise<number> | undefined =
-	InferredComponent.hostProps?.count();
+const inferredCount: Promise<number> | undefined = initHost(InferredComponent, {
+	consumerOrigins: "*",
+})?.hostProps.count();
 
 type Lookup = {
 	(value: string): Promise<string>;

@@ -4,8 +4,8 @@
  *
  * @remarks
  * This internal module keeps `HostComponent` focused on orchestration. It wires
- * together security checks, message transport, and host props state while
- * preserving the public host runtime surface exported from `src/core/host.ts`.
+ * together security checks, message transport, and host props state. Callers
+ * reach it only through the `Host` object that `initHost()` returns.
  */
 
 import { EventEmitter } from "../../events/emitter";
@@ -15,8 +15,7 @@ import type { HostProps } from "../../types/runtime";
 import type { DomainMatcher } from "../../types/utility";
 import { normalizeError } from "../../utils/error";
 import type { WindowNamePayload } from "../../window/types";
-// Aliased so the method that delegates to it does not read as recursion.
-import { assertAllowedConsumerDomain as assertConsumerDomainAllowed } from "./consumer-origin-policy";
+import { assertAllowedConsumerDomain } from "./consumer-origin-policy";
 import { HostPropsRuntime } from "./props-runtime";
 import {
 	resolveConsumerWindow,
@@ -30,8 +29,8 @@ export class HostComponent<
 > {
 	public event: EventEmitter;
 
-	/** Resolves once initial props have arrived and passed the host schemas. */
-	public readonly ready: Promise<void>;
+	/** Resolves to `hostProps` once initial props have passed the host schemas. */
+	public readonly ready: Promise<HostProps<P>>;
 
 	private uid: string;
 
@@ -41,29 +40,34 @@ export class HostComponent<
 
 	private consumerDomain!: string;
 
-	private allowedConsumerDomains?: DomainMatcher;
-
 	private transport!: HostTransport;
 
 	private propsRuntime!: HostPropsRuntime<P, SchemaInputs>;
 
 	private destroyed = false;
-	private bootstrapCompleted = false;
 
+	/**
+	 * Selects and checks the consumer origin, then requests BOOTSTRAP.
+	 *
+	 * @param consumerOrigins - Checked against the selected consumer origin
+	 * before BOOTSTRAP is sent.
+	 * @param autoInit - Sends INIT as soon as `ready` resolves; otherwise INIT
+	 * waits for {@link HostComponent.init}.
+	 * @param onDestroy - Runs first in `destroy()`, before resources are released.
+	 */
 	constructor(
 		payload: WindowNamePayload,
 		propDefinitions: HostPropsDefinition<
 			P,
 			SchemaInputs
 		> = EMPTY_PROP_DEFINITIONS as HostPropsDefinition<P, SchemaInputs>,
-		allowedConsumerDomains?: DomainMatcher,
-		deferInit = false,
+		private readonly consumerOrigins: DomainMatcher,
+		autoInit = true,
 		private readonly onDestroy?: () => void,
 	) {
 		this.uid = payload.uid;
 		this.tag = payload.tag;
 		this.event = new EventEmitter();
-		this.allowedConsumerDomains = allowedConsumerDomains;
 
 		let transport: HostTransport | null = null;
 		let propsRuntime: HostPropsRuntime<P, SchemaInputs> | null = null;
@@ -75,7 +79,7 @@ export class HostComponent<
 			this.consumerDomain = resolveMessagingConsumerContext({
 				consumerWindow: this.consumerWindow,
 				claimedConsumerDomain: payload.consumerDomain,
-				allowedConsumerDomains: this.allowedConsumerDomains,
+				allowedConsumerDomains: this.consumerOrigins,
 				tag: this.tag,
 			});
 
@@ -86,7 +90,6 @@ export class HostComponent<
 				consumerWindow: this.consumerWindow,
 				consumerDomain: this.consumerDomain,
 				getConsumerDomain: () => this.consumerDomain,
-				deferInit,
 				beforeInit: () => this.ready,
 			});
 			this.transport = transport;
@@ -110,7 +113,6 @@ export class HostComponent<
 				getConsumerWindow: () => this.consumerWindow,
 				getConsumerDomain: () => this.consumerDomain,
 				getBridge: () => this.transport.bridge,
-				onFirstHostPropsAccess: () => this.transport.handleHostPropsAccess(),
 			});
 			this.propsRuntime = propsRuntime;
 			Object.defineProperties(this, {
@@ -130,20 +132,14 @@ export class HostComponent<
 					this.propsRuntime.applySerializedProps(serializedProps),
 			});
 
-			this.hostProps = this.propsRuntime.initializeHostProps();
-			this.propsRuntime.exposeHostProps();
+			this.propsRuntime.initializeHostProps();
 			this.ready = this.initializeFromConsumer();
-			// Callers can await ready; deferred initialization must not create an
-			// unhandled rejection when the embedding consumer has already closed.
-			void this.ready.then(
-				() => {
-					this.bootstrapCompleted = true;
-				},
-				() => undefined,
-			);
+			// Callers can await ready; a failed start must not create an unhandled
+			// rejection when the embedding consumer has already closed.
+			void this.ready.catch(() => undefined);
 
-			if (!deferInit) {
-				this.flushInit();
+			if (autoInit) {
+				this.init();
 			}
 		} catch (error) {
 			propsRuntime?.destroy();
@@ -153,7 +149,7 @@ export class HostComponent<
 		}
 	}
 
-	private async initializeFromConsumer(): Promise<void> {
+	private async initializeFromConsumer(): Promise<HostProps<P>> {
 		const data = await this.transport.requestBootstrap();
 		if (this.destroyed)
 			throw new Error("Host destroyed before bootstrap completed");
@@ -165,8 +161,13 @@ export class HostComponent<
 		) {
 			throw new Error("Invalid consumer bootstrap response");
 		}
-		if (this.allowedConsumerDomains !== undefined)
-			this.assertAllowedConsumerDomain(this.allowedConsumerDomains);
+		// Defence in depth: the origin was checked before BOOTSTRAP was sent, and
+		// the messenger accepts this response only from that origin.
+		assertAllowedConsumerDomain(
+			this.consumerOrigins,
+			this.consumerDomain,
+			this.tag,
+		);
 		try {
 			this.propsRuntime.applyBootstrap(data);
 		} catch (error) {
@@ -176,52 +177,16 @@ export class HostComponent<
 		}
 		if (this.destroyed)
 			throw new Error("Host destroyed before bootstrap completed");
+		return this.propsRuntime.hostProps;
 	}
 
 	public get hostProps(): HostProps<P> {
 		return this.propsRuntime.hostProps;
 	}
 
-	public set hostProps(value: HostProps<P>) {
-		this.propsRuntime.hostProps = value;
-	}
-
-	/** Distinguishes replacement configuration from deferred initial validation. @internal */
-	hasCompletedBootstrap(): boolean {
-		return this.bootstrapCompleted;
-	}
-
-	flushInit(): void {
-		this.transport.flushInit();
-	}
-
-	getProps(): HostProps<P> {
-		return this.hostProps;
-	}
-
-	getInitError(): Error | null {
-		return this.transport.getInitError();
-	}
-
-	applyHostConfiguration(
-		propDefinitions?: HostPropsDefinition<P, SchemaInputs>,
-		allowedConsumerDomains?: DomainMatcher,
-	): void {
-		if (propDefinitions !== undefined) {
-			this.propsRuntime.applyHostConfiguration(propDefinitions);
-		}
-
-		if (allowedConsumerDomains !== undefined) {
-			this.allowedConsumerDomains = allowedConsumerDomains;
-		}
-	}
-
-	assertAllowedConsumerDomain(allowedConsumerDomains: DomainMatcher): void {
-		assertConsumerDomainAllowed(
-			allowedConsumerDomains,
-			this.consumerDomain,
-			this.tag,
-		);
+	/** Sends INIT once `ready` resolves; idempotent, and inert after `destroy()`. */
+	init(): void {
+		this.transport.sendInitOnce();
 	}
 
 	destroy(): void {
@@ -230,9 +195,10 @@ export class HostComponent<
 		}
 
 		this.destroyed = true;
+		// Release this runtime first, so teardown never clears a replacement.
+		this.onDestroy?.();
 		this.transport.destroy();
 		this.event.removeAllListeners();
 		this.propsRuntime.destroy();
-		this.onDestroy?.();
 	}
 }

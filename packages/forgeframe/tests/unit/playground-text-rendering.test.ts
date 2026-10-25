@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const hostRuntime = vi.hoisted(() => ({
 	create: vi.fn(),
 	initHost: vi.fn(),
-	isHost: vi.fn(),
 }));
 vi.mock("forgeframe", () => ({
 	...hostRuntime,
@@ -22,7 +21,6 @@ beforeEach(() => {
 	document.body.innerHTML = '<div id="app"></div><div id="event-log"></div>';
 });
 afterEach(() => {
-	Reflect.deleteProperty(window, "hostProps");
 	document.body.replaceChildren();
 });
 
@@ -44,12 +42,7 @@ describe("playground cross-window text", () => {
 			onGreet,
 			export: exported,
 		};
-		Object.defineProperty(window, "hostProps", {
-			configurable: true,
-			value: props,
-		});
-		hostRuntime.initHost.mockReturnValue({ ready: Promise.resolve() });
-		hostRuntime.isHost.mockReturnValue(true);
+		hostRuntime.initHost.mockReturnValue({ ready: Promise.resolve(props) });
 		await import("../../../playground/host/main");
 		await vi.waitFor(() => expect(onProps).toHaveBeenCalledOnce());
 		expect(

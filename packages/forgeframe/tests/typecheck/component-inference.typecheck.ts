@@ -39,8 +39,9 @@ void InferredComponent({
 	onSubmit: (_value) => undefined,
 });
 
-const inferredHostCount: number | undefined =
-	InferredComponent.hostProps?.count;
+const inferredHostCount: number | undefined = initHost(InferredComponent, {
+	consumerOrigins: "*",
+})?.hostProps.count;
 void inferredHostCount;
 
 // @ts-expect-error inferred direct schemas reject the wrong value type
@@ -76,8 +77,9 @@ void CallableSchemaComponent({ name: "ready" });
 // @ts-expect-error callable schemas reject the wrong value type
 void CallableSchemaComponent({ name: 1 });
 
-const callableHostName: string | undefined =
-	CallableSchemaComponent.hostProps?.name;
+const callableHostName: string | undefined = initHost(CallableSchemaComponent, {
+	consumerOrigins: "*",
+})?.hostProps.name;
 void callableHostName;
 
 interface ExplicitProps extends Record<string, unknown> {
@@ -182,12 +184,15 @@ void ExternalSchemaComponent({
 	wrappedTransformedValue: "wrapped",
 });
 
+const externalSchemaHostProps = initHost(ExternalSchemaComponent, {
+	consumerOrigins: "*",
+})?.hostProps;
 const transformedHostValue: number | undefined =
-	ExternalSchemaComponent.hostProps?.transformedValue;
+	externalSchemaHostProps?.transformedValue;
 const defaultedHostValue: string | undefined =
-	ExternalSchemaComponent.hostProps?.defaultedValue;
+	externalSchemaHostProps?.defaultedValue;
 const wrappedTransformedHostValue: number | undefined =
-	ExternalSchemaComponent.hostProps?.wrappedTransformedValue;
+	externalSchemaHostProps?.wrappedTransformedValue;
 void transformedHostValue;
 void defaultedHostValue;
 void wrappedTransformedHostValue;
@@ -249,21 +254,21 @@ void WrappedOptionalityComponent({
 	requiredOptionalSchema: "required",
 });
 
-if (WrappedOptionalityComponent.hostProps) {
-	const optionalTransportValue: string | undefined =
-		WrappedOptionalityComponent.hostProps.transportOnly;
+const wrappedOptionalityHost = initHost(WrappedOptionalityComponent, {
+	consumerOrigins: "*",
+});
+if (wrappedOptionalityHost) {
+	const hostProps = wrappedOptionalityHost.hostProps;
+	const optionalTransportValue: string | undefined = hostProps.transportOnly;
 	const dynamicRequiredValue: string | undefined =
-		WrappedOptionalityComponent.hostProps.dynamicRequiredWrapper;
-	const maybeDefaultValue: string | undefined =
-		WrappedOptionalityComponent.hostProps.maybeDefaultWrapper;
+		hostProps.dynamicRequiredWrapper;
+	const maybeDefaultValue: string | undefined = hostProps.maybeDefaultWrapper;
 	const optionalComputedResult: string | undefined =
-		WrappedOptionalityComponent.hostProps.optionalComputedWrapper;
+		hostProps.optionalComputedWrapper;
 	const requiredOptionalSchemaValue: string | undefined =
-		WrappedOptionalityComponent.hostProps.requiredOptionalSchema;
-	const defaultedWrapperValue: string =
-		WrappedOptionalityComponent.hostProps.defaultedWrapper;
-	const computedWrapperValue: string =
-		WrappedOptionalityComponent.hostProps.computedWrapper;
+		hostProps.requiredOptionalSchema;
+	const defaultedWrapperValue: string = hostProps.defaultedWrapper;
+	const computedWrapperValue: string = hostProps.computedWrapper;
 	void optionalTransportValue;
 	void dynamicRequiredValue;
 	void maybeDefaultValue;
@@ -468,7 +473,7 @@ void outputCompatibleHostDefinitions;
 const typedTransformHost = initHost<
 	ExplicitTransformProps,
 	ExplicitTransformInput
->(hostTransformDefinitions);
+>({ props: hostTransformDefinitions, consumerOrigins: "*" });
 const hostTransformAmount: number | undefined =
 	typedTransformHost?.hostProps.amount;
 void hostTransformAmount;
@@ -647,9 +652,12 @@ void RequiredTransformComponent({ transformedValue: "input" });
 // @ts-expect-error requiredness applies to consumer input even when output may be undefined
 void RequiredTransformComponent({});
 
-if (RequiredTransformComponent.hostProps) {
+const requiredTransformHost = initHost(RequiredTransformComponent, {
+	consumerOrigins: "*",
+});
+if (requiredTransformHost) {
 	const transformedValue: string | undefined =
-		RequiredTransformComponent.hostProps.transformedValue;
+		requiredTransformHost.hostProps.transformedValue;
 	void transformedValue;
 }
 
@@ -746,11 +754,9 @@ const ParentComponent = create({
 	children: () => ({ ChildComponent }),
 });
 
-const fakeComponentReference = {
-	isHost: () => false,
-	isEmbedded: () => false,
-	canRenderTo: async () => true,
-};
+const fakeComponentReference = Object.assign(() => undefined, {
+	instances: [],
+});
 
 create({
 	tag: "invalid-structural-child-component",

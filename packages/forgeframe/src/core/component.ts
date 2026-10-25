@@ -12,7 +12,6 @@ import { CONTEXT } from "../constants";
 import { assertNoRemovedPropOptions } from "../props/removed-options";
 import type { StandardSchemaV1 } from "../props/schema";
 import type {
-	HostPropsDefinition,
 	InferPropsDefinition,
 	InferPropsDefinitionInput,
 } from "../types/props";
@@ -21,15 +20,12 @@ import type {
 	ConsumerPropsInput,
 	ForgeFrameComponent,
 	ForgeFrameComponentInstance,
-	HostProps,
 	InferablePropsDefinition,
 	InferredComponentOptions,
 } from "../types/runtime";
-import type { DomainMatcher } from "../types/utility";
 import { hasBrowserWindow } from "../utils/browser";
 import { assertDomainMatcher } from "../utils/domain-pattern";
 import { resolveComponentHostUrl } from "../utils/url";
-import { isHostOfComponent } from "../window/name-payload";
 import {
 	clearIndexedInstances,
 	clearIndexedInstancesByTag,
@@ -45,7 +41,6 @@ import {
 	registerComponent,
 } from "./component-registry";
 import { ConsumerComponent } from "./consumer";
-import { getHost, initHost } from "./host";
 import { HOST_PROPS_BUILTIN_KEYS } from "./host/builtin-keys";
 
 /**
@@ -115,11 +110,18 @@ function assertComponentShape<P, I, SchemaInputs>(
 		);
 	}
 
-	for (const option of [
-		"domain",
-		"allowedConsumerDomains",
-		"peerDomains",
-	] as const) {
+	// The host enforces its consumer allowlist; a definition-side one would be
+	// silently ignored.
+	if (
+		(options as { allowedConsumerDomains?: unknown }).allowedConsumerDomains !==
+		undefined
+	) {
+		throw new Error(
+			'Component option "allowedConsumerDomains" was removed. Pass the allowlist to the host instead: initHost(Component, { consumerOrigins }).',
+		);
+	}
+
+	for (const option of ["domain", "peerDomains"] as const) {
 		if (options[option] !== undefined)
 			assertDomainMatcher(options[option], `Component ${option}`);
 	}
@@ -175,39 +177,6 @@ function staticUrlValidationContext(
 	};
 }
 
-/**
- * Applies a host-side definition once, when the component is defined.
- *
- * @remarks
- * A matching active host is reconfigured without changing its INIT timing, so
- * an earlier `initHost(..., { deferInit: true })` stays deferred. Otherwise a
- * host window for this tag starts its runtime. Failures are reported instead of
- * thrown, so defining a component never breaks module evaluation; a later
- * explicit `initHost()` reports the same failure to its caller.
- */
-function configureHostAtDefinition<
-	P extends Record<string, unknown>,
-	SchemaInputs,
->(
-	tag: string,
-	propDefinitions: HostPropsDefinition<P, SchemaInputs> | undefined,
-	allowedConsumerDomains: DomainMatcher | undefined,
-): void {
-	if (!hasBrowserWindow()) return;
-	const activeHost = getHost<P, SchemaInputs>();
-	const configuresActiveHost = activeHost?.hostProps.tag === tag;
-	if (!configuresActiveHost && (activeHost || !isHostOfComponent(tag))) return;
-	try {
-		initHost<P, SchemaInputs>(
-			propDefinitions,
-			allowedConsumerDomains,
-			configuresActiveHost ? { deferInit: true } : {},
-		);
-	} catch (error) {
-		console.error(`Failed to initialize host for component "${tag}":`, error);
-	}
-}
-
 /** Removes one identity from the factory-owned list. */
 function removeTrackedInstance<T>(instances: T[], instance: T): void {
 	const index = instances.indexOf(instance);
@@ -220,6 +189,8 @@ function removeTrackedInstance<T>(instances: T[], instance: T): void {
  * @remarks
  * This is the main entry point for defining components. It creates a factory
  * function that can be called with props to create component instances.
+ * Defining a component never starts a host; a host page passes the factory to
+ * `initHost()`.
  *
  * @typeParam P - The props type for the component
  * @typeParam X - The exports type that the host can expose
@@ -230,9 +201,9 @@ function removeTrackedInstance<T>(instances: T[], instance: T): void {
  *
  * @example
  * ```typescript
- * import ForgeFrame, { prop } from 'forgeframe';
+ * import { create, prop } from 'forgeframe';
  *
- * const LoginComponent = ForgeFrame.create({
+ * const LoginComponent = create({
  *   tag: 'login-component',
  *   url: 'https://auth.example.com/login',
  *   props: {
@@ -333,25 +304,6 @@ export function create<
 		);
 	}
 
-	/** Reads the active host runtime for this tag without creating or configuring one. */
-	const readHostProps = (): HostProps<P> | undefined => {
-		// initHost() only creates a host in a browser, so no extra check is needed.
-		const activeHost = getHost<P, SchemaInputs>();
-		return activeHost?.hostProps.tag === options.tag
-			? activeHost.hostProps
-			: undefined;
-	};
-
-	const detectHostState = (): boolean =>
-		readHostProps() !== undefined ||
-		(hasBrowserWindow() && isHostOfComponent(options.tag));
-
-	configureHostAtDefinition(
-		options.tag,
-		runtimeOptions.props as HostPropsDefinition<P, SchemaInputs> | undefined,
-		options.allowedConsumerDomains,
-	);
-
 	/**
 	 * Component factory function that creates new instances.
 	 * @param props - Props to pass to the component instance
@@ -365,25 +317,6 @@ export function create<
 	} as unknown as ForgeFrameComponent<P, X, I, false, SchemaInputs>;
 
 	Component.instances = instances;
-
-	Component.isHost = (): boolean => {
-		return detectHostState();
-	};
-
-	Component.isEmbedded = (): boolean => {
-		return detectHostState();
-	};
-
-	Object.defineProperty(Component, "hostProps", {
-		configurable: true,
-		enumerable: true,
-		get: () => readHostProps(),
-	});
-
-	Component.canRenderTo = async (win: Window): Promise<boolean> => {
-		// Cross-window render targets are not currently supported.
-		return win === window;
-	};
 
 	registerComponent(Component, runtimeOptions);
 

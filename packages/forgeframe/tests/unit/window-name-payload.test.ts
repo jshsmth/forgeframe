@@ -11,7 +11,6 @@ import {
 	classifyWindowNamePayload,
 	createWindowPayload,
 	isForgeFrameWindow,
-	isHostOfComponent,
 	readWindowNamePayload,
 } from "@/window/name-payload";
 import type { WindowNamePayload } from "@/window/types";
@@ -301,57 +300,6 @@ describe("isForgeFrameWindow", () => {
 		} as unknown as Window;
 
 		expect(isForgeFrameWindow(win)).toBe(false);
-	});
-});
-
-describe("isHostOfComponent", () => {
-	it("should return true for matching tag", () => {
-		const win = {
-			name: buildWindowName(createPayload({ tag: "my-component" })),
-		} as Window;
-
-		expect(isHostOfComponent("my-component", win)).toBe(true);
-	});
-
-	it("should return false for non-matching tag", () => {
-		const win = {
-			name: buildWindowName(createPayload({ tag: "other-component" })),
-		} as Window;
-
-		expect(isHostOfComponent("my-component", win)).toBe(false);
-	});
-
-	it("should return false for non-ForgeFrame window", () => {
-		const win = { name: "regular-window" } as Window;
-		expect(isHostOfComponent("my-component", win)).toBe(false);
-	});
-
-	it("should return false when reading the window name throws", () => {
-		const win = {
-			get name(): string {
-				throw new DOMException("Blocked", "SecurityError");
-			},
-		} as Window;
-		expect(isHostOfComponent("my-component", win)).toBe(false);
-	});
-
-	it("should return false for prefixed windows with invalid payloads", () => {
-		const win = {
-			name: encodeWindowName(createPayload({ tag: "" })),
-		} as Window;
-
-		expect(isHostOfComponent("my-component", win)).toBe(false);
-	});
-
-	it("should return false for payloads from another protocol", () => {
-		const win = {
-			name: encodeWindowName({
-				...createPayload({ tag: "my-component" }),
-				protocolVersion: 2,
-			}),
-		} as Window;
-
-		expect(isHostOfComponent("my-component", win)).toBe(false);
 	});
 });
 

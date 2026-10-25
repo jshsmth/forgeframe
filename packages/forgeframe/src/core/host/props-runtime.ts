@@ -4,8 +4,7 @@
  *
  * @remarks
  * This internal module owns `hostProps` construction, reserved key filtering,
- * bootstrap validation, live prop reconciliation, nested child creation, and
- * `window.hostProps` exposure behavior.
+ * bootstrap validation, live prop reconciliation, and nested child creation.
  */
 
 import { EVENT } from "../../constants";
@@ -23,7 +22,7 @@ import { normalizeError } from "../../utils/error";
 import type { HostBootstrapData, HostComponentRef } from "../../window/types";
 import { getRegisteredComponent } from "../component-registry";
 import { HOST_PROPS_BUILTIN_KEYS } from "./builtin-keys";
-import type { HostPropsRuntimeOptions, WindowWithHostProps } from "./types";
+import type { HostPropsRuntimeOptions } from "./types";
 
 function filterReservedHostPropKeys<P extends Record<string, unknown>>(
 	props: P,
@@ -58,7 +57,7 @@ export class HostPropsRuntime<
 	private pendingBootstrapProps: SerializedProps | null = null;
 
 	constructor(
-		private propDefinitions: HostPropsDefinition<P, SchemaInputs>,
+		private readonly propDefinitions: HostPropsDefinition<P, SchemaInputs>,
 		private options: HostPropsRuntimeOptions,
 	) {}
 
@@ -95,58 +94,15 @@ export class HostPropsRuntime<
 		} as HostProps<P>;
 	}
 
-	exposeHostProps(): void {
-		const hostWindow = window as unknown as WindowWithHostProps<P>;
-
-		try {
-			Object.defineProperty(hostWindow, "hostProps", {
-				configurable: true,
-				enumerable: true,
-				get: () => {
-					this.options.onFirstHostPropsAccess();
-					return this.hostProps;
-				},
-				set: (value: HostProps<P> | undefined) => {
-					if (value) {
-						this.hostProps = value;
-					}
-				},
-			});
-		} catch {
-			hostWindow.hostProps = this.hostProps;
-		}
-	}
-
-	/** Validates retained props before reconciling newly consumer-only fields out of host state. */
-	applyHostConfiguration(
-		propDefinitions: HostPropsDefinition<P, SchemaInputs>,
-	): void {
-		const nextProps = this.filterConsumerOnlyProps(
-			this.consumerProps,
-			propDefinitions,
-		);
-		if (this.initialized || this.pendingBootstrapProps !== null)
-			validateNormalizedProps(
-				nextProps as P,
-				this.getDeliveredPropDefinitions(propDefinitions),
-			);
-		const nextHostProps = filterReservedHostPropKeys(nextProps);
-		this.propDefinitions = propDefinitions;
-		this.removeStaleHostProps(this.consumerProps, nextHostProps);
-		this.consumerProps = nextProps;
-		Object.assign(this.hostProps, nextHostProps);
-		this.hostProps.consumer.props = this.consumerProps;
-	}
-
 	/**
 	 * Completes bootstrap using any newer acknowledged props received while it was pending.
-	 * The selected snapshot is validated against the current host definitions.
+	 * The selected snapshot is validated against the host definitions.
 	 * Subscribers are notified once, after children are attached.
 	 */
 	applyBootstrap(data: HostBootstrapData): void {
 		const children = this.buildNestedComponents(data.children);
 		// An acknowledged PROPS update can arrive before this response. Preserve
-		// that newer snapshot, and validate it against the final host definitions.
+		// that newer snapshot.
 		const nextProps = this.commitSerializedProps(
 			this.pendingBootstrapProps ?? data.props,
 		);
@@ -273,17 +229,15 @@ export class HostPropsRuntime<
 		) as RemoteValue<P>;
 	}
 
-	/** Filters wire or committed snapshots against the supplied delivery definitions. */
+	/** Filters a wire snapshot against the host's delivery definitions. */
 	private filterConsumerOnlyProps<T extends Record<string, unknown>>(
 		props: T,
-		propDefinitions = this.propDefinitions,
 	): T {
-		const deliveredDefinitions =
-			this.getDeliveredPropDefinitions(propDefinitions);
+		const deliveredDefinitions = this.getDeliveredPropDefinitions();
 		const entries = Object.entries(props);
 		const deliveredEntries = entries.filter(
 			([key]) =>
-				!Object.hasOwn(propDefinitions, key) ||
+				!Object.hasOwn(this.propDefinitions, key) ||
 				Object.hasOwn(deliveredDefinitions, key),
 		);
 		return deliveredEntries.length === entries.length
@@ -292,11 +246,9 @@ export class HostPropsRuntime<
 	}
 
 	/** Consumer-only definitions validate local input and are excluded from received snapshots. */
-	private getDeliveredPropDefinitions(
-		propDefinitions = this.propDefinitions,
-	): HostPropsDefinition<P, SchemaInputs> {
+	private getDeliveredPropDefinitions(): HostPropsDefinition<P, SchemaInputs> {
 		return Object.fromEntries(
-			Object.entries(propDefinitions).filter(
+			Object.entries(this.propDefinitions).filter(
 				([, definition]) =>
 					!definition ||
 					isStandardSchema(definition) ||

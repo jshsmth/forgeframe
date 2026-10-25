@@ -139,7 +139,7 @@ interface PropDefinitionOptions<
 	 * Aliases that reference another defined prop resolve transitively. When an
 	 * input supplies both an alias and its canonical key, the canonical value
 	 * wins at that level. TypeScript callers can model alternate input shapes
-	 * with the third generic accepted by `ForgeFrame.create()`.
+	 * with the third generic accepted by `create()`.
 	 */
 	alias?: string;
 }

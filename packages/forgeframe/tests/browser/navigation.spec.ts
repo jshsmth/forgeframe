@@ -40,7 +40,7 @@ function respondToDelivery(
 		import {initHost,prop} from '/library.js';
 		window.unhandled = []; window.notifications = [];
 		window.addEventListener('unhandledrejection', event => { window.unhandled.push(String(event.reason)); });
-		const host = initHost({count:prop.number(),allowed:prop.string(),restricted:prop.string().optional()}, ['${consumerOrigin}']);
+		const host = initHost({props:{count:prop.number(),allowed:prop.string(),restricted:prop.string().optional()}, consumerOrigins:['${consumerOrigin}']});
 		await host.ready; window.received = host.hostProps; window.ready = true;
 		host.hostProps.onProps(async () => { throw new Error('async observer failure'); });
 		host.hostProps.onProps(props => window.notifications.push(props.count));
@@ -118,7 +118,7 @@ test.beforeAll(async () => {
 					res,
 					`<!doctype html><script type="module">
 			import {initHost,prop} from '/library.js';
-			try { initHost({count:prop.number()}, ['${consumerOrigin}']); window.outcome = 'started'; }
+			try { initHost({props:{count:prop.number()}, consumerOrigins:['${consumerOrigin}']}); window.outcome = 'started'; }
 			catch (error) { window.outcome = error.message; }
 			// Messages from one window arrive in order, so this marks the end of host traffic.
 			parent.postMessage('v2-host-finished', '${consumerOrigin}');
@@ -130,7 +130,7 @@ test.beforeAll(async () => {
 					res,
 					`<!doctype html><script type="module">
 			import {initHost,prop} from '/library.js';
-			const host = initHost({config:prop.object().shape({onComplete:prop.function(),list:prop.array().of(prop.function()),date:prop.date()}),label:prop.string().optional()}, ['${consumerOrigin}']);
+			const host = initHost({props:{config:prop.object().shape({onComplete:prop.function(),list:prop.array().of(prop.function()),date:prop.date()}),label:prop.string().optional()}, consumerOrigins:['${consumerOrigin}']});
 			await host.ready; window.received = host.hostProps; window.ready = true;
 			</script>`,
 				);
@@ -139,7 +139,7 @@ test.beforeAll(async () => {
 					res,
 					`<!doctype html><script type="module">
 				import {initHost,prop} from '/library.js';
-				const host = initHost({record:prop.object()}, ['${consumerOrigin}']);
+				const host = initHost({props:{record:prop.object()}, consumerOrigins:['${consumerOrigin}']});
 				await host.ready;
 				window.received = host.hostProps;
 				await host.hostProps.export({record:host.hostProps.record});
@@ -152,10 +152,10 @@ test.beforeAll(async () => {
 					res,
 					`<!doctype html><script type="module">
 				import {initHost} from '/library.js';
-				const host = initHost({}, ['${consumerOrigin}'], {deferInit:true});
-				await host.ready;
-				await host.hostProps.hide();
-				host.flushInit();
+				const host = initHost({consumerOrigins:['${consumerOrigin}'], autoInit:false});
+				const props = await host.ready;
+				await props.hide();
+				host.init();
 				window.ready = true;
 				</script>`,
 				);
@@ -165,7 +165,7 @@ test.beforeAll(async () => {
 					res,
 					`<!doctype html><script type="module">
 				import {initHost,prop} from '/library.js';
-				const host = initHost({createdAt:prop.date(), config:prop.object(), record:prop.record(prop.string())}, ['${consumerOrigin}']);
+				const host = initHost({props:{createdAt:prop.date(), config:prop.object(), record:prop.record(prop.string())}, consumerOrigins:['${consumerOrigin}']});
 				await host.ready; window.received = host.hostProps; window.ready = true;
 				</script>`,
 				);
@@ -176,7 +176,7 @@ test.beforeAll(async () => {
 					`<!doctype html><script type="module">
 				import {initHost,prop} from '/library.js';
 				(window.opener || window.parent).postMessage('forgeframe-test-host-started', '${consumerOrigin}');
-				const host = initHost({count:prop.number(),secret:prop.string(),onComplete:prop.function()}, ['${consumerOrigin}']);
+				const host = initHost({props:{count:prop.number(),secret:prop.string(),onComplete:prop.function()}, consumerOrigins:['${consumerOrigin}']});
 				await host.ready; window.received = host.hostProps; window.ready = true;
 				</script>`,
 				);
@@ -187,7 +187,7 @@ test.beforeAll(async () => {
 					`<!doctype html><script type="module">
 				import {initHost,prop} from '/library.js';
 				window.calls = 0;
-				const host = initHost({count:prop.number(),secret:prop.string(),onComplete:prop.function()}, ['${consumerOrigin}']);
+				const host = initHost({props:{count:prop.number(),secret:prop.string(),onComplete:prop.function()}, consumerOrigins:['${consumerOrigin}']});
 				await host.ready;
 				await host.hostProps.export({
 					destroy: () => { host.destroy(); },
@@ -205,7 +205,7 @@ test.beforeAll(async () => {
 				window.resizeCalls = [];
 				const resizeTo = window.resizeTo.bind(window);
 				window.resizeTo = (width, height) => { window.resizeCalls.push([width, height]); resizeTo(width, height); };
-				const host = initHost({count:prop.number(),secret:prop.string(),onComplete:prop.function()}, ['${consumerOrigin}']);
+				const host = initHost({props:{count:prop.number(),secret:prop.string(),onComplete:prop.function()}, consumerOrigins:['${consumerOrigin}']});
 				await host.ready; window.received = host.hostProps; window.ready = true;
 				</script>`,
 				);
@@ -215,11 +215,22 @@ test.beforeAll(async () => {
 					res,
 					`<!doctype html><script type="module">
 				import {initHost,prop} from '/library.js';
-				const failed = initHost({count:prop.string()}, ['${consumerOrigin}']);
+				const failed = initHost({props:{count:prop.string()}, consumerOrigins:['${consumerOrigin}']});
 				try { await failed.ready; } catch(error) { window.firstError = error.message; }
-				const host = initHost({count:prop.number(),secret:prop.string(),onComplete:prop.function()}, ['${consumerOrigin}']);
+				const host = initHost({props:{count:prop.number(),secret:prop.string(),onComplete:prop.function()}, consumerOrigins:['${consumerOrigin}']});
 				window.reusedFailedHost = host === failed;
 				await host.ready; window.received = host.hostProps; window.ready = true;
+				</script>`,
+				);
+			}
+			if (req.url === "/tag-mismatch") {
+				return respond(
+					res,
+					`<!doctype html><script type="module">
+				import {create,initHost} from '/library.js';
+				const Other = create({tag:'browser-navigation-other',url:location.href});
+				try { initHost(Other, {consumerOrigins:['${consumerOrigin}']}); window.outcome = 'started'; }
+				catch (error) { window.outcome = error.message; }
 				</script>`,
 				);
 			}
@@ -232,15 +243,16 @@ test.beforeAll(async () => {
 				const count = {'~standard': {version:1,vendor:'retry-fixture',validate(value) {
 					return reject ? {issues:[{message:'temporary rejection'}]} : prop.number()['~standard'].validate(value);
 				}}};
-				const definitions = {count,secret:prop.string(),onComplete:prop.function()};
-				const Component = create({tag:'browser-navigation-review',url:location.href,props:definitions,allowedConsumerDomains:['${consumerOrigin}']});
-				const failed = initHost(definitions, ['${consumerOrigin}']);
+				const Component = create({tag:'browser-navigation-review',url:location.href,props:{count,secret:prop.string(),onComplete:prop.function()}});
+				const options = {consumerOrigins:['${consumerOrigin}']};
+				const failed = initHost(Component, options);
 				try { await failed.ready; } catch(error) { window.firstError = error.message; }
 				reject = false;
-				const host = initHost(definitions, ['${consumerOrigin}']);
-				await host.ready;
-				window.sameHostProps = Component.hostProps === host.hostProps;
-				window.received = Component.hostProps; window.ready = true;
+				const host = initHost(Component, options);
+				window.received = await host.ready;
+				window.sameHostProps = window.received === host.hostProps;
+				window.freshHostProps = host.hostProps !== failed.hostProps;
+				window.ready = true;
 				</script>`,
 				);
 			}
@@ -249,7 +261,7 @@ test.beforeAll(async () => {
 				`<!doctype html><button id="complete" style="position:absolute;top:400px">Complete payment</button>
 		<script type="module">
 		import {initHost,prop} from '/library.js';
-		const host = initHost({count:prop.number(),secret:prop.string(),onComplete:prop.function()}, ['${consumerOrigin}']);
+		const host = initHost({props:{count:prop.number(),secret:prop.string(),onComplete:prop.function()}, consumerOrigins:['${consumerOrigin}']});
 		try { await host.ready; window.received = host.hostProps; window.ready = true; }
 		catch(error) { window.readyError = error.message; }
 		</script>`,
@@ -271,7 +283,7 @@ test.beforeAll(async () => {
 					res,
 					`<!doctype html><script type="module">
 				import {initHost} from "/library.js";
-				const host = initHost(undefined, ["${consumerOrigin}"]);
+				const host = initHost({consumerOrigins:["${consumerOrigin}"]});
 				await host.ready; window.received = host.hostProps; window.ready = true;
 				</script>`,
 				);
@@ -1421,8 +1433,9 @@ test("concurrent widgets isolate props and callbacks and survive a peer closing"
 		throw new Error("Expected two initialized widget frames");
 	const readWidget = (frame: import("@playwright/test").Frame) =>
 		frame.evaluate(async () => {
-			const { hostProps } = window as unknown as {
-				hostProps: import("../../src/types").HostProps<WidgetProps>;
+			// The fixture stores the value of host.ready.
+			const { received: hostProps } = window as unknown as {
+				received: import("../../src/types").HostProps<WidgetProps>;
 			};
 			return {
 				count: hostProps.count,
@@ -1608,6 +1621,28 @@ test("a v2 host refuses a 1.x consumer's payload without contacting it", async (
 			() => (window as unknown as { received: unknown[] }).received,
 		),
 	).toEqual(["v2-host-finished"]);
+});
+
+test("a host started for another component's tag throws and leaves the consumer to time out", async ({
+	page,
+}) => {
+	await mount(page, "/tag-mismatch");
+	expect(
+		await page.evaluate(
+			() => (window as unknown as { outcome: Promise<string> }).outcome,
+		),
+	).toContain("did not initialize within 1500ms");
+	const host = page
+		.frames()
+		.find((frame) => frame.url().startsWith(hostOrigin));
+	if (!host) throw new Error("Missing host window");
+	expect(
+		await host.evaluate(
+			() => (window as unknown as { outcome: string }).outcome,
+		),
+	).toBe(
+		'initHost() received component "browser-navigation-other", but this window was opened for "browser-navigation-review"',
+	);
 });
 
 test("growing a widget also grows its clipping container", async ({ page }) => {
@@ -1867,7 +1902,7 @@ for (const context of ["iframe", "popup"] as const) {
 		).toBe(1);
 	});
 
-	test(`${context} factory hostProps follows a successful bootstrap retry`, async ({
+	test(`${context} component-form host retries after a failed start`, async ({
 		page,
 	}) => {
 		const popup = context === "popup" ? page.waitForEvent("popup") : null;
@@ -1891,15 +1926,17 @@ for (const context of ["iframe", "popup"] as const) {
 				const state = window as unknown as {
 					firstError: string;
 					sameHostProps: boolean;
+					freshHostProps: boolean;
 					received: { count: number };
 				};
 				return {
 					error: state.firstError.includes("temporary rejection"),
 					same: state.sameHostProps,
+					fresh: state.freshHostProps,
 					count: state.received.count,
 				};
 			}),
-		).toEqual({ error: true, same: true, count: 1 });
+		).toEqual({ error: true, same: true, fresh: true, count: 1 });
 		await page.evaluate(() =>
 			(
 				window as unknown as {

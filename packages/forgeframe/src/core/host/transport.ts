@@ -3,8 +3,8 @@
  * Host runtime messaging and handshake helpers.
  *
  * @remarks
- * This internal module owns the host messenger/function bridge pair, deferred
- * INIT scheduling, outbound control messages, and inbound PROPS message
+ * This internal module owns the host messenger/function bridge pair, the
+ * one-time INIT send, outbound control messages, and inbound PROPS message
  * registration for the host runtime.
  */
 
@@ -37,10 +37,6 @@ export class HostTransport {
 	private destroyed = false;
 
 	private initSent = false;
-
-	private initError: Error | null = null;
-
-	private deferredInitFlushScheduled = false;
 
 	private exportQueue: Promise<void> = Promise.resolve();
 	private sessionId = generateShortUID();
@@ -83,23 +79,14 @@ export class HostTransport {
 		);
 	}
 
-	handleHostPropsAccess(): void {
-		if (this.options.deferInit && !this.initSent && !this.destroyed) {
-			this.scheduleDeferredInitFlush();
-		}
-	}
-
-	flushInit(): void {
+	/** Sends INIT once the verified bootstrap completes; later calls do nothing. */
+	sendInitOnce(): void {
 		if (this.destroyed || this.initSent) {
 			return;
 		}
 
 		this.initSent = true;
 		void this.sendInit();
-	}
-
-	getInitError(): Error | null {
-		return this.initError;
 	}
 
 	async requestBootstrap(): Promise<HostBootstrapData> {
@@ -229,7 +216,6 @@ export class HostTransport {
 		}
 
 		this.destroyed = true;
-		this.deferredInitFlushScheduled = false;
 		// The consumer's calls wait without a timeout, so tell it this session
 		// ended; calls not yet dispatched would otherwise never be answered.
 		try {
@@ -247,18 +233,6 @@ export class HostTransport {
 		this.peerBridge.destroy();
 	}
 
-	private scheduleDeferredInitFlush(): void {
-		if (this.deferredInitFlushScheduled || this.destroyed || this.initSent) {
-			return;
-		}
-
-		this.deferredInitFlushScheduled = true;
-		queueMicrotask(() => {
-			this.deferredInitFlushScheduled = false;
-			this.flushInit();
-		});
-	}
-
 	private async sendInit(): Promise<void> {
 		try {
 			await this.options.beforeInit();
@@ -268,7 +242,6 @@ export class HostTransport {
 			// Teardown rejects pending work; that is not an initialization failure.
 			if (this.destroyed) return;
 			const initError = normalizeError(error);
-			this.initError = initError;
 
 			this.options.event.emit(EVENT.ERROR, {
 				type: "init_failed",

@@ -8,7 +8,7 @@
  *
  * @packageDocumentation
  */
-import { getHostProps, type HostProps, initHost } from "forgeframe";
+import { type HostProps, initHost } from "forgeframe";
 import {
 	formatMoney,
 	type PaymentProps,
@@ -24,6 +24,9 @@ import {
 } from "../payment/simulation";
 import { requireValue } from "../require-value";
 import "./payment.css";
+
+/** Set by browser tests to expose the ready props; production builds drop the hook. */
+declare const __FORGEFRAME_PAYMENT_TEST_HOOK__: boolean;
 
 const app = requireValue(document.querySelector<HTMLElement>("#payment-app"));
 const consumerOrigin = new URL(
@@ -195,13 +198,18 @@ function renderForm(props: HostProps<PaymentProps>): void {
  * @remarks
  * `initHost` returns null outside a ForgeFrame window; standalone visits receive
  * a link back to the demo. A rejected readiness promise shows connection recovery
- * guidance. `VITE_CONSUMER_URL` sets the explicit consumer-origin allowlist.
+ * guidance. `VITE_CONSUMER_URL` sets the explicit consumer-origin allowlist. The
+ * tag-agnostic form validates with the shared prop definitions, so this bundle
+ * does not include the consumer runtime that `create()` brings.
  * After readiness, built-in show/focus controls reveal the loading iframe before
  * the demo-fill shortcut receives focus without scrolling away from the amount.
  */
 async function start(): Promise<void> {
 	try {
-		const host = initHost<PaymentProps>(paymentProps, [consumerOrigin]);
+		const host = initHost<PaymentProps>({
+			props: paymentProps,
+			consumerOrigins: [consumerOrigin],
+		});
 		if (!host) {
 			app.replaceChildren();
 			const heading = document.createElement("h1");
@@ -215,8 +223,9 @@ async function start(): Promise<void> {
 			app.append(heading, message, link);
 			return;
 		}
-		await host.ready;
-		const props = requireValue(getHostProps<PaymentProps>());
+		const props = await host.ready;
+		if (__FORGEFRAME_PAYMENT_TEST_HOOK__)
+			Reflect.set(window, "__forgeframePaymentTest", { hostProps: props });
 		renderForm(props);
 		await props.onReady();
 		await props.show();

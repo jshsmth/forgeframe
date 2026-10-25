@@ -10,6 +10,7 @@ import type {
 } from "../props/schema";
 import type { EventEmitterInterface } from "./events";
 import type {
+	HostPropsDefinition,
 	InferPropsDefinition,
 	PropDefinition,
 	PropsDefinition,
@@ -223,12 +224,6 @@ declare const forgeFrameComponentReferenceBrand: unique symbol;
 export interface ForgeFrameComponentReference {
 	/** Identifies component factories created by ForgeFrame. @internal */
 	readonly [forgeFrameComponentReferenceBrand]: true;
-	/** Check if the current window hosts this component. */
-	isHost(): boolean;
-	/** Check if the current window is embedded by this component. */
-	isEmbedded(): boolean;
-	/** Check whether the component can render to the target window. */
-	canRenderTo(win: Window): Promise<boolean>;
 }
 
 /** A schema-backed definition map from which `create()` can infer props. @internal */
@@ -334,7 +329,7 @@ type ComponentFactoryArguments<
  * @typeParam SchemaInputs - Canonical schema input types keyed like `P`
  *
  * @remarks
- * These options are passed to `ForgeFrame.create()` to define a new component.
+ * These options are passed to `create()` to define a new component.
  *
  * @example
  * ```typescript
@@ -391,11 +386,6 @@ export interface ComponentOptions<
 	 * Allowed host domains for security validation.
 	 */
 	domain?: DomainMatcher;
-
-	/**
-	 * Restrict which consumer domains can embed this component.
-	 */
-	allowedConsumerDomains?: DomainMatcher;
 
 	/**
 	 * Other host origins whose instances may discover this component's instances
@@ -605,21 +595,22 @@ export interface ForgeFrameComponentInstance<
  * @typeParam SchemaInputs - Canonical values accepted by each prop schema
  *
  * @remarks
- * This is the return type of `ForgeFrame.create()`. It can be called as a
- * function to create instances, and has static properties for host detection.
+ * This is the return type of `create()`. Call it to create consumer
+ * instances. A host page passes it to `initHost()`, which validates incoming
+ * props with the same definitions.
  *
  * @example
  * ```typescript
- * const MyComponent = ForgeFrame.create<MyProps>({ ... });
+ * import { create, initHost } from 'forgeframe';
  *
- * // Create an instance
+ * const MyComponent = create<MyProps>({ ... });
+ *
+ * // In the consumer: create an instance
  * const instance = MyComponent({ name: 'World' });
  *
- * // Check if we're in a host context
- * if (MyComponent.isHost()) {
- *   await ForgeFrame.initHost()?.ready;
- *   const props = MyComponent.hostProps;
- * }
+ * // In the host page: start the host runtime and read its props
+ * const host = initHost(MyComponent, { consumerOrigins: 'https://app.example.com' });
+ * const props = await host?.ready;
  * ```
  *
  * @public
@@ -640,48 +631,6 @@ export interface ForgeFrameComponent<
 	(
 		...args: ComponentFactoryArguments<P, I, RequireProps, SchemaInputs>
 	): ForgeFrameComponentInstance<P, X, I, SchemaInputs>;
-
-	/**
-	 * Check if current window is a host instance of this component.
-	 *
-	 * @remarks
-	 * A "host" is the embedded iframe or popup window that receives props
-	 * from the consumer (the embedding app).
-	 *
-	 * @returns True if in host context
-	 */
-	isHost(): boolean;
-
-	/**
-	 * Check if current window is embedded by this component.
-	 *
-	 * @remarks
-	 * This is an alias for {@link isHost} that uses more intuitive terminology.
-	 *
-	 * @returns True if in embedded context
-	 */
-	isEmbedded(): boolean;
-
-	/**
-	 * Get hostProps if in host context.
-	 *
-	 * @remarks
-	 * Only available when `isHost()` returns true. Contains all props passed
-	 * from the consumer plus built-in control methods.
-	 */
-	hostProps?: HostProps<P>;
-
-	/**
-	 * Check if we can render to a target window.
-	 *
-	 * @remarks
-	 * Returns `true` only when `win` is the current `window`. Cross-window
-	 * rendering targets are not currently supported.
-	 *
-	 * @param win - Target window to check
-	 * @returns Promise resolving to whether rendering is allowed
-	 */
-	canRenderTo(win: Window): Promise<boolean>;
 
 	/**
 	 * All active instances of this component.
@@ -873,7 +822,8 @@ export interface HostPropsBuiltins<P = Record<string, unknown>> {
 }
 
 /**
- * Props object available in host window via `window.hostProps`.
+ * Props object a host reads from `await host.ready`, where `host` is the
+ * value `initHost()` returned.
  *
  * @typeParam P - The props type for the component
  *
@@ -885,32 +835,174 @@ export interface HostPropsBuiltins<P = Record<string, unknown>> {
  *
  * The name "hostProps" reflects that these are the props available to the host
  * (the embedded iframe/popup), passed from the consumer (the embedding app).
+ * `initHost(Component, ...)` infers `P` from the component; use this type to
+ * annotate helpers that receive the props.
  *
  * @example
  * ```typescript
  * // In host window with typed props
  * import { initHost, type HostProps } from 'forgeframe';
+ * import { MyComponent, type MyProps } from './my-component';
  *
- * interface MyProps {
- *   name: string;
- *   onSubmit: (data: { success: boolean }) => void;
+ * function submit(props: HostProps<MyProps>) {
+ *   // Call consumer callbacks
+ *   return props.onSubmit({ success: true });
  * }
  *
- * await initHost()?.ready;
- * const props = window.hostProps as HostProps<MyProps>;
+ * const host = initHost(MyComponent, { consumerOrigins: 'https://app.example.com' });
+ * if (host) {
+ *   const props = await host.ready;
  *
- * // User props are properly typed
- * console.log(props.name); // string
+ *   // User props are properly typed
+ *   console.log(props.name); // string
+ *   await submit(props);
  *
- * // Call consumer callbacks
- * await props.onSubmit({ success: true });
- *
- * // Built-in methods are always available
- * await props.resize({ width: 500, height: 400 });
- * await props.close();
+ *   // Built-in methods are always available
+ *   await props.resize({ width: 500, height: 400 });
+ *   await props.close();
+ * }
  * ```
  *
  * @public
  */
 export type HostProps<P = Record<string, unknown>> = RemoteValue<P> &
 	HostPropsBuiltins<P>;
+
+/**
+ * Options for `initHost()`.
+ *
+ * @typeParam P - The host props type
+ * @typeParam SchemaInputs - Canonical schema input types keyed like `P`
+ *
+ * @public
+ */
+export interface InitHostOptions<
+	P = Record<string, unknown>,
+	SchemaInputs = P,
+> {
+	/**
+	 * Consumer origins allowed to embed this host.
+	 *
+	 * @remarks
+	 * Required. The host checks the consumer origin it selects for messaging
+	 * before it requests any props. An empty array admits no consumer, and
+	 * `'*'` admits any consumer.
+	 */
+	consumerOrigins: DomainMatcher;
+
+	/**
+	 * Sends INIT as soon as `ready` resolves.
+	 *
+	 * @remarks
+	 * Set it to `false` to run host controls, such as `hide()` or `resize()`,
+	 * before the consumer's `render()` resolves, then call `host.init()`.
+	 *
+	 * @defaultValue true
+	 */
+	autoInit?: boolean;
+
+	/**
+	 * Prop definitions that validate the consumer's props.
+	 *
+	 * @remarks
+	 * Only for the tag-agnostic `initHost({ props, consumerOrigins })` form.
+	 * `initHost(Component, options)` uses the component's definitions and
+	 * throws when this is passed. Without definitions, delivered props are not
+	 * validated.
+	 */
+	props?: HostPropsDefinition<P, SchemaInputs>;
+}
+
+/**
+ * Payload of the host `error` event.
+ *
+ * @remarks
+ * A rejected prop update reports an `Error`; a failed INIT reports an
+ * `init_failed` record.
+ *
+ * @internal
+ */
+type HostErrorEventPayload =
+	| Error
+	| { type: "init_failed"; message: string; error: Error };
+
+/**
+ * A started host runtime, returned by `initHost()`.
+ *
+ * @typeParam P - The host props type, inferred from the component passed to
+ * `initHost()`
+ *
+ * @example
+ * ```typescript
+ * import { initHost } from 'forgeframe';
+ * import { PaymentForm } from './payment-form';
+ *
+ * const host = initHost(PaymentForm, { consumerOrigins: ['https://shop.example.com'] });
+ * if (host) {
+ *   const { amount, onSuccess } = await host.ready;
+ * }
+ * ```
+ *
+ * @public
+ */
+export interface Host<P = Record<string, unknown>> {
+	/**
+	 * Resolves to {@link Host.hostProps} once the consumer's verified bootstrap
+	 * has passed the host schemas.
+	 *
+	 * @remarks
+	 * Rejects when the bootstrap response is invalid, the consumer origin is not
+	 * allowed, schema validation fails, messaging fails, or the host is
+	 * destroyed first. A rejected start releases the host, so `initHost()` can
+	 * be called again.
+	 */
+	readonly ready: Promise<HostProps<P>>;
+
+	/**
+	 * The live host props object.
+	 *
+	 * @remarks
+	 * It holds only the built-in controls until `ready` resolves, so read
+	 * consumer props after awaiting `ready`. Its identity never changes, and
+	 * later prop updates are applied to it.
+	 */
+	readonly hostProps: HostProps<P>;
+
+	/**
+	 * Sends INIT to the consumer, which resolves its `render()`.
+	 *
+	 * @remarks
+	 * Needed only with `autoInit: false`. Called before `ready` resolves, it
+	 * sends INIT at that moment. It is idempotent, does nothing after
+	 * `destroy()`, and sends nothing if `ready` rejects. Delivery failures are
+	 * reported on the `error` event.
+	 */
+	init(): void;
+
+	/**
+	 * Tears down this host and tells the consumer the session ended.
+	 *
+	 * @remarks
+	 * Idempotent. Controls on the old `hostProps` reject afterwards, and
+	 * `initHost()` can start a fresh host. Destroying a stale host never affects
+	 * a newer one.
+	 */
+	destroy(): void;
+
+	/**
+	 * Observes committed consumer props: the bootstrap snapshot, then every update.
+	 *
+	 * @returns A function that removes the handler
+	 */
+	on(event: "props", handler: (props: RemoteValue<P>) => void): () => void;
+
+	/**
+	 * Observes host errors: rejected prop updates and INIT delivery failures.
+	 *
+	 * @returns A function that removes the handler
+	 */
+	on(
+		event: "error",
+		handler: (error: HostErrorEventPayload) => void,
+	): () => void;
+}

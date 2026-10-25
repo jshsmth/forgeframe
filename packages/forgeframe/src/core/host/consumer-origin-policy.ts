@@ -28,7 +28,7 @@ export function assertAllowedConsumerDomain(
 }
 
 /**
- * Checks an exact HTTP(S) origin and optional allowlist for messaging bootstrap.
+ * Checks an exact HTTP(S) origin and the allowlist for messaging bootstrap.
  * A valid origin string does not establish peer identity: the returned target
  * stays unverified until the bootstrap exchange verifies the source window.
  * @returns The origin, unchanged, to use as the messaging target.
@@ -36,7 +36,7 @@ export function assertAllowedConsumerDomain(
  */
 export function validateMessagingConsumerContext(
 	consumerDomain: string,
-	allowedConsumerDomains: DomainMatcher | undefined,
+	allowedConsumerDomains: DomainMatcher,
 	tag: string,
 ): string {
 	let origin: URL;
@@ -51,8 +51,6 @@ export function validateMessagingConsumerContext(
 	) {
 		throw new Error(CONSUMER_ORIGIN_VERIFICATION_ERROR);
 	}
-	if (allowedConsumerDomains !== undefined) {
-		assertAllowedConsumerDomain(allowedConsumerDomains, consumerDomain, tag);
-	}
+	assertAllowedConsumerDomain(allowedConsumerDomains, consumerDomain, tag);
 	return consumerDomain;
 }

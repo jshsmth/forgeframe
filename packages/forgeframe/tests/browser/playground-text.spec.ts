@@ -26,7 +26,60 @@ async function listen(server: Server): Promise<string> {
 }
 
 test.beforeAll(async () => {
-	const [library, host, logger] = await Promise.all([
+	const files = new Map<string, string | Uint8Array>();
+	const consumerFiles = new Map<string, string | Uint8Array>();
+	const scripts = { library: "", logger: "" };
+	// Reserve both origins first: the host build allowlists the consumer origin.
+	[hostOrigin, consumerOrigin] = await Promise.all([
+		listen(
+			createServer((req, res) => {
+				const path = new URL(req.url ?? "/", "http://fixture.invalid").pathname;
+				const file = files.get(path === "/" ? "index.html" : path.slice(1));
+				if (file === undefined) {
+					res.statusCode = 404;
+					res.end();
+					return;
+				}
+				res.setHeader(
+					"Content-Type",
+					path.endsWith(".js") ? "text/javascript" : "text/html",
+				);
+				res.end(file);
+			}),
+		),
+		listen(
+			createServer((req, res) => {
+				const path = new URL(req.url ?? "/", "http://fixture.invalid").pathname;
+				const consumerFile = consumerFiles.get(
+					path === "/editor" || path === "/tests" || path.startsWith("/tests/")
+						? "index.html"
+						: path.slice(1),
+				);
+				if (consumerFile !== undefined) {
+					res.setHeader(
+						"Content-Type",
+						path.endsWith(".js")
+							? "text/javascript"
+							: path.endsWith(".css")
+								? "text/css"
+								: "text/html",
+					);
+					res.end(consumerFile);
+					return;
+				}
+				if (req.url === "/library.js" || req.url === "/logger.js") {
+					res.setHeader("Content-Type", "text/javascript");
+					res.end(req.url === "/library.js" ? scripts.library : scripts.logger);
+					return;
+				}
+				res.setHeader("Content-Type", "text/html");
+				res.end(
+					'<!doctype html><button id="open">Open</button><div id="mount"></div><div id="event-log"></div>',
+				);
+			}),
+		),
+	]);
+	const [library, host, logger, consumer] = await Promise.all([
 		build({
 			configFile: fileURLToPath(
 				new URL("../../vite.config.ts", import.meta.url),
@@ -39,6 +92,9 @@ test.beforeAll(async () => {
 				new URL("../../../playground/vite.config.host.ts", import.meta.url),
 			),
 			logLevel: "silent",
+			define: {
+				"import.meta.env.VITE_CONSUMER_URL": JSON.stringify(consumerOrigin),
+			},
 			build: { write: false },
 		}),
 		build({
@@ -55,100 +111,56 @@ test.beforeAll(async () => {
 				},
 			},
 		}),
-	]);
-	const files = new Map(
-		output(host).map((entry) => [
-			entry.fileName,
-			entry.type === "chunk" ? entry.code : entry.source,
-		]),
-	);
-	hostOrigin = await listen(
-		createServer((req, res) => {
-			const path = new URL(req.url ?? "/", "http://fixture.invalid").pathname;
-			const file = files.get(path === "/" ? "index.html" : path.slice(1));
-			if (file === undefined) {
-				res.statusCode = 404;
-				res.end();
-				return;
-			}
-			res.setHeader(
-				"Content-Type",
-				path.endsWith(".js") ? "text/javascript" : "text/html",
-			);
-			res.end(file);
-		}),
-	);
-	const consumer = await build({
-		configFile: false,
-		root: fileURLToPath(
-			new URL("../../../playground/consumer", import.meta.url),
-		),
-		logLevel: "silent",
-		define: {
-			"import.meta.env.VITE_HOST_URL": JSON.stringify(hostOrigin),
-			__FORGEFRAME_VERSION__: JSON.stringify("1.0.0"),
-		},
-		resolve: {
-			alias: {
-				forgeframe: fileURLToPath(
-					new URL("../../src/index.ts", import.meta.url),
-				),
+		build({
+			configFile: false,
+			root: fileURLToPath(
+				new URL("../../../playground/consumer", import.meta.url),
+			),
+			logLevel: "silent",
+			define: {
+				"import.meta.env.VITE_HOST_URL": JSON.stringify(hostOrigin),
+				__FORGEFRAME_VERSION__: JSON.stringify("1.0.0"),
 			},
-		},
-		build: {
-			write: false,
-			rolldownOptions: {
-				input: {
-					main: fileURLToPath(
-						new URL("../../../playground/consumer/index.html", import.meta.url),
-					),
-					redirect: fileURLToPath(
-						new URL(
-							"../../../playground/consumer/redirect.html",
-							import.meta.url,
-						),
+			resolve: {
+				alias: {
+					forgeframe: fileURLToPath(
+						new URL("../../src/index.ts", import.meta.url),
 					),
 				},
 			},
-		},
-	});
-	const consumerFiles = new Map(
-		output(consumer).map((entry) => [
-			entry.fileName,
-			entry.type === "chunk" ? entry.code : entry.source,
-		]),
-	);
-	consumerOrigin = await listen(
-		createServer((req, res) => {
-			const path = new URL(req.url ?? "/", "http://fixture.invalid").pathname;
-			const consumerFile = consumerFiles.get(
-				path === "/editor" || path === "/tests" || path.startsWith("/tests/")
-					? "index.html"
-					: path.slice(1),
-			);
-			if (consumerFile !== undefined) {
-				res.setHeader(
-					"Content-Type",
-					path.endsWith(".js")
-						? "text/javascript"
-						: path.endsWith(".css")
-							? "text/css"
-							: "text/html",
-				);
-				res.end(consumerFile);
-				return;
-			}
-			if (req.url === "/library.js" || req.url === "/logger.js") {
-				res.setHeader("Content-Type", "text/javascript");
-				res.end(req.url === "/library.js" ? code(library) : code(logger));
-				return;
-			}
-			res.setHeader("Content-Type", "text/html");
-			res.end(
-				'<!doctype html><button id="open">Open</button><div id="mount"></div><div id="event-log"></div>',
-			);
+			build: {
+				write: false,
+				rolldownOptions: {
+					input: {
+						main: fileURLToPath(
+							new URL(
+								"../../../playground/consumer/index.html",
+								import.meta.url,
+							),
+						),
+						redirect: fileURLToPath(
+							new URL(
+								"../../../playground/consumer/redirect.html",
+								import.meta.url,
+							),
+						),
+					},
+				},
+			},
 		}),
-	);
+	]);
+	for (const [target, result] of [
+		[files, host],
+		[consumerFiles, consumer],
+	] as const) {
+		for (const entry of output(result))
+			target.set(
+				entry.fileName,
+				entry.type === "chunk" ? entry.code : entry.source,
+			);
+	}
+	scripts.library = code(library);
+	scripts.logger = code(logger);
 });
 test.afterAll(async () => {
 	await Promise.all(
@@ -294,9 +306,8 @@ test("playground rejects reserved prop names and renders after a valid addition"
 		.frames()
 		.find((frame) => frame.url().startsWith(hostOrigin));
 	if (!host) throw new Error("Missing playground host");
-	expect(
-		await host.evaluate(() => Reflect.get(window, "hostProps").customName),
-	).toBe("recovered");
+	// The host page lists each received prop.
+	await expect(host.locator("#prop-customName")).toHaveText("recovered");
 	await page.locator("#btn-close").click();
 	await expect(page.locator("iframe")).toHaveCount(0);
 	expect(errors).toEqual([]);
@@ -539,7 +550,7 @@ test("playground test lab completes every automatic scenario and reruns cleanly"
 		await expect(run).toBeEnabled({ timeout: 90_000 });
 		const failures = await page.locator(".result.fail").allTextContents();
 		expect(failures).toEqual([]);
-		await expect(page.locator(".result.pass")).toHaveCount(76);
+		await expect(page.locator(".result.pass")).toHaveCount(75);
 		const names = await page.locator(".result-name").allTextContents();
 		expect(
 			[...new Set(names.map((name) => name.split(": ")[0]))].sort(),

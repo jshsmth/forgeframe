@@ -54,7 +54,7 @@ test.beforeAll(async () => {
 				res,
 				`<!doctype html><script type="module">
 				import {initHost,prop} from '/library.js';
-				const host = initHost({callbacks:prop.record(prop.function()),onDefault:prop.function()}, ['${consumerOrigin}']);
+				const host = initHost({props:{callbacks:prop.record(prop.function()),onDefault:prop.function()}, consumerOrigins:['${consumerOrigin}']});
 				await host.ready;
 				window.props = host.hostProps;
 				window.ready = true;
@@ -65,7 +65,7 @@ test.beforeAll(async () => {
 			res,
 			`<!doctype html><script type="module">
 		import {initHost,prop} from '/library.js';
-		const host = initHost({label:prop.string(),onRun:prop.function()}, ['${consumerOrigin}']);
+		const host = initHost({props:{label:prop.string(),onRun:prop.function()}, consumerOrigins:['${consumerOrigin}']});
 		await host.ready;
 		window.props = host.hostProps;
 		await host.hostProps.export({

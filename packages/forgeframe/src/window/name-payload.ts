@@ -160,20 +160,6 @@ export function isForgeFrameWindow(win: Window = window): boolean {
 }
 
 /**
- * Checks if the current window is a host of a specific component tag.
- *
- * @param tag - The component tag to check for.
- * @param win - The window to check. Defaults to the current window.
- * @returns `true` if the window holds current channel metadata for the tag.
- *
- * @internal
- */
-export function isHostOfComponent(tag: string, win: Window = window): boolean {
-	const result = readWindowNamePayload(win);
-	return result?.kind === "current" && result.payload.tag === tag;
-}
-
-/**
  * Encodes a payload to a base64 string for use in window.name.
  *
  * @param payload - The payload to encode.

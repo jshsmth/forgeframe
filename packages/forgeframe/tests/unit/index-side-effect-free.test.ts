@@ -15,7 +15,6 @@ afterEach(async () => {
 	const { clearHostInstance } = await import("@/core/host");
 	clearHostInstance();
 	window.name = originalWindowName;
-	delete (window as unknown as { hostProps?: unknown }).hostProps;
 	vi.restoreAllMocks();
 	vi.resetModules();
 });
@@ -49,21 +48,17 @@ describe("Index side effects", () => {
 		expect(resolveConsumerWindowSpy).not.toHaveBeenCalled();
 		expect(sendSpy).not.toHaveBeenCalled();
 		expect(getHost()).toBeNull();
-		expect(publicEntrypoint.getHostProps()).toBeUndefined();
-		expect(
-			(window as unknown as { hostProps?: unknown }).hostProps,
-		).toBeUndefined();
+		expect(Object.hasOwn(window, "hostProps")).toBe(false);
 
-		const host = publicEntrypoint.initHost();
+		// The stubbed consumer is this window, whose readable origin wins.
+		const host = publicEntrypoint.initHost({
+			consumerOrigins: window.location.origin,
+		});
 
 		expect(host).not.toBeNull();
-		expect(getHost()).toBe(host);
+		expect(getHost()?.hostProps).toBe(host?.hostProps);
 		expect(window.name).toBe(bootstrapWindowName);
 		expect(publicEntrypoint.isHost()).toBe(true);
-		expect(publicEntrypoint.isEmbedded()).toBe(true);
-		expect(publicEntrypoint.getHostProps()).toBe(host?.hostProps);
-		expect((window as unknown as { hostProps?: unknown }).hostProps).toBe(
-			host?.hostProps,
-		);
+		expect(Object.hasOwn(window, "hostProps")).toBe(false);
 	});
 });

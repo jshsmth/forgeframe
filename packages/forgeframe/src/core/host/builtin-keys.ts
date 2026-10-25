@@ -1,5 +1,5 @@
 /**
- * Host-side built-in keys that are reserved on `window.hostProps`.
+ * Host-side built-in keys that are reserved on `hostProps`.
  *
  * @internal
  */

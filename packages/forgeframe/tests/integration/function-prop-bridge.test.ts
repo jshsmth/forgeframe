@@ -7,7 +7,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Messenger } from "@/communication/messenger";
 import { deserializeMessage } from "@/communication/protocol";
-import { create, initHost, prop } from "@/index";
+import { getHost } from "@/core/host/bootstrap";
+import { create, prop } from "@/index";
 import type { PropsDefinition } from "@/types";
 import {
 	createIframeIntegrationHarness,
@@ -113,10 +114,10 @@ describe("Function prop bridge integration", () => {
 		await activeHarness.flushMessages();
 
 		// A replaced document stops answering without running host teardown.
-		const { messenger } = host as unknown as { messenger: Messenger };
+		const { messenger } = getHost() as unknown as { messenger: Messenger };
 		vi.spyOn(messenger, "post").mockImplementation(() => {});
 		activeHarness.withHostGlobals(() => host.destroy());
-		const nextHost = activeHarness.withHostGlobals(() => initHost());
+		const nextHost = activeHarness.bootstrapHost();
 		if (!nextHost) throw new Error("Expected host reinitialization");
 		await nextHost.ready;
 		await expect(pending).rejects.toThrow(
@@ -156,7 +157,7 @@ describe("Function prop bridge integration", () => {
 		expect(outcome).toBe("pending");
 
 		// The document goes away without teardown, as after a navigation.
-		const { messenger } = host as unknown as { messenger: Messenger };
+		const { messenger } = getHost() as unknown as { messenger: Messenger };
 		vi.spyOn(messenger, "post").mockImplementation(() => {});
 		activeHarness.withHostGlobals(() => host.destroy());
 		await vi.advanceTimersByTimeAsync(20_001);
@@ -206,7 +207,7 @@ describe("Function prop bridge integration", () => {
 		await expect(settled(exports.wait())).resolves.toBe(destroyed);
 
 		// A new host session accepts calls again.
-		const nextHost = activeHarness.withHostGlobals(() => initHost());
+		const nextHost = activeHarness.bootstrapHost();
 		if (!nextHost) throw new Error("Expected host reinitialization");
 		await nextHost.ready;
 		await activeHarness.withHostGlobalsAsync(() =>

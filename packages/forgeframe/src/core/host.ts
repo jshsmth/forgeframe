@@ -8,7 +8,6 @@
  * focused internal modules under `src/core/host/`.
  */
 
-import type { HostProps } from "../types/runtime";
 import { hasBrowserWindow } from "../utils/browser";
 import { isForgeFrameWindow } from "../window/name-payload";
 import { getHost as getActiveHost } from "./host/bootstrap";
@@ -21,18 +20,28 @@ export {
 export { HostComponent } from "./host/component";
 
 /**
- * Checks if the current window is a ForgeFrame host context.
+ * Checks whether this window carries ForgeFrame channel metadata.
  *
  * @remarks
  * A "host" in ForgeFrame terminology is the embedded iframe or popup window
- * that receives props from the consumer (the embedding app).
+ * that receives props from the consumer (the embedding app). This reads only
+ * the channel metadata's prefix in `window.name`, so it stays true for
+ * malformed metadata, where `initHost()` returns `null`, and after
+ * `host.destroy()`, because the metadata is kept for reconnection. Use it to
+ * choose between embedded and standalone rendering before calling
+ * `initHost()`.
  *
- * @returns True if running inside a ForgeFrame iframe or popup
+ * @returns True if this window carries ForgeFrame channel metadata or runs an
+ * active host
  *
  * @example
  * ```typescript
+ * import { initHost, isHost } from 'forgeframe';
+ *
  * if (isHost()) {
- *   console.log('Running in ForgeFrame host');
+ *   const host = initHost(MyComponent, { consumerOrigins: 'https://app.example.com' });
+ * } else {
+ *   renderStandalone();
  * }
  * ```
  *
@@ -41,58 +50,4 @@ export { HostComponent } from "./host/component";
 export function isHost(): boolean {
 	if (!hasBrowserWindow()) return false;
 	return getActiveHost() !== null || isForgeFrameWindow();
-}
-
-/**
- * Checks if the current window is embedded by ForgeFrame.
- *
- * @remarks
- * This is an alias for {@link isHost} that uses more intuitive terminology.
- * "Embedded" means this window is running inside a ForgeFrame iframe or popup,
- * receiving props from the consumer (the embedding app).
- *
- * @returns True if running inside a ForgeFrame iframe or popup
- *
- * @example
- * ```typescript
- * if (isEmbedded()) {
- *   await initHost()?.ready;
- *   const { amount, onSuccess } = window.hostProps;
- *   // Handle embedded context...
- * }
- * ```
- *
- * @public
- */
-export function isEmbedded(): boolean {
-	return isHost();
-}
-
-/**
- * Gets the hostProps object from the window.
- *
- * @remarks
- * This is a convenience function to access `window.hostProps`, which contains
- * all props passed from the consumer plus built-in control methods. Await
- * `initHost()?.ready` before accessing consumer props.
- *
- * @typeParam P - The props type passed from the consumer
- * @returns The hostProps object or undefined if not in a host context
- *
- * @example
- * ```typescript
- * await initHost()?.ready;
- * const props = getHostProps();
- * if (props) {
- *   props.onLogin({ id: 1, name: 'John' });
- * }
- * ```
- *
- * @public
- */
-export function getHostProps<P extends Record<string, unknown>>():
-	| HostProps<P>
-	| undefined {
-	if (!hasBrowserWindow()) return undefined;
-	return (window as unknown as { hostProps?: HostProps<P> }).hostProps;
 }

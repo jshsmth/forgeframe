@@ -6,12 +6,9 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { deserializeMessage } from "@/communication/protocol";
-import { MESSAGE_NAME } from "@/constants";
-import { deleteRegisteredComponent } from "@/core/component-registry";
 import { getHost } from "@/core/host/bootstrap";
-import { create, EVENT, getHostProps, initHost, prop } from "@/index";
-import type { HostProps, PropsDefinition } from "@/types";
+import { create, EVENT, prop } from "@/index";
+import type { PropsDefinition } from "@/types";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
@@ -121,15 +118,17 @@ describe("Consumer/host handshake integration", () => {
 		);
 		await rendering;
 		activeHarness.withHostGlobals(() => host.destroy());
-		expect(activeHarness.withHostGlobals(() => getHostProps())).toBeUndefined();
-		const nextHost = activeHarness.withHostGlobals(() => initHost(definitions));
+		expect(getHost()).toBeNull();
+		await expect(host.hostProps.hide()).rejects.toThrow();
+		const nextHost = activeHarness.bootstrapHost(definitions);
 		if (!nextHost) throw new Error("Expected host reinitialization");
 		expect(nextHost).not.toBe(host);
+		expect(nextHost.hostProps).not.toBe(host.hostProps);
 		await nextHost.ready;
+		// Destroying the stale host again leaves its replacement working.
 		activeHarness.withHostGlobals(() => host.destroy());
-		expect(activeHarness.withHostGlobals(() => getHostProps())).toBe(
-			nextHost.hostProps,
-		);
+		expect(activeHarness.getHostProps()).toBe(nextHost.hostProps);
+		expect(Object.hasOwn(activeHarness.hostWindow, "hostProps")).toBe(false);
 		await expect(
 			instance.updateProps({ title: "updated" }),
 		).resolves.toBeUndefined();
@@ -161,9 +160,7 @@ describe("Consumer/host handshake integration", () => {
 			await activeHarness.waitForIframe(container),
 		);
 
-		const host = activeHarness.withHostGlobals(() =>
-			initHost({ amount: prop.string() }),
-		);
+		const host = activeHarness.bootstrapHost({ amount: prop.string() });
 		if (!host) throw new Error("Expected a host");
 		await expect(host.ready).rejects.toThrow("Expected string, got number");
 		const hostReason =
@@ -195,179 +192,18 @@ describe("Consumer/host handshake integration", () => {
 			await activeHarness.waitForIframe(container),
 		);
 
-		const failed = activeHarness.withHostGlobals(() =>
-			initHost({ amount: prop.string() }),
-		);
+		const failed = activeHarness.bootstrapHost({ amount: prop.string() });
 		await expect(failed?.ready).rejects.toThrow("Expected string, got number");
+		// The failed start released the host before this handler ran.
+		expect(getHost()).toBeNull();
 		await activeHarness.flushMessages();
-		const retried = activeHarness.withHostGlobals(() =>
-			initHost({ amount: prop.number() }),
-		);
+		const retried = activeHarness.bootstrapHost({ amount: prop.number() });
 		if (!retried) throw new Error("Expected the retried host");
 		await retried.ready;
 		await expect(rendering).resolves.toBeUndefined();
 		expect(retried.hostProps.amount).toBe(5);
 		// A recovered handshake reports no failure.
 		expect(errors).not.toHaveBeenCalled();
-	});
-
-	it("keeps factory host getters free of side effects after public teardown", async () => {
-		harness = createIframeIntegrationHarness();
-		const activeHarness = harness;
-		const definitions = { title: prop.string() };
-		const Component = create({
-			tag: "host-getters-after-teardown",
-			url: "https://host.example.com/widget",
-			props: definitions,
-		});
-		const container = document.createElement("div");
-		document.body.append(container);
-		const instance = Component({ title: "initial" });
-		const rendering = instance.render(container);
-		const { host } = await activeHarness.bootstrapIframeHost(
-			container,
-			definitions,
-		);
-		await rendering;
-		expect(activeHarness.withHostGlobals(() => Component.hostProps)).toBe(
-			host.hostProps,
-		);
-
-		activeHarness.withHostGlobals(() => host.destroy());
-		activeHarness.withHostGlobals(() => {
-			expect(Component.isHost()).toBe(true);
-			expect(Component.isEmbedded()).toBe(true);
-			expect(Component.hostProps).toBeUndefined();
-		});
-		await activeHarness.flushMessages();
-		expect(activeHarness.withHostGlobals(() => getHostProps())).toBeUndefined();
-	});
-
-	it("leaves deferred INIT to its caller when factory getters run", async () => {
-		harness = createIframeIntegrationHarness();
-		const activeHarness = harness;
-		const definitions = { title: prop.string() };
-		const Component = create({
-			tag: "host-getters-deferred-init",
-			url: "https://host.example.com/widget",
-			props: definitions,
-		});
-		const container = document.createElement("div");
-		document.body.append(container);
-		const instance = Component({ title: "initial" });
-		const rendering = instance.render(container);
-		activeHarness.attachHostToIframe(
-			await activeHarness.waitForIframe(container),
-		);
-		const sentToConsumer: string[] = [];
-		const forward = activeHarness.consumerWindow.postMessage.bind(
-			activeHarness.consumerWindow,
-		);
-		vi.spyOn(activeHarness.consumerWindow, "postMessage").mockImplementation(
-			(data, origin) => {
-				const name = deserializeMessage(data)?.name;
-				if (name) sentToConsumer.push(name);
-				forward(data, origin as string);
-			},
-		);
-		const host = activeHarness.withHostGlobals(() =>
-			initHost(definitions, undefined, { deferInit: true }),
-		);
-		if (!host) throw new Error("Expected a deferred host");
-		await host.ready;
-
-		activeHarness.withHostGlobals(() => {
-			expect(Component.isHost()).toBe(true);
-			expect(Component.hostProps).toBe(host.hostProps);
-		});
-		await activeHarness.flushMessages();
-		expect(sentToConsumer).not.toContain(MESSAGE_NAME.INIT);
-
-		activeHarness.withHostGlobals(() => host.flushInit());
-		await rendering;
-		expect(sentToConsumer).toContain(MESSAGE_NAME.INIT);
-	});
-
-	it("reports a disallowed consumer from a host-side definition without throwing, and a bare initHost() keeps its allowlist", async () => {
-		harness = createIframeIntegrationHarness();
-		const activeHarness = harness;
-		const tag = "host-definition-disallowed-consumer";
-		const Consumer = create({ tag, url: "https://host.example.com/widget" });
-		const container = document.createElement("div");
-		document.body.append(container);
-		void Consumer()
-			.render(container)
-			.catch(() => {});
-		activeHarness.attachHostToIframe(
-			await activeHarness.waitForIframe(container),
-		);
-		// The host bundle registers its own definition of the same tag.
-		deleteRegisteredComponent(tag);
-		const consoleError = vi
-			.spyOn(console, "error")
-			.mockImplementation(() => {});
-		const allowedConsumerDomains = ["https://other-consumer.example.com"];
-
-		activeHarness.withHostGlobals(() => {
-			expect(() =>
-				create({
-					tag,
-					url: "https://host.example.com/widget",
-					allowedConsumerDomains,
-				}),
-			).not.toThrow();
-			expect(getHostProps()).toBeUndefined();
-			// A bare initHost() still applies the definition's allowlist.
-			expect(() => initHost()).toThrow("is not allowed");
-			expect(getHostProps()).toBeUndefined();
-			expect(() => initHost(undefined, allowedConsumerDomains)).toThrow(
-				"is not allowed",
-			);
-		});
-		expect(consoleError).toHaveBeenCalledWith(
-			`Failed to initialize host for component "${tag}":`,
-			expect.objectContaining({
-				message: expect.stringContaining("is not allowed"),
-			}),
-		);
-	});
-
-	it("keeps a host-side definition's prop schema when a bare initHost() retries after validation fails", async () => {
-		harness = createIframeIntegrationHarness();
-		const activeHarness = harness;
-		const tag = "host-definition-schema-retry";
-		const Consumer = create({
-			tag,
-			url: "https://host.example.com/widget",
-			props: { amount: prop.number() },
-		});
-		const container = document.createElement("div");
-		document.body.append(container);
-		void Consumer({ amount: 10 })
-			.render(container)
-			.catch(() => {});
-		activeHarness.attachHostToIframe(
-			await activeHarness.waitForIframe(container),
-		);
-		// The host bundle registers its own definition of the same tag.
-		deleteRegisteredComponent(tag);
-		vi.spyOn(console, "error").mockImplementation(() => {});
-
-		const failed = activeHarness.withHostGlobals(() => {
-			create({
-				tag,
-				url: "https://host.example.com/widget",
-				props: { amount: prop.number().min(100) },
-			});
-			return getHost();
-		});
-		await expect(failed?.ready).rejects.toThrow("Number must be >= 100");
-		await activeHarness.flushMessages();
-
-		const retried = activeHarness.withHostGlobals(() => initHost());
-		if (!retried) throw new Error("Expected the retried host");
-		await expect(retried.ready).rejects.toThrow("Number must be >= 100");
-		expect(getHost()).toBeNull();
 	});
 
 	it("rejects host definitions that use the removed serialization option before starting a host", async () => {
@@ -430,9 +266,7 @@ describe("Consumer/host handshake integration", () => {
 			);
 		vi.spyOn(console, "error").mockImplementation(() => {});
 		expect(harness.bootstrapHost({ title: prop.string() })).toBeNull();
-		expect(
-			harness.withHostGlobals(() => Reflect.get(window, "hostProps")),
-		).toBeUndefined();
+		expect(getHost()).toBeNull();
 		harness.hostWindow.name = validName;
 		const host = harness.bootstrapHost<{ title: string }>({
 			title: prop.string(),
@@ -465,20 +299,16 @@ describe("Consumer/host handshake integration", () => {
 		instance.event.once(EVENT.RENDERED, renderedSpy);
 
 		const renderPromise = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(
+		const { host, hostProps } = await harness.bootstrapIframeHost(
 			container,
-			HANDSHAKE_PROP_DEFINITIONS,
+			HandshakeComponent,
 		);
 
 		await expect(renderPromise).resolves.toBeUndefined();
 
-		const windowHostProps = harness.withHostGlobals(
-			() =>
-				(window as unknown as { hostProps?: HostProps<HandshakeProps> })
-					.hostProps,
-		);
-
-		expect(windowHostProps).toBe(hostProps);
+		// ready resolves to the live props object; no window global is defined.
+		expect(hostProps).toBe(host.hostProps);
+		expect(Object.hasOwn(harness.hostWindow, "hostProps")).toBe(false);
 		expect(hostProps.amount).toBe(7);
 		expect(hostProps.message).toBe("ForgeFrame ready");
 		expect(hostProps.consumer.props).toEqual({

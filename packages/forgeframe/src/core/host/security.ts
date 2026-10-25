@@ -58,13 +58,14 @@ export function getAccessibleConsumerOrigin(
 }
 
 /**
- * Selects an exact messaging target origin; the bootstrap response verifies it.
- * A directly readable consumer origin wins over the payload's claimed origin.
+ * Selects an exact messaging target origin and checks it against the
+ * allowlist; the bootstrap response verifies it. A directly readable consumer
+ * origin wins over the payload's claimed origin.
  */
 export function resolveMessagingConsumerContext(options: {
 	consumerWindow: Window;
 	claimedConsumerDomain: string;
-	allowedConsumerDomains?: DomainMatcher;
+	allowedConsumerDomains: DomainMatcher;
 	tag: string;
 }): string {
 	const consumerDomain =

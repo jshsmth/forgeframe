@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { deserializeMessage } from "@/communication/protocol";
 import { MESSAGE_NAME, PROTOCOL_VERSION } from "@/constants";
 import { getHost } from "@/core/host/bootstrap";
-import { create, initHost, prop } from "@/index";
+import { create, prop } from "@/index";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
@@ -154,18 +154,13 @@ describe("Bootstrap protocol version", () => {
 			});
 
 			expect(() =>
-				activeHarness.withHostGlobals(() =>
-					initHost({ amount: prop.number() }),
-				),
+				activeHarness.bootstrapHost({ amount: prop.number() }),
 			).toThrow(message);
 			await activeHarness.flushMessages();
 
 			expect(posted).not.toHaveBeenCalled();
 			expect(consumerMessages).not.toHaveBeenCalled();
 			expect(getHost()).toBeNull();
-			expect(
-				activeHarness.withHostGlobals(() => Reflect.get(window, "hostProps")),
-			).toBeUndefined();
 		},
 	);
 
@@ -188,9 +183,7 @@ describe("Bootstrap protocol version", () => {
 		});
 		const errors = vi.spyOn(console, "error");
 
-		expect(
-			activeHarness.withHostGlobals(() => initHost({ amount: prop.number() })),
-		).toBeNull();
+		expect(activeHarness.bootstrapHost({ amount: prop.number() })).toBeNull();
 		expect(getHost()).toBeNull();
 		expect(errors).not.toHaveBeenCalled();
 	});

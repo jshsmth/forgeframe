@@ -91,10 +91,10 @@ export function generateCode(
 		const modalWidth = ms.width || 500;
 		const modalHeight = ms.height || 400;
 
-		return `import ForgeFrame, { prop } from 'forgeframe';
+		return `import { create, prop } from 'forgeframe';
 
 // Define your modal component
-const MyComponent = ForgeFrame.create({
+const MyComponent = create({
   tag: ${JSON.stringify(config.tag)},
   url: ${JSON.stringify(config.url)},
   dimensions: { width: ${modalWidth}, height: ${modalHeight} },
@@ -177,10 +177,10 @@ await myComponent.render(document.body);`;
 		? `  dimensions: { width: ${JSON.stringify(dimensions.width)}, height: ${JSON.stringify(dimensions.height)} },`
 		: "";
 
-	return `import ForgeFrame, { prop } from 'forgeframe';
+	return `import { create, prop } from 'forgeframe';
 
 // Define your component
-const MyComponent = ForgeFrame.create({
+const MyComponent = create({
   tag: ${JSON.stringify(config.tag)},
   url: ${JSON.stringify(config.url)},
 ${dimensionsStr}

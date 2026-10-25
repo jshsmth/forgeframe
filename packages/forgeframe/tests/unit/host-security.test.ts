@@ -1,7 +1,7 @@
 /**
- * Security-oriented tests for host initialization and deferred init behavior.
+ * Security-oriented tests for host initialization.
  *
- * Covers consumer domain allowlist enforcement, hostProps invalidation, and deferred init gating under security checks.
+ * Covers consumer origin allowlist enforcement, reserved prop names, and pinned consumer sources.
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -11,9 +11,15 @@ import {
 	serializeMessage,
 } from "@/communication/protocol";
 import { CONTEXT, EVENT, MESSAGE_NAME, PROTOCOL_VERSION } from "@/constants";
-import { clearHostInstance, type HostComponent, initHost } from "@/core/host";
+import {
+	clearHostInstance,
+	getHost,
+	type HostComponent,
+	initHost,
+} from "@/core/host";
 import * as hostSecurity from "@/core/host/security";
 import { prop } from "@/props/prop";
+import type { HostPropsDefinition } from "@/types";
 import { buildWindowName } from "@/window/name-payload";
 import type { WindowNamePayload } from "@/window/types";
 import { requireValue } from "../require-value";
@@ -41,35 +47,26 @@ function createPayload(
 }
 
 /**
- * Starts a deferred host whose verified bootstrap delivers `props`, and counts
- * the INIT messages it sends afterwards.
+ * Starts a deferred host whose verified bootstrap delivers `props`, and
+ * returns its runtime so tests can reach the messenger and events.
  */
 async function startBootstrappedHost(
 	consumerWindow: Window,
 	payload: WindowNamePayload,
 	props: Record<string, unknown> = {},
-	propDefinitions?: Parameters<typeof initHost>[0],
-): Promise<{
-	host: HostComponent<Record<string, unknown>>;
-	countInitMessages: () => number;
-}> {
+	propDefinitions?: HostPropsDefinition<Record<string, unknown>>,
+): Promise<{ host: HostComponent<Record<string, unknown>> }> {
 	vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
 		consumerWindow,
 	);
 	window.name = buildWindowName(payload);
-	const send = vi
-		.spyOn(Messenger.prototype, "send")
+	vi.spyOn(Messenger.prototype, "send")
 		.mockResolvedValueOnce({ props })
 		.mockResolvedValue(undefined);
-	const host = requireValue(
-		initHost(propDefinitions, undefined, { deferInit: true }),
-	);
-	await host.ready;
-	return {
-		host,
-		countInitMessages: () =>
-			send.mock.calls.filter(([, , name]) => name === MESSAGE_NAME.INIT).length,
-	};
+	await requireValue(
+		initHost({ props: propDefinitions, consumerOrigins: "*", autoInit: false }),
+	).ready;
+	return { host: requireValue(getHost()) };
 }
 
 /** Creates a consumer window whose origin the browser exposes to the host. */
@@ -297,12 +294,15 @@ describe("Host security", () => {
 			);
 
 			expect(() =>
-				// @ts-expect-error Invalid JavaScript configuration is rejected at runtime.
-				initHost({}, allowed),
+				initHost({
+					props: {},
+					// @ts-expect-error Invalid JavaScript configuration is rejected at runtime.
+					consumerOrigins: allowed,
+				}),
 			).toThrow(
-				"allowedConsumerDomains must be a non-empty origin string, a RegExp, or an array of them",
+				"initHost() consumerOrigins must be a non-empty origin string, a RegExp, or an array of them",
 			);
-			expect(window.hostProps).toBeUndefined();
+			expect(getHost()).toBeNull();
 		},
 	);
 
@@ -318,7 +318,7 @@ describe("Host security", () => {
 			}),
 		);
 
-		expect(() => initHost({}, [])).toThrow(
+		expect(() => initHost({ props: {}, consumerOrigins: [] })).toThrow(
 			'Consumer domain "https://trusted.example.com" is not allowed',
 		);
 	});
@@ -336,9 +336,9 @@ describe("Host security", () => {
 
 		window.name = buildWindowName(payload);
 
-		expect(() => initHost({}, "https://trusted.example.com")).toThrow(
-			'Consumer domain "https://evil.example.com" is not allowed',
-		);
+		expect(() =>
+			initHost({ props: {}, consumerOrigins: "https://trusted.example.com" }),
+		).toThrow('Consumer domain "https://evil.example.com" is not allowed');
 	});
 
 	it("should keep the bootstrap window name and allow a same-page retry when allowlist validation fails", () => {
@@ -355,16 +355,18 @@ describe("Host security", () => {
 
 		window.name = bootstrapWindowName;
 
-		expect(() => initHost({}, "https://trusted.example.com")).toThrow(
-			"is not allowed",
-		);
+		expect(() =>
+			initHost({ props: {}, consumerOrigins: "https://trusted.example.com" }),
+		).toThrow("is not allowed");
 
 		expect(window.name).toBe(bootstrapWindowName);
-		expect(
-			(window as unknown as { hostProps?: unknown }).hostProps,
-		).toBeUndefined();
+		expect(getHost()).toBeNull();
 
-		const host = initHost({}, "https://evil.example.com", { deferInit: true });
+		const host = initHost({
+			props: {},
+			consumerOrigins: "https://evil.example.com",
+			autoInit: false,
+		});
 
 		expect(host).not.toBeNull();
 		expect(host?.hostProps.getConsumerDomain()).toBe(
@@ -386,19 +388,17 @@ describe("Host security", () => {
 
 		window.name = buildWindowName(payload);
 
-		const host = initHost({}, "https://*.trusted.example.com", {
-			deferInit: true,
+		const host = initHost({
+			props: {},
+			consumerOrigins: "https://*.trusted.example.com",
+			autoInit: false,
 		});
-		const hostPropsDescriptor = Object.getOwnPropertyDescriptor(
-			window,
-			"hostProps",
-		);
 
 		expect(host).not.toBeNull();
 		expect(host?.hostProps.getConsumerDomain()).toBe(
 			"https://api.trusted.example.com",
 		);
-		expect(hostPropsDescriptor?.get).toEqual(expect.any(Function));
+		expect(Object.hasOwn(window, "hostProps")).toBe(false);
 	});
 
 	it("should reject spoofed claimed consumer domains when the accessible consumer origin is untrusted", () => {
@@ -414,9 +414,9 @@ describe("Host security", () => {
 
 		window.name = buildWindowName(payload);
 
-		expect(() => initHost({}, "https://trusted.example.com")).toThrow(
-			"https://evil.example.com",
-		);
+		expect(() =>
+			initHost({ props: {}, consumerOrigins: "https://trusted.example.com" }),
+		).toThrow("https://evil.example.com");
 	});
 
 	it("should bind host consumer domain to the accessible consumer origin instead of the claimed payload origin", () => {
@@ -432,7 +432,7 @@ describe("Host security", () => {
 
 		window.name = buildWindowName(payload);
 
-		const host = initHost({}, undefined, { deferInit: true });
+		const host = initHost({ consumerOrigins: "*", autoInit: false });
 
 		expect(host?.hostProps.getConsumerDomain()).toBe(
 			"https://verified.example.com",
@@ -454,9 +454,9 @@ describe("Host security", () => {
 				consumerDomain: "https://evil.example.com",
 			}),
 		);
-		expect(() => initHost({}, "https://trusted.example.com")).toThrow(
-			'Consumer domain "https://evil.example.com" is not allowed',
-		);
+		expect(() =>
+			initHost({ props: {}, consumerOrigins: "https://trusted.example.com" }),
+		).toThrow('Consumer domain "https://evil.example.com" is not allowed');
 		expect(postMessage).not.toHaveBeenCalled();
 
 		window.name = buildWindowName(
@@ -466,9 +466,9 @@ describe("Host security", () => {
 				consumerDomain: "https://trusted.example.com/path",
 			}),
 		);
-		expect(() => initHost({}, "https://trusted.example.com")).toThrow(
-			"Could not verify consumer origin",
-		);
+		expect(() =>
+			initHost({ props: {}, consumerOrigins: "https://trusted.example.com" }),
+		).toThrow("Could not verify consumer origin");
 		expect(postMessage).not.toHaveBeenCalled();
 
 		window.name = buildWindowName(
@@ -478,8 +478,10 @@ describe("Host security", () => {
 				consumerDomain: "https://trusted.example.com",
 			}),
 		);
-		const host = initHost({}, "https://trusted.example.com", {
-			deferInit: true,
+		const host = initHost({
+			props: {},
+			consumerOrigins: "https://trusted.example.com",
+			autoInit: false,
 		});
 
 		expect(host?.hostProps.getConsumerDomain()).toBe(
@@ -490,180 +492,5 @@ describe("Host security", () => {
 			expect.stringContaining(MESSAGE_NAME.BOOTSTRAP),
 			"https://trusted.example.com",
 		);
-	});
-
-	it("validates late definitions against props received before bootstrap completes", () => {
-		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
-		window.name = buildWindowName(
-			createPayload({
-				uid: "host-uid-preinit-validation",
-				tag: "secure-component-preinit-validation",
-			}),
-		);
-
-		const host = initHost(undefined, undefined, { deferInit: true });
-		expect(host).not.toBeNull();
-		const handler = (
-			host as unknown as {
-				messenger: { handlers: Map<string, DirectHandler> };
-			}
-		).messenger.handlers.get(MESSAGE_NAME.PROPS);
-		expect(
-			requireValue(handler)(
-				{ amount: "not-a-number" },
-				createMessageSource(window, window.location.origin),
-			),
-		).toEqual({ success: true });
-		expect(
-			(window as unknown as { hostProps?: unknown }).hostProps,
-		).toBeDefined();
-
-		expect(() =>
-			initHost(
-				{
-					amount: { schema: prop.number() },
-				},
-				undefined,
-				{ deferInit: true },
-			),
-		).toThrow("Validation failed: amount: Expected number, got string");
-		expect(
-			(window as unknown as { hostProps?: unknown }).hostProps,
-		).toBeUndefined();
-	});
-
-	it("does not relax required sameDomain props in late definitions before bootstrap completes", () => {
-		const inaccessibleConsumerWindow = createInaccessibleConsumerWindow();
-
-		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
-			inaccessibleConsumerWindow,
-		);
-		window.name = buildWindowName(
-			createPayload({
-				uid: "host-uid-unverified-same-domain-required",
-				tag: "secure-component-unverified-same-domain-required",
-				consumerDomain: window.location.origin,
-			}),
-		);
-
-		const host = initHost(undefined, undefined, { deferInit: true });
-		expect(host).not.toBeNull();
-		const handler = (
-			host as unknown as {
-				messenger: { handlers: Map<string, DirectHandler> };
-			}
-		).messenger.handlers.get(MESSAGE_NAME.PROPS);
-		expect(
-			requireValue(handler)(
-				{},
-				createMessageSource(inaccessibleConsumerWindow, window.location.origin),
-			),
-		).toEqual({ success: true });
-
-		expect(() =>
-			initHost(
-				{
-					secret: { schema: prop.string(), sameDomain: true, required: true },
-				},
-				undefined,
-				{ deferInit: true },
-			),
-		).toThrow('Prop "secret" is required but was not provided');
-		expect(
-			(window as unknown as { hostProps?: unknown }).hostProps,
-		).toBeUndefined();
-	});
-
-	it("should clear window.hostProps when existing host fails allowlist recheck", () => {
-		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
-
-		const payload = createPayload({
-			uid: "host-uid-existing",
-			tag: "secure-component-existing",
-			consumerDomain: "https://evil.example.com",
-		});
-
-		window.name = buildWindowName(payload);
-
-		initHost(undefined, undefined, { deferInit: true });
-		expect(
-			(window as unknown as { hostProps?: unknown }).hostProps,
-		).toBeDefined();
-
-		expect(() => initHost({}, "https://trusted.example.com")).toThrow(
-			"is not allowed",
-		);
-		expect(
-			(window as unknown as { hostProps?: unknown }).hostProps,
-		).toBeUndefined();
-	});
-
-	it("should keep deferred init unsent until explicitly flushed", async () => {
-		const { countInitMessages } = await startBootstrappedHost(
-			window,
-			createPayload({
-				uid: "host-uid-deferred",
-				tag: "secure-component-deferred",
-			}),
-		);
-
-		await flushMessages();
-		expect(countInitMessages()).toBe(0);
-		initHost();
-		await vi.waitFor(() => expect(countInitMessages()).toBe(1));
-	});
-
-	it("should auto-flush deferred init when window.hostProps is accessed", async () => {
-		const { countInitMessages } = await startBootstrappedHost(
-			window,
-			createPayload({
-				uid: "host-uid-deferred-access",
-				tag: "secure-component-deferred-access",
-			}),
-		);
-
-		void (window as unknown as { hostProps?: unknown }).hostProps;
-		await vi.waitFor(() => expect(countInitMessages()).toBe(1));
-	});
-
-	it("should not send deferred init before allowlist recheck", async () => {
-		const { countInitMessages } = await startBootstrappedHost(
-			window,
-			createPayload({
-				uid: "host-uid-deferred-allowlist",
-				tag: "secure-component-deferred-allowlist",
-			}),
-		);
-
-		expect(() => initHost({}, "https://trusted.example.com")).toThrow(
-			"is not allowed",
-		);
-		await flushMessages();
-		expect(countInitMessages()).toBe(0);
-		expect(
-			(window as unknown as { hostProps?: unknown }).hostProps,
-		).toBeUndefined();
-	});
-
-	it("should not flush deferred init when allowlist recheck fails in the same tick", async () => {
-		const { countInitMessages } = await startBootstrappedHost(
-			window,
-			createPayload({
-				uid: "host-uid-deferred-same-tick",
-				tag: "secure-component-deferred-same-tick",
-			}),
-		);
-
-		void (window as unknown as { hostProps?: unknown }).hostProps;
-		expect(() => initHost({}, "https://trusted.example.com")).toThrow(
-			"is not allowed",
-		);
-
-		await flushMessages();
-
-		expect(countInitMessages()).toBe(0);
-		expect(
-			(window as unknown as { hostProps?: unknown }).hostProps,
-		).toBeUndefined();
 	});
 });

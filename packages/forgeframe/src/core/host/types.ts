@@ -13,11 +13,7 @@ import type { MessageHandler } from "../../communication/messenger";
 import type { ContextType } from "../../constants";
 import type { EventEmitter } from "../../events/emitter";
 import type { SerializedProps } from "../../props/types";
-import type {
-	GetPeerInstancesOptions,
-	HostProps,
-	SiblingInfo,
-} from "../../types/runtime";
+import type { GetPeerInstancesOptions, SiblingInfo } from "../../types/runtime";
 import type { Dimensions } from "../../types/utility";
 
 export type VerifiedMessageSource = Parameters<MessageHandler>[1];
@@ -42,7 +38,6 @@ export interface HostPropsRuntimeOptions {
 	getConsumerWindow(): Window;
 	getConsumerDomain(): string;
 	getBridge(): FunctionBridge;
-	onFirstHostPropsAccess(): void;
 }
 
 export interface HostTransportOptions {
@@ -53,19 +48,11 @@ export interface HostTransportOptions {
 	consumerWindow: Window;
 	consumerDomain: string;
 	getConsumerDomain(): string;
-	deferInit: boolean;
 	/** Settles once the verified bootstrap completes; INIT waits for it. */
-	beforeInit: () => Promise<void>;
+	beforeInit: () => Promise<unknown>;
 }
 
 export interface HostTransportPropsHandler {
 	isConsumerSource(source: VerifiedMessageSource): boolean;
 	applySerializedProps(serializedProps: SerializedProps): { success: true };
 }
-
-export type WindowWithHostProps<P extends Record<string, unknown>> = Omit<
-	Window,
-	"hostProps"
-> & {
-	hostProps?: HostProps<P>;
-};

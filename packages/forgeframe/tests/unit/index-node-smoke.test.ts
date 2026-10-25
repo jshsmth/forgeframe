@@ -16,8 +16,6 @@ describe("Index node smoke", () => {
 
 		const publicEntrypoint = await import("@/index");
 		const {
-			default: ForgeFrame,
-			ForgeFrame: NamedForgeFrame,
 			CONTEXT,
 			PopupOpenError,
 			VERSION,
@@ -25,52 +23,56 @@ describe("Index node smoke", () => {
 			createReactComponent,
 			initHost,
 			isHost,
-			isEmbedded,
-			getHostProps,
 			prop,
 			withReactComponent,
 		} = publicEntrypoint;
 
-		expect(ForgeFrame).toBe(NamedForgeFrame);
-		expect(ForgeFrame.create).toBe(create);
-		expect(ForgeFrame.initHost).toBe(initHost);
-		expect(ForgeFrame.prop).toBe(prop);
-		expect(ForgeFrame.CONTEXT).toBe(CONTEXT);
-		expect(ForgeFrame.PopupOpenError).toBe(PopupOpenError);
-		expect(ForgeFrame.VERSION).toBe(VERSION);
-		expect(publicEntrypoint).not.toHaveProperty("PROP_SERIALIZATION");
-		expect(ForgeFrame).not.toHaveProperty("PROP_SERIALIZATION");
+		for (const removed of [
+			"default",
+			"ForgeFrame",
+			"getHostProps",
+			"isEmbedded",
+			"PROP_SERIALIZATION",
+		]) {
+			expect(publicEntrypoint).not.toHaveProperty(removed);
+		}
+		expect(CONTEXT.IFRAME).toBe("iframe");
+		expect(typeof PopupOpenError).toBe("function");
+		expect(typeof VERSION).toBe("string");
+		expect(typeof prop.string).toBe("function");
 		expect(typeof createReactComponent).toBe("function");
 		expect(typeof withReactComponent).toBe("function");
 		expect(isHost()).toBe(false);
-		expect(isEmbedded()).toBe(false);
-		expect(initHost()).toBeNull();
-		expect(getHostProps()).toBeUndefined();
-		expect(ForgeFrame.isHost()).toBe(false);
-		expect(ForgeFrame.isEmbedded()).toBe(false);
-		expect(ForgeFrame.initHost()).toBeNull();
-		expect(ForgeFrame.getHostProps()).toBeUndefined();
 
-		const AbsoluteUrlComponent = ForgeFrame.create({
+		const AbsoluteUrlComponent = create({
 			tag: "node-absolute-component",
 			url: "https://example.com/host.html",
 		});
-		const RelativeUrlComponent = ForgeFrame.create({
+		create({
 			tag: "node-relative-component",
 			url: "/host.html",
 		});
 
-		expect(AbsoluteUrlComponent.isHost()).toBe(false);
-		expect(AbsoluteUrlComponent.isEmbedded()).toBe(false);
-		expect(RelativeUrlComponent.isHost()).toBe(false);
-		expect(RelativeUrlComponent.isEmbedded()).toBe(false);
+		expect(
+			initHost(AbsoluteUrlComponent, {
+				consumerOrigins: "https://consumer.example.com",
+			}),
+		).toBeNull();
+		expect(initHost({ consumerOrigins: "*" })).toBeNull();
+		// Argument checks run before the environment check.
+		expect(() => (initHost as () => unknown)()).toThrow(
+			"initHost(Component, { consumerOrigins })",
+		);
+		expect(() =>
+			initHost(AbsoluteUrlComponent, {} as { consumerOrigins: string }),
+		).toThrow("consumerOrigins");
 	});
 
 	it("should reject malformed string urls without browser globals", async () => {
-		const { default: ForgeFrame } = await import("@/index");
+		const { create } = await import("@/index");
 
 		expect(() =>
-			ForgeFrame.create({
+			create({
 				tag: "node-invalid-component",
 				url: "http://",
 			}),

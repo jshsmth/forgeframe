@@ -9,10 +9,10 @@
  *
  * @example
  * ```typescript
- * import ForgeFrame, { prop } from 'forgeframe';
+ * import { create, prop } from 'forgeframe';
  *
  * // Define a component with schema-based props
- * const LoginComponent = ForgeFrame.create({
+ * const LoginComponent = create({
  *   tag: 'login-component',
  *   url: 'https://auth.example.com/login',
  *   props: {
@@ -39,9 +39,7 @@ export {
 	destroy,
 	destroyAll,
 	destroyByTag,
-	getHostProps,
 	initHost,
-	isEmbedded,
 	isHost,
 } from "./core";
 // React integration exports
@@ -52,7 +50,6 @@ export {
 	type ReactDriverOptions,
 	withReactComponent,
 } from "./drivers/react";
-export { default, ForgeFrame } from "./forgeframe";
 
 // Prop schema builders
 export {
@@ -98,6 +95,7 @@ export type {
 	ForgeFrameComponentInstance,
 	ForgeFrameComponentReference,
 	GetPeerInstancesOptions,
+	Host,
 	HostProps,
 	HostPropsBuiltins,
 	HostPropsDefinition,
@@ -106,6 +104,7 @@ export type {
 	InferPropsDefinition,
 	InferPropsDefinitionInput,
 	InferSchemaOutput,
+	InitHostOptions,
 	PrerenderTemplate,
 	PropContext,
 	// Props types
