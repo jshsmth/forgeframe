@@ -19,15 +19,22 @@ export function needsRecordEscape(value: Record<string, unknown>): boolean {
 	const keys = Object.keys(value).filter(
 		(key) => value[key] !== undefined && typeof value[key] !== "symbol",
 	);
-	if (keys.length === 3 && value.__type__ === "function") {
+	if (keys.length === 3 && toWrittenJsonValue(value.__type__) === "function") {
 		return keys.includes("__id__") && keys.includes("__name__");
 	}
 	if (keys.length !== 2) return false;
+	const wireType = toWrittenJsonValue(value.__forgeframe_wire_type__);
 	return (
-		(value.__forgeframe_wire_type__ === "date" ||
-			value.__forgeframe_wire_type__ === "record") &&
+		(wireType === "date" || wireType === "record") &&
 		keys.includes("__forgeframe_wire_value__")
 	);
+}
+
+/** Reads a marker field as the receiver will parse it; raw JSON yields the value its text represents. */
+function toWrittenJsonValue(value: unknown): unknown {
+	return isObjectRecord(value) && isRawJsonValue(value)
+		? JSON.parse((value as { rawJSON: string }).rawJSON)
+		: value;
 }
 
 /** Escapes marker-shaped user data, including the escape marker itself. */

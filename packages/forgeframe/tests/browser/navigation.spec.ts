@@ -2097,7 +2097,7 @@ for (const context of ["iframe", "popup"] as const) {
 			}),
 		).toBe(true);
 	});
-	test(`${context} preserves marker-shaped records through props and exports`, async ({
+	test(`${context} preserves marker-shaped records, including raw JSON marker fields, through props and exports`, async ({
 		page,
 	}) => {
 		await page.goto(consumerOrigin);
@@ -2114,6 +2114,9 @@ for (const context of ["iframe", "popup"] as const) {
 					url: `${hostOrigin}/record-props`,
 					props: { record: prop.object() },
 				});
+				const { rawJSON } = JSON as unknown as {
+					rawJSON: (text: string) => object;
+				};
 				const record = {
 					callback: {
 						__type__: "function",
@@ -2133,6 +2136,19 @@ for (const context of ["iframe", "popup"] as const) {
 					},
 					escaped: {
 						__forgeframe_wire_type__: "record",
+						__forgeframe_wire_value__: { original: true },
+					},
+					rawCallback: {
+						__type__: rawJSON('"function"'),
+						__id__: "raw-id",
+						__name__: "raw-name",
+					},
+					rawDate: {
+						__forgeframe_wire_type__: rawJSON('"date"'),
+						__forgeframe_wire_value__: "2026-01-01T00:00:00.000Z",
+					},
+					rawEscaped: {
+						__forgeframe_wire_type__: rawJSON('"record"'),
 						__forgeframe_wire_value__: { original: true },
 					},
 				};
@@ -2169,6 +2185,19 @@ for (const context of ["iframe", "popup"] as const) {
 				__value__: "JTdCJTIyZGVjb2RlZCUyMiUzQXRydWUlN0Q=",
 			},
 			escaped: {
+				__forgeframe_wire_type__: "record",
+				__forgeframe_wire_value__: { original: true },
+			},
+			rawCallback: {
+				__type__: "function",
+				__id__: "raw-id",
+				__name__: "raw-name",
+			},
+			rawDate: {
+				__forgeframe_wire_type__: "date",
+				__forgeframe_wire_value__: "2026-01-01T00:00:00.000Z",
+			},
+			rawEscaped: {
 				__forgeframe_wire_type__: "record",
 				__forgeframe_wire_value__: { original: true },
 			},

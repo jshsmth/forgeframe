@@ -1,3 +1,4 @@
+import { runInNewContext } from "node:vm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { create, prop } from "@/index";
 import {
@@ -165,6 +166,81 @@ describe("Ordinary object prop round trips", () => {
 		await hostProps.export({ record });
 		expect(instance.exports).toEqual({ record });
 	});
+	it.each([
+		[
+			"native",
+			(text: string): object => {
+				const { rawJSON } = JSON as unknown as {
+					rawJSON?: (text: string) => object;
+				};
+				if (typeof rawJSON !== "function") {
+					throw new Error("The test runtime must support native raw JSON");
+				}
+				return rawJSON(text);
+			},
+		],
+		[
+			"foreign",
+			(text: string): object =>
+				runInNewContext(`JSON.rawJSON(${JSON.stringify(text)})`),
+		],
+	])(
+		"escapes records whose marker fields are %s raw JSON through bootstrap, updates and exports",
+		async (_realm, raw) => {
+			harness = createIframeIntegrationHarness();
+			const container = document.createElement("div");
+			document.body.append(container);
+			const definitions = { record: prop.object<Record<string, unknown>>() };
+			const Component = create({
+				tag: "raw-json-marker-record",
+				url: "https://host.example.com/widget",
+				props: definitions,
+			});
+			const records = () => ({
+				callback: {
+					__type__: raw('"function"'),
+					__id__: "ordinary-id",
+					__name__: "ordinary-name",
+				},
+				date: {
+					__forgeframe_wire_type__: raw('"date"'),
+					__forgeframe_wire_value__: "2026-01-01T00:00:00.000Z",
+				},
+				escaped: {
+					__forgeframe_wire_type__: raw('"record"'),
+					__forgeframe_wire_value__: { kept: true },
+				},
+			});
+			const expected = {
+				callback: {
+					__type__: "function",
+					__id__: "ordinary-id",
+					__name__: "ordinary-name",
+				},
+				date: {
+					__forgeframe_wire_type__: "date",
+					__forgeframe_wire_value__: "2026-01-01T00:00:00.000Z",
+				},
+				escaped: {
+					__forgeframe_wire_type__: "record",
+					__forgeframe_wire_value__: { kept: true },
+				},
+			};
+			const instance = Component({ record: records() });
+			const rendering = instance.render(container);
+			const { hostProps } = await harness.bootstrapIframeHost(
+				container,
+				definitions,
+			);
+			await rendering;
+			expect(hostProps.record).toEqual(expected);
+			await instance.updateProps({ record: { nested: records() } });
+			expect(hostProps.record).toEqual({ nested: expected });
+			await hostProps.export({ record: records() });
+			expect(instance.exports).toEqual({ record: expected });
+		},
+	);
+
 	describe.each(["root", "object", "array"])("shape=%s", (shape) => {
 		it.each(["convert", "omit"])(
 			"escapes a record after custom encoders %s its marker shape",
