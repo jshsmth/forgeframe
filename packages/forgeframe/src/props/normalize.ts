@@ -7,7 +7,6 @@
  * types, and filtering props for sending to host components.
  */
 
-import { PROP_SERIALIZATION } from "../constants";
 import type {
 	PropContext,
 	PropDefinition,
@@ -764,11 +763,7 @@ export function getPropsForHost<P extends Record<string, unknown>, I = P>(
 		if (!shouldSendPropToHost(definition, hostDomain, isSameDomain)) continue;
 
 		const decorated = decorateHostProp(value, definition, props, key);
-		assertDefinedArrayEntries(
-			decorated,
-			[key],
-			definition.serialization ?? PROP_SERIALIZATION.JSON,
-		);
+		assertDefinedArrayEntries(decorated, [key]);
 		(result as Record<string, unknown>)[key] = decorated;
 	}
 
@@ -788,11 +783,7 @@ export function validatePropsForHostTransport<
 	for (const { key, definition } of getCompiledPropDefinitions(definitions)) {
 		if (!shouldSendPropToHost(definition, hostDomain, isSameDomain)) continue;
 		if (definition.hostDecorate) continue;
-		assertDefinedArrayEntries(
-			props[key],
-			[key],
-			definition.serialization ?? PROP_SERIALIZATION.JSON,
-		);
+		assertDefinedArrayEntries(props[key], [key]);
 	}
 }
 

@@ -9,6 +9,7 @@
  */
 
 import { CONTEXT } from "../constants";
+import { assertNoRemovedPropOptions } from "../props/removed-options";
 import type { StandardSchemaV1 } from "../props/schema";
 import type {
 	HostPropsDefinition,
@@ -134,6 +135,7 @@ function assertComponentShape<P, I, SchemaInputs>(
 				);
 			}
 		}
+		assertNoRemovedPropOptions(options.props);
 	}
 }
 

@@ -338,6 +338,38 @@ describe("Component Creation", () => {
 		},
 	);
 
+	it.each(["json", "base64", "dotify"])(
+		"rejects the removed serialization option set to %s before registering",
+		(serialization) => {
+			const tag = `removed-serialization-${serialization}`;
+			expect(() =>
+				create({
+					tag,
+					url: "https://example.com",
+					props: { profile: { schema: prop.object(), serialization } },
+				}),
+			).toThrow(
+				'Prop "profile" uses the removed "serialization" option. ForgeFrame 2 always sends props as JSON; remove the option.',
+			);
+			expect(() =>
+				create({
+					tag,
+					url: "https://example.com",
+					props: { profile: prop.object() },
+				}),
+			).not.toThrow();
+		},
+	);
+
+	it("accepts a serialization option set to undefined", () => {
+		const Component = create({
+			tag: "undefined-serialization",
+			url: "https://example.com",
+			props: { profile: { schema: prop.object(), serialization: undefined } },
+		});
+		expect(() => Component({ profile: {} })).not.toThrow();
+	});
+
 	it("should reject custom props that collide with hostProps built-ins", () => {
 		expect(() =>
 			create({

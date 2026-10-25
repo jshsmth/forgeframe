@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { create, PROP_SERIALIZATION, prop } from "@/index";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { create, prop } from "@/index";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
@@ -13,7 +13,7 @@ describe("Ordinary object prop round trips", () => {
 		harness = null;
 	});
 
-	it("omits BASE64 roots whose JSON encoder returns undefined during bootstrap and updates", async () => {
+	it("omits roots whose JSON encoder returns undefined during bootstrap and updates", async () => {
 		harness = createIframeIntegrationHarness();
 		let calls = 0;
 		class OmittedValue {
@@ -23,14 +23,9 @@ describe("Ordinary object prop round trips", () => {
 				return undefined;
 			}
 		}
-		const definitions = {
-			record: {
-				schema: prop.object().optional(),
-				serialization: PROP_SERIALIZATION.BASE64,
-			},
-		};
+		const definitions = { record: prop.object().optional() };
 		const Component = create({
-			tag: "omitted-base64-root",
+			tag: "omitted-encoded-root",
 			url: "https://host.example.com/widget",
 			props: definitions,
 		});
@@ -53,145 +48,124 @@ describe("Ordinary object prop round trips", () => {
 		expect(calls).toBe(2);
 	});
 
-	describe.each([
-		PROP_SERIALIZATION.JSON,
-		PROP_SERIALIZATION.BASE64,
-		PROP_SERIALIZATION.DOTIFY,
-	])("%s serialization", (serialization) => {
-		it.each([
-			{
-				__type__: "function",
-				__id__: "ordinary-id",
-				__name__: "ordinary-name",
-			},
-			{
-				__forgeframe_wire_type__: "date",
-				__forgeframe_wire_value__: "2026-01-01T00:00:00.000Z",
-			},
-		])(
-			"preserves ordinary marker records when JSON drops symbol metadata: %j",
-			async (expected) => {
-				harness = createIframeIntegrationHarness();
-				const container = document.createElement("div");
-				document.body.append(container);
-				const definitions = {
-					record: {
-						schema: prop.object<Record<string, unknown>>(),
-						serialization,
-					},
-				};
-				const Component = create({
-					tag: "symbol-marker-record",
-					url: "https://host.example.com/widget",
-					props: definitions,
-				});
-				const record = { ...expected, metadata: Symbol("local metadata") };
-				const instance = Component({ record });
-				const rendering = instance.render(container);
-				const { hostProps } = await harness.bootstrapIframeHost(
-					container,
-					definitions,
-				);
-				await rendering;
-				expect(hostProps.record).toEqual(expected);
-				await instance.updateProps({ record: { nested: record } });
-				expect(hostProps.record).toEqual({ nested: expected });
-				await hostProps.export({ record });
-				expect(instance.exports).toEqual({ record: expected });
-			},
-		);
+	it.each([
+		{
+			__type__: "function",
+			__id__: "ordinary-id",
+			__name__: "ordinary-name",
+		},
+		{
+			__forgeframe_wire_type__: "date",
+			__forgeframe_wire_value__: "2026-01-01T00:00:00.000Z",
+		},
+	])(
+		"preserves ordinary marker records when JSON drops symbol metadata: %j",
+		async (expected) => {
+			harness = createIframeIntegrationHarness();
+			const container = document.createElement("div");
+			document.body.append(container);
+			const definitions = {
+				record: prop.object<Record<string, unknown>>(),
+			};
+			const Component = create({
+				tag: "symbol-marker-record",
+				url: "https://host.example.com/widget",
+				props: definitions,
+			});
+			const record = { ...expected, metadata: Symbol("local metadata") };
+			const instance = Component({ record });
+			const rendering = instance.render(container);
+			const { hostProps } = await harness.bootstrapIframeHost(
+				container,
+				definitions,
+			);
+			await rendering;
+			expect(hostProps.record).toEqual(expected);
+			await instance.updateProps({ record: { nested: record } });
+			expect(hostProps.record).toEqual({ nested: expected });
+			await hostProps.export({ record });
+			expect(instance.exports).toEqual({ record: expected });
+		},
+	);
 
-		it.each([
-			{
+	it.each([
+		{
+			__type__: "function",
+			__id__: "ordinary-id",
+			__name__: "ordinary-name",
+		},
+		{
+			__type__: "function",
+			__id__: "ordinary-id",
+			__name__: "ordinary-name",
+			optional: undefined,
+		},
+		{
+			__forgeframe_wire_type__: "date",
+			__forgeframe_wire_value__: "2026-01-01T00:00:00.000Z",
+		},
+		{
+			__forgeframe_wire_type__: "date",
+			__forgeframe_wire_value__: null,
+			optional: undefined,
+		},
+		{
+			__type__: "base64",
+			__value__: "JTdCJTIyZGVjb2RlZCUyMiUzQXRydWUlN0Q=",
+			optional: undefined,
+		},
+		{ __type__: "dotify", __value__: "", optional: undefined },
+		{
+			__forgeframe_wire_type__: "record",
+			__forgeframe_wire_value__: {
 				__type__: "function",
-				__id__: "ordinary-id",
-				__name__: "ordinary-name",
+				__id__: "nested-id",
+				__name__: "nested-name",
 			},
-			{
-				__type__: "function",
-				__id__: "ordinary-id",
-				__name__: "ordinary-name",
-				optional: undefined,
-			},
-			{
-				__forgeframe_wire_type__: "date",
-				__forgeframe_wire_value__: "2026-01-01T00:00:00.000Z",
-			},
-			{
-				__forgeframe_wire_type__: "date",
-				__forgeframe_wire_value__: null,
-				optional: undefined,
-			},
-			{
-				__type__: "base64",
-				__value__: "JTdCJTIyZGVjb2RlZCUyMiUzQXRydWUlN0Q=",
-				optional: undefined,
-			},
-			{ __type__: "dotify", __value__: "", optional: undefined },
-			{
-				__forgeframe_wire_type__: "record",
-				__forgeframe_wire_value__: {
-					__type__: "function",
-					__id__: "nested-id",
-					__name__: "nested-name",
-				},
-			},
-			{
-				__type__: "base64",
-				__value__: "JTdCJTIyZGVjb2RlZCUyMiUzQXRydWUlN0Q=",
-				kind: "ordinary user data",
-			},
-			{ __type__: "dotify", __value__: "", kind: "ordinary user data" },
-			{
-				__type__: "function",
-				__id__: "ordinary-record-id",
-				__name__: "ordinary-record-name",
-				kind: "ordinary user data",
-			},
-		])(
-			"preserves user fields on a marker-shaped object: %j",
-			async (record) => {
-				harness = createIframeIntegrationHarness();
-				const container = document.createElement("div");
-				document.body.append(container);
-				const definitions = {
-					record: {
-						schema: prop.object<Record<string, unknown>>(),
-						serialization,
-					},
-				};
-				const Component = create({
-					tag: "ordinary-object-roundtrip",
-					url: "https://host.example.com/widget",
-					props: definitions,
-				});
-				const instance = Component({ record });
-				const rendering = instance.render(container);
-				const { hostProps } = await harness.bootstrapIframeHost(
-					container,
-					definitions,
-				);
-				await rendering;
-				expect(hostProps.record).toEqual(record);
-				const updated = { ...record, kind: "updated user data" };
-				await instance.updateProps({ record: updated });
-				expect(hostProps.record).toEqual(updated);
-				await instance.updateProps({
-					record: { nested: record, records: [record] },
-				});
-				expect(hostProps.record).toEqual({ nested: record, records: [record] });
-				await hostProps.export({ record });
-				expect(instance.exports).toEqual({ record });
-			},
+		},
+		{
+			__type__: "base64",
+			__value__: "JTdCJTIyZGVjb2RlZCUyMiUzQXRydWUlN0Q=",
+			kind: "ordinary user data",
+		},
+		{ __type__: "dotify", __value__: "", kind: "ordinary user data" },
+		{
+			__type__: "function",
+			__id__: "ordinary-record-id",
+			__name__: "ordinary-record-name",
+			kind: "ordinary user data",
+		},
+	])("preserves user fields on a marker-shaped object: %j", async (record) => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const definitions = {
+			record: prop.object<Record<string, unknown>>(),
+		};
+		const Component = create({
+			tag: "ordinary-object-roundtrip",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const instance = Component({ record });
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			definitions,
 		);
+		await rendering;
+		expect(hostProps.record).toEqual(record);
+		const updated = { ...record, kind: "updated user data" };
+		await instance.updateProps({ record: updated });
+		expect(hostProps.record).toEqual(updated);
+		await instance.updateProps({
+			record: { nested: record, records: [record] },
+		});
+		expect(hostProps.record).toEqual({ nested: record, records: [record] });
+		await hostProps.export({ record });
+		expect(instance.exports).toEqual({ record });
 	});
-	describe.each([
-		{ serialization: PROP_SERIALIZATION.BASE64, shape: "root" },
-		{ serialization: PROP_SERIALIZATION.BASE64, shape: "array" },
-		{ serialization: PROP_SERIALIZATION.DOTIFY, shape: "root" },
-		{ serialization: PROP_SERIALIZATION.DOTIFY, shape: "object" },
-		{ serialization: PROP_SERIALIZATION.DOTIFY, shape: "array" },
-	])("$serialization / shape=$shape", ({ serialization, shape }) => {
+	describe.each(["root", "object", "array"])("shape=%s", (shape) => {
 		it.each(["convert", "omit"])(
 			"escapes a record after custom encoders %s its marker shape",
 			async (kind) => {
@@ -220,10 +194,7 @@ describe("Ordinary object prop round trips", () => {
 					return record;
 				};
 				const definitions = {
-					record: {
-						schema: prop.object<Record<string, unknown>>(),
-						serialization,
-					},
+					record: prop.object<Record<string, unknown>>(),
 				};
 				const Component = create({
 					tag: "encoded-marker-record",
@@ -257,6 +228,7 @@ describe("JSON encoder conversion", () => {
 	afterEach(async () => {
 		await harness?.cleanup();
 		harness = null;
+		vi.restoreAllMocks();
 	});
 
 	class Session {
@@ -271,45 +243,41 @@ describe("JSON encoder conversion", () => {
 	}
 	const keys: string[] = [];
 
-	// DOTIFY walks a root's own fields by design and converts only its leaves.
-	it.each([PROP_SERIALIZATION.JSON, PROP_SERIALIZATION.BASE64])(
-		"delivers only toJSON() output for class instances in %s props at bootstrap and update",
-		async (serialization) => {
-			harness = createIframeIntegrationHarness();
-			keys.length = 0;
-			const container = document.createElement("div");
-			document.body.append(container);
-			const definitions = {
-				session: { schema: prop.any(), serialization },
-				nested: { schema: prop.any(), serialization },
-			};
-			const Component = create({
-				tag: `tojson-class-${serialization}`,
-				url: "https://host.example.com/widget",
-				props: definitions,
-			});
-			const instance = Component({
-				session: new Session("user-1", "secret-1"),
-				nested: { session: new Session("user-2", "secret-2") },
-			});
-			const rendering = instance.render(container);
-			const { hostProps } = await harness.bootstrapIframeHost(
-				container,
-				definitions,
-			);
-			await rendering;
+	it("delivers only toJSON() output for class instances in props at bootstrap and update", async () => {
+		harness = createIframeIntegrationHarness();
+		keys.length = 0;
+		const container = document.createElement("div");
+		document.body.append(container);
+		const definitions = {
+			session: prop.any(),
+			nested: prop.any(),
+		};
+		const Component = create({
+			tag: "tojson-class",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const instance = Component({
+			session: new Session("user-1", "secret-1"),
+			nested: { session: new Session("user-2", "secret-2") },
+		});
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			definitions,
+		);
+		await rendering;
 
-			expect(hostProps.session).toEqual({ userId: "user-1" });
-			expect(hostProps.nested).toEqual({ session: { userId: "user-2" } });
-			expect(keys).toEqual(["", "session"]);
+		expect(hostProps.session).toEqual({ userId: "user-1" });
+		expect(hostProps.nested).toEqual({ session: { userId: "user-2" } });
+		expect(keys).toEqual(["", "session"]);
 
-			await instance.updateProps({
-				session: new Session("user-3", "secret-3"),
-			});
-			expect(hostProps.session).toEqual({ userId: "user-3" });
-			expect(JSON.stringify(hostProps)).not.toContain("secret");
-		},
-	);
+		await instance.updateProps({
+			session: new Session("user-3", "secret-3"),
+		});
+		expect(hostProps.session).toEqual({ userId: "user-3" });
+		expect(JSON.stringify(hostProps)).not.toContain("secret");
+	});
 
 	it("converts URLs and boxed primitives in JSON props as native JSON does", async () => {
 		harness = createIframeIntegrationHarness();
@@ -347,6 +315,194 @@ describe("JSON encoder conversion", () => {
 			flag: false,
 			items: ["c"],
 		});
+	});
+
+	it("encodes ordinary records without unrelated primitive coercion", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const definitions = { payload: prop.object<Record<string, unknown>>() };
+		const Component = create({
+			tag: "ordinary-record-coercion",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const records = (label: string) => ({
+			records: [
+				{ id: 1, label },
+				{ id: 2, label: `${label} again` },
+			],
+		});
+		const instance = Component({ payload: records("initial") });
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			definitions,
+		);
+		await rendering;
+		expect(hostProps.payload).toEqual(records("initial"));
+
+		const probes = [
+			vi.spyOn(Number.prototype, "valueOf"),
+			vi.spyOn(String.prototype, "valueOf"),
+			vi.spyOn(Boolean.prototype, "valueOf"),
+			vi.spyOn(BigInt.prototype, "valueOf"),
+		];
+		await instance.updateProps({ payload: records("updated") });
+		for (const probe of probes) expect(probe).not.toHaveBeenCalled();
+		expect(hostProps.payload).toEqual(records("updated"));
+	});
+
+	it("keeps encoder receivers and reads encoded accessors and Dates once at bootstrap and update", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const date = new Date("2026-01-02T03:04:05.678Z");
+		const dateEncoder = vi.spyOn(date, "toJSON");
+		let reads = 0;
+		let encodings = 0;
+		class CustomValue {
+			#label: string;
+			constructor(label: string) {
+				this.#label = label;
+			}
+			toJSON() {
+				encodings++;
+				const items: unknown[] = [];
+				Object.defineProperty(items, "0", {
+					enumerable: true,
+					get() {
+						reads++;
+						return date;
+					},
+				});
+				Object.freeze(items);
+				const symbol = Object(Symbol("boxed"));
+				Object.defineProperty(symbol, "date", {
+					enumerable: true,
+					value: date,
+				});
+				const label = this.#label;
+				return {
+					label,
+					items,
+					pair: { toJSON: () => [label, () => label] },
+					callback: () => label,
+					number: Object(7),
+					string: Object("boxed"),
+					boolean: Object(false),
+					symbol,
+				};
+			}
+		}
+		const definitions = { custom: prop.any() };
+		const Component = create({
+			tag: "tojson-receivers-and-accessors",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const delivered = (label: string) => ({
+			label,
+			items: [date],
+			pair: [label, expect.any(Function)],
+			callback: expect.any(Function),
+			number: 7,
+			string: "boxed",
+			boolean: false,
+			symbol: { date },
+		});
+		const instance = Component({ custom: new CustomValue("initial") });
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			definitions,
+		);
+		await rendering;
+		const custom = () =>
+			hostProps.custom as {
+				callback: () => Promise<string>;
+				pair: [string, () => Promise<string>];
+			};
+		expect(hostProps.custom).toEqual(delivered("initial"));
+		expect(reads).toBe(1);
+		expect(encodings).toBe(1);
+		expect(dateEncoder).toHaveBeenCalledTimes(2);
+		await expect(custom().callback()).resolves.toBe("initial");
+		await expect(custom().pair[1]()).resolves.toBe("initial");
+
+		await instance.updateProps({ custom: new CustomValue("updated") });
+		expect(hostProps.custom).toEqual(delivered("updated"));
+		expect(reads).toBe(2);
+		expect(encodings).toBe(2);
+		expect(dateEncoder).toHaveBeenCalledTimes(4);
+		await expect(custom().callback()).resolves.toBe("updated");
+		await expect(custom().pair[1]()).resolves.toBe("updated");
+	});
+
+	it("rejects cyclic encoder results and boxed BigInts while host props stay unchanged", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const definitions = { payload: prop.any() };
+		const Component = create({
+			tag: "tojson-rejected-values",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const instance = Component({ payload: { stage: "initial" } });
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			definitions,
+		);
+		await rendering;
+		const cyclic: Record<string, unknown> = {};
+		cyclic.self = cyclic;
+		class CyclicValue {
+			toJSON() {
+				return cyclic;
+			}
+		}
+
+		await expect(
+			instance.updateProps({ payload: { custom: new CyclicValue() } }),
+		).rejects.toThrow("Circular reference detected");
+		await expect(
+			instance.updateProps({ payload: { custom: Object(1n) } }),
+		).rejects.toThrow(TypeError);
+		expect(hostProps.payload).toEqual({ stage: "initial" });
+		await instance.updateProps({ payload: { stage: "recovered" } });
+		expect(hostProps.payload).toEqual({ stage: "recovered" });
+	});
+
+	it("delivers a boxed primitive whose prototype was removed as an ordinary record", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		// Native JSON would unbox it to 9; the bridge treats null-prototype
+		// objects as records and sends their own fields.
+		const boxed = (label: string) => {
+			const value = Object(9);
+			Object.setPrototypeOf(value, null);
+			value.label = label;
+			return value;
+		};
+		const definitions = { payload: prop.any() };
+		const Component = create({
+			tag: "null-prototype-boxed-primitive",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const instance = Component({ payload: { boxed: boxed("initial") } });
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			definitions,
+		);
+		await rendering;
+		expect(hostProps.payload).toEqual({ boxed: { label: "initial" } });
+		await instance.updateProps({ payload: { boxed: boxed("updated") } });
+		expect(hostProps.payload).toEqual({ boxed: { label: "updated" } });
 	});
 
 	it("delivers only toJSON() output for class instances in host exports", async () => {

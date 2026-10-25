@@ -70,31 +70,6 @@ export const EVENT = {
 export type EventType = (typeof EVENT)[keyof typeof EVENT];
 
 /**
- * Prop serialization strategies for cross-domain transfer.
- *
- * @remarks
- * When props are passed from consumer to host across domains, they need to be
- * serialized. Different strategies offer different trade-offs.
- *
- * @public
- */
-export const PROP_SERIALIZATION = {
-	/** Default JSON serialization */
-	JSON: "json",
-	/** Base64 encoding for binary or large data */
-	BASE64: "base64",
-	/** Explicit framed-path encoding for nested objects */
-	DOTIFY: "dotify",
-} as const;
-
-/**
- * Union type of valid serialization strategies.
- * @public
- */
-export type SerializationType =
-	(typeof PROP_SERIALIZATION)[keyof typeof PROP_SERIALIZATION];
-
-/**
  * Internal message types for the cross-domain communication protocol.
  * @internal
  */

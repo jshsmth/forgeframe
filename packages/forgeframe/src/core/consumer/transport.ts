@@ -194,18 +194,13 @@ export class ConsumerTransport<
 	 */
 	serializePropsForHost(
 		propsForHost: Record<string, unknown>,
-		propDefinitions: PropsDefinition<Record<string, unknown>>,
 		options?: { finishBatch?: boolean; resetLocalReferences?: boolean },
 	): SerializedProps {
 		if (options?.resetLocalReferences) this.bridge.clearLocal(true);
 		this.bridge.startBatch();
 		const finishBatch = options?.finishBatch ?? true;
 		try {
-			const serialized = serializeProps(
-				propsForHost,
-				propDefinitions,
-				this.bridge,
-			);
+			const serialized = serializeProps(propsForHost, this.bridge);
 			if (finishBatch) {
 				this.bridge.finishBatch();
 			}
@@ -236,7 +231,6 @@ export class ConsumerTransport<
 		);
 		const serialized = this.serializePropsForHost(
 			propsForHost as Record<string, unknown>,
-			propDefinitions as PropsDefinition<Record<string, unknown>>,
 			{ finishBatch: false },
 		);
 

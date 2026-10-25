@@ -372,7 +372,7 @@ export interface ComponentOptions<
 	url: string | ((props: P) => string);
 
 	/**
-	 * Prop definitions for type checking and serialization.
+	 * Prop definitions for validation and delivery to the host.
 	 */
 	props?: PropsDefinition<P, SchemaInputs>;
 

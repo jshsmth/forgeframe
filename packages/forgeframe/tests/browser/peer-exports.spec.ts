@@ -419,136 +419,124 @@ test("peerDomains admits a named host origin to discover a component's peers", a
 	]);
 });
 
-for (const codec of ["JSON", "BASE64", "DOTIFY"] as const) {
-	test(`callback defaults and atomic capacity recovery across ${codec}`, async ({
-		page,
-	}) => {
-		await page.goto(consumerOrigin);
-		await page.evaluate(
-			async ({ hostOrigin, codec }) => {
-				const libraryUrl = "/library.js";
-				const library: typeof import("../../src/index") = await import(
-					libraryUrl
-				);
-				const callback = () => -1;
-				const Component = library.create({
-					tag: "browser-callback-capacity",
-					url: `${hostOrigin}/capacity`,
-					props: {
-						callbacks: {
-							schema: library.prop.record(
-								library.prop.function<() => number>(),
-							),
-							serialization:
-								codec === "JSON"
-									? undefined
-									: library.PROP_SERIALIZATION[codec],
-						},
-						onDefault: library.prop
-							.function<() => number>()
-							.default(() => callback),
-					},
-				});
-				const callbacks = Object.fromEntries(
-					Array.from({ length: 499 }, (_, index) => [`c${index}`, () => index]),
-				);
-				const instance = Component({ callbacks });
-				(
-					window as unknown as { capacityInstance: typeof instance }
-				).capacityInstance = instance;
-				await instance.render("#requester");
-			},
-			{ hostOrigin, codec },
-		);
-		const frame = await (
-			await page.locator("#requester iframe").elementHandle()
-		)?.contentFrame();
-		if (!frame) throw new Error("Missing capacity frame");
-		const initial = await frame.evaluate(async () => {
-			const state = window as unknown as {
+test("callback defaults and atomic capacity recovery", async ({ page }) => {
+	await page.goto(consumerOrigin);
+	await page.evaluate(
+		async ({ hostOrigin }) => {
+			const libraryUrl = "/library.js";
+			const library: typeof import("../../src/index") = await import(
+				libraryUrl
+			);
+			const callback = () => -1;
+			const Component = library.create({
+				tag: "browser-callback-capacity",
+				url: `${hostOrigin}/capacity`,
 				props: {
-					callbacks: Record<string, () => Promise<number>>;
-					onDefault: () => Promise<number>;
-				};
-				held: () => Promise<number>;
+					callbacks: library.prop.record(library.prop.function<() => number>()),
+					onDefault: library.prop
+						.function<() => number>()
+						.default(() => callback),
+				},
+			});
+			const callbacks = Object.fromEntries(
+				Array.from({ length: 499 }, (_, index) => [`c${index}`, () => index]),
+			);
+			const instance = Component({ callbacks });
+			(
+				window as unknown as { capacityInstance: typeof instance }
+			).capacityInstance = instance;
+			await instance.render("#requester");
+		},
+		{ hostOrigin },
+	);
+	const frame = await (
+		await page.locator("#requester iframe").elementHandle()
+	)?.contentFrame();
+	if (!frame) throw new Error("Missing capacity frame");
+	const initial = await frame.evaluate(async () => {
+		const state = window as unknown as {
+			props: {
+				callbacks: Record<string, () => Promise<number>>;
+				onDefault: () => Promise<number>;
 			};
-			const held = state.props.callbacks.c0;
-			if (!held) throw new Error("Missing callback");
-			state.held = held;
-			return [
-				await held(),
-				await state.props.callbacks.c498?.(),
-				await state.props.onDefault(),
-			];
-		});
-		expect(initial).toEqual([0, 498, -1]);
-		const error = await page.evaluate(async () => {
-			const state = window as unknown as {
-				capacityInstance: {
-					updateProps: (props: {
-						callbacks: Record<string, () => number>;
-					}) => Promise<void>;
-				};
+			held: () => Promise<number>;
+		};
+		const held = state.props.callbacks.c0;
+		if (!held) throw new Error("Missing callback");
+		state.held = held;
+		return [
+			await held(),
+			await state.props.callbacks.c498?.(),
+			await state.props.onDefault(),
+		];
+	});
+	expect(initial).toEqual([0, 498, -1]);
+	const error = await page.evaluate(async () => {
+		const state = window as unknown as {
+			capacityInstance: {
+				updateProps: (props: {
+					callbacks: Record<string, () => number>;
+				}) => Promise<void>;
 			};
-			try {
-				await state.capacityInstance.updateProps({
-					callbacks: Object.fromEntries(
-						Array.from({ length: 500 }, (_, index) => [
-							`c${index}`,
-							() => index + 1000,
-						]),
-					),
-				});
-				return "unexpected success";
-			} catch (error) {
-				return error instanceof Error ? error.message : String(error);
-			}
-		});
-		expect(error).toContain("500 distinct callback limit");
-		expect(
-			await frame.evaluate(() =>
-				(window as unknown as { held: () => Promise<number> }).held(),
-			),
-		).toBe(0);
-		await page.evaluate(async () => {
-			const state = window as unknown as {
-				capacityInstance: {
-					updateProps: (props: {
-						callbacks: Record<string, () => number>;
-					}) => Promise<void>;
-				};
-			};
+		};
+		try {
 			await state.capacityInstance.updateProps({
 				callbacks: Object.fromEntries(
-					Array.from({ length: 499 }, (_, index) => [
+					Array.from({ length: 500 }, (_, index) => [
 						`c${index}`,
-						() => index + 500,
+						() => index + 1000,
 					]),
 				),
 			});
-		});
-		const result = await frame.evaluate(async () => {
-			const state = window as unknown as {
-				props: {
-					callbacks: Record<string, () => Promise<number>>;
-					onDefault: () => Promise<number>;
-				};
-				held: () => Promise<number>;
-			};
-			let retired = "unexpected success";
-			try {
-				await state.held();
-			} catch (error) {
-				retired = error instanceof Error ? error.message : String(error);
-			}
-			return {
-				first: await state.props.callbacks.c0?.(),
-				last: await state.props.callbacks.c498?.(),
-				defaulted: await state.props.onDefault(),
-				retired,
-			};
-		});
-		expect(result).toMatchObject({ first: 500, last: 998, defaulted: -1 });
-		expect(result.retired).toContain("not found");
+			return "unexpected success";
+		} catch (error) {
+			return error instanceof Error ? error.message : String(error);
+		}
 	});
-}
+	expect(error).toContain("500 distinct callback limit");
+	expect(
+		await frame.evaluate(() =>
+			(window as unknown as { held: () => Promise<number> }).held(),
+		),
+	).toBe(0);
+	await page.evaluate(async () => {
+		const state = window as unknown as {
+			capacityInstance: {
+				updateProps: (props: {
+					callbacks: Record<string, () => number>;
+				}) => Promise<void>;
+			};
+		};
+		await state.capacityInstance.updateProps({
+			callbacks: Object.fromEntries(
+				Array.from({ length: 499 }, (_, index) => [
+					`c${index}`,
+					() => index + 500,
+				]),
+			),
+		});
+	});
+	const result = await frame.evaluate(async () => {
+		const state = window as unknown as {
+			props: {
+				callbacks: Record<string, () => Promise<number>>;
+				onDefault: () => Promise<number>;
+			};
+			held: () => Promise<number>;
+		};
+		let retired = "unexpected success";
+		try {
+			await state.held();
+		} catch (error) {
+			retired = error instanceof Error ? error.message : String(error);
+		}
+		return {
+			first: await state.props.callbacks.c0?.(),
+			last: await state.props.callbacks.c498?.(),
+			defaulted: await state.props.onDefault(),
+			retired,
+		};
+	});
+	expect(result).toMatchObject({ first: 500, last: 998, defaulted: -1 });
+	expect(result.retired).toContain("not found");
+});

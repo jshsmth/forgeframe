@@ -38,6 +38,8 @@ describe("Index node smoke", () => {
 		expect(ForgeFrame.CONTEXT).toBe(CONTEXT);
 		expect(ForgeFrame.PopupOpenError).toBe(PopupOpenError);
 		expect(ForgeFrame.VERSION).toBe(VERSION);
+		expect(publicEntrypoint).not.toHaveProperty("PROP_SERIALIZATION");
+		expect(ForgeFrame).not.toHaveProperty("PROP_SERIALIZATION");
 		expect(typeof createReactComponent).toBe("function");
 		expect(typeof withReactComponent).toBe("function");
 		expect(isHost()).toBe(false);

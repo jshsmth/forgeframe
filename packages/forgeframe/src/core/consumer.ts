@@ -955,7 +955,6 @@ export class ConsumerComponent<
 					return {
 						props: this.transport.serializePropsForHost(
 							propsForHost as Record<string, unknown>,
-							this.options.props as PropsDefinition<Record<string, unknown>>,
 							{ resetLocalReferences },
 						),
 						children: buildNestedHostRefs(this.options, props),

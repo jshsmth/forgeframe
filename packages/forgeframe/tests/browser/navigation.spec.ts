@@ -864,122 +864,118 @@ test("numeric CSS declarations retain the browser's unitless meaning", async ({
 	expect(mismatches).toEqual([]);
 });
 
-for (const serialization of ["json", "base64", "dotify"] as const) {
-	test(`${serialization} preserves foreign-window dates and ordinary records`, async ({
-		page,
-	}) => {
-		await page.goto(consumerOrigin);
-		await page.evaluate(
-			async ({ hostOrigin, serialization }) => {
-				const libraryUrl = "/library.js";
-				const { create, prop } = await import(libraryUrl);
-				const realm = document.createElement("iframe");
-				document.body.append(realm);
-				const foreign = realm.contentWindow as unknown as {
-					Date: DateConstructor;
-					Object: ObjectConstructor;
-				};
-				const createdAt = new foreign.Date("2026-01-02T03:04:05.678Z");
-				const record = foreign.Object.assign(new foreign.Object(), {
-					name: "initial",
-				});
-				const config = foreign.Object.assign(new foreign.Object(), {
-					nested: { createdAt },
-				});
-				const instance = create({
-					tag: "foreign-window-values",
-					url: `${hostOrigin}/realm-values`,
-					props: {
-						createdAt: { schema: prop.date(), serialization },
-						config: { schema: prop.object(), serialization },
-						record: { schema: prop.record(prop.string()), serialization },
-					},
-				})({ createdAt, config, record });
-				(
-					window as unknown as {
-						instance: import("../../src/types").ForgeFrameComponentInstance<
-							Record<string, unknown>,
-							{ createdAt: Date; record: Record<string, string> }
-						>;
-					}
-				).instance = instance;
-				await instance.render("#mount");
-			},
-			{ hostOrigin, serialization },
-		);
-		const hostFrame = page
-			.frames()
-			.find((frame) => frame.url() === `${hostOrigin}/realm-values`);
-		if (!hostFrame) throw new Error("Missing host frame");
-		expect(
-			await hostFrame.evaluate(() => {
-				const props = (
-					window as unknown as {
-						received: import("../../src/types").HostProps<{
-							createdAt: Date;
-							config: { nested: { createdAt: Date } };
-							record: Record<string, string>;
-						}>;
-					}
-				).received;
-				return {
-					date: props.createdAt instanceof Date,
-					nested: props.config.nested.createdAt instanceof Date,
-					iso: props.createdAt.toISOString(),
-					record: props.record,
-				};
-			}),
-		).toEqual({
-			date: true,
-			nested: true,
-			iso: "2026-01-02T03:04:05.678Z",
-			record: { name: "initial" },
-		});
-		await hostFrame.evaluate(async () => {
+test("preserves foreign-window dates and ordinary records", async ({
+	page,
+}) => {
+	await page.goto(consumerOrigin);
+	await page.evaluate(
+		async ({ hostOrigin }) => {
+			const libraryUrl = "/library.js";
+			const { create, prop } = await import(libraryUrl);
 			const realm = document.createElement("iframe");
 			document.body.append(realm);
 			const foreign = realm.contentWindow as unknown as {
 				Date: DateConstructor;
 				Object: ObjectConstructor;
 			};
-			const props = (
+			const createdAt = new foreign.Date("2026-01-02T03:04:05.678Z");
+			const record = foreign.Object.assign(new foreign.Object(), {
+				name: "initial",
+			});
+			const config = foreign.Object.assign(new foreign.Object(), {
+				nested: { createdAt },
+			});
+			const instance = create({
+				tag: "foreign-window-values",
+				url: `${hostOrigin}/realm-values`,
+				props: {
+					createdAt: prop.date(),
+					config: prop.object(),
+					record: prop.record(prop.string()),
+				},
+			})({ createdAt, config, record });
+			(
 				window as unknown as {
-					received: import("../../src/types").HostProps<
-						Record<string, unknown>
+					instance: import("../../src/types").ForgeFrameComponentInstance<
+						Record<string, unknown>,
+						{ createdAt: Date; record: Record<string, string> }
 					>;
 				}
+			).instance = instance;
+			await instance.render("#mount");
+		},
+		{ hostOrigin },
+	);
+	const hostFrame = page
+		.frames()
+		.find((frame) => frame.url() === `${hostOrigin}/realm-values`);
+	if (!hostFrame) throw new Error("Missing host frame");
+	expect(
+		await hostFrame.evaluate(() => {
+			const props = (
+				window as unknown as {
+					received: import("../../src/types").HostProps<{
+						createdAt: Date;
+						config: { nested: { createdAt: Date } };
+						record: Record<string, string>;
+					}>;
+				}
 			).received;
-			await props.export({
-				createdAt: new foreign.Date("2026-02-03T04:05:06.789Z"),
-				record: foreign.Object.assign(new foreign.Object(), {
-					name: "exported",
-				}),
-			});
-		});
-		expect(
-			await page.evaluate(() => {
-				const exported = (
-					window as unknown as {
-						instance: import("../../src/types").ForgeFrameComponentInstance<
-							Record<string, unknown>,
-							{ createdAt: Date; record: Record<string, string> }
-						>;
-					}
-				).instance.exports;
-				if (!exported) throw new Error("Missing exports");
-				return {
-					date: exported.createdAt instanceof Date,
-					iso: exported.createdAt.toISOString(),
-					record: exported.record,
-				};
+			return {
+				date: props.createdAt instanceof Date,
+				nested: props.config.nested.createdAt instanceof Date,
+				iso: props.createdAt.toISOString(),
+				record: props.record,
+			};
+		}),
+	).toEqual({
+		date: true,
+		nested: true,
+		iso: "2026-01-02T03:04:05.678Z",
+		record: { name: "initial" },
+	});
+	await hostFrame.evaluate(async () => {
+		const realm = document.createElement("iframe");
+		document.body.append(realm);
+		const foreign = realm.contentWindow as unknown as {
+			Date: DateConstructor;
+			Object: ObjectConstructor;
+		};
+		const props = (
+			window as unknown as {
+				received: import("../../src/types").HostProps<Record<string, unknown>>;
+			}
+		).received;
+		await props.export({
+			createdAt: new foreign.Date("2026-02-03T04:05:06.789Z"),
+			record: foreign.Object.assign(new foreign.Object(), {
+				name: "exported",
 			}),
-		).toEqual({
-			date: true,
-			iso: "2026-02-03T04:05:06.789Z",
-			record: { name: "exported" },
 		});
 	});
-}
+	expect(
+		await page.evaluate(() => {
+			const exported = (
+				window as unknown as {
+					instance: import("../../src/types").ForgeFrameComponentInstance<
+						Record<string, unknown>,
+						{ createdAt: Date; record: Record<string, string> }
+					>;
+				}
+			).instance.exports;
+			if (!exported) throw new Error("Missing exports");
+			return {
+				date: exported.createdAt instanceof Date,
+				iso: exported.createdAt.toISOString(),
+				record: exported.record,
+			};
+		}),
+	).toEqual({
+		date: true,
+		iso: "2026-02-03T04:05:06.789Z",
+		record: { name: "exported" },
+	});
+});
 
 for (const context of ["iframe", "popup"] as const) {
 	test(`${context} POST supports field names that shadow form methods`, async ({
@@ -1070,127 +1066,123 @@ for (const context of ["iframe", "popup"] as const) {
 		).toEqual({ count: 2, allowed: "visible", hidden: undefined });
 	});
 
-	for (const serialization of ["base64", "dotify"] as const) {
-		test(`${context} ${serialization} preserves nested callbacks and Dates through updates`, async ({
-			page,
-		}) => {
-			await page.goto(consumerOrigin);
-			await page.evaluate(
-				async ({ hostOrigin, context, serialization }) => {
-					const libraryUrl = "/library.js";
-					const { create, prop } = await import(libraryUrl);
-					const instance = create({
-						tag: "browser-encoded-functions",
-						url: `${hostOrigin}/encoded-props`,
-						domain: hostOrigin,
-						timeout: 3000,
-						props: {
-							config: { schema: prop.object(), serialization },
-							label: prop.string().optional(),
-						},
-					})({
-						config: {
-							onComplete: () => 42,
-							list: [() => 7],
-							date: new Date("2026-01-02T03:04:05.678Z"),
-						},
-					});
-					const review = window as unknown as {
-						instance: import("../../src/types").ForgeFrameComponentInstance<
-							Record<string, unknown>
-						>;
-						outcome: Promise<string>;
-					};
-					review.instance = instance;
-					const button = document.createElement("button");
-					button.id = "open-encoded";
-					button.textContent = "Open";
-					button.onclick = () => {
-						review.outcome = instance.render("#mount", context).then(
-							() => "ready",
-							(error: Error) => error.message,
-						);
-					};
-					document.body.appendChild(button);
-				},
-				{ hostOrigin, context, serialization },
-			);
-			const opened = context === "popup" ? page.waitForEvent("popup") : null;
-			await page.click("#open-encoded", { noWaitAfter: true });
-			const popup = await opened;
-			expect(
-				await page.evaluate(
-					() => (window as unknown as { outcome: Promise<string> }).outcome,
-				),
-			).toBe("ready");
-			const target =
-				popup ??
-				page
-					.frames()
-					.find((frame) =>
-						frame.url().startsWith(`${hostOrigin}/encoded-props`),
-					);
-			if (!target) throw new Error("Missing encoded host");
-			const read = () =>
-				target.evaluate(async () => {
-					const config = (
-						window as unknown as {
-							received: {
-								config: {
-									onComplete: () => Promise<number>;
-									list: Array<() => Promise<number>>;
-									date: Date;
-								};
-							};
-						}
-					).received.config;
-					return {
-						callback: await config.onComplete(),
-						list: await config.list[0]?.(),
-						date: config.date.toISOString(),
-					};
-				});
-			expect(await read()).toEqual({
-				callback: 42,
-				list: 7,
-				date: "2026-01-02T03:04:05.678Z",
-			});
-			await page.evaluate(() =>
-				(
-					window as unknown as {
-						instance: import("../../src/types").ForgeFrameComponentInstance<
-							Record<string, unknown>
-						>;
-					}
-				).instance.updateProps({ label: "unrelated" }),
-			);
-			expect(await read()).toEqual({
-				callback: 42,
-				list: 7,
-				date: "2026-01-02T03:04:05.678Z",
-			});
-			await page.evaluate(() =>
-				(
-					window as unknown as {
-						instance: import("../../src/types").ForgeFrameComponentInstance<
-							Record<string, unknown>
-						>;
-					}
-				).instance.updateProps({
-					config: {
-						onComplete: () => 84,
-						list: [() => 14],
-						date: new Date("2026-02-03T04:05:06.789Z"),
+	test(`${context} preserves nested callbacks and Dates through updates`, async ({
+		page,
+	}) => {
+		await page.goto(consumerOrigin);
+		await page.evaluate(
+			async ({ hostOrigin, context }) => {
+				const libraryUrl = "/library.js";
+				const { create, prop } = await import(libraryUrl);
+				const instance = create({
+					tag: "browser-nested-functions",
+					url: `${hostOrigin}/encoded-props`,
+					domain: hostOrigin,
+					timeout: 3000,
+					props: {
+						config: prop.object(),
+						label: prop.string().optional(),
 					},
-				}),
-			);
-			expect(await read()).toEqual({
-				callback: 84,
-				list: 14,
-				date: "2026-02-03T04:05:06.789Z",
+				})({
+					config: {
+						onComplete: () => 42,
+						list: [() => 7],
+						date: new Date("2026-01-02T03:04:05.678Z"),
+					},
+				});
+				const review = window as unknown as {
+					instance: import("../../src/types").ForgeFrameComponentInstance<
+						Record<string, unknown>
+					>;
+					outcome: Promise<string>;
+				};
+				review.instance = instance;
+				const button = document.createElement("button");
+				button.id = "open-encoded";
+				button.textContent = "Open";
+				button.onclick = () => {
+					review.outcome = instance.render("#mount", context).then(
+						() => "ready",
+						(error: Error) => error.message,
+					);
+				};
+				document.body.appendChild(button);
+			},
+			{ hostOrigin, context },
+		);
+		const opened = context === "popup" ? page.waitForEvent("popup") : null;
+		await page.click("#open-encoded", { noWaitAfter: true });
+		const popup = await opened;
+		expect(
+			await page.evaluate(
+				() => (window as unknown as { outcome: Promise<string> }).outcome,
+			),
+		).toBe("ready");
+		const target =
+			popup ??
+			page
+				.frames()
+				.find((frame) => frame.url().startsWith(`${hostOrigin}/encoded-props`));
+		if (!target) throw new Error("Missing encoded host");
+		const read = () =>
+			target.evaluate(async () => {
+				const config = (
+					window as unknown as {
+						received: {
+							config: {
+								onComplete: () => Promise<number>;
+								list: Array<() => Promise<number>>;
+								date: Date;
+							};
+						};
+					}
+				).received.config;
+				return {
+					callback: await config.onComplete(),
+					list: await config.list[0]?.(),
+					date: config.date.toISOString(),
+				};
 			});
+		expect(await read()).toEqual({
+			callback: 42,
+			list: 7,
+			date: "2026-01-02T03:04:05.678Z",
 		});
-	}
+		await page.evaluate(() =>
+			(
+				window as unknown as {
+					instance: import("../../src/types").ForgeFrameComponentInstance<
+						Record<string, unknown>
+					>;
+				}
+			).instance.updateProps({ label: "unrelated" }),
+		);
+		expect(await read()).toEqual({
+			callback: 42,
+			list: 7,
+			date: "2026-01-02T03:04:05.678Z",
+		});
+		await page.evaluate(() =>
+			(
+				window as unknown as {
+					instance: import("../../src/types").ForgeFrameComponentInstance<
+						Record<string, unknown>
+					>;
+				}
+			).instance.updateProps({
+				config: {
+					onComplete: () => 84,
+					list: [() => 14],
+					date: new Date("2026-02-03T04:05:06.789Z"),
+				},
+			}),
+		);
+		expect(await read()).toEqual({
+			callback: 84,
+			list: 14,
+			date: "2026-02-03T04:05:06.789Z",
+		});
+	});
 
 	for (const method of ["GET", "POST"] as const) {
 		for (const scenario of [
@@ -2012,197 +2004,193 @@ for (const context of ["iframe", "popup"] as const) {
 }
 
 for (const context of ["iframe", "popup"] as const) {
-	for (const serialization of ["json", "base64", "dotify"] as const) {
-		test(`${context} preserves arrays with altered prototypes or map methods through ${serialization}`, async ({
-			page,
-		}) => {
-			await page.goto(consumerOrigin);
-			const opening =
-				context === "popup"
-					? page.waitForEvent("popup")
-					: Promise.resolve(page);
-			await page.evaluate(
-				async ({ hostOrigin, context, serialization }) => {
-					const libraryUrl = "/library.js";
-					const { create, prop }: typeof import("../../src/index") =
-						await import(libraryUrl);
-					const Component = create({
-						tag: "array-method-browser",
-						url: `${hostOrigin}/record-props`,
-						props: { record: { schema: prop.object(), serialization } },
-					});
-					const values = Object.setPrototypeOf(["initial"], null);
-					const instance = Component({ record: { values } });
-					(window as unknown as { instance: typeof instance }).instance =
-						instance;
-					await instance.render("#mount", context);
-				},
-				{ hostOrigin, context, serialization },
-			);
-			const hostPage = await opening;
-			const host =
-				context === "popup"
-					? hostPage
-					: page
-							.frames()
-							.find((frame) => frame.url() === `${hostOrigin}/record-props`);
-			if (!host) throw new Error("Missing host");
-			await host.waitForFunction(
-				() => (window as unknown as { ready: boolean }).ready === true,
-			);
-			const read = () =>
-				host.evaluate(
-					() =>
-						(window as unknown as { received: { record: object } }).received
-							.record,
+	test(`${context} preserves arrays with altered prototypes or map methods`, async ({
+		page,
+	}) => {
+		await page.goto(consumerOrigin);
+		const opening =
+			context === "popup" ? page.waitForEvent("popup") : Promise.resolve(page);
+		await page.evaluate(
+			async ({ hostOrigin, context }) => {
+				const libraryUrl = "/library.js";
+				const { create, prop }: typeof import("../../src/index") = await import(
+					libraryUrl
 				);
-			expect(await read()).toEqual({ values: ["initial"] });
-			await page.evaluate(async () => {
-				const values = ["updated"];
-				Object.defineProperty(values, "map", { value: () => ["corrupted"] });
-				await (
-					window as unknown as {
-						instance: { updateProps(props: object): Promise<void> };
-					}
-				).instance.updateProps({ record: { values } });
-			});
-			expect(await read()).toEqual({ values: ["updated"] });
-			await host.evaluate(async () => {
-				const values = ["exported"];
-				Object.defineProperty(values, "map", { value: () => ["corrupted"] });
-				await (
-					window as unknown as {
-						received: import("../../src/types").HostProps<
-							Record<string, unknown>
-						>;
-					}
-				).received.export({
-					values,
-					nested: Object.setPrototypeOf(["nested"], null),
+				const Component = create({
+					tag: "array-method-browser",
+					url: `${hostOrigin}/record-props`,
+					props: { record: prop.object() },
 				});
+				const values = Object.setPrototypeOf(["initial"], null);
+				const instance = Component({ record: { values } });
+				(window as unknown as { instance: typeof instance }).instance =
+					instance;
+				await instance.render("#mount", context);
+			},
+			{ hostOrigin, context },
+		);
+		const hostPage = await opening;
+		const host =
+			context === "popup"
+				? hostPage
+				: page
+						.frames()
+						.find((frame) => frame.url() === `${hostOrigin}/record-props`);
+		if (!host) throw new Error("Missing host");
+		await host.waitForFunction(
+			() => (window as unknown as { ready: boolean }).ready === true,
+		);
+		const read = () =>
+			host.evaluate(
+				() =>
+					(window as unknown as { received: { record: object } }).received
+						.record,
+			);
+		expect(await read()).toEqual({ values: ["initial"] });
+		await page.evaluate(async () => {
+			const values = ["updated"];
+			Object.defineProperty(values, "map", { value: () => ["corrupted"] });
+			await (
+				window as unknown as {
+					instance: { updateProps(props: object): Promise<void> };
+				}
+			).instance.updateProps({ record: { values } });
+		});
+		expect(await read()).toEqual({ values: ["updated"] });
+		await host.evaluate(async () => {
+			const values = ["exported"];
+			Object.defineProperty(values, "map", { value: () => ["corrupted"] });
+			await (
+				window as unknown as {
+					received: import("../../src/types").HostProps<
+						Record<string, unknown>
+					>;
+				}
+			).received.export({
+				values,
+				nested: Object.setPrototypeOf(["nested"], null),
 			});
-			expect(
-				await page.evaluate(
-					() =>
-						(window as unknown as { instance: { exports: object } }).instance
-							.exports,
-				),
-			).toEqual({ values: ["exported"], nested: ["nested"] });
-			expect(
-				await page.evaluate(async () => {
-					const instance = (
-						window as unknown as {
-							instance: import("../../src/types").ForgeFrameComponentInstance;
-						}
-					).instance;
-					let destroyed = false;
-					instance.event.on("destroy", () => {
-						destroyed = true;
-					});
-					const first = instance.close();
-					await instance.close();
-					const completed = destroyed;
-					await first;
-					return completed;
-				}),
-			).toBe(true);
 		});
-		test(`${context} preserves marker-shaped records through ${serialization} props and exports`, async ({
-			page,
-		}) => {
-			await page.goto(consumerOrigin);
-			const opening =
-				context === "popup"
-					? page.waitForEvent("popup")
-					: Promise.resolve(page);
+		expect(
 			await page.evaluate(
-				async ({ hostOrigin, context, serialization }) => {
-					const libraryUrl = "/library.js";
-					const { create, prop }: typeof import("../../src/index") =
-						await import(libraryUrl);
-					const Component = create({
-						tag: "marker-record-browser",
-						url: `${hostOrigin}/record-props`,
-						props: { record: { schema: prop.object(), serialization } },
-					});
-					const record = {
-						callback: {
-							__type__: "function",
-							__id__: "ordinary-id",
-							__name__: "ordinary-name",
-							optional: undefined,
-						},
-						date: {
-							__forgeframe_wire_type__: "date",
-							__forgeframe_wire_value__: null,
-							optional: undefined,
-						},
-						encoded: {
-							__type__: "base64",
-							__value__: "JTdCJTIyZGVjb2RlZCUyMiUzQXRydWUlN0Q=",
-							optional: undefined,
-						},
-						escaped: {
-							__forgeframe_wire_type__: "record",
-							__forgeframe_wire_value__: { original: true },
-						},
-					};
-					const instance = Component({ record });
-					(window as unknown as { instance: typeof instance }).instance =
-						instance;
-					await instance.render("#mount", context);
-				},
-				{ hostOrigin, context, serialization },
-			);
-			const hostPage = await opening;
-			const host =
-				context === "popup"
-					? hostPage
-					: page
-							.frames()
-							.find((frame) => frame.url() === `${hostOrigin}/record-props`);
-			if (!host) throw new Error("Missing host");
-			await host.waitForFunction(
-				() => (window as unknown as { ready: boolean }).ready === true,
-			);
-			const expected = {
-				callback: {
-					__type__: "function",
-					__id__: "ordinary-id",
-					__name__: "ordinary-name",
-				},
-				date: {
-					__forgeframe_wire_type__: "date",
-					__forgeframe_wire_value__: null,
-				},
-				encoded: {
-					__type__: "base64",
-					__value__: "JTdCJTIyZGVjb2RlZCUyMiUzQXRydWUlN0Q=",
-				},
-				escaped: {
-					__forgeframe_wire_type__: "record",
-					__forgeframe_wire_value__: { original: true },
-				},
-			};
-			expect(
-				await host.evaluate(
-					() =>
-						(window as unknown as { received: { record: object } }).received
-							.record,
-				),
-			).toEqual(expected);
-			expect(
-				await page.evaluate(
-					() =>
-						(window as unknown as { instance: { exports: object } }).instance
-							.exports,
-				),
-			).toEqual({ record: expected });
-			await page.evaluate(() =>
-				(
-					window as unknown as { instance: { close(): Promise<void> } }
-				).instance.close(),
-			);
-		});
-	}
+				() =>
+					(window as unknown as { instance: { exports: object } }).instance
+						.exports,
+			),
+		).toEqual({ values: ["exported"], nested: ["nested"] });
+		expect(
+			await page.evaluate(async () => {
+				const instance = (
+					window as unknown as {
+						instance: import("../../src/types").ForgeFrameComponentInstance;
+					}
+				).instance;
+				let destroyed = false;
+				instance.event.on("destroy", () => {
+					destroyed = true;
+				});
+				const first = instance.close();
+				await instance.close();
+				const completed = destroyed;
+				await first;
+				return completed;
+			}),
+		).toBe(true);
+	});
+	test(`${context} preserves marker-shaped records through props and exports`, async ({
+		page,
+	}) => {
+		await page.goto(consumerOrigin);
+		const opening =
+			context === "popup" ? page.waitForEvent("popup") : Promise.resolve(page);
+		await page.evaluate(
+			async ({ hostOrigin, context }) => {
+				const libraryUrl = "/library.js";
+				const { create, prop }: typeof import("../../src/index") = await import(
+					libraryUrl
+				);
+				const Component = create({
+					tag: "marker-record-browser",
+					url: `${hostOrigin}/record-props`,
+					props: { record: prop.object() },
+				});
+				const record = {
+					callback: {
+						__type__: "function",
+						__id__: "ordinary-id",
+						__name__: "ordinary-name",
+						optional: undefined,
+					},
+					date: {
+						__forgeframe_wire_type__: "date",
+						__forgeframe_wire_value__: null,
+						optional: undefined,
+					},
+					encoded: {
+						__type__: "base64",
+						__value__: "JTdCJTIyZGVjb2RlZCUyMiUzQXRydWUlN0Q=",
+						optional: undefined,
+					},
+					escaped: {
+						__forgeframe_wire_type__: "record",
+						__forgeframe_wire_value__: { original: true },
+					},
+				};
+				const instance = Component({ record });
+				(window as unknown as { instance: typeof instance }).instance =
+					instance;
+				await instance.render("#mount", context);
+			},
+			{ hostOrigin, context },
+		);
+		const hostPage = await opening;
+		const host =
+			context === "popup"
+				? hostPage
+				: page
+						.frames()
+						.find((frame) => frame.url() === `${hostOrigin}/record-props`);
+		if (!host) throw new Error("Missing host");
+		await host.waitForFunction(
+			() => (window as unknown as { ready: boolean }).ready === true,
+		);
+		const expected = {
+			callback: {
+				__type__: "function",
+				__id__: "ordinary-id",
+				__name__: "ordinary-name",
+			},
+			date: {
+				__forgeframe_wire_type__: "date",
+				__forgeframe_wire_value__: null,
+			},
+			encoded: {
+				__type__: "base64",
+				__value__: "JTdCJTIyZGVjb2RlZCUyMiUzQXRydWUlN0Q=",
+			},
+			escaped: {
+				__forgeframe_wire_type__: "record",
+				__forgeframe_wire_value__: { original: true },
+			},
+		};
+		expect(
+			await host.evaluate(
+				() =>
+					(window as unknown as { received: { record: object } }).received
+						.record,
+			),
+		).toEqual(expected);
+		expect(
+			await page.evaluate(
+				() =>
+					(window as unknown as { instance: { exports: object } }).instance
+						.exports,
+			),
+		).toEqual({ record: expected });
+		await page.evaluate(() =>
+			(
+				window as unknown as { instance: { close(): Promise<void> } }
+			).instance.close(),
+		);
+	});
 }

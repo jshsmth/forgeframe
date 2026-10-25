@@ -455,16 +455,12 @@ Validation is synchronous. If a schema's `~standard.validate` returns a promise,
 Use the object form when a prop needs transport rules in addition to validation.
 
 ```typescript
-import ForgeFrame, { prop, PROP_SERIALIZATION } from 'forgeframe';
+import ForgeFrame, { prop } from 'forgeframe';
 
 const SecureWidget = ForgeFrame.create({
   tag: 'secure-widget',
   url: 'https://widgets.example.com/secure',
   props: {
-    profile: {
-      schema: prop.object(),
-      serialization: PROP_SERIALIZATION.DOTIFY,
-    },
     secret: {
       schema: prop.string(),
       sameDomain: true,
@@ -486,7 +482,6 @@ const SecureWidget = ForgeFrame.create({
 | `sendToHost` | Skip sending the prop to the host when set to `false` |
 | `sameDomain` | Only deliver the prop after the loaded host is verified to be same-origin. It is never in `window.name` or the initial query/POST request; a verified same-origin host receives it in the bootstrap snapshot and later updates |
 | `trustedDomains` | Only send the prop to matching host domains |
-| `serialization` | Choose how object props are transferred: `JSON` (default), `BASE64`, or `DOTIFY`; all three bridge nested callbacks and preserve `Date` values |
 | `queryParam` / `bodyParam` | Include the prop in the host page's initial HTTP request |
 | `alias` | Accept an alternate input name, such as a legacy name. Aliases can chain through other defined props; at each level, an explicitly supplied canonical key wins. Only own input properties count as supplied |
 | `outputSchema` | Validate the normalized value again at consumer and host trust boundaries without transforming it |
@@ -560,10 +555,11 @@ Prefer inferred component and React-wrapper types. When you explicitly annotate 
 Transport notes:
 
 - Use `sameDomain` for values that must never be exposed during cross-origin bootstrap.
-- `DOTIFY` preserves nested keys that contain separators such as `.`, `&`, or `=`.
-- Ordinary objects that contain transport marker fields stay ordinary data in every serialization mode.
-- `JSON` and `BASE64` deliver an object's `toJSON()` result instead of its fields, as native JSON does, so a class can hide fields such as tokens. A `URL` arrives as its `href`, and boxed primitives such as `new String('ab')` arrive unboxed. `JSON` mode reads arrays entry by entry and does not call an array's `toJSON()`.
-- `DOTIFY` walks root own properties and nested plain objects itself and calls `toJSON()` only on leaves. Use `JSON` or `BASE64` when a root object's `toJSON()` should decide the delivered value. With `BASE64`, a `toJSON()` that returns `undefined` omits the prop.
+- Props always cross as JSON through the function bridge. Callbacks at any depth arrive as remote functions and `Date` values arrive as `Date`s, at bootstrap, on every update, and in `hostProps.export(...)`.
+- Ordinary objects that contain transport marker fields stay ordinary data.
+- An object's `toJSON()` result is delivered instead of its fields, as native JSON does, so a class can hide fields such as tokens. A root `toJSON()` that returns `undefined` omits the prop. A `URL` arrives as its `href`, and boxed primitives such as `new String('ab')` arrive unboxed. A boxed primitive whose prototype was set to `null` is not unboxed: it is sent as an ordinary record of its own fields.
+- Arrays are read entry by entry, and an array's `toJSON()` is not called.
+- A `JSON.rawJSON()` value arrives as the value its text represents, as `JSON.stringify` writes it. Consumer schemas validate the raw value itself, so return it from a custom `toJSON()` or pass it under a schema that accepts it, such as `prop.any()`.
 
 ### Passing Props via URL or POST Body (Advanced)
 
@@ -1100,7 +1096,6 @@ ForgeFrame.getHostProps()         // Get hostProps in host context
 ForgeFrame.isStandardSchema(val)  // Check if value is a Standard Schema
 
 ForgeFrame.prop                   // Prop schema builders (also exported as `prop`)
-ForgeFrame.PROP_SERIALIZATION     // Prop serialization constants
 ForgeFrame.CONTEXT                // Context constants (IFRAME, POPUP)
 ForgeFrame.EVENT                  // Event name constants
 ForgeFrame.PopupOpenError         // Popup blocker/open failures
