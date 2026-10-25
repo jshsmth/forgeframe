@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EVENT } from "@/constants";
 import { clearComponents, create, destroyAll } from "@/core/component";
-import { PROP_RESET } from "@/core/consumer/props-pipeline";
+import { PROP_RESET } from "@/core/consumer/prop-update";
 import { prop } from "@/props/prop";
 
 type AliasProps = {

@@ -13,65 +13,6 @@ import type { Dimensions } from "../types/utility";
 import { prop } from "./prop";
 
 /**
- * Built-in props that are automatically provided to all components.
- *
- * @remarks
- * These props are always available regardless of the component's prop definitions.
- * They include component identifiers, dimensions, timeouts, and lifecycle callbacks.
- *
- * @public
- */
-export interface BuiltinProps {
-	/** Unique component instance identifier. */
-	uid: string;
-
-	/** Component tag name. */
-	tag: string;
-
-	/** Component dimensions. */
-	dimensions: Dimensions;
-
-	/** Initialization timeout in milliseconds. */
-	timeout: number;
-
-	/** CSP nonce for inline scripts/styles. */
-	cspNonce?: string;
-
-	/** Called when component becomes visible. */
-	onDisplay?: () => void;
-
-	/** Called when component is fully rendered. */
-	onRendered?: () => void;
-
-	/** Called when rendering starts. */
-	onRender?: () => void;
-
-	/** Called when prerender phase completes. */
-	onPrerendered?: () => void;
-
-	/** Called when prerender phase starts. */
-	onPrerender?: () => void;
-
-	/** Called when component is closing. */
-	onClose?: () => void;
-
-	/** Called when component is destroyed. */
-	onDestroy?: () => void;
-
-	/** Called when component is resized. */
-	onResize?: (dimensions: Dimensions) => void;
-
-	/** Called when component receives focus. */
-	onFocus?: () => void;
-
-	/** Called when an error occurs. */
-	onError?: (err: Error) => void;
-
-	/** Called when props are updated. */
-	onProps?: (props: Record<string, unknown>) => void;
-}
-
-/**
  * Shared empty prop-definition map for components without custom props.
  * @internal
  */

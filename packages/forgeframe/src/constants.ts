@@ -106,12 +106,6 @@ export const MESSAGE_TYPE = {
 } as const;
 
 /**
- * Union type of valid message types.
- * @internal
- */
-export type MessageType = (typeof MESSAGE_TYPE)[keyof typeof MESSAGE_TYPE];
-
-/**
  * Message names for the consumer-host communication protocol.
  *
  * @remarks
@@ -152,12 +146,6 @@ export const MESSAGE_NAME = {
 	/** One-way notice that the host runtime was destroyed */
 	TEARDOWN: "forgeframe_teardown",
 } as const;
-
-/**
- * Union type of valid message names.
- * @internal
- */
-export type MessageName = (typeof MESSAGE_NAME)[keyof typeof MESSAGE_NAME];
 
 /**
  * Stable wire protocol version for consumer-host bootstrap payloads.

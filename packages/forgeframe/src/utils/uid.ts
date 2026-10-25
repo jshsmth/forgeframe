@@ -16,7 +16,7 @@
  * // Returns something like: "lxyz123_abc456def"
  * ```
  *
- * @public
+ * @internal
  */
 export function generateUID(): string {
 	const timestamp = Date.now().toString(36);
@@ -40,7 +40,7 @@ export function generateUID(): string {
  * // Returns something like: "abc456def"
  * ```
  *
- * @public
+ * @internal
  */
 export function generateShortUID(): string {
 	return Math.random().toString(36).slice(2, 11);

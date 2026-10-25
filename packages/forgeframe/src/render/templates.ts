@@ -58,7 +58,7 @@ function ensureSpinnerKeyframes(doc: Document, nonce?: string): void {
  * document.body.appendChild(container);
  * ```
  *
- * @public
+ * @internal
  */
 export function defaultContainerTemplate<P>(
 	ctx: TemplateContext<P>,
@@ -113,7 +113,7 @@ export function defaultContainerTemplate<P>(
  * container.appendChild(prerender);
  * ```
  *
- * @public
+ * @internal
  */
 export function defaultPrerenderTemplate<P>(
 	ctx: TemplateContext<P> & { cspNonce?: string },
@@ -168,7 +168,7 @@ export function defaultPrerenderTemplate<P>(
  * applyDimensions(div, { width: '100%' }); // Only width, height unchanged
  * ```
  *
- * @public
+ * @internal
  */
 export function applyDimensions(
 	element: HTMLElement,
@@ -180,45 +180,6 @@ export function applyDimensions(
 	if (dimensions.height !== undefined) {
 		element.style.height = normalizeDimensionToCSS(dimensions.height);
 	}
-}
-
-/**
- * Creates a `<style>` element with the provided CSS content.
- *
- * @remarks
- * This utility function creates an inline style element that can be appended
- * to the document. If a CSP (Content Security Policy) nonce is provided,
- * it will be set on the style element to allow the styles to be applied
- * in environments with strict CSP rules.
- *
- * @param doc - The Document object to create the element in
- * @param css - The CSS content to include in the style element
- * @param nonce - Optional CSP nonce for security compliance
- * @returns The created HTMLStyleElement
- *
- * @example
- * ```typescript
- * const style = createStyleElement(
- *   document,
- *   '.my-class { color: red; }',
- *   'abc123xyz'
- * );
- * document.head.appendChild(style);
- * ```
- *
- * @public
- */
-export function createStyleElement(
-	doc: Document,
-	css: string,
-	nonce?: string,
-): HTMLStyleElement {
-	const style = doc.createElement("style");
-	if (nonce) {
-		style.setAttribute("nonce", nonce);
-	}
-	style.textContent = css;
-	return style;
 }
 
 /**
@@ -244,9 +205,9 @@ export function createStyleElement(
  * console.log('Fade in complete');
  * ```
  *
- * @public
+ * @internal
  */
-export function fadeIn(element: HTMLElement, duration = 200): Promise<void> {
+function fadeIn(element: HTMLElement, duration = 200): Promise<void> {
 	return new Promise((resolve) => {
 		element.style.opacity = "0";
 		element.style.transition = `opacity ${duration}ms ease-in`;
@@ -283,9 +244,9 @@ export function fadeIn(element: HTMLElement, duration = 200): Promise<void> {
  * element.remove(); // Remove after fade completes
  * ```
  *
- * @public
+ * @internal
  */
-export function fadeOut(element: HTMLElement, duration = 200): Promise<void> {
+function fadeOut(element: HTMLElement, duration = 200): Promise<void> {
 	return new Promise((resolve) => {
 		element.style.transition = `opacity ${duration}ms ease-out`;
 		element.style.opacity = "0";
@@ -299,15 +260,14 @@ export function fadeOut(element: HTMLElement, duration = 200): Promise<void> {
  *
  * @remarks
  * This function performs a smooth transition from the prerender loading state
- * to the actual content. The process:
+ * to the actual content, which is already in the DOM. The process:
  * 1. If a prerender element exists, fade it out and remove it from the DOM
- * 2. Set the actual content's initial opacity to 0
- * 3. Append the actual content to the container
+ * 2. Stop if `shouldShow` reports that the content should stay hidden
+ * 3. Make the actual content visible with an initial opacity of 0
  * 4. Fade in the actual content
  *
  * Both fade animations use a 150ms duration for a quick but smooth transition.
  *
- * @param container - The parent container element
  * @param prerenderElement - The prerender placeholder element, or `null` if none exists
  * @param actualElement - The actual content element to display
  * @param shouldShow - Checks the latest explicit visibility request after loading fades
@@ -315,20 +275,19 @@ export function fadeOut(element: HTMLElement, duration = 200): Promise<void> {
  *
  * @example
  * ```typescript
- * const container = document.getElementById('widget-container')!;
  * const prerender = container.querySelector('.prerender');
- * const iframe = createIframe({ ... });
+ * const iframe = createIframeElement({ name, dimensions });
+ * container.appendChild(iframe);
  *
- * await swapPrerenderContent(container, prerender, iframe);
+ * await swapPrerenderContent(prerender, iframe, () => !hidden);
  * ```
  *
- * @public
+ * @internal
  */
 export async function swapPrerenderContent(
-	_container: HTMLElement,
 	prerenderElement: HTMLElement | null,
 	actualElement: HTMLElement,
-	shouldShow: () => boolean = () => true,
+	shouldShow: () => boolean,
 ): Promise<void> {
 	if (prerenderElement) {
 		await fadeOut(prerenderElement, 150);

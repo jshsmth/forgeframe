@@ -3,7 +3,7 @@
  */
 import { elements } from "./elements";
 
-export type LogType = "default" | "error" | "success" | "info";
+type LogType = "default" | "error" | "success" | "info";
 
 export function log(message: string, type: LogType = "default") {
 	const time = new Date().toLocaleTimeString();

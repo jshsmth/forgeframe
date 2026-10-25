@@ -2,7 +2,7 @@
  * Pure unit tests for canonical alias materialization.
  */
 import { describe, expect, it } from "vitest";
-import { PROP_RESET } from "@/core/consumer/props-pipeline";
+import { PROP_RESET } from "@/core/consumer/prop-update";
 import { materializePropAliases } from "@/props/normalize";
 import type { PropsDefinition } from "@/types";
 

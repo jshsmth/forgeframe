@@ -12,23 +12,25 @@ import { EventEmitter } from "@/events/emitter";
 import { prop } from "@/props/prop";
 import * as iframeRender from "@/render/iframe";
 import * as popupRender from "@/render/popup";
+import {
+	callConsumerCallback,
+	HOST_ORIGIN,
+	hostSource,
+	sentCallbackId,
+} from "../consumer-bridge";
 
 const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
 
 type ConsumerInternals = {
 	transport: {
 		hostWindow: Window | null;
-		attachHostWindow(hostWindow: Window | null): void;
+		attachHostWindow(hostWindow: Window | null, openedHostDomain: string): void;
 		openedHostDomain: string | null;
 		messenger: {
 			allowedOrigins: Set<string>;
 			allowedOriginPatterns: RegExp[];
 			addTrustedDomain: (domain: string) => void;
 			send: (...args: unknown[]) => Promise<unknown>;
-		};
-		bridge: {
-			localFunctionCount: number;
-			localFunctions: Map<string, unknown>;
 		};
 	};
 	renderer: {
@@ -55,7 +57,7 @@ type ConsumerInternals = {
 	checkEligibility: () => void;
 	prerender: () => Promise<void>;
 	createIframeElement: (windowName: string) => HTMLIFrameElement;
-	open: () => Promise<void>;
+	open: (baseUrl: string) => Promise<void>;
 	submitBodyForm: (
 		target: string,
 		actionUrl: string,
@@ -89,6 +91,18 @@ function createConsumer(
 	);
 	createdConsumers.push(consumer);
 	return consumer;
+}
+
+/** Calls a callback the consumer sent to the host, as the opened host window. */
+function callHostCallback(
+	consumer: ConsumerComponent<Record<string, unknown>>,
+	id: string,
+): unknown {
+	return callConsumerCallback(
+		getInternals(consumer).transport,
+		id,
+		hostSource(window),
+	);
 }
 
 afterEach(async () => {
@@ -221,7 +235,7 @@ describe("Consumer branch coverage and edge paths", () => {
 		expect(focusIframeSpy).toHaveBeenCalledWith(iframe);
 
 		internal.renderer.context = CONTEXT.POPUP;
-		internal.transport.attachHostWindow(popup);
+		internal.transport.attachHostWindow(popup, HOST_ORIGIN);
 
 		await consumer.focus();
 		expect(focusPopupSpy).toHaveBeenCalledWith(popup);
@@ -261,7 +275,7 @@ describe("Consumer branch coverage and edge paths", () => {
 		expect(hideIframeSpy).toHaveBeenCalledWith(iframe);
 
 		internal.renderer.context = CONTEXT.POPUP;
-		internal.transport.attachHostWindow(popup);
+		internal.transport.attachHostWindow(popup, HOST_ORIGIN);
 
 		await consumer.resize({ width: 480, height: 300 });
 		expect(resizePopupSpy).toHaveBeenCalledWith(popup, {
@@ -270,7 +284,7 @@ describe("Consumer branch coverage and edge paths", () => {
 		});
 
 		// A popup that is not open has nothing to resize and reports no resize.
-		internal.transport.attachHostWindow(null);
+		internal.transport.attachHostWindow(null, HOST_ORIGIN);
 		resizePopupSpy.mockClear();
 		const resized = vi.fn();
 		consumer.event.on(EVENT.RESIZE, resized);
@@ -380,23 +394,21 @@ describe("Consumer branch coverage and edge paths", () => {
 			},
 		);
 
-		getInternals(consumer).transport.attachHostWindow(window);
+		getInternals(consumer).transport.attachHostWindow(window, HOST_ORIGIN);
 
-		vi.spyOn(
-			getInternals(consumer).transport.messenger,
-			"send",
-		).mockResolvedValue(undefined);
+		const sendSpy = vi
+			.spyOn(getInternals(consumer).transport.messenger, "send")
+			.mockResolvedValue(undefined);
 
-		await consumer.updateProps({ onSubmit: vi.fn() });
-		const firstBatchCount =
-			getInternals(consumer).transport.bridge.localFunctionCount;
+		await consumer.updateProps({ onSubmit: () => "first" });
+		await consumer.updateProps({ onSubmit: () => "second" });
 
-		await consumer.updateProps({ onSubmit: vi.fn() });
-		const secondBatchCount =
-			getInternals(consumer).transport.bridge.localFunctionCount;
-
-		expect(firstBatchCount).toBe(1);
-		expect(secondBatchCount).toBe(1);
+		await expect(
+			callHostCallback(consumer, sentCallbackId(sendSpy, 0, "onSubmit")),
+		).rejects.toThrow("not found");
+		await expect(
+			callHostCallback(consumer, sentCallbackId(sendSpy, 1, "onSubmit")),
+		).resolves.toBe("second");
 	});
 
 	it("should keep previous function refs until host props update is sent", async () => {
@@ -411,35 +423,32 @@ describe("Consumer branch coverage and edge paths", () => {
 			},
 		);
 
-		getInternals(consumer).transport.attachHostWindow(window);
-
-		const bridge = getInternals(consumer).transport.bridge;
+		getInternals(consumer).transport.attachHostWindow(window, HOST_ORIGIN);
 
 		const sendSpy = vi
 			.spyOn(getInternals(consumer).transport.messenger, "send")
 			.mockResolvedValue(undefined);
 
-		await consumer.updateProps({ onSubmit: vi.fn() });
-		const previousRefId = Array.from(bridge.localFunctions.keys())[0];
-		expect(previousRefId).toBeDefined();
-		if (!previousRefId) {
-			throw new Error("Expected previous function ref ID");
-		}
+		await consumer.updateProps({ onSubmit: () => "previous" });
+		const previousRefId = sentCallbackId(sendSpy, 0, "onSubmit");
 
 		sendSpy.mockImplementationOnce(async () => {
-			if (!bridge.localFunctions.has(previousRefId)) {
-				throw new Error(
-					"Previous function ref was pruned before host acknowledged prop update",
-				);
-			}
+			// The host may still call the previous callback until it acknowledges.
+			await expect(callHostCallback(consumer, previousRefId)).resolves.toBe(
+				"previous",
+			);
 			return undefined;
 		});
 
 		await expect(
-			consumer.updateProps({ onSubmit: vi.fn() }),
+			consumer.updateProps({ onSubmit: () => "next" }),
 		).resolves.toBeUndefined();
-		expect(bridge.localFunctions.has(previousRefId)).toBe(false);
-		expect(bridge.localFunctionCount).toBe(1);
+		await expect(callHostCallback(consumer, previousRefId)).rejects.toThrow(
+			"not found",
+		);
+		await expect(
+			callHostCallback(consumer, sentCallbackId(sendSpy, 1, "onSubmit")),
+		).resolves.toBe("next");
 	});
 
 	it("should serialize concurrent prop updates to avoid batch ref races", async () => {
@@ -454,9 +463,7 @@ describe("Consumer branch coverage and edge paths", () => {
 			},
 		);
 
-		getInternals(consumer).transport.attachHostWindow(window);
-
-		const bridge = getInternals(consumer).transport.bridge;
+		getInternals(consumer).transport.attachHostWindow(window, HOST_ORIGIN);
 
 		let resolveFirstSend!: () => void;
 		let resolveSecondSend!: () => void;
@@ -473,8 +480,8 @@ describe("Consumer branch coverage and edge paths", () => {
 				return sendSpy.mock.calls.length === 1 ? firstSend : secondSend;
 			});
 
-		const firstUpdate = consumer.updateProps({ onSubmit: vi.fn() });
-		const secondUpdate = consumer.updateProps({ onSubmit: vi.fn() });
+		const firstUpdate = consumer.updateProps({ onSubmit: () => "first" });
+		const secondUpdate = consumer.updateProps({ onSubmit: () => "second" });
 
 		await Promise.resolve();
 		expect(sendSpy).toHaveBeenCalledTimes(1);
@@ -494,7 +501,12 @@ describe("Consumer branch coverage and edge paths", () => {
 		resolveSecondSend();
 
 		await expect(secondUpdate).resolves.toBeUndefined();
-		expect(bridge.localFunctionCount).toBe(1);
+		await expect(
+			callHostCallback(consumer, sentCallbackId(sendSpy, 0, "onSubmit")),
+		).rejects.toThrow("not found");
+		await expect(
+			callHostCallback(consumer, sentCallbackId(sendSpy, 1, "onSubmit")),
+		).resolves.toBe("second");
 	});
 
 	it("should resolve existing selector containers to HTMLElement", () => {
@@ -653,11 +665,7 @@ describe("Consumer branch coverage and edge paths", () => {
 
 		internal.renderer.context = CONTEXT.POPUP;
 
-		await (
-			consumer as unknown as {
-				open: () => Promise<void>;
-			}
-		).open();
+		await getInternals(consumer).open("https://host.example.com/widget");
 
 		expect(openPopupSpy).toHaveBeenCalledTimes(1);
 		expect(watchSpy).toHaveBeenCalledWith(popupWindow, expect.any(Function));
@@ -696,11 +704,7 @@ describe("Consumer branch coverage and edge paths", () => {
 			)
 			.mockImplementation(() => {});
 
-		await (
-			consumer as unknown as {
-				open: () => Promise<void>;
-			}
-		).open();
+		await getInternals(consumer).open("https://host.example.com/widget");
 
 		expect(submitBodyFormSpy).toHaveBeenCalledTimes(1);
 		expect(submitBodyFormSpy).toHaveBeenCalledWith(
@@ -743,11 +747,7 @@ describe("Consumer branch coverage and edge paths", () => {
 			)
 			.mockImplementation(() => {});
 
-		await (
-			consumer as unknown as {
-				open: () => Promise<void>;
-			}
-		).open();
+		await getInternals(consumer).open("https://host.example.com/widget");
 
 		expect(openPopupSpy).toHaveBeenCalledWith(
 			expect.objectContaining({
@@ -810,7 +810,7 @@ describe("Consumer branch coverage and edge paths", () => {
 			.mockImplementation(() => {});
 
 		internal.renderer.context = CONTEXT.POPUP;
-		internal.transport.attachHostWindow(popupWindow);
+		internal.transport.attachHostWindow(popupWindow, HOST_ORIGIN);
 		internal.renderer.prerenderElement = prerenderElement;
 
 		await (

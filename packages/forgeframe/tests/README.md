@@ -15,40 +15,40 @@ What each test file covers, how to run it, and how to choose new tests. Paths ar
 
 ## Unit tests (`unit/`)
 
-- `bridge.test.ts`: Function bridge serialization and deserialization, remote call dispatch, 500-callback admission, full snapshot replacement, duplicate identity reuse, staged calls, rollback, bounded delivery recovery, append capacity, a timed-out liveness check that ignores calls a newer watch tracks, and reset/teardown.
+- `bridge.test.ts`: Function bridge serialization and deserialization, remote call dispatch, 500-callback admission, remote wrapper cache eviction, full snapshot replacement, duplicate identity reuse, staged calls, rollback, bounded delivery recovery, append capacity, a timed-out liveness check that ignores calls a newer watch tracks, and reset/teardown. Retention is checked by whether a released callback's call rejects and a retained one still answers.
 - `company-demo-payment-policy.test.ts`: Browser-independent playground payment rules: merchant session and result admission, receipt commitment and isolation, unpaid decline and retry, mismatch and duplicate rejection, malformed callback and receipt fields, ISO calendar/time validity, snapshot ownership, retry after rejection, payment availability, provider simulation, demo-card normalization, and acknowledgement admission with invoice correlation.
 - `component-clone.test.ts`: Clone snapshots, lifecycle tracking, peer visibility, global and tag cleanup. Repeated and reentrant `close()` calls resolve only after deregistration and destruction notifications, including while failed-render teardown is in progress. A rearmed `once` observer waits for the next public resize.
 - `component-instance-index.test.ts`: Internal active-instance indexing, reindexing, tag clearing, and peer lookup snapshots.
 - `component-node-runtime-transition.test.ts`: Component registration across a Node-to-browser runtime transition; factory host getters detect a host window without starting a host.
 - `component.test.ts`: Component creation, registration, instance lifecycle, and host-context detection. Undefined reserved definition entries are treated as omitted; real host-control definitions are rejected. Peer discovery is limited to the requester's verified host origin unless a peer's `peerDomains` admit the requester, peers still loading are listed without exports, and peers whose own host is opaque are never listed. Empty or blank `domain`, `allowedConsumerDomains`, and `peerDomains` values are rejected, and a consumer adds a `message` listener only when it opens host content.
-- `consumer-branch-coverage.test.ts`: Consumer edge paths for domain trust, rendering, prop sync, and resizing a popup that is not open.
+- `consumer-branch-coverage.test.ts`: Consumer edge paths for domain trust, rendering, prop sync (callback release checked through bridge calls), and resizing a popup that is not open.
 - `consumer-lifecycle.test.ts`: Consumer handshake, lifecycle messaging, open/close guards, update validation, and `GET_SIBLINGS` scoping to the requester's own uid, tag, and verified host origin regardless of claimed or malformed request fields, with no peers for opaque (`"null"`) origins.
 - `consumer-navigation.test.ts`: Relative URL origin admission, declaration and render base changes, pinned destinations, and fragment-bearing navigation.
 - `consumer-origin-policy.test.ts`: Trust decisions from supplied origin evidence, messaging-origin validation, and changed-origin selection.
 - `consumer-props-queue.test.ts`: Disconnected reentrant updates, FIFO failure recovery, render admission draining, matching initial request and bootstrap snapshots, and cancellation.
 - `consumer-renderer.test.ts`: Renderer ownership of iframe and popup resources, loading completion, configured CSS preserved through the loading transition, eager/lazy loading concealment, show requests made before frame creation, latest show/hide precedence, custom shell and control preservation, templates, form cleanup after submission failure, mount-document prototypes, and teardown.
-- `consumer-transport.test.ts`: Trust rotation, failed prop sync cleanup, handshake waiting, a host-reported init failure that only its own handshake reports, async init error forwarding, and release of a full recovery pool only by a verified new bootstrap session.
+- `consumer-transport.test.ts`: Trust rotation, failed prop sync cleanup, handshake waiting, INIT admitted only for the latest verified bootstrap session, a host-reported init failure that only its own handshake reports, and release of a full recovery pool only by a verified new bootstrap session.
 - `dimension.test.ts`: Popup pixel conversion and fallbacks for nonpixel and nonfinite input; iframe CSS units pass through.
 - `domain-pattern.test.ts`: Wildcard domain compilation cache and stateless `RegExp` trust checks.
-- `emitter.test.ts`: Subscription order, `once`/`off` (including `off()` cancelling a pending `once` and stale unsubscribe handles keeping newer registrations), async error isolation, removal of a specific listener or all listeners during dispatch, and deferral of listeners added during dispatch.
+- `emitter.test.ts`: Subscription order, `once`/`off` (including `off()` cancelling a pending `once` and stale unsubscribe handles keeping newer registrations), async error isolation, removal of a specific listener or all listeners, during dispatch or between emissions, and deferral of listeners added during dispatch.
 - `error.test.ts`: Unknown-error normalization keeps `Error` identity and ordinary coercion, with a stable fallback when coercion throws.
 - `host-branch-coverage.test.ts`: Host edge paths for deferred init, failure capture, and guards.
 - `host-lifecycle.test.ts`: Host lifecycle messages, `hostProps` synchronization, consumer window resolution, consumer-only field discard in legacy bootstrap payloads, rejected same-turn legacy configuration through `initHost()` and a matching `create()` with immediate and deferred INIT delivery, atomic late-configuration validation and reconciliation, built-in and snapshot identity, persistence of removals during a pending bootstrap, one notification with children attached when bootstrap completes after an earlier update, rejected `create()` configuration that is logged instead of thrown, and a bare `initHost()` retry of a legacy payload that keeps the rejecting definition's prop schema.
 - `host-security.test.ts`: Host allowlist enforcement, rejection of empty, blank, `null`, and malformed allowlists, an empty array that admits no consumer, and deferred-init security gating. Rejected late definitions keep a completed legacy host and invalidate an incomplete messaging bootstrap. Legacy payloads never treat `document.referrer` as consumer identity.
 - `host-transport.test.ts`: Deferred init scheduling, trust updates, props routing, a `focus()` that waits for window focus with a bounded wait or skips it when the consumer page reports no focus, and teardown, which is not reported as an INIT failure.
 - `iframe-configuration.test.ts`: CSS and boolean/string attribute encoding.
-- `iframe.test.ts`: Iframe creation, reserved-attribute guards, a sandbox attribute in any letter case, the default sandbox for `false` values, visibility, and sizing.
+- `iframe.test.ts`: Iframe element creation (attributes, styles, CSS variables and dimensions), reserved-attribute guards, a sandbox attribute in any letter case, the default sandbox for `false` values, destruction, visibility, and sizing. `consumer-branch-coverage.test.ts` covers the default, explicit and empty sandbox through the consumer.
 - `index-node-smoke.test.ts`: Public entrypoint imports and component definitions without browser globals.
 - `index-side-effect-free.test.ts`: Importing the public entrypoint has no side effects until `initHost()` is called in a ForgeFrame host window.
 - `messenger-routing.test.ts`: Multi-instance channel routing and function bridge response isolation.
-- `messenger.test.ts`: Request/response flow, filtering, trust checks (no self-trust for an opaque origin), deferred listening, `rejectPending` filtering by message type and window, and teardown.
+- `messenger.test.ts`: Request/response flow, filtering, trust checks (no self-trust for an opaque origin), deferred listening, `rejectPending` filtering by message type and window, and teardown (no further requests handled, sends and posts refused).
 - `package-contract.test.ts`: ESM package exports, README package claims, release scripts, release tag validation, and the bundle size budget check.
 - `playground-code-generator.test.ts`: Executes generated iframe, popup, and modal examples with empty props, composite values, callbacks, quoted names, and styles. Copied popup dimensions match live rendering; playground-owned callbacks replace editor-added definitions of the same name without duplicate object keys.
 - `playground-props-bar.test.ts`: Quoted prop names and values, typed JSON edits, preservation at render time, invalid input recovery, rejection of every reserved host-control name before mutation, and modal schema cache invalidation.
 - `playground-test-lab.test.ts`: The test lab keeps running after a failure, links the affected route, and renders failure text as text.
 - `playground-text-rendering.test.ts`: Literal prop keys, values, and identity text, logger text, update IDs, and preserved host controls.
 - `popup-layout.test.ts`: Popup geometry and polling backoff from supplied screen dimensions.
-- `popup.test.ts`: Popup open, close, focus, and resize helpers, nonpixel resize fallbacks, reported resize denial for cross-origin windows, and close and popup-blocker detection.
+- `popup.test.ts`: Popup open, close, focus, and resize helpers, nonpixel resize fallbacks, reported resize denial for cross-origin windows, close detection, and popup-blocker detection through `openPopup` (null, closed, zero-size, and inaccessible windows).
 - `prop-schema.test.ts`: `prop` builders and Standard Schema compliance: accumulated string, number, date, and array refinements and their check order, rule-specific messages for `NaN` and sign constraints, nonfinite-number rejection, own-field omission and defaults for inherited names in shaped objects, HTTP(S) URL validation with composable constraints, trimming before length checks, literal optional/default clones, and union continuation after literal/enum rejection of BigInt, cyclic, or custom-encoder input without JSON diagnostics. Enum values, object shapes, and tuple/union definitions are copied at construction, including null-prototype arrays and shadowed iterators, so later caller mutation has no effect.
 - `prop-update.test.ts`: Isolated patch/reset merging and validation-key bookkeeping.
 - `props-alias-materialization.test.ts`: Alias-chain resolution, precedence, reset propagation, explicit clearing, and cycle safety.
@@ -60,7 +60,7 @@ What each test file covers, how to run it, and how to choose new tests. Paths ar
 - `react-driver-prop-sync.test.ts`: Queue fault injection: failed acknowledgement recovery, retries of equivalent in-flight or queued commits, and throwing observers. Public FIFO, omission, and validation behavior is covered by `integration/react-host-sync.test.ts`.
 - `react-prop-queue.test.ts`: Queue acknowledgement, requested retries, and reset payloads without mounting React.
 - `realm-values.test.ts`: Cross-window `Date` and ordinary-record recognition, class and array rejection, and codec array values.
-- `render-templates.test.ts`: Template DOM creation, styles, transitions, and prerender swap.
+- `render-templates.test.ts`: Template DOM creation, styles, and the prerender swap, including its fade timing and a visibility request that keeps content hidden.
 - `schema-contract.test.ts`: Contract coverage against Zod and Valibot.
 - `schema-interoperability.test.ts`: Minimal Standard Schema shapes, callable (ArkType-style) schemas through validation and render admission, and optional metadata.
 - `schema-path-format.test.ts`: Error paths that mix key and index segments.
@@ -68,12 +68,12 @@ What each test file covers, how to run it, and how to choose new tests. Paths ar
 - `url.test.ts`: Relative URL resolution and query appending that keeps fragments, existing encoding, and duplicate parameters.
 - `utils.test.ts`: UID, cleanup manager, and promise utilities.
 - `version.test.ts`: `VERSION` matches package metadata.
-- `window-helpers.test.ts`: Domain checks, window traversal, and defensive operations.
-- `window-name-payload.test.ts`: Window-name payload encoding and parsing, and ForgeFrame-window detection, including windows whose name cannot be read.
+- `window-helpers.test.ts`: Domain checks, opener and consumer lookup, and iframe/popup detection.
+- `window-name-payload.test.ts`: Window-name payload encoding, parsing through `getInitialPayload`, reconnection metadata from `consumeInitialPayload`, and ForgeFrame-window detection, including windows whose name cannot be read.
 
 `react-driver-test-harness.ts` provides deterministic hook and component mocks for the React driver tests.
 
-`../peer-host-domain.ts`, shared with the integration tests, marks unrendered instances as connected or still loading at a host origin, so peer-discovery tests do not need a rendered host for every peer.
+`../consumer-bridge.ts` reads the callback IDs a consumer sent to its host and calls them through the function bridge's CALL handler, so transport and consumer suites can check whether a callback is still held. `../peer-host-domain.ts`, shared with the integration tests, marks unrendered instances as connected or still loading at a host origin, so peer-discovery tests do not need a rendered host for every peer.
 
 `npm run typecheck` compiles all unit tests and fixtures through `unit/tsconfig.json` with the library's strict settings. Intentionally invalid public inputs use a documented `@ts-expect-error` at the negative fixture only.
 

@@ -380,7 +380,6 @@ export class ConsumerRenderer<
 	async completePrerender(): Promise<void> {
 		if (this.context === CONTEXT.IFRAME && this.iframe && this.container) {
 			await swapPrerenderContent(
-				this.container,
 				this.prerenderElement,
 				this.iframe,
 				// The default reveal temporarily replaces these styles. Caller-styled

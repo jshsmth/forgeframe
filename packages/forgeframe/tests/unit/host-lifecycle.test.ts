@@ -28,6 +28,7 @@ import {
 } from "@/core/host";
 import * as hostSecurity from "@/core/host/security";
 import { prop } from "@/props/prop";
+import type { HostPropsDefinition } from "@/types";
 import { createDeferred } from "@/utils/promise";
 import * as helpers from "@/window/helpers";
 import { buildWindowName } from "@/window/name-payload";
@@ -75,16 +76,18 @@ function createHost({
 	payload = createPayload(),
 	deferInit = true,
 	consumerWindow = window,
+	propDefinitions = {},
 }: {
 	payload?: WindowNamePayload<Record<string, unknown>>;
 	deferInit?: boolean;
 	consumerWindow?: Window;
+	propDefinitions?: HostPropsDefinition<Record<string, unknown>>;
 } = {}): HostComponent<Record<string, unknown>> {
 	vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
 		consumerWindow,
 	);
 
-	return new HostComponent(payload, {}, undefined, deferInit);
+	return new HostComponent(payload, propDefinitions, undefined, deferInit);
 }
 
 /**
@@ -876,8 +879,10 @@ describe("Host lifecycle behavior", () => {
 		resolveObserver?.();
 	});
 
-	it("should emit host error and rethrow when props deserialization fails", () => {
-		const host = createHost();
+	it("should emit host error and rethrow when a props update cannot be applied", () => {
+		const host = createHost({
+			propDefinitions: { amount: prop.number().optional() },
+		});
 		const propsHandler = (
 			host as unknown as { messenger: { handlers: Map<string, DirectHandler> } }
 		).messenger.handlers.get(MESSAGE_NAME.PROPS);
@@ -886,12 +891,13 @@ describe("Host lifecycle behavior", () => {
 
 		const emitSpy = vi.spyOn(host.event, "emit");
 		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-		const circular: Record<string, unknown> = {};
-		circular.self = circular;
 
 		expect(() =>
-			requireValue(propsHandler)(circular, createMessageSource(window)),
-		).toThrow("Circular reference detected in serialized props");
+			requireValue(propsHandler)(
+				{ amount: "not a number" },
+				createMessageSource(window),
+			),
+		).toThrow("Validation failed: amount");
 		expect(emitSpy).toHaveBeenCalledWith(EVENT.ERROR, expect.any(Error));
 		expect(consoleSpy).toHaveBeenCalledWith(
 			"Error deserializing props:",

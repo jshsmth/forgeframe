@@ -339,13 +339,3 @@ function escapeConvertedRecords(
 		? record
 		: escapeWireRecord(record);
 }
-
-/**
- * Parses a JSON string and revives any ForgeFrame Date wire wrappers.
- * @internal
- */
-export function parseWireValue(json: string): unknown {
-	return JSON.parse(json, (_key, value) =>
-		isDateWireValue(value) ? decodeDateWireValue(value) : value,
-	);
-}

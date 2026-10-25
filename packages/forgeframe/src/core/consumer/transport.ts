@@ -36,7 +36,7 @@ import {
 	buildWindowName,
 	createWindowPayload,
 } from "../../window/name-payload";
-import type { HostBootstrapData, HostComponentRef } from "../../window/types";
+import type { HostBootstrapData } from "../../window/types";
 import type { ConsumerSiblingRequest } from "./siblings";
 import type { NormalizedOptions } from "./types";
 
@@ -47,12 +47,11 @@ type VerifiedMessageSource = Parameters<MessageHandler>[1];
  * @internal
  */
 export interface ConsumerTransportHandlers<X> {
-	onBootstrap?: (
+	onBootstrap: (
 		source: VerifiedMessageSource,
 		resetLocalReferences: boolean,
 	) => Promise<HostBootstrapData>;
-	onReconnect?: () => void;
-	onInit?: () => void | Promise<void>;
+	onReconnect: () => void;
 	onClose: () => Promise<void>;
 	onResize: (dimensions: Dimensions) => Promise<void>;
 	onFocus: () => Promise<void>;
@@ -105,7 +104,6 @@ export class ConsumerTransport<
 	/** Latest initialization failure the host reported during this handshake. */
 	private hostInitFailure: Error | null = null;
 
-	private requiresBootstrap = false;
 	private bootstrapSessionId: string | null = null;
 	/** Keeps reset intent across bootstrap failures without admitting stale INIT messages. */
 	private localReferenceSessionId: string | null = null;
@@ -114,7 +112,7 @@ export class ConsumerTransport<
 		private uid: string,
 		private options: NormalizedOptions<P, SchemaInputs>,
 		private resolveUrl: () => string,
-		private resolveUrlOrigin: (url: string) => string | null,
+		private resolveUrlOrigin: (url: string) => string,
 	) {
 		const trustedDomains = this.buildTrustedDomains();
 		// Unrendered instances never receive host messages, so listening waits
@@ -153,10 +151,6 @@ export class ConsumerTransport<
 	 */
 	syncTrustedDomainForUrl(url: string): void {
 		const origin = this.resolveUrlOrigin(url);
-		if (!origin) {
-			return;
-		}
-
 		const previousOrigin = this.dynamicUrlTrustedOrigin;
 		if (this.options.domain) {
 			this.dynamicUrlTrustedOrigin = origin;
@@ -183,7 +177,9 @@ export class ConsumerTransport<
 			return this.openedHostDomain;
 		}
 
-		return this.resolveUrlOrigin(this.resolveUrl()) ?? "*";
+		// Reachable when a URL function closes the instance during updateProps:
+		// teardown clears both origins before the update validates delivery.
+		return this.resolveUrlOrigin(this.resolveUrl());
 	}
 
 	/**
@@ -265,18 +261,18 @@ export class ConsumerTransport<
 	}
 
 	/**
-	 * Builds the window.name payload for host initialization.
+	 * Builds the window.name channel metadata for host initialization.
+	 *
+	 * @remarks
+	 * Props and child definitions never travel in `window.name`; the host
+	 * receives them through the verified bootstrap. The payload keeps an empty
+	 * `props` object and the `exports` names because 1.x hosts validate them.
 	 */
 	buildWindowName(options: {
 		tag: string;
 		context: ContextType;
-		props: P;
-		propDefinitions: PropsDefinition<P, SchemaInputs>;
-		hostDomain?: string;
-		children?: Record<string, HostComponentRef>;
 		exports: ConsumerExports;
 	}): string {
-		this.requiresBootstrap = true;
 		const payload = createWindowPayload({
 			uid: this.uid,
 			tag: options.tag,
@@ -332,12 +328,7 @@ export class ConsumerTransport<
 		this.onHostControl<{ sessionId: string }>(
 			MESSAGE_NAME.BOOTSTRAP,
 			async (data, source) => {
-				if (
-					!data ||
-					typeof data.sessionId !== "string" ||
-					!data.sessionId ||
-					!handlers.onBootstrap
-				) {
+				if (!data || typeof data.sessionId !== "string" || !data.sessionId) {
 					throw new Error("Invalid host bootstrap request");
 				}
 				const resetLocalReferences =
@@ -363,17 +354,18 @@ export class ConsumerTransport<
 				this.bridge.clearRemote();
 				this.peerBridge.startBatch();
 				this.peerBridge.finishBatch();
-				handlers.onReconnect?.();
+				handlers.onReconnect();
 				return snapshot;
 			},
 		);
 		this.onHostControl<{ sessionId?: string }>(
 			MESSAGE_NAME.INIT,
 			(data, source) => {
+				// buildWindowName() always precedes the host window, so INIT is
+				// accepted only for the current verified bootstrap session.
 				if (
-					this.requiresBootstrap &&
-					(!this.bootstrapSessionId ||
-						data?.sessionId !== this.bootstrapSessionId)
+					!this.bootstrapSessionId ||
+					data?.sessionId !== this.bootstrapSessionId
 				) {
 					return { success: false };
 				}
@@ -383,14 +375,6 @@ export class ConsumerTransport<
 				this.bridge.resumeRemoteSession(source.window);
 				if (this.initPromise) {
 					this.initPromise.resolve();
-				}
-
-				if (handlers.onInit) {
-					queueMicrotask(() => {
-						void Promise.resolve(handlers.onInit?.()).catch((error) => {
-							handlers.onError(error as Error);
-						});
-					});
 				}
 
 				return { success: true };
@@ -451,14 +435,12 @@ export class ConsumerTransport<
 		this.onHostControl<unknown>(
 			MESSAGE_NAME.EXPORT,
 			async (exports, source) => {
-				if (!this.hostWindow) {
-					return { success: false };
-				}
+				// The host-control guard has matched source.window to hostWindow.
 				handlers.onExport(
 					deserializeFunctions(
 						exports,
 						this.bridge,
-						this.hostWindow,
+						source.window,
 						source.domain,
 					) as RemoteValue<X>,
 				);
@@ -518,24 +500,25 @@ export class ConsumerTransport<
 	 * Returns true when a lifecycle/control message came from the opened host window.
 	 */
 	private isHostControlSource(source: VerifiedMessageSource): boolean {
+		// attachHostWindow() records the opened origin with the window, and
+		// resetHostWindow() clears both.
 		return Boolean(
 			this.hostWindow &&
+				this.openedHostDomain &&
 				source.window === this.hostWindow &&
 				matchDomain(
-					this.options.domain ??
-						this.openedHostDomain ??
-						this.dynamicUrlTrustedOrigin ??
-						this.getHostDomain(),
+					this.options.domain ?? this.openedHostDomain,
 					source.domain,
 				),
 		);
 	}
 
 	/**
-	 * Records opened host content and starts listening for its messages.
-	 * Unrendered instances never listen.
+	 * Records opened host content and the origin it was opened at, then starts
+	 * listening for its messages. Unrendered instances never listen.
 	 */
-	attachHostWindow(hostWindow: Window | null): void {
+	attachHostWindow(hostWindow: Window | null, openedHostDomain: string): void {
+		this.openedHostDomain = openedHostDomain;
 		this.hostWindow = hostWindow;
 		if (hostWindow) this.messenger.listen();
 	}

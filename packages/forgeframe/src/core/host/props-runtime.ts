@@ -10,7 +10,6 @@
 
 import { EVENT } from "../../constants";
 import { isStandardSchema } from "../../props";
-import { EMPTY_PROP_DEFINITIONS } from "../../props/definitions";
 import { validateNormalizedProps } from "../../props/normalize";
 import { deserializeProps } from "../../props/serialize";
 import type { SerializedProps } from "../../props/types";
@@ -64,10 +63,7 @@ export class HostPropsRuntime<
 	private pendingBootstrapProps: SerializedProps | null = null;
 
 	constructor(
-		private propDefinitions: HostPropsDefinition<
-			P,
-			SchemaInputs
-		> = EMPTY_PROP_DEFINITIONS as HostPropsDefinition<P, SchemaInputs>,
+		private propDefinitions: HostPropsDefinition<P, SchemaInputs>,
 		private options: HostPropsRuntimeOptions,
 	) {}
 
@@ -296,8 +292,6 @@ export class HostPropsRuntime<
 	private deserialize(serializedProps: SerializedProps): RemoteValue<P> {
 		return deserializeProps(
 			this.filterConsumerOnlyProps(serializedProps),
-			this.propDefinitions,
-			this.options.getMessenger(),
 			this.options.getBridge(),
 			this.options.getConsumerWindow(),
 			this.options.getConsumerDomain(),

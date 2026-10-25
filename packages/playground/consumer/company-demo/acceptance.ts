@@ -11,7 +11,7 @@ export interface PaymentSessionState {
 	cancelled: boolean;
 }
 
-export type AcceptedPayment =
+type AcceptedPayment =
 	| { phase: "declined"; acknowledgement: PaymentAcknowledgement }
 	| {
 			phase: "approved";

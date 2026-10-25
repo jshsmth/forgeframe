@@ -12,7 +12,6 @@ import {
 	type FunctionBridge,
 	serializeFunctions,
 } from "../communication/bridge";
-import type { Messenger } from "../communication/messenger";
 import { PROP_SERIALIZATION } from "../constants";
 import type { PropDefinition, PropsDefinition } from "../types/props";
 import { isDate, isPlainObject } from "../utils/realm-values";
@@ -303,7 +302,7 @@ function isDotifyEncoded(
  * @param bridge - Function bridge for serializing functions
  * @returns Serialized props ready for postMessage
  *
- * @public
+ * @internal
  */
 export function serializeProps<P extends Record<string, unknown>, I = P>(
 	props: P,
@@ -385,39 +384,26 @@ function serializeValue(
  *
  * @typeParam P - The props type
  * @param serialized - Serialized props from consumer
- * @param definitions - Prop definitions
- * @param messenger - Messenger for function calls
  * @param bridge - Function bridge for deserializing functions
  * @param consumerWin - Consumer window reference
  * @param consumerDomain - Consumer origin domain
  * @returns Deserialized props
  *
- * @public
+ * @internal
  */
-export function deserializeProps<P extends Record<string, unknown>, I = P>(
+export function deserializeProps<P extends Record<string, unknown>>(
 	serialized: SerializedProps,
-	definitions: PropsDefinition<P, I>,
-	messenger: Messenger,
 	bridge: FunctionBridge,
 	consumerWin: Window,
 	consumerDomain: string,
 ): P {
-	const allDefs = {
-		...BUILTIN_PROP_DEFINITIONS,
-		...definitions,
-	} as PropsDefinition<P, I>;
-
 	const result = {} as P;
 
 	for (const [key, value] of Object.entries(serialized)) {
 		if (!isSafeObjectKey(key)) continue;
 
-		const definition = (allDefs as Record<string, PropDefinition>)[key];
-
 		(result as Record<string, unknown>)[key] = deserializeValue(
 			value,
-			definition,
-			messenger,
 			bridge,
 			consumerWin,
 			consumerDomain,
@@ -433,8 +419,6 @@ export function deserializeProps<P extends Record<string, unknown>, I = P>(
  */
 function deserializeValue(
 	value: unknown,
-	_definition: PropDefinition | undefined,
-	_messenger: Messenger,
 	bridge: FunctionBridge,
 	consumerWin: Window,
 	consumerDomain: string,

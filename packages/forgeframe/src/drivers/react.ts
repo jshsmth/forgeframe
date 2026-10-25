@@ -526,5 +526,3 @@ export function withReactComponent<E>(React: ReactLike<E>) {
 		return createReactComponent(Component, { React });
 	};
 }
-
-export default createReactComponent;

@@ -3,8 +3,7 @@
  * Cross-domain messenger implementation.
  *
  * @remarks
- * Provides a simple request/response communication layer over postMessage,
- * replacing post-robot with a minimal implementation.
+ * Provides a simple request/response communication layer over postMessage.
  */
 
 import { MESSAGE_TYPE } from "../constants";
@@ -35,7 +34,7 @@ import type { Message } from "./types";
  *
  * @typeParam T - The expected data type of incoming messages
  * @typeParam R - The return type of the handler
- * @public
+ * @internal
  */
 export type MessageHandler<T = unknown, R = unknown> = (
 	data: T,
@@ -113,7 +112,7 @@ function normalizeTargetDomainToExpectedOrigin(
  * const response = await messenger.send(targetWindow, targetOrigin, 'greeting', { name: 'World' });
  * ```
  *
- * @public
+ * @internal
  */
 export class Messenger {
 	/** @internal */
@@ -542,14 +541,5 @@ export class Messenger {
 		}
 		this.pending.clear();
 		this.handlers.clear();
-	}
-
-	/**
-	 * Checks if the messenger has been destroyed.
-	 *
-	 * @returns True if destroy() has been called
-	 */
-	isDestroyed(): boolean {
-		return this.destroyed;
 	}
 }

@@ -34,7 +34,7 @@ export function recordPropInputDraft(
 	propInputDrafts[key] = { text, valid };
 }
 
-export interface RunningConfiguration {
+interface RunningConfiguration {
 	context: RenderContext;
 	style: IframeStyle;
 	props: Record<string, string>;
@@ -85,6 +85,7 @@ export function setCurrentIframeStyle(style: IframeStyle) {
 	currentIframeStyle = style;
 }
 
+/** Test seam: installs a configuration without going through the selector UI. */
 export function setCurrentConfig(config: PlaygroundConfig) {
 	currentConfig = config;
 }
@@ -104,6 +105,7 @@ export function setModalBody(body: HTMLElement | null) {
 	modalBody = body;
 }
 
+/** Test seam: clears edited prop values and drafts between test cases. */
 export function resetPropValues() {
 	currentPropValues = {};
 	propInputDrafts = {};

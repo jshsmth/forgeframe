@@ -32,18 +32,13 @@ import { isHostOfComponent } from "../window/name-payload";
 import {
 	clearIndexedInstances,
 	clearIndexedInstancesByTag,
-	getComponentInstancesByTag as getComponentInstancesByTagFromIndex,
-	getIndexedComponentInstances as getIndexedComponentInstancesFromIndex,
-	type IndexedComponentInstance,
 	indexComponentInstance,
 	removeIndexedComponentInstance,
 } from "./component-instance-index";
 import {
 	clearRegisteredComponents,
 	deleteRegisteredComponent,
-	getComponentOptions,
 	getRegisteredComponent,
-	getRegisteredComponentEntries,
 	getRegisteredComponentTags,
 	hasRegisteredComponent,
 	registerComponent,
@@ -223,7 +218,6 @@ function removeTrackedInstance<T>(instances: T[], instance: T): void {
  * @remarks
  * This is the main entry point for defining components. It creates a factory
  * function that can be called with props to create component instances.
- * Equivalent to zoid.create() for migration purposes.
  *
  * @typeParam P - The props type for the component
  * @typeParam X - The exports type that the host can expose
@@ -410,7 +404,7 @@ export function create<
  * }
  * ```
  *
- * @public
+ * @internal
  */
 export function getComponent<
 	P extends Record<string, unknown> = Record<string, unknown>,
@@ -420,43 +414,6 @@ export function getComponent<
 >(tag: string): ForgeFrameComponent<P, X, I, false, SchemaInputs> | undefined {
 	return getRegisteredComponent<P, X, I, SchemaInputs>(tag);
 }
-
-/**
- * Returns all registered components as tag/component pairs.
- * @internal
- */
-export function getRegisteredComponents(): Array<
-	[string, ForgeFrameComponent<Record<string, unknown>>]
-> {
-	return getRegisteredComponentEntries();
-}
-
-/**
- * Returns active instances for a specific component tag using an internal index.
- * @internal
- */
-export function getComponentInstancesByTag(
-	tag: string,
-): IndexedComponentInstance[] {
-	return getComponentInstancesByTagFromIndex(tag);
-}
-
-/**
- * Returns all active indexed instances across tags.
- * @internal
- */
-export function getIndexedComponentInstances(): Array<{
-	tag: string;
-	instance: IndexedComponentInstance;
-}> {
-	return getIndexedComponentInstancesFromIndex();
-}
-
-/**
- * Returns the internal options metadata for a component factory.
- * @internal
- */
-export { getComponentOptions };
 
 /**
  * Destroys a single component instance.

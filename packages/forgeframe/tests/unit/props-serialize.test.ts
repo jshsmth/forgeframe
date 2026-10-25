@@ -7,7 +7,7 @@ import { runInNewContext } from "node:vm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FunctionBridge } from "@/communication/bridge";
 import type { Messenger } from "@/communication/messenger";
-import { PROP_SERIALIZATION } from "@/constants";
+import { MESSAGE_NAME, PROP_SERIALIZATION } from "@/constants";
 import { prop } from "@/props/prop";
 import { deserializeProps, serializeProps } from "@/props/serialize";
 import type { SerializedProps } from "@/props/types";
@@ -30,8 +30,14 @@ function createBridgeWithMessenger() {
 
 	return {
 		messenger,
-		// These codec tests never dispatch calls, so no caller is rejected.
+		// These codec tests admit every caller; they check decoding, not sources.
 		bridge: new FunctionBridge(messenger, () => true),
+		/** Runs a restored callback through the bridge and returns the original's result. */
+		async callThroughBridge(restored: unknown): Promise<unknown> {
+			await (restored as () => Promise<unknown>)();
+			const request = vi.mocked(messenger.send).mock.lastCall?.[3];
+			return handlers.get(MESSAGE_NAME.CALL)?.(request, { window });
+		},
 	};
 }
 
@@ -43,7 +49,7 @@ describe("Props serialization behavior", () => {
 	it.each([PROP_SERIALIZATION.BASE64, PROP_SERIALIZATION.DOTIFY])(
 		"serializes ordinary records without unrelated primitive coercion in %s",
 		(serialization) => {
-			const { messenger, bridge } = createBridgeWithMessenger();
+			const { bridge } = createBridgeWithMessenger();
 			const props = {
 				payload: {
 					records: [
@@ -66,14 +72,7 @@ describe("Props serialization behavior", () => {
 			);
 			for (const probe of probes) expect(probe).not.toHaveBeenCalled();
 			expect(
-				deserializeProps(
-					wire,
-					definitions,
-					messenger,
-					bridge,
-					window,
-					"https://consumer.example.com",
-				),
+				deserializeProps(wire, bridge, window, "https://consumer.example.com"),
 			).toEqual(props);
 			bridge.destroy();
 		},
@@ -82,7 +81,7 @@ describe("Props serialization behavior", () => {
 	it.each([PROP_SERIALIZATION.BASE64, PROP_SERIALIZATION.DOTIFY])(
 		"preserves boxed values and avoids branding getters in %s",
 		(serialization) => {
-			const { messenger, bridge } = createBridgeWithMessenger();
+			const { bridge } = createBridgeWithMessenger();
 			const branding = vi.fn(() => {
 				throw new Error("Branding getter must not run");
 			});
@@ -111,14 +110,7 @@ describe("Props serialization behavior", () => {
 				bridge,
 			);
 			expect(
-				deserializeProps(
-					wire,
-					definitions,
-					messenger,
-					bridge,
-					window,
-					"https://consumer.example.com",
-				),
+				deserializeProps(wire, bridge, window, "https://consumer.example.com"),
 			).toEqual({ payload: { encoded: expected } });
 			expect(branding).not.toHaveBeenCalled();
 			bridge.destroy();
@@ -128,7 +120,7 @@ describe("Props serialization behavior", () => {
 	it.each([PROP_SERIALIZATION.BASE64, PROP_SERIALIZATION.DOTIFY])(
 		"keeps native coercion counts and avoids proxy branding reads in %s",
 		(serialization) => {
-			const { messenger, bridge } = createBridgeWithMessenger();
+			const { bridge } = createBridgeWithMessenger();
 			const branding = vi.fn();
 			const record = new Proxy(
 				{ label: "original" },
@@ -178,14 +170,7 @@ describe("Props serialization behavior", () => {
 				bridge,
 			);
 			expect(
-				deserializeProps(
-					wire,
-					definitions,
-					messenger,
-					bridge,
-					window,
-					window.location.origin,
-				),
+				deserializeProps(wire, bridge, window, window.location.origin),
 			).toEqual({
 				payload: {
 					encoded: {
@@ -208,7 +193,7 @@ describe("Props serialization behavior", () => {
 	it.each([PROP_SERIALIZATION.BASE64, PROP_SERIALIZATION.DOTIFY])(
 		"preserves native and foreign raw JSON values returned by encoders in %s",
 		(serialization) => {
-			const { messenger, bridge } = createBridgeWithMessenger();
+			const { bridge } = createBridgeWithMessenger();
 			const rawValues: object[] = runInNewContext(
 				"[JSON.rawJSON('42'), JSON.rawJSON('true'), JSON.rawJSON('\"raw\"')]",
 			);
@@ -231,8 +216,6 @@ describe("Props serialization behavior", () => {
 			expect(
 				deserializeProps(
 					serialized,
-					definitions,
-					messenger,
 					bridge,
 					window,
 					"https://consumer.example.com",
@@ -247,8 +230,8 @@ describe("Props serialization behavior", () => {
 
 	it.each([PROP_SERIALIZATION.BASE64, PROP_SERIALIZATION.DOTIFY])(
 		"captures encoded accessors once and preserves native JSON conversion in %s",
-		(serialization) => {
-			const { messenger, bridge } = createBridgeWithMessenger();
+		async (serialization) => {
+			const { bridge, callThroughBridge } = createBridgeWithMessenger();
 			const date = new Date("2026-01-02T03:04:05.678Z");
 			const dateEncoder = vi.spyOn(date, "toJSON");
 			const callback = () => 42;
@@ -295,8 +278,6 @@ describe("Props serialization behavior", () => {
 			);
 			const restored = deserializeProps(
 				serialized,
-				definitions,
-				messenger,
 				bridge,
 				window,
 				window.location.origin,
@@ -316,7 +297,12 @@ describe("Props serialization behavior", () => {
 					alteredNumber: 9,
 				},
 			});
-			expect(bridge.localFunctionCount).toBe(1);
+			await expect(
+				callThroughBridge(
+					(restored.payload as { custom: { callback: unknown } }).custom
+						.callback,
+				),
+			).resolves.toBe(42);
 		},
 	);
 
@@ -350,7 +336,7 @@ describe("Props serialization behavior", () => {
 	);
 
 	it("encodes the array entries captured during presence admission", () => {
-		const { messenger, bridge } = createBridgeWithMessenger();
+		const { bridge } = createBridgeWithMessenger();
 		let reads = 0;
 		const values: string[] = [];
 		Object.defineProperty(values, "0", {
@@ -364,8 +350,6 @@ describe("Props serialization behavior", () => {
 					serializeProps({ payload: values }, definitions, bridge),
 				),
 			),
-			definitions,
-			messenger,
 			bridge,
 			window,
 			window.location.origin,
@@ -377,7 +361,7 @@ describe("Props serialization behavior", () => {
 	it.each(Object.values(PROP_SERIALIZATION))(
 		"preserves null-prototype arrays and ignores shadowed map methods through %s",
 		(serialization) => {
-			const { messenger, bridge } = createBridgeWithMessenger();
+			const { bridge } = createBridgeWithMessenger();
 			const shadowedMap = vi.fn(() => ["corrupted"]);
 			const shadowed = ["one", "two"];
 			Object.defineProperty(shadowed, "map", { value: shadowedMap });
@@ -402,8 +386,6 @@ describe("Props serialization behavior", () => {
 						),
 					),
 				),
-				definitions,
-				messenger,
 				bridge,
 				window,
 				window.location.origin,
@@ -425,7 +407,7 @@ describe("Props serialization behavior", () => {
 	])(
 		"preserves $label as an array in nested DOTIFY values",
 		({ value, expected }) => {
-			const { messenger, bridge } = createBridgeWithMessenger();
+			const { bridge } = createBridgeWithMessenger();
 			const definitions = {
 				config: {
 					schema: prop.object<{ nested: unknown[] }>(),
@@ -439,8 +421,6 @@ describe("Props serialization behavior", () => {
 			);
 			const restored = deserializeProps(
 				serialized,
-				definitions,
-				messenger,
 				bridge,
 				window,
 				window.location.origin,
@@ -450,7 +430,7 @@ describe("Props serialization behavior", () => {
 	);
 
 	it("traverses foreign ordinary DOTIFY branches without invoking their JSON encoder", () => {
-		const { messenger, bridge } = createBridgeWithMessenger();
+		const { bridge } = createBridgeWithMessenger();
 		const foreign: {
 			value: Record<string, unknown>;
 			state: { calls: number };
@@ -473,8 +453,6 @@ describe("Props serialization behavior", () => {
 		);
 		const restored = deserializeProps(
 			serialized,
-			definitions,
-			messenger,
 			bridge,
 			window,
 			"https://consumer.example.com",
@@ -485,8 +463,8 @@ describe("Props serialization behavior", () => {
 
 	it.each([PROP_SERIALIZATION.BASE64, PROP_SERIALIZATION.DOTIFY])(
 		"preserves encoded callbacks returned by toJSON in %s",
-		(serialization) => {
-			const { messenger, bridge } = createBridgeWithMessenger();
+		async (serialization) => {
+			const { bridge, callThroughBridge } = createBridgeWithMessenger();
 			const callback = () => 42;
 			const date = new Date("2026-01-02T03:04:05.678Z");
 			class CustomValue {
@@ -506,8 +484,6 @@ describe("Props serialization behavior", () => {
 			);
 			const restored = deserializeProps<{ config: Record<string, unknown> }>(
 				serialized,
-				definitions,
-				messenger,
 				bridge,
 				window,
 				"https://consumer.example.com",
@@ -516,7 +492,11 @@ describe("Props serialization behavior", () => {
 				callback: expect.any(Function),
 				date,
 			});
-			expect(bridge.localFunctionCount).toBe(1);
+			await expect(
+				callThroughBridge(
+					(restored.config.custom as { callback: unknown }).callback,
+				),
+			).resolves.toBe(42);
 		},
 	);
 
@@ -535,7 +515,7 @@ describe("Props serialization behavior", () => {
 	])(
 		"preserves DOTIFY branches made marker-shaped by leaf conversion: %j",
 		(expected) => {
-			const { messenger, bridge } = createBridgeWithMessenger();
+			const { bridge } = createBridgeWithMessenger();
 			let calls = 0;
 			class EncodedLeaf {
 				constructor(private readonly value: unknown) {}
@@ -564,8 +544,6 @@ describe("Props serialization behavior", () => {
 			);
 			const restored = deserializeProps(
 				serialized,
-				definitions,
-				messenger,
 				bridge,
 				window,
 				"https://consumer.example.com",
@@ -579,7 +557,7 @@ describe("Props serialization behavior", () => {
 	);
 
 	it("omits JSON-undefined DOTIFY leaves and retains emptied branches", () => {
-		const { messenger, bridge } = createBridgeWithMessenger();
+		const { bridge } = createBridgeWithMessenger();
 		let calls = 0;
 		class OmittedLeaf {
 			toJSON() {
@@ -608,8 +586,6 @@ describe("Props serialization behavior", () => {
 		);
 		const restored = deserializeProps(
 			serialized,
-			definitions,
-			messenger,
 			bridge,
 			window,
 			"https://consumer.example.com",
@@ -623,7 +599,7 @@ describe("Props serialization behavior", () => {
 	});
 
 	it("should round-trip Date props through the default serializer", () => {
-		const { messenger, bridge } = createBridgeWithMessenger();
+		const { bridge } = createBridgeWithMessenger();
 		const publishedAt = new Date("2026-01-02T03:04:05.678Z");
 		const definitions = {
 			publishedAt: prop.date(),
@@ -642,8 +618,6 @@ describe("Props serialization behavior", () => {
 
 		const deserialized = deserializeProps(
 			serialized,
-			definitions,
-			messenger,
 			bridge,
 			window,
 			"https://consumer.example.com",
@@ -656,11 +630,7 @@ describe("Props serialization behavior", () => {
 	});
 
 	it("should not revive legacy generic Date wrappers during default deserialization", () => {
-		const { messenger, bridge } = createBridgeWithMessenger();
-		const definitions = {
-			payload: prop.object(),
-		};
-
+		const { bridge } = createBridgeWithMessenger();
 		const deserialized = deserializeProps(
 			{
 				payload: {
@@ -668,8 +638,6 @@ describe("Props serialization behavior", () => {
 					__value__: "2026-01-02T03:04:05.678Z",
 				},
 			},
-			definitions,
-			messenger,
 			bridge,
 			window,
 			"https://consumer.example.com",
@@ -683,11 +651,7 @@ describe("Props serialization behavior", () => {
 	});
 
 	it("should not revive ForgeFrame Date wrappers with extra user fields", () => {
-		const { messenger, bridge } = createBridgeWithMessenger();
-		const definitions = {
-			payload: prop.object(),
-		};
-
+		const { bridge } = createBridgeWithMessenger();
 		const deserialized = deserializeProps(
 			{
 				payload: {
@@ -696,8 +660,6 @@ describe("Props serialization behavior", () => {
 					kind: "metadata",
 				},
 			},
-			definitions,
-			messenger,
 			bridge,
 			window,
 			"https://consumer.example.com",
@@ -712,7 +674,7 @@ describe("Props serialization behavior", () => {
 	});
 
 	it("should round-trip BASE64-serialized object props", () => {
-		const { messenger, bridge } = createBridgeWithMessenger();
+		const { bridge } = createBridgeWithMessenger();
 		const definitions = {
 			metadata: {
 				schema: prop.object(),
@@ -734,8 +696,6 @@ describe("Props serialization behavior", () => {
 
 		const deserialized = deserializeProps(
 			serialized,
-			definitions,
-			messenger,
 			bridge,
 			window,
 			"https://consumer.example.com",
@@ -748,7 +708,7 @@ describe("Props serialization behavior", () => {
 	});
 
 	it("should round-trip BASE64-serialized Date values nested in objects", () => {
-		const { messenger, bridge } = createBridgeWithMessenger();
+		const { bridge } = createBridgeWithMessenger();
 		const publishedAt = new Date("2026-01-02T03:04:05.678Z");
 		const definitions = {
 			metadata: {
@@ -772,8 +732,6 @@ describe("Props serialization behavior", () => {
 
 		const deserialized = deserializeProps(
 			serialized,
-			definitions,
-			messenger,
 			bridge,
 			window,
 			"https://consumer.example.com",
@@ -790,7 +748,7 @@ describe("Props serialization behavior", () => {
 	});
 
 	it("should not revive BASE64 wrapper-like objects with extra fields", () => {
-		const { messenger, bridge } = createBridgeWithMessenger();
+		const { bridge } = createBridgeWithMessenger();
 		const definitions = {
 			metadata: {
 				schema: prop.object(),
@@ -812,8 +770,6 @@ describe("Props serialization behavior", () => {
 				definitions,
 				bridge,
 			) as Record<string, unknown>,
-			definitions,
-			messenger,
 			bridge,
 			window,
 			"https://consumer.example.com",
@@ -832,7 +788,7 @@ describe("Props serialization behavior", () => {
 	});
 
 	it("should round-trip DOTIFY-serialized nested object props", () => {
-		const { messenger, bridge } = createBridgeWithMessenger();
+		const { bridge } = createBridgeWithMessenger();
 		const definitions = {
 			config: {
 				schema: prop.object(),
@@ -856,8 +812,6 @@ describe("Props serialization behavior", () => {
 
 		const deserialized = deserializeProps(
 			serialized,
-			definitions,
-			messenger,
 			bridge,
 			window,
 			"https://consumer.example.com",
@@ -870,7 +824,7 @@ describe("Props serialization behavior", () => {
 	});
 
 	it("should round-trip DOTIFY-serialized Date values nested in objects", () => {
-		const { messenger, bridge } = createBridgeWithMessenger();
+		const { bridge } = createBridgeWithMessenger();
 		const publishedAt = new Date("2026-01-02T03:04:05.678Z");
 		const definitions = {
 			config: {
@@ -894,8 +848,6 @@ describe("Props serialization behavior", () => {
 
 		const deserialized = deserializeProps(
 			serialized,
-			definitions,
-			messenger,
 			bridge,
 			window,
 			"https://consumer.example.com",
@@ -912,7 +864,7 @@ describe("Props serialization behavior", () => {
 	});
 
 	it("should not revive DOTIFY wrapper-like objects with extra fields", () => {
-		const { messenger, bridge } = createBridgeWithMessenger();
+		const { bridge } = createBridgeWithMessenger();
 		const definitions = {
 			config: {
 				schema: prop.object(),
@@ -934,8 +886,6 @@ describe("Props serialization behavior", () => {
 				definitions,
 				bridge,
 			) as Record<string, unknown>,
-			definitions,
-			messenger,
 			bridge,
 			window,
 			"https://consumer.example.com",
@@ -954,7 +904,7 @@ describe("Props serialization behavior", () => {
 	});
 
 	it("should round-trip DOTIFY-serialized nested empty object branches", () => {
-		const { messenger, bridge } = createBridgeWithMessenger();
+		const { bridge } = createBridgeWithMessenger();
 		const definitions = {
 			config: {
 				schema: prop.object(),
@@ -976,8 +926,6 @@ describe("Props serialization behavior", () => {
 
 		const deserialized = deserializeProps(
 			serialized,
-			definitions,
-			messenger,
 			bridge,
 			window,
 			"https://consumer.example.com",
@@ -991,7 +939,7 @@ describe("Props serialization behavior", () => {
 	});
 
 	it("should round-trip DOTIFY-serialized empty object branches with sibling values", () => {
-		const { messenger, bridge } = createBridgeWithMessenger();
+		const { bridge } = createBridgeWithMessenger();
 		const definitions = {
 			payload: {
 				schema: prop.object(),
@@ -1016,8 +964,6 @@ describe("Props serialization behavior", () => {
 
 		const deserialized = deserializeProps(
 			serialized,
-			definitions,
-			messenger,
 			bridge,
 			window,
 			"https://consumer.example.com",
@@ -1040,7 +986,7 @@ describe("Props serialization behavior", () => {
 	});
 
 	it("should round-trip entirely empty DOTIFY object payloads", () => {
-		const { messenger, bridge } = createBridgeWithMessenger();
+		const { bridge } = createBridgeWithMessenger();
 		const definitions = {
 			payload: {
 				schema: prop.object(),
@@ -1067,8 +1013,6 @@ describe("Props serialization behavior", () => {
 
 		const deserialized = deserializeProps(
 			serialized,
-			definitions,
-			messenger,
 			bridge,
 			window,
 			"https://consumer.example.com",
@@ -1078,7 +1022,7 @@ describe("Props serialization behavior", () => {
 	});
 
 	it("should preserve real values that serialize to the old empty-object marker shape", () => {
-		const { messenger, bridge } = createBridgeWithMessenger();
+		const { bridge } = createBridgeWithMessenger();
 		const definitions = {
 			payload: {
 				schema: prop.object(),
@@ -1106,8 +1050,6 @@ describe("Props serialization behavior", () => {
 
 		const deserialized = deserializeProps(
 			serialized,
-			definitions,
-			messenger,
 			bridge,
 			window,
 			"https://consumer.example.com",
@@ -1123,7 +1065,7 @@ describe("Props serialization behavior", () => {
 	});
 
 	it("should omit nested undefined DOTIFY values instead of deserializing them as strings", () => {
-		const { messenger, bridge } = createBridgeWithMessenger();
+		const { bridge } = createBridgeWithMessenger();
 		const definitions = {
 			payload: {
 				schema: prop.object(),
@@ -1147,8 +1089,6 @@ describe("Props serialization behavior", () => {
 
 		const deserialized = deserializeProps(
 			serialized,
-			definitions,
-			messenger,
 			bridge,
 			window,
 			"https://consumer.example.com",
@@ -1169,7 +1109,7 @@ describe("Props serialization behavior", () => {
 	});
 
 	it("should round-trip DOTIFY-serialized object props with dotted and reserved keys", () => {
-		const { messenger, bridge } = createBridgeWithMessenger();
+		const { bridge } = createBridgeWithMessenger();
 		const definitions = {
 			config: {
 				schema: prop.object(),
@@ -1204,8 +1144,6 @@ describe("Props serialization behavior", () => {
 
 		const deserialized = deserializeProps(
 			serialized,
-			definitions,
-			messenger,
 			bridge,
 			window,
 			"https://consumer.example.com",
@@ -1233,7 +1171,7 @@ describe("Props serialization behavior", () => {
 	});
 
 	it("should round-trip keys that look like JSON arrays", () => {
-		const { messenger, bridge } = createBridgeWithMessenger();
+		const { bridge } = createBridgeWithMessenger();
 		const definitions = {
 			payload: {
 				schema: prop.object(),
@@ -1253,8 +1191,6 @@ describe("Props serialization behavior", () => {
 
 		const deserialized = deserializeProps(
 			serialized,
-			definitions,
-			messenger,
 			bridge,
 			window,
 			"https://consumer.example.com",
@@ -1266,13 +1202,7 @@ describe("Props serialization behavior", () => {
 	});
 
 	it("should preserve unframed DOTIFY wrappers during deserialization fallback", () => {
-		const { messenger, bridge } = createBridgeWithMessenger();
-		const definitions = {
-			payload: {
-				schema: prop.object(),
-				serialization: PROP_SERIALIZATION.DOTIFY,
-			},
-		};
+		const { bridge } = createBridgeWithMessenger();
 		const legacyWrapper = {
 			__type__: "dotify",
 			__value__: '["a"]=%22value%22',
@@ -1282,8 +1212,6 @@ describe("Props serialization behavior", () => {
 			{
 				payload: legacyWrapper,
 			},
-			definitions,
-			messenger,
 			bridge,
 			window,
 			"https://consumer.example.com",
@@ -1293,19 +1221,11 @@ describe("Props serialization behavior", () => {
 	});
 
 	it("should preserve malformed BASE64 wrappers during deserialization fallback", () => {
-		const { messenger, bridge } = createBridgeWithMessenger();
-		const definitions = {
-			payload: {
-				schema: prop.object(),
-				serialization: PROP_SERIALIZATION.BASE64,
-			},
-		};
+		const { bridge } = createBridgeWithMessenger();
 		const malformed = { __type__: "base64", __value__: "%not-valid-base64%" };
 
 		const deserialized = deserializeProps(
 			{ payload: malformed },
-			definitions,
-			messenger,
 			bridge,
 			window,
 			"https://consumer.example.com",
@@ -1315,19 +1235,11 @@ describe("Props serialization behavior", () => {
 	});
 
 	it("should preserve malformed DOTIFY wrappers during deserialization fallback", () => {
-		const { messenger, bridge } = createBridgeWithMessenger();
-		const definitions = {
-			payload: {
-				schema: prop.object(),
-				serialization: PROP_SERIALIZATION.DOTIFY,
-			},
-		};
+		const { bridge } = createBridgeWithMessenger();
 		const malformed = { __type__: "dotify", __value__: "bad=%E0%A4%A" };
 
 		const deserialized = deserializeProps(
 			{ payload: malformed },
-			definitions,
-			messenger,
 			bridge,
 			window,
 			"https://consumer.example.com",
@@ -1337,13 +1249,7 @@ describe("Props serialization behavior", () => {
 	});
 
 	it("should preserve empty-path DOTIFY wrappers during deserialization fallback", () => {
-		const { messenger, bridge } = createBridgeWithMessenger();
-		const definitions = {
-			payload: {
-				schema: prop.object(),
-				serialization: PROP_SERIALIZATION.DOTIFY,
-			},
-		};
+		const { bridge } = createBridgeWithMessenger();
 		const malformed = {
 			__type__: "dotify",
 			__value__: "__forgeframe.dotify_path__:%5B%5D=1",
@@ -1351,8 +1257,6 @@ describe("Props serialization behavior", () => {
 
 		const deserialized = deserializeProps(
 			{ payload: malformed },
-			definitions,
-			messenger,
 			bridge,
 			window,
 			"https://consumer.example.com",
@@ -1362,13 +1266,7 @@ describe("Props serialization behavior", () => {
 	});
 
 	it("should preserve malformed empty-object-path DOTIFY wrappers during deserialization fallback", () => {
-		const { messenger, bridge } = createBridgeWithMessenger();
-		const definitions = {
-			payload: {
-				schema: prop.object(),
-				serialization: PROP_SERIALIZATION.DOTIFY,
-			},
-		};
+		const { bridge } = createBridgeWithMessenger();
 		const malformed = {
 			__type__: "dotify",
 			__value__:
@@ -1377,8 +1275,6 @@ describe("Props serialization behavior", () => {
 
 		const deserialized = deserializeProps(
 			{ payload: malformed },
-			definitions,
-			messenger,
 			bridge,
 			window,
 			"https://consumer.example.com",
@@ -1406,7 +1302,7 @@ describe("Props serialization behavior", () => {
 	});
 
 	it("should block __proto__ while preserving safe top-level keys during deserialization", () => {
-		const { messenger, bridge } = createBridgeWithMessenger();
+		const { bridge } = createBridgeWithMessenger();
 		const serialized: SerializedProps = {
 			safe: "ok",
 			["__proto__"]: "unsafe",
@@ -1416,8 +1312,6 @@ describe("Props serialization behavior", () => {
 
 		const deserialized = deserializeProps(
 			serialized,
-			{ safe: prop.string() },
-			messenger,
 			bridge,
 			window,
 			"https://consumer.example.com",
@@ -1433,13 +1327,7 @@ describe("Props serialization behavior", () => {
 	});
 
 	it("should block __proto__ DOTIFY paths while preserving constructor/prototype keys", () => {
-		const { messenger, bridge } = createBridgeWithMessenger();
-		const definitions = {
-			payload: {
-				schema: prop.object(),
-				serialization: PROP_SERIALIZATION.DOTIFY,
-			},
-		};
+		const { bridge } = createBridgeWithMessenger();
 		const prototypePollutionKey = "__forgeframe_dotify_polluted__";
 
 		delete (Object.prototype as Record<string, unknown>)[prototypePollutionKey];
@@ -1455,8 +1343,6 @@ describe("Props serialization behavior", () => {
 						].join("&"),
 					},
 				},
-				definitions,
-				messenger,
 				bridge,
 				window,
 				"https://consumer.example.com",

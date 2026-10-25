@@ -1,19 +1,13 @@
 /**
  * Unit tests for cross-window helpers in `@/window/helpers`.
  *
- * Covers domain matching, opener/ancestor traversal, iframe/popup detection, and defensive focus/close/frame access behavior.
+ * Covers domain matching, opener/consumer lookup, and iframe/popup detection.
  */
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-	closeWindow,
-	focusWindow,
-	getAncestor,
 	getConsumer,
-	getDistanceToConsumer,
 	getDomain,
-	getFrames,
 	getOpener,
-	getTop,
 	isIframe,
 	isPopup,
 	isSameDomain,
@@ -196,24 +190,6 @@ describe("getConsumer", () => {
 	});
 });
 
-describe("getTop", () => {
-	it("should return top window", () => {
-		const topWin = {} as Window;
-		const win = { top: topWin } as Window;
-		expect(getTop(win)).toBe(topWin);
-	});
-
-	it("should return null on cross-origin error", () => {
-		const win = {
-			get top() {
-				throw new Error("Cross-origin");
-			},
-		} as unknown as Window;
-
-		expect(getTop(win)).toBeNull();
-	});
-});
-
 describe("isIframe", () => {
 	it("should return false for top-level window", () => {
 		const win = {} as Window;
@@ -258,139 +234,5 @@ describe("isPopup", () => {
 		} as unknown as Window;
 
 		expect(isPopup(win)).toBe(false);
-	});
-});
-
-describe("getAncestor", () => {
-	it("should return null for distance 0", () => {
-		const win = {} as Window;
-		expect(getAncestor(win, 0)).toBe(win);
-	});
-
-	it("should return parent for distance 1", () => {
-		const parentWin = {} as Window;
-		(parentWin as { parent: Window }).parent = parentWin; // parent is itself (top)
-
-		const win = { parent: parentWin } as Window;
-
-		expect(getAncestor(win, 1)).toBe(parentWin);
-	});
-
-	it("should return grandparent for distance 2", () => {
-		const grandparentWin = {} as Window;
-		(grandparentWin as { parent: Window }).parent = grandparentWin;
-
-		const parentWin = { parent: grandparentWin } as Window;
-		const win = { parent: parentWin } as Window;
-
-		expect(getAncestor(win, 2)).toBe(grandparentWin);
-	});
-
-	it("should return null if chain ends", () => {
-		const win = {} as Window;
-		(win as { parent: Window }).parent = win;
-
-		expect(getAncestor(win, 5)).toBeNull();
-	});
-});
-
-describe("getDistanceToConsumer", () => {
-	it("should return 0 for same window", () => {
-		const win = {} as Window;
-		expect(getDistanceToConsumer(win, win)).toBe(0);
-	});
-
-	it("should return 1 for direct consumer", () => {
-		const consumerWin = {} as Window;
-		(consumerWin as { parent: Window }).parent = consumerWin;
-
-		const win = { parent: consumerWin } as Window;
-
-		expect(getDistanceToConsumer(win, consumerWin)).toBe(1);
-	});
-
-	it("should return -1 if consumer not found", () => {
-		const win = {} as Window;
-		(win as { parent: Window }).parent = win;
-
-		const otherWin = {} as Window;
-
-		expect(getDistanceToConsumer(win, otherWin)).toBe(-1);
-	});
-});
-
-describe("focusWindow", () => {
-	it("should call focus on window", () => {
-		const win = { focus: vi.fn() } as unknown as Window;
-
-		focusWindow(win);
-
-		expect(win.focus).toHaveBeenCalled();
-	});
-
-	it("should not throw on cross-origin error", () => {
-		const win = {
-			focus() {
-				throw new Error("Cross-origin");
-			},
-		} as unknown as Window;
-
-		expect(() => focusWindow(win)).not.toThrow();
-	});
-});
-
-describe("closeWindow", () => {
-	it("should call close on window", () => {
-		const win = { close: vi.fn() } as unknown as Window;
-
-		closeWindow(win);
-
-		expect(win.close).toHaveBeenCalled();
-	});
-
-	it("should not throw on cross-origin error", () => {
-		const win = {
-			close() {
-				throw new Error("Cross-origin");
-			},
-		} as unknown as Window;
-
-		expect(() => closeWindow(win)).not.toThrow();
-	});
-});
-
-describe("getFrames", () => {
-	it("should return empty array for window with no frames", () => {
-		const win = { frames: { length: 0 } } as unknown as Window;
-
-		expect(getFrames(win)).toEqual([]);
-	});
-
-	it("should return array of frames", () => {
-		const frame1 = {} as Window;
-		const frame2 = {} as Window;
-		const win = {
-			frames: {
-				length: 2,
-				0: frame1,
-				1: frame2,
-			},
-		} as unknown as Window;
-
-		const frames = getFrames(win);
-
-		expect(frames).toHaveLength(2);
-		expect(frames[0]).toBe(frame1);
-		expect(frames[1]).toBe(frame2);
-	});
-
-	it("should return empty array on cross-origin error", () => {
-		const win = {
-			get frames() {
-				throw new Error("Cross-origin");
-			},
-		} as unknown as Window;
-
-		expect(getFrames(win)).toEqual([]);
 	});
 });

@@ -96,14 +96,14 @@ function waitForNextTick(): Promise<void> {
 	});
 }
 
-export interface FormSubmissionRecord {
+interface FormSubmissionRecord {
 	action: string;
 	target: string;
 	method: string;
 	fields: Record<string, string>;
 }
 
-export interface PopupOpenRecord {
+interface PopupOpenRecord {
 	url: string;
 	name: string;
 	features: string;

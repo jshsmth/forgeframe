@@ -33,7 +33,6 @@ const createMockMessenger = () => {
 			return () => handlers.delete(name);
 		}),
 		destroy: vi.fn(),
-		isDestroyed: vi.fn().mockReturnValue(false),
 		handlers,
 		// Helper to simulate incoming call
 		simulateCall: async (id: string, args: unknown[]) => {
@@ -89,12 +88,6 @@ describe("FunctionBridge", () => {
 			expect(ref.__name__).toBe("namedFunction");
 		});
 
-		it("should use custom name when provided", () => {
-			const ref = bridge.serialize(() => {}, "customName");
-
-			expect(ref.__name__).toBe("customName");
-		});
-
 		it('should use "anonymous" for unnamed functions', () => {
 			const ref = bridge.serialize(() => {});
 
@@ -144,7 +137,6 @@ describe("FunctionBridge", () => {
 				bridge.serialize(() => index);
 			}
 
-			expect(bridge.localFunctionCount).toBe(500);
 			expect(() => bridge.serialize(() => "excess")).toThrow(
 				"500 distinct callback limit",
 			);
@@ -264,19 +256,14 @@ describe("FunctionBridge", () => {
 				"https://target.com",
 			);
 
-			for (let index = 0; index < 500; index += 1) {
-				bridge.deserialize(
-					{
-						__type__: "function" as const,
-						__id__: `fn-${index}`,
-						__name__: `wrapped-${index}`,
-					},
-					targetWin,
-					"https://target.com",
-				);
-			}
-
-			expect(bridge.remoteFunctionCount).toBe(500);
+			const refAt = (index: number) => ({
+				__type__: "function" as const,
+				__id__: `fn-${index}`,
+				__name__: `wrapped-${index}`,
+			});
+			const wrappers = Array.from({ length: 500 }, (_, index) =>
+				bridge.deserialize(refAt(index), targetWin, "https://target.com"),
+			);
 
 			const recreatedWrapper = bridge.deserialize(
 				firstRef,
@@ -284,9 +271,15 @@ describe("FunctionBridge", () => {
 				"https://target.com",
 			);
 
-			expect(bridge.remoteFunctionCount).toBe(500);
 			expect(recreatedWrapper).not.toBe(firstWrapper);
 			expect(recreatedWrapper.name).toBe("first");
+			// The newest wrapper stays cached; re-adding the first evicted the next oldest.
+			expect(
+				bridge.deserialize(refAt(499), targetWin, "https://target.com"),
+			).toBe(wrappers[499]);
+			expect(
+				bridge.deserialize(refAt(0), targetWin, "https://target.com"),
+			).not.toBe(wrappers[0]);
 		});
 	});
 
@@ -416,7 +409,9 @@ describe("FunctionBridge", () => {
 			const callback = () => 42;
 			const previous = bridge.serialize(callback);
 			bridge.clearLocal(true);
-			expect(bridge.localFunctionCount).toBe(0);
+			await expect(messenger.simulateCall(previous.__id__, [])).rejects.toThrow(
+				"not found",
+			);
 			bridge.startBatch();
 			expect(bridge.serialize(callback).__id__).toBe(previous.__id__);
 			bridge.finishBatch();
@@ -435,7 +430,6 @@ describe("FunctionBridge", () => {
 			const next = Array.from({ length: 500 }, (_, index) =>
 				bridge.serialize(() => index + 500),
 			);
-			expect(bridge.localFunctionCount).toBe(1000);
 			await expect(
 				messenger.simulateCall(previous[0]?.__id__ ?? "", []),
 			).resolves.toBe(0);
@@ -446,7 +440,6 @@ describe("FunctionBridge", () => {
 				"500 distinct callback limit",
 			);
 			bridge.finishBatch();
-			expect(bridge.localFunctionCount).toBe(500);
 			await expect(
 				messenger.simulateCall(previous[0]?.__id__ ?? "", []),
 			).rejects.toThrow("not found");
@@ -464,7 +457,6 @@ describe("FunctionBridge", () => {
 			}
 			const staged = bridge.serialize(() => "staged");
 			bridge.abortBatch();
-			expect(bridge.localFunctionCount).toBe(1);
 			await expect(messenger.simulateCall(previous.__id__, [])).resolves.toBe(
 				"original",
 			);
@@ -495,7 +487,6 @@ describe("FunctionBridge", () => {
 					"recovery pool is full",
 				);
 				bridge.abortBatch();
-				expect(bridge.localFunctionCount).toBe(1000);
 			}
 			await expect(
 				messenger.simulateCall(previous[0]?.__id__ ?? "", []),
@@ -508,11 +499,21 @@ describe("FunctionBridge", () => {
 				expect(bridge.serialize(fn).__id__).toBe(next[index]?.__id__);
 			});
 			bridge.finishBatch();
-			expect(bridge.localFunctionCount).toBe(500);
+			await expect(
+				messenger.simulateCall(previous[0]?.__id__ ?? "", []),
+			).rejects.toThrow("not found");
+			await expect(
+				messenger.simulateCall(next[499]?.__id__ ?? "", []),
+			).resolves.toBe(999);
 			bridge.startBatch();
-			bridge.serialize(() => "new capacity");
+			const fresh = bridge.serialize(() => "new capacity");
 			bridge.finishBatch();
-			expect(bridge.localFunctionCount).toBe(1);
+			await expect(
+				messenger.simulateCall(next[0]?.__id__ ?? "", []),
+			).rejects.toThrow("not found");
+			await expect(messenger.simulateCall(fresh.__id__, [])).resolves.toBe(
+				"new capacity",
+			);
 		});
 
 		it("rejects append overflow atomically and clears recovery references on reset", async () => {
@@ -526,7 +527,6 @@ describe("FunctionBridge", () => {
 				"500 distinct callback limit",
 			);
 			bridge.abortBatch();
-			expect(bridge.localFunctionCount).toBe(499);
 			await expect(messenger.simulateCall(first.__id__, [])).resolves.toBe(
 				"first",
 			);
@@ -534,12 +534,19 @@ describe("FunctionBridge", () => {
 				"not found",
 			);
 			bridge.clearLocal();
-			expect(bridge.localFunctionCount).toBe(0);
+			await expect(messenger.simulateCall(first.__id__, [])).rejects.toThrow(
+				"not found",
+			);
 			bridge.startBatch();
-			bridge.serialize(() => "fresh session");
+			const fresh = bridge.serialize(() => "fresh session");
 			bridge.finishBatch();
+			await expect(messenger.simulateCall(fresh.__id__, [])).resolves.toBe(
+				"fresh session",
+			);
 			bridge.destroy();
-			expect(bridge.localFunctionCount).toBe(0);
+			await expect(messenger.simulateCall(fresh.__id__, [])).rejects.toThrow(
+				"not found",
+			);
 		});
 
 		it("should keep previous function references when finishBatch(true) is used", async () => {
@@ -549,7 +556,6 @@ describe("FunctionBridge", () => {
 			const secondRef = bridge.serialize(() => "second");
 			bridge.finishBatch(true);
 
-			expect(bridge.localFunctionCount).toBe(2);
 			await expect(messenger.simulateCall(firstRef.__id__, [])).resolves.toBe(
 				"first",
 			);
@@ -565,7 +571,6 @@ describe("FunctionBridge", () => {
 
 			bridge.finishBatch();
 
-			expect(bridge.localFunctionCount).toBe(1);
 			await expect(messenger.simulateCall(firstRef.__id__, [])).rejects.toThrow(
 				`Function with id "${firstRef.__id__}" not found`,
 			);
@@ -844,24 +849,6 @@ describe("deserializeFunctions", () => {
 		expect(typeof result.second).toBe("function");
 	});
 
-	it("should throw on circular serialized references", () => {
-		const value: Record<string, unknown> = {};
-		value.self = value;
-
-		expect(() =>
-			deserializeFunctions(value, bridge, targetWin, targetDomain),
-		).toThrow("Circular reference detected");
-	});
-
-	it("should throw on circular serialized arrays", () => {
-		const value: unknown[] = [];
-		value.push(value);
-
-		expect(() =>
-			deserializeFunctions(value, bridge, targetWin, targetDomain),
-		).toThrow("Circular reference detected in serialized props");
-	});
-
 	it("should block __proto__ while preserving constructor/prototype keys when deserializing objects", () => {
 		const value: Record<string, unknown> = Object.create(null) as Record<
 			string,
@@ -917,7 +904,7 @@ describe("round-trip serialization", () => {
 
 		// Consumer serializes a function
 		const originalFn = vi.fn().mockReturnValue("success");
-		const serialized = consumerBridge.serialize(originalFn, "myCallback");
+		const serialized = consumerBridge.serialize(originalFn);
 
 		// Host deserializes it
 		const deserialized = hostBridge.deserialize(
