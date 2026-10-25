@@ -23,8 +23,6 @@ import type { DomainMatcher } from "./utility";
 export interface PropContext<P> {
 	/** Current props values */
 	props: P;
-	/** Component state object */
-	state: Record<string, unknown>;
 	/** Close the component */
 	close: () => Promise<void>;
 	/** Focus the component */

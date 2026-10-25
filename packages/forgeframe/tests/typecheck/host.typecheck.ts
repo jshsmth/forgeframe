@@ -117,3 +117,13 @@ create({
 	// @ts-expect-error the allowlist moved to initHost(Component, { consumerOrigins }).
 	allowedConsumerDomains: ["https://shop.example.com"],
 });
+
+if (host) {
+	const consumerProps: RemoteValue<PaymentProps> =
+		host.hostProps.consumer.props;
+	void consumerProps;
+	// @ts-expect-error consumer.export was removed; use hostProps.export().
+	void host.hostProps.consumer.export({ token: "abc" });
+	// @ts-expect-error nested children were removed; import child components directly.
+	void host.hostProps.children;
+}

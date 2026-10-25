@@ -15,7 +15,7 @@ import {
 } from "@/core/host";
 import * as hostSecurity from "@/core/host/security";
 import { buildWindowName } from "@/window/name-payload";
-import type { HostComponentRef, WindowNamePayload } from "@/window/types";
+import type { WindowNamePayload } from "@/window/types";
 import { requireValue } from "../require-value";
 
 type HandlerSource = Parameters<MessageHandler>[1];
@@ -237,26 +237,6 @@ describe("Host branch coverage and edge paths", () => {
 			window.location.origin,
 			MESSAGE_NAME.GET_SIBLINGS,
 			{ options: { anyConsumer: true } },
-		);
-	});
-
-	it("should warn and skip nested components that fail creation", async () => {
-		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-		const invalidChildren: Record<string, HostComponentRef> = {
-			BrokenChild: {
-				tag: "InvalidTag",
-				url: "https://host.example.com/broken",
-			},
-		};
-
-		const host = await createBootstrappedHost({
-			props: {},
-			children: invalidChildren,
-		});
-
-		expect(host.hostProps.children).toBeUndefined();
-		expect(warnSpy).toHaveBeenCalledWith(
-			'Nested component "BrokenChild" (InvalidTag) must be registered in the host bundle before hostProps is initialized',
 		);
 	});
 

@@ -550,7 +550,7 @@ test("playground test lab completes every automatic scenario and reruns cleanly"
 		await expect(run).toBeEnabled({ timeout: 90_000 });
 		const failures = await page.locator(".result.fail").allTextContents();
 		expect(failures).toEqual([]);
-		await expect(page.locator(".result.pass")).toHaveCount(75);
+		await expect(page.locator(".result.pass")).toHaveCount(72);
 		const names = await page.locator(".result-name").allTextContents();
 		expect(
 			[...new Set(names.map((name) => name.split(": ")[0]))].sort(),

@@ -19,7 +19,6 @@ import type { ContainerTemplate, PrerenderTemplate } from "./templates";
 import type {
 	Dimensions,
 	DomainMatcher,
-	EligibilityResult,
 	IframeAttributes,
 	IframeStyles,
 } from "./utility";
@@ -191,40 +190,6 @@ type ConsumerPropsUpdateForAlternate<P, I, SchemaInputs> =
 export type ConsumerPropsUpdate<P, I = P, SchemaInputs = I> = I extends unknown
 	? ConsumerPropsUpdateForAlternate<P, I, SchemaInputs>
 	: never;
-
-/**
- * Function that returns nested components for composition.
- *
- * @typeParam P - The props type for the consumer component
- *
- * @remarks
- * Nested components can be rendered within the host component's iframe/popup.
- *
- * @param props - Object containing the consumer's props
- * @returns Map of nested component names to ForgeFrameComponent instances
- *
- * @public
- */
-export type ChildrenDefinition<P = Record<string, unknown>> = (props: {
-	props: P;
-}) => Record<string, ForgeFrameComponentReference>;
-
-declare const forgeFrameComponentReferenceBrand: unique symbol;
-
-/**
- * Type-erased reference to a component definition used for composition.
- *
- * @remarks
- * This surface intentionally exposes only the members required to identify a
- * ForgeFrame component. It allows a children map to contain components with
- * different prop and export types without weakening their callable APIs.
- *
- * @public
- */
-export interface ForgeFrameComponentReference {
-	/** Identifies component factories created by ForgeFrame. @internal */
-	readonly [forgeFrameComponentReferenceBrand]: true;
-}
 
 /** A schema-backed definition map from which `create()` can infer props. @internal */
 export type InferablePropsDefinition = Record<
@@ -408,11 +373,6 @@ export interface ComponentOptions<
 	prerenderTemplate?: PrerenderTemplate<P>;
 
 	/**
-	 * Function to check if component is eligible to render.
-	 */
-	eligible?: (opts: { props: P }) => EligibilityResult;
-
-	/**
 	 * Function to validate props before rendering.
 	 */
 	validate?: (opts: { props: P }) => void;
@@ -441,11 +401,6 @@ export interface ComponentOptions<
 	 * @defaultValue 10000
 	 */
 	timeout?: number;
-
-	/**
-	 * Nested components that can be rendered within this component.
-	 */
-	children?: ChildrenDefinition<P>;
 }
 
 /**
@@ -489,24 +444,6 @@ export interface ForgeFrameComponentInstance<
 	 * @returns Promise that resolves when rendering is complete
 	 */
 	render(container: string | HTMLElement, context?: ContextType): Promise<void>;
-
-	/**
-	 * Render into a container using the current window.
-	 *
-	 * @remarks
-	 * Passing a window other than the current `window` throws because
-	 * cross-window rendering is not currently implemented.
-	 *
-	 * @param win - Target window
-	 * @param container - CSS selector or element to render into
-	 * @param context - Override the default context
-	 * @returns Promise that resolves when rendering is complete
-	 */
-	renderTo(
-		win: Window,
-		container: string | HTMLElement,
-		context?: ContextType,
-	): Promise<void>;
 
 	/**
 	 * Close and destroy the component.
@@ -556,28 +493,9 @@ export interface ForgeFrameComponentInstance<
 	updateProps(props: ConsumerPropsUpdate<P, I, SchemaInputs>): Promise<void>;
 
 	/**
-	 * Create a copy of this instance with the same props.
-	 *
-	 * @returns New component instance
-	 */
-	clone(): ForgeFrameComponentInstance<P, X, I, SchemaInputs>;
-
-	/**
-	 * Check if the component is eligible to render.
-	 *
-	 * @returns Whether the component can render
-	 */
-	isEligible(): boolean;
-
-	/**
 	 * Event emitter for subscribing to lifecycle events.
 	 */
 	event: EventEmitterInterface;
-
-	/**
-	 * Mutable state object for the component.
-	 */
-	state: Record<string, unknown>;
 
 	/**
 	 * Data exported from the host component via `hostProps.export()`.
@@ -621,7 +539,7 @@ export interface ForgeFrameComponent<
 	I = P,
 	RequireProps extends boolean = false,
 	SchemaInputs = I,
-> extends ForgeFrameComponentReference {
+> {
 	/**
 	 * Create a new component instance with props.
 	 *
@@ -633,34 +551,18 @@ export interface ForgeFrameComponent<
 	): ForgeFrameComponentInstance<P, X, I, SchemaInputs>;
 
 	/**
-	 * All active instances of this component.
-	 */
-	instances: ForgeFrameComponentInstance<P, X, I, SchemaInputs>[];
-}
-
-/**
- * Consumer namespace available in host via `hostProps.consumer`.
- *
- * @typeParam P - The props type for the component
- *
- * @remarks
- * Provides bidirectional communication from host to consumer.
- *
- * @public
- */
-export interface ConsumerNamespace<P = Record<string, unknown>> {
-	/**
-	 * Access consumer's props.
-	 */
-	props: RemoteValue<P>;
-
-	/**
-	 * Export data/methods from consumer context.
+	 * Live instances of this component, in creation order.
 	 *
-	 * @param data - Data to export
-	 * @returns Promise that resolves when export is complete
+	 * @remarks
+	 * Each read returns a new frozen snapshot. A held snapshot does not update,
+	 * so read it again after closing instances.
 	 */
-	export: <T>(data: T) => Promise<void>;
+	readonly instances: readonly ForgeFrameComponentInstance<
+		P,
+		X,
+		I,
+		SchemaInputs
+	>[];
 }
 
 /**
@@ -791,9 +693,15 @@ export interface HostPropsBuiltins<P = Record<string, unknown>> {
 	export: <X>(exports: X) => Promise<void>;
 
 	/**
-	 * Consumer namespace for bidirectional communication.
+	 * The consumer's current prop snapshot.
+	 *
+	 * @remarks
+	 * The object keeps its identity; `props` is replaced on every prop update.
 	 */
-	consumer: ConsumerNamespace<P>;
+	consumer: {
+		/** The consumer's props, including those the host did not declare. */
+		readonly props: RemoteValue<P>;
+	};
 
 	/**
 	 * Get peer component instances (other ForgeFrame components from the same consumer).
@@ -814,11 +722,6 @@ export interface HostPropsBuiltins<P = Record<string, unknown>> {
 	getPeerInstances: (
 		options?: GetPeerInstancesOptions,
 	) => Promise<SiblingInfo[]>;
-
-	/**
-	 * Nested components available for rendering.
-	 */
-	children?: Record<string, ForgeFrameComponent>;
 }
 
 /**

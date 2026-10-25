@@ -58,7 +58,6 @@ export interface ConsumerTransportHandlers<X> {
 	onHide: () => Promise<void>;
 	onError: (error: Error) => void;
 	onExport: (exports: RemoteValue<X>) => void;
-	onConsumerExport: (data: unknown) => void;
 	onGetSiblings: (
 		request: ConsumerSiblingRequest,
 	) => SiblingInfo[] | Promise<SiblingInfo[]>;
@@ -434,11 +433,6 @@ export class ConsumerTransport<
 				return { success: true };
 			},
 		);
-
-		this.onHostControl<unknown>(MESSAGE_NAME.CONSUMER_EXPORT, async (data) => {
-			handlers.onConsumerExport(data);
-			return { success: true };
-		});
 
 		this.onHostControl<{ options?: GetPeerInstancesOptions } | undefined>(
 			MESSAGE_NAME.GET_SIBLINGS,

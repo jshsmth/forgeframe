@@ -343,8 +343,9 @@ describe("Explicit host start-up", () => {
 			const host = activeHarness.bootstrapHost(Component);
 			if (!host) throw new Error("Expected a host");
 			const { hostProps } = host;
+			// `children` stays reserved, but hostProps no longer carries it.
 			expect(Object.keys(hostProps).sort()).toEqual(
-				[...HOST_PROPS_BUILTIN_KEYS].sort(),
+				[...HOST_PROPS_BUILTIN_KEYS].filter((key) => key !== "children").sort(),
 			);
 			expect(hostProps.amount).toBeUndefined();
 

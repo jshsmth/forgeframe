@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CONTEXT, EVENT } from "@/constants";
 import { ConsumerComponent } from "@/core/consumer";
 import { emitConsumerError } from "@/core/consumer/callbacks";
-import { buildNestedHostRefs } from "@/core/consumer/child-refs";
 import { EventEmitter } from "@/events/emitter";
 import { prop } from "@/props/prop";
 import * as iframeRender from "@/render/iframe";
@@ -174,46 +173,6 @@ describe("Consumer branch coverage and edge paths", () => {
 
 		expect(patterns).toHaveLength(1);
 		expect(patterns[0].test("https://api.trusted.example.com")).toBe(true);
-	});
-
-	it("should delegate renderTo to render", async () => {
-		const consumer = createConsumer();
-		const renderSpy = vi.spyOn(consumer, "render").mockResolvedValue(undefined);
-		const container = document.createElement("div");
-
-		await (
-			consumer as unknown as {
-				renderTo: (
-					win: Window,
-					container?: string | HTMLElement,
-					context?: "iframe" | "popup",
-				) => Promise<void>;
-			}
-		).renderTo(window, container, CONTEXT.POPUP);
-
-		expect(renderSpy).toHaveBeenCalledWith(container, CONTEXT.POPUP);
-	});
-
-	it("should throw when renderTo receives a different window", async () => {
-		const consumer = createConsumer();
-		const renderSpy = vi.spyOn(consumer, "render").mockResolvedValue(undefined);
-		const otherWindow = {} as Window;
-
-		await expect(
-			(
-				consumer as unknown as {
-					renderTo: (
-						win: Window,
-						container?: string | HTMLElement,
-						context?: "iframe" | "popup",
-					) => Promise<void>;
-				}
-			).renderTo(otherWindow),
-		).rejects.toThrow(
-			"Cross-window renderTo is not supported; pass the current window",
-		);
-
-		expect(renderSpy).not.toHaveBeenCalled();
 	});
 
 	it("should focus iframe and popup contexts through dedicated render helpers", async () => {
@@ -524,20 +483,6 @@ describe("Consumer branch coverage and edge paths", () => {
 		expect(resolved).toBe(container);
 	});
 
-	it("should throw when eligibility check returns false", () => {
-		const consumer = createConsumer({
-			eligible: () => ({ eligible: false, reason: "Account blocked" }),
-		});
-
-		expect(() =>
-			(
-				consumer as unknown as {
-					checkEligibility: () => void;
-				}
-			).checkEligibility(),
-		).toThrow("Component not eligible: Account blocked");
-	});
-
 	it("should invoke close/focus callbacks exposed to prerender and container templates", async () => {
 		const closeSpy = vi.fn().mockResolvedValue(undefined);
 		const focusSpy = vi.fn().mockResolvedValue(undefined);
@@ -780,23 +725,6 @@ describe("Consumer branch coverage and edge paths", () => {
 		).buildUrl("https://host.example.com/path?mode=embedded");
 
 		expect(url).toContain("mode=embedded&token=abc123");
-	});
-
-	it("should throw when child component metadata cannot be resolved", () => {
-		const consumer = createConsumer({
-			children: () => ({
-				InvalidChild: (() => undefined) as unknown as (
-					...args: unknown[]
-				) => unknown,
-			}),
-		});
-
-		expect(() =>
-			buildNestedHostRefs(
-				getInternals(consumer).options,
-				getInternals(consumer).propsPipeline.props,
-			),
-		).toThrow('Nested component "InvalidChild" is missing component metadata');
 	});
 
 	it("should close popup windows and remove prerender elements during destroy", async () => {

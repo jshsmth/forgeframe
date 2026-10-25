@@ -139,24 +139,23 @@ export function classifyWindowNamePayload(
 }
 
 /**
- * Checks if the specified window is a ForgeFrame host window.
+ * Checks if the specified window carries a decodable ForgeFrame payload.
  *
  * @param win - The window to check. Defaults to the current window.
- * @returns `true` if the window's name starts with the ForgeFrame prefix, `false` otherwise.
+ * @returns `true` if the window's name holds a ForgeFrame payload of any
+ * protocol version, `false` otherwise.
  *
  * @remarks
- * A ForgeFrame host window is identified by having a window name that starts
- * with the ForgeFrame prefix, whatever protocol its payload uses. This
- * function safely handles cross-origin errors.
+ * Older and newer protocols count, so their pages reach `initHost()` and its
+ * upgrade error. A name with the ForgeFrame prefix whose payload does not
+ * decode to valid channel metadata does not count. This function safely
+ * handles cross-origin errors.
  *
  * @internal
  */
 export function isForgeFrameWindow(win: Window = window): boolean {
-	try {
-		return win.name.startsWith(WINDOW_NAME_PREFIX);
-	} catch {
-		return false;
-	}
+	const classification = readWindowNamePayload(win);
+	return classification !== null && classification.kind !== "invalid";
 }
 
 /**

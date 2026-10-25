@@ -8,11 +8,6 @@
  * host-side (embedded page) functionality.
  */
 
-export {
-	create,
-	destroy,
-	destroyAll,
-	destroyByTag,
-} from "./component";
+export { closeAll, create } from "./component";
 
 export { initHost, isHost } from "./host";

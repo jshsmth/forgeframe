@@ -2,12 +2,14 @@
  * Compile-time assertions for schema-backed component definitions.
  *
  * Covers inferred and explicit props, third-party Standard Schemas, wrapped
- * definitions, optional/default values, callbacks, and typed children.
+ * definitions, optional/default values, callbacks, read-only instance
+ * tracking, and the removed zoid-era APIs.
  */
 import * as v from "valibot";
 import { z } from "zod";
 import {
 	type ComponentOptions,
+	closeAll,
 	create,
 	createReactComponent,
 	type ForgeFrameComponent,
@@ -540,7 +542,7 @@ void explicitlyTypedAliasedTransformComponent({ amount: "2" });
 void explicitlyTypedAliasedTransformInstance.updateProps({ amount: "3" });
 void aliasedTransformInstance.updateProps({ amount: "3" });
 void aliasedTransformInstance.updateProps({ legacyAmount: "3" });
-void aliasedTransformInstance.clone().updateProps({ amount: "3" });
+void AliasedTransformComponent({ amount: "2" }).updateProps({ amount: "3" });
 void AliasedTransformComponent.instances[0]?.updateProps({ amount: "3" });
 
 const AliasedTransformReactComponent = createReactComponent(
@@ -582,8 +584,8 @@ void AliasedTransformComponent({ amount: 2 });
 // @ts-expect-error updates must use a canonical or alias-facing schema input
 void aliasedTransformInstance.updateProps({ amount: 3 });
 
-// @ts-expect-error clones retain canonical schema input types
-void aliasedTransformInstance.clone().updateProps({ amount: 3 });
+// @ts-expect-error each factory instance retains canonical schema input types
+void AliasedTransformComponent({ amount: "2" }).updateProps({ amount: 3 });
 
 // @ts-expect-error tracked instances retain canonical schema input types
 void AliasedTransformComponent.instances[0]?.updateProps({ amount: 3 });
@@ -737,39 +739,6 @@ void CompositeInputComponent({
 	recordValue: {},
 });
 
-const ChildComponent = create({
-	tag: "typed-child-component",
-	url: "https://example.com/child",
-	props: {
-		childLabel: prop.string(),
-	},
-});
-
-const ParentComponent = create({
-	tag: "typed-parent-component",
-	url: "https://example.com/parent",
-	props: {
-		parentLabel: prop.string(),
-	},
-	children: () => ({ ChildComponent }),
-});
-
-const fakeComponentReference = Object.assign(() => undefined, {
-	instances: [],
-});
-
-create({
-	tag: "invalid-structural-child-component",
-	url: "https://example.com/invalid-structural-child",
-	// @ts-expect-error children must be real ForgeFrame component factories
-	children: () => ({
-		Fake: fakeComponentReference,
-	}),
-});
-
-void ParentComponent({ parentLabel: "parent" });
-void ChildComponent({ childLabel: "child" });
-
 createReactComponent(InferredComponent, { React: {} as never });
 withReactComponent({} as never)(InferredComponent);
 
@@ -814,3 +783,80 @@ create({
 		},
 	},
 });
+
+const TrackedComponent = create({
+	tag: "typed-tracked-component",
+	url: "https://example.com/tracked",
+	props: { label: prop.string() },
+});
+
+const instancesSnapshot: readonly ForgeFrameComponentInstance<
+	{ label: string },
+	unknown
+>[] = TrackedComponent.instances;
+void instancesSnapshot;
+// @ts-expect-error instances is a read-only snapshot; close instances instead.
+TrackedComponent.instances.push(TrackedComponent({ label: "extra" }));
+// @ts-expect-error instances cannot be reassigned.
+TrackedComponent.instances = [];
+const closingAll: Promise<void> = closeAll();
+void closingAll;
+
+const removedApiInstance = TrackedComponent({ label: "removed" });
+// @ts-expect-error renderTo was removed; call render(container, context).
+void removedApiInstance.renderTo(window, "#container");
+// @ts-expect-error clone was removed; call the factory again with explicit props.
+void removedApiInstance.clone();
+// @ts-expect-error isEligible was removed; throw from the component validate option.
+void removedApiInstance.isEligible();
+// @ts-expect-error instance.state was removed; keep per-instance state in your code.
+void removedApiInstance.state;
+
+create({
+	tag: "typed-removed-eligible",
+	url: "https://example.com/removed-eligible",
+	// @ts-expect-error eligible was removed; throw from validate instead.
+	eligible: () => ({ eligible: true }),
+});
+create({
+	tag: "typed-removed-children",
+	url: "https://example.com/removed-children",
+	// @ts-expect-error children was removed; import child components in the host.
+	children: () => ({ TrackedComponent }),
+});
+create({
+	tag: "typed-removed-prop-context-state",
+	url: "https://example.com/removed-state",
+	props: {
+		label: {
+			schema: prop.string(),
+			// @ts-expect-error PropContext.state was removed.
+			default: (ctx) => String(ctx.state),
+		},
+	},
+});
+
+type PublicApi = typeof import("../../src");
+// @ts-expect-error destroy(instance) was removed; call instance.close().
+type RemovedDestroy = PublicApi["destroy"];
+// @ts-expect-error destroyByTag was removed; close Component.instances instead.
+type RemovedDestroyByTag = PublicApi["destroyByTag"];
+// @ts-expect-error destroyAll was replaced by closeAll().
+type RemovedDestroyAll = PublicApi["destroyAll"];
+// @ts-expect-error ChildrenDefinition was removed with nested children.
+type RemovedChildrenDefinition = import("../../src").ChildrenDefinition;
+// @ts-expect-error ConsumerNamespace was removed; hostProps.consumer is { props }.
+type RemovedConsumerNamespace = import("../../src").ConsumerNamespace;
+// @ts-expect-error EligibilityResult was removed with eligible.
+type RemovedEligibilityResult = import("../../src").EligibilityResult;
+// @ts-expect-error ForgeFrameComponentReference was removed.
+type RemovedReference = import("../../src").ForgeFrameComponentReference;
+export type RemovedPublicApi = [
+	RemovedDestroy,
+	RemovedDestroyByTag,
+	RemovedDestroyAll,
+	RemovedChildrenDefinition,
+	RemovedConsumerNamespace,
+	RemovedEligibilityResult,
+	RemovedReference,
+];

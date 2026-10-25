@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clearComponents, create, destroyAll } from "@/core/component";
+import { clearComponents, closeAll, create } from "@/core/component";
 import { ConsumerComponent } from "@/core/consumer";
 import { HOST_PROPS_BUILTIN_KEYS } from "@/core/host/builtin-keys";
 import { createDeferred } from "@/utils/promise";
@@ -24,6 +24,7 @@ import {
 	setCurrentConfig,
 	setInstance,
 } from "../../../playground/consumer/state";
+import { checkRenderValidation } from "../render-validation";
 
 vi.mock("../../../playground/consumer/logger", () => ({
 	log: vi.fn(),
@@ -36,7 +37,7 @@ beforeEach(() => {
 	document.body.append(elements.propsBar);
 });
 afterEach(async () => {
-	await destroyAll();
+	await closeAll();
 	clearComponents();
 	componentCache.clear();
 	setInstance(null);
@@ -323,17 +324,21 @@ describe("playground prop editor", () => {
 		};
 		setCurrentConfig(config);
 		renderPropsBar(config);
-		let eligible = false;
+		let validationError: unknown = null;
 		const render = vi
 			.spyOn(ConsumerComponent.prototype, "render")
 			.mockImplementation(async function (
 				this: ConsumerComponent<Record<string, unknown>>,
 			) {
-				eligible = this.isEligible();
+				try {
+					checkRenderValidation(this);
+				} catch (error) {
+					validationError = error;
+				}
 			});
 		await renderComponent();
 		expect(render).toHaveBeenCalledOnce();
-		expect(eligible).toBe(true);
+		expect(validationError).toBeNull();
 		expect(currentPropValues.items).toEqual([1]);
 		expect(currentPropValues.record).toEqual({ count: 2 });
 		expect(currentPropValues.onRun).toBeTypeOf("function");
@@ -351,13 +356,12 @@ describe("playground prop editor", () => {
 			props: { second: { type: "number" } },
 		});
 		expect(changed).not.toBe(first);
-		expect(
-			changed({
-				second: 2,
-				onGreet: () => {},
-				onClose: () => {},
-				onError: () => {},
-			}).isEligible(),
-		).toBe(true);
+		const instance = changed({
+			second: 2,
+			onGreet: () => {},
+			onClose: () => {},
+			onError: () => {},
+		});
+		expect(() => checkRenderValidation(instance)).not.toThrow();
 	});
 });

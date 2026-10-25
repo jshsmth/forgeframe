@@ -19,13 +19,6 @@ const HOST_URL = import.meta.env.VITE_HOST_URL || "https://localhost:5174/";
 const NESTED_CHILD_TAG = "playground-browser-nested-child";
 let tagCounter = 0;
 
-const NestedChildComponent = create({
-	tag: NESTED_CHILD_TAG,
-	url: `${HOST_URL}?scenario=nested-child`,
-	dimensions: { width: "100%", height: 240 },
-	props: { scenario: prop.string().optional() },
-});
-
 export async function runScenario(
 	scenario: ScenarioId,
 	sandbox: HTMLElement,
@@ -479,7 +472,6 @@ async function runNestedScenario(sandbox: HTMLElement): Promise<TestResult[]> {
 		url: HOST_URL,
 		dimensions: { width: "100%", height: 620 },
 		props: { scenario: prop.string() },
-		children: () => ({ Child: NestedChildComponent }),
 	});
 	const instance = ParentComponent({ scenario: "nested-parent" });
 
@@ -488,7 +480,7 @@ async function runNestedScenario(sandbox: HTMLElement): Promise<TestResult[]> {
 		await waitFor(() => instance.exports?.nestedReady === true, 6000);
 		results.push(
 			assertResult(
-				"Host resolves the child from its local registry",
+				"Host renders its own imported child component",
 				instance.exports?.childTag === NESTED_CHILD_TAG,
 				`resolved child tag: ${String(instance.exports?.childTag)}`,
 			),

@@ -11,12 +11,14 @@ import {
 	serializeMessage,
 } from "@/communication/protocol";
 import { CONTEXT, EVENT, MESSAGE_NAME } from "@/constants";
-import { clearComponents, create } from "@/core/component";
+import { clearComponents, closeAll, create } from "@/core/component";
 import { ConsumerComponent } from "@/core/consumer";
 import { PROP_RESET } from "@/core/consumer/prop-update";
+import { getSiblingInstances } from "@/core/consumer/siblings";
 import { prop } from "@/props/prop";
 import * as popupRender from "@/render/popup";
-import { setVerifiedHostDomain } from "../peer-host-domain";
+import { CleanupManager } from "@/utils/cleanup";
+import { PEER_HOST_DOMAIN, setVerifiedHostDomain } from "../peer-host-domain";
 import { requireValue } from "../require-value";
 
 const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
@@ -300,7 +302,6 @@ describe("Consumer lifecycle behavior", () => {
 			),
 		).resolves.toEqual({
 			props: { secret: "same-origin-only" },
-			children: undefined,
 		});
 	});
 
@@ -643,32 +644,6 @@ describe("Consumer lifecycle behavior", () => {
 		await flushMessages();
 
 		expect(consumer.exports).toEqual({ ready: true });
-		expect(readResponseData(hostWindow)).toEqual({ success: true });
-	});
-
-	it("should ignore spoofed CONSUMER_EXPORT from a different trusted window and accept the opened host window", async () => {
-		const consumer = createConsumer();
-		const internal = getInternals(consumer);
-		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
-		const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
-		attachOpenedHost(internal, hostWindow);
-
-		dispatchHostMessage(MESSAGE_NAME.CONSUMER_EXPORT, spoofedWindow, {
-			data: { token: "spoofed" },
-			claimedUid: consumer.uid,
-		});
-		await flushMessages();
-
-		expect(consumer.consumerExports).toBeUndefined();
-		expect(readResponseData(spoofedWindow)).toEqual({ success: false });
-
-		dispatchHostMessage(MESSAGE_NAME.CONSUMER_EXPORT, hostWindow, {
-			data: { token: "abc" },
-			claimedUid: consumer.uid,
-		});
-		await flushMessages();
-
-		expect(consumer.consumerExports).toEqual({ token: "abc" });
 		expect(readResponseData(hostWindow)).toEqual({ success: true });
 	});
 
@@ -1542,4 +1517,176 @@ describe("Consumer lifecycle behavior", () => {
 
 		expect(sendSpy).not.toHaveBeenCalled();
 	});
+});
+
+describe("Factory instance close and teardown", () => {
+	afterEach(async () => {
+		await closeAll();
+	});
+
+	it("delivers rearmed once listeners on the next resize", async () => {
+		const Component = create({
+			tag: "rearmed-resize",
+			url: "https://example.com",
+		});
+		const instance = Component();
+		const persistent = vi.fn();
+		instance.event.on("resize", persistent);
+		const sizes: unknown[] = [];
+		const rearm = (dimensions: unknown) => {
+			sizes.push(dimensions);
+			// Bound a broken live-Set traversal so the regression fails without hanging.
+			if (sizes.length < 3) instance.event.once("resize", rearm);
+		};
+		instance.event.once("resize", rearm);
+
+		await instance.resize({ width: 401 });
+		expect(sizes).toEqual([{ width: 401 }]);
+		await instance.resize({ width: 402 });
+		expect(sizes).toEqual([{ width: 401 }, { width: 402 }]);
+		expect(persistent).toHaveBeenCalledTimes(2);
+	});
+
+	it.each(["direct", "reentrant"])(
+		"waits for destruction when close is requested again (%s)",
+		async (mode) => {
+			const Component = create({
+				tag: "concurrent-close",
+				url: "https://example.com",
+			});
+			const instance = Component();
+			const destroyed = vi.fn();
+			instance.event.on("destroy", destroyed);
+			let reentrant: Promise<void> | undefined;
+			if (mode === "reentrant")
+				instance.event.on("close", () => {
+					reentrant = instance.close();
+				});
+			const first = instance.close();
+			try {
+				await (mode === "direct" ? instance.close() : reentrant);
+				expect(Component.instances).toHaveLength(0);
+				expect(destroyed).toHaveBeenCalledTimes(1);
+			} finally {
+				await first;
+			}
+		},
+	);
+
+	it("waits for already-started render-failure destruction before close resolves", async () => {
+		const failure = new Error("Expected template failure");
+		const Component = create({
+			tag: "close-during-failed-render",
+			url: "https://example.com",
+			prerenderTemplate: () => {
+				throw failure;
+			},
+		});
+		const instance = Component();
+		const mount = document.createElement("div");
+		document.body.appendChild(mount);
+		const destroyed = vi.fn();
+		const closed = vi.fn();
+		instance.event.on("destroy", destroyed);
+		instance.event.on("close", closed);
+		let releaseCleanup = () => {};
+		let markCleanupStarted = () => {};
+		const cleanupAllowed = new Promise<void>((resolve) => {
+			releaseCleanup = resolve;
+		});
+		const cleanupStarted = new Promise<void>((resolve) => {
+			markCleanupStarted = resolve;
+		});
+		const originalCleanup = CleanupManager.prototype.cleanup;
+		const cleanup = vi
+			.spyOn(CleanupManager.prototype, "cleanup")
+			.mockImplementationOnce(async function (this: CleanupManager) {
+				markCleanupStarted();
+				await cleanupAllowed;
+				await originalCleanup.call(this);
+			});
+		const renderOutcome = instance
+			.render(mount)
+			.catch((error: unknown) => error);
+		try {
+			await cleanupStarted;
+			const closeCompleted = vi.fn();
+			const closing = instance.close().then(closeCompleted);
+			await Promise.resolve();
+			await Promise.resolve();
+			expect(closeCompleted).not.toHaveBeenCalled();
+			releaseCleanup();
+			await closing;
+			await closeAll();
+			expect(Component.instances).toHaveLength(0);
+			expect(destroyed).toHaveBeenCalledOnce();
+			expect(closed).not.toHaveBeenCalled();
+			expect(await renderOutcome).toBe(failure);
+		} finally {
+			releaseCleanup();
+			await renderOutcome;
+			cleanup.mockRestore();
+			mount.remove();
+		}
+	});
+
+	it.each(["off", "removeAllListeners"] as const)(
+		"should deregister instances after public %s cleanup",
+		async (method) => {
+			const tag = `listener-cleanup-${method.toLowerCase()}`;
+			const Component = create({
+				tag,
+				url: "https://example.com/tracked",
+			});
+			const first = Component();
+			const second = Component();
+			setVerifiedHostDomain(PEER_HOST_DOMAIN, first, second);
+			const events: string[] = [];
+			for (const [name, instance] of [
+				["first", first],
+				["second", second],
+			] as const) {
+				if (method === "off") instance.event.off("destroy");
+				else instance.event.removeAllListeners();
+				instance.event.on("close", () => {
+					events.push(
+						`${name}:close:${Component.instances.includes(instance)}`,
+					);
+				});
+				instance.event.on("destroy", () => {
+					events.push(
+						`${name}:destroy:${Component.instances.includes(instance)}`,
+					);
+				});
+			}
+
+			await first.close();
+			expect(Component.instances).toEqual([second]);
+			expect(
+				getSiblingInstances({
+					uid: second.uid,
+					tag,
+					hostDomain: PEER_HOST_DOMAIN,
+					anyConsumer: false,
+				}),
+			).toEqual([]);
+			await second.close();
+			await second.close();
+			expect(Component.instances).toEqual([]);
+			expect(
+				getSiblingInstances({
+					uid: "outside",
+					tag,
+					hostDomain: PEER_HOST_DOMAIN,
+					anyConsumer: false,
+				}),
+			).toEqual([]);
+			expect(events).toEqual([
+				"first:close:true",
+				"first:destroy:false",
+				"second:close:true",
+				"second:destroy:false",
+			]);
+		},
+	);
 });

@@ -1,4 +1,4 @@
-import { CONTEXT, create, destroyByTag, prop } from "forgeframe";
+import { CONTEXT, closeAll, create, prop } from "forgeframe";
 import { requireValue } from "../../require-value";
 import type { TestResult } from "./types";
 
@@ -33,10 +33,6 @@ export async function runConfigurationScenario(
 ): Promise<TestResult[]> {
 	const results: TestResult[] = [];
 	const container = createContainer(sandbox);
-	const foreignFrame = document.createElement("iframe");
-	foreignFrame.src = "about:blank";
-	sandbox.appendChild(foreignFrame);
-	await waitFor(() => foreignFrame.contentWindow);
 
 	let containerTemplateCalls = 0;
 	let prerenderTemplateCalls = 0;
@@ -61,10 +57,6 @@ export async function runConfigurationScenario(
 			enabled: prop.boolean(),
 			count: prop.number().int(),
 		},
-		eligible: ({ props }) => ({
-			eligible: props.enabled,
-			reason: props.enabled ? undefined : "Feature disabled",
-		}),
 		validate: ({ props }) => {
 			if (props.count < 1) throw new Error("Count must be positive");
 		},
@@ -99,7 +91,7 @@ export async function runConfigurationScenario(
 	});
 
 	try {
-		await instance.renderTo(window, container);
+		await instance.render(container);
 		await waitFor(() => instance.exports?.observed);
 		const iframe = requireValue(
 			container.querySelector<HTMLIFrameElement>("iframe"),
@@ -145,51 +137,6 @@ export async function runConfigurationScenario(
 			),
 		);
 
-		const crossWindowInstance = Component({
-			scenario: "configuration",
-			variant: "wide",
-			label: "foreign",
-			tier: "standard",
-			enabled: true,
-			count: 1,
-		});
-		results.push(
-			await expectFailure(
-				"Cross-window renderTo fails explicitly",
-				() =>
-					crossWindowInstance.renderTo(
-						requireValue(foreignFrame.contentWindow),
-						container,
-					),
-				"Cross-window renderTo is not supported",
-			),
-		);
-		await crossWindowInstance.close();
-
-		const ineligible = Component({
-			scenario: "configuration",
-			variant: "wide",
-			label: "disabled",
-			tier: "standard",
-			enabled: false,
-			count: 1,
-		});
-		results.push(
-			assertResult(
-				"Eligibility can be queried before rendering",
-				ineligible.isEligible() === false,
-				`isEligible: ${ineligible.isEligible()}`,
-			),
-		);
-		results.push(
-			await expectFailure(
-				"Ineligible components fail before opening a host",
-				() => ineligible.render(createContainer(sandbox)),
-				"Component not eligible: Feature disabled",
-			),
-		);
-		await ineligible.close();
-
 		const invalid = Component({
 			scenario: "configuration",
 			variant: "wide",
@@ -210,7 +157,6 @@ export async function runConfigurationScenario(
 		results.push(failure("Configuration browser scenario completed", error));
 	} finally {
 		await instance.close().catch(() => undefined);
-		foreignFrame.remove();
 	}
 
 	return results;
@@ -242,71 +188,74 @@ export async function runInstancesScenario(
 		},
 	});
 	const originalContainer = createContainer(sandbox);
-	const cloneContainer = createContainer(sandbox);
+	const secondContainer = createContainer(sandbox);
 	const original = Component({
 		scenario: "instances",
 		label: "original-snapshot",
 	});
-	const clone = original.clone();
+	const second = Component({
+		scenario: "instances",
+		label: "second-snapshot",
+	});
 
 	try {
 		await original.updateProps({ label: "updated-original" });
 		results.push(
 			assertResult(
-				"Clone is distinct and tracked by its factory",
-				original.uid !== clone.uid && Component.instances.length === 2,
-				`uids differ: ${original.uid !== clone.uid}; tracked: ${Component.instances.length}`,
+				"Instances are distinct and tracked by their factory",
+				original.uid !== second.uid && Component.instances.length === 2,
+				`uids differ: ${original.uid !== second.uid}; tracked: ${Component.instances.length}`,
 			),
 		);
 
 		await Promise.all([
 			original.render(originalContainer),
-			clone.render(cloneContainer),
+			second.render(secondContainer),
 		]);
 		await waitFor(
-			() => original.exports?.instanceLabel && clone.exports?.instanceLabel,
+			() => original.exports?.instanceLabel && second.exports?.instanceLabel,
 		);
 		results.push(
 			assertResult(
-				"Clone preserves its creation-time prop snapshot",
+				"Each instance keeps its own prop snapshot",
 				original.exports?.instanceLabel === "updated-original" &&
-					clone.exports?.instanceLabel === "original-snapshot",
-				`original: ${String(original.exports?.instanceLabel)}; clone: ${String(clone.exports?.instanceLabel)}`,
+					second.exports?.instanceLabel === "second-snapshot",
+				`original: ${String(original.exports?.instanceLabel)}; second: ${String(second.exports?.instanceLabel)}`,
 			),
 		);
 		results.push(
 			assertResult(
 				"Same-tag hosts discover one another as peers",
 				original.exports?.peerCount === 1 &&
-					clone.exports?.peerCount === 1 &&
-					original.exports.peerUids.includes(clone.uid) &&
-					clone.exports.peerUids.includes(original.uid),
-				`original peers: ${JSON.stringify(original.exports?.peerUids)}; clone peers: ${JSON.stringify(clone.exports?.peerUids)}`,
+					second.exports?.peerCount === 1 &&
+					original.exports.peerUids.includes(second.uid) &&
+					second.exports.peerUids.includes(original.uid),
+				`original peers: ${JSON.stringify(original.exports?.peerUids)}; second peers: ${JSON.stringify(second.exports?.peerUids)}`,
 			),
 		);
 
-		await destroyByTag(tag);
+		await closeAll();
 		results.push(
 			assertResult(
-				"destroyByTag removes every live frame and tracked instance",
+				"closeAll removes every live frame and tracked instance",
 				Component.instances.length === 0 &&
 					sandbox.querySelectorAll("iframe").length === 0,
 				`tracked: ${Component.instances.length}; frames: ${sandbox.querySelectorAll("iframe").length}`,
 			),
 		);
-		await destroyByTag(tag);
+		await closeAll();
 		results.push(
 			assertResult(
-				"Bulk destruction is idempotent",
+				"closeAll is idempotent",
 				Component.instances.length === 0,
-				`tracked after second destroy: ${Component.instances.length}`,
+				`tracked after second closeAll: ${Component.instances.length}`,
 			),
 		);
 	} catch (error) {
 		results.push(failure("Instances browser scenario completed", error));
 		await Promise.all([
 			original.close().catch(() => undefined),
-			clone.close().catch(() => undefined),
+			second.close().catch(() => undefined),
 		]);
 	}
 

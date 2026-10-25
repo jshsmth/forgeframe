@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { clearComponents, destroyAll, getComponent } from "@/core/component";
+import { clearComponents, closeAll, getComponent } from "@/core/component";
 import { getComponentOptions } from "@/core/component-registry";
 import { ConsumerComponent } from "@/core/consumer";
 import { create, prop } from "@/index";
@@ -7,10 +7,11 @@ import { generateCode } from "../../../playground/consumer/code-generator";
 import { createComponent } from "../../../playground/consumer/renderer";
 import { resetPropValues } from "../../../playground/consumer/state";
 import type { PlaygroundConfig } from "../../../playground/consumer/types";
+import { checkRenderValidation } from "../render-validation";
 import { requireValue } from "../require-value";
 
 afterEach(async () => {
-	await destroyAll();
+	await closeAll();
 	clearComponents();
 	resetPropValues();
 	vi.restoreAllMocks();
@@ -87,7 +88,7 @@ describe("playground generated examples", () => {
 		vi.spyOn(ConsumerComponent.prototype, "render").mockImplementation(
 			async function (this: ConsumerComponent<Record<string, unknown>>) {
 				// Real normalization and validation still run before this browser-effect stub.
-				expect(this.isEligible()).toBe(true);
+				expect(() => checkRenderValidation(this)).not.toThrow();
 			},
 		);
 		const config: PlaygroundConfig = {

@@ -109,7 +109,6 @@ function createHandlers() {
 		onHide: vi.fn(async () => {}),
 		onError: vi.fn((_error: Error) => {}),
 		onExport: vi.fn((_exports: unknown) => {}),
-		onConsumerExport: vi.fn((_data: unknown) => {}),
 		onGetSiblings: vi.fn(async (_request): Promise<SiblingInfo[]> => []),
 	} satisfies ConsumerTransportHandlers<{ ready: boolean }>;
 }

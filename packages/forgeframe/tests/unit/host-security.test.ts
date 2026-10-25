@@ -173,7 +173,7 @@ describe("Host security", () => {
 		expect(host.hostProps.uid).toBe("host-uid-reserved-bootstrap");
 		expect(host.hostProps.tag).toBe("secure-component-reserved-bootstrap");
 		expect(typeof host.hostProps.close).toBe("function");
-		expect(typeof host.hostProps.consumer.export).toBe("function");
+		expect(Object.keys(host.hostProps.consumer)).toEqual(["props"]);
 		expect(host.hostProps.title).toBe("Visible title");
 		expect(host.hostProps.consumer.props).toEqual({
 			uid: "spoofed-uid",
@@ -216,7 +216,7 @@ describe("Host security", () => {
 		expect(host.hostProps.amount).toBeUndefined();
 		expect(host.hostProps.uid).toBe("host-uid-reserved-sync");
 		expect(typeof host.hostProps.close).toBe("function");
-		expect(typeof host.hostProps.consumer.export).toBe("function");
+		expect(Object.keys(host.hostProps.consumer)).toEqual(["props"]);
 		expect(host.hostProps.status).toBe("updated");
 		expect(host.hostProps.consumer.props).toEqual({
 			uid: "spoofed-uid",

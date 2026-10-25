@@ -2,14 +2,14 @@
  * Integration tests for the bootstrap protocol version across two windows.
  *
  * Covers the channel metadata a v2 consumer writes into `window.name`, the
- * INIT and GET_SIBLINGS wire fields, and the host's refusal of payloads from
- * other ForgeFrame major versions.
+ * INIT and GET_SIBLINGS wire fields, the host's refusal of payloads from
+ * other ForgeFrame major versions, and what `isHost()` reports for each.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { deserializeMessage } from "@/communication/protocol";
 import { MESSAGE_NAME, PROTOCOL_VERSION } from "@/constants";
 import { getHost } from "@/core/host/bootstrap";
-import { create, prop } from "@/index";
+import { create, isHost, prop } from "@/index";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
@@ -152,6 +152,8 @@ describe("Bootstrap protocol version", () => {
 				exports: { init: MESSAGE_NAME.INIT, close: MESSAGE_NAME.CLOSE },
 				...fields,
 			});
+			// The page must reach initHost() and its upgrade error.
+			expect(activeHarness.withHostGlobals(() => isHost())).toBe(true);
 
 			expect(() =>
 				activeHarness.bootstrapHost({ amount: prop.number() }),
@@ -186,5 +188,54 @@ describe("Bootstrap protocol version", () => {
 		expect(activeHarness.bootstrapHost({ amount: prop.number() })).toBeNull();
 		expect(getHost()).toBeNull();
 		expect(errors).not.toHaveBeenCalled();
+	});
+
+	describe("isHost()", () => {
+		it("is true for a current payload and stays true after destroy()", async () => {
+			harness = createIframeIntegrationHarness();
+			const activeHarness = harness;
+			const definitions = { amount: prop.number() };
+			const Component = create({
+				tag: "protocol-version-is-host",
+				url: "https://host.example.com/widget",
+				props: definitions,
+			});
+			const container = document.createElement("div");
+			document.body.append(container);
+			const rendering = Component({ amount: 7 }).render(container);
+			activeHarness.attachHostToIframe(
+				await activeHarness.waitForIframe(container),
+			);
+			expect(activeHarness.withHostGlobals(() => isHost())).toBe(true);
+
+			const host = activeHarness.bootstrapHost(definitions);
+			if (!host) throw new Error("Expected a host");
+			await host.ready;
+			await expect(rendering).resolves.toBeUndefined();
+			expect(activeHarness.withHostGlobals(() => isHost())).toBe(true);
+
+			activeHarness.withHostGlobals(() => host.destroy());
+			expect(activeHarness.withHostGlobals(() => isHost())).toBe(true);
+		});
+
+		it.each([
+			["an undecodable payload", `${PREFIX}%%%`],
+			["a payload with no channel metadata", encodeWindowName({ tag: "x" })],
+			[
+				"a current payload missing its consumer",
+				encodeWindowName({
+					uid: "uid",
+					tag: "protocol-version-malformed",
+					protocolVersion: PROTOCOL_VERSION,
+					context: "iframe",
+				}),
+			],
+		])("is false for %s after the prefix", (_label, name) => {
+			harness = createIframeIntegrationHarness();
+			const activeHarness = harness;
+			activeHarness.hostWindow.name = name;
+
+			expect(activeHarness.withHostGlobals(() => isHost())).toBe(false);
+		});
 	});
 });

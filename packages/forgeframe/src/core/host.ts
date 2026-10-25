@@ -20,19 +20,23 @@ export {
 export { HostComponent } from "./host/component";
 
 /**
- * Checks whether this window carries ForgeFrame channel metadata.
+ * Checks whether this window is, or is meant to be, a ForgeFrame host.
  *
  * @remarks
  * A "host" in ForgeFrame terminology is the embedded iframe or popup window
- * that receives props from the consumer (the embedding app). This reads only
- * the channel metadata's prefix in `window.name`, so it stays true for
- * malformed metadata, where `initHost()` returns `null`, and after
- * `host.destroy()`, because the metadata is kept for reconnection. Use it to
- * choose between embedded and standalone rendering before calling
- * `initHost()`.
+ * that receives props from the consumer (the embedding app). This returns
+ * true when a host runtime is active in this window, or when `window.name`
+ * holds a decodable ForgeFrame payload of any protocol version. A payload
+ * from an older or newer ForgeFrame counts, so the page reaches `initHost()`
+ * and its "upgrade both" error instead of rendering standalone.
  *
- * @returns True if this window carries ForgeFrame channel metadata or runs an
- * active host
+ * It returns false outside a browser, and for a name that has the ForgeFrame
+ * prefix but no valid payload. It stays true after `host.destroy()`, because
+ * the channel metadata is kept for a re-start. Use it to choose between
+ * embedded and standalone rendering before calling `initHost()`.
+ *
+ * @returns True if a host runtime is active or this window carries a
+ * decodable ForgeFrame payload
  *
  * @example
  * ```typescript

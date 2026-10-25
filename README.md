@@ -585,7 +585,7 @@ props.onProps((newProps) => {
 
 Subscribers run in registration order after props are committed. A subscriber added or re-registered during a notification waits for the next update, and a subscription cancelled before its turn is skipped. A stale cancellation handle cannot cancel a later registration of the same callback. Thrown errors and rejected promises are caught and logged. Async subscribers are not awaited, so they do not delay other subscribers or the update acknowledgement.
 
-Built-in `hostProps` names are reserved. A consumer prop named `uid`, `tag`, `close`, `focus`, `resize`, `show`, `hide`, `onProps`, `onError`, `getConsumer`, `getConsumerDomain`, `export`, `consumer`, `getPeerInstances`, or `children` is available only in `hostProps.consumer.props`; it does not replace the built-in on `hostProps`.
+Built-in `hostProps` names are reserved. A consumer prop named `uid`, `tag`, `close`, `focus`, `resize`, `show`, `hide`, `onProps`, `onError`, `getConsumer`, `getConsumerDomain`, `export`, `consumer`, `getPeerInstances`, or `children` is available only in `hostProps.consumer.props`; it does not replace the built-in on `hostProps`. `children` is no longer a built-in, but it stays reserved so React JSX children never reach a host.
 
 ### Cross-Window Callback Values
 
@@ -650,7 +650,7 @@ Only one host can be active in a window. A second `initHost()` call throws while
 
 `create()` never starts a host, even in a window opened for its tag.
 
-`isHost()` reports whether this window carries ForgeFrame channel metadata. It stays `true` for malformed metadata, where `initHost()` returns `null`, and after `destroy()`, because the metadata is kept for reconnection.
+`isHost()` returns `true` when a host runtime is active in this window, or when `window.name` holds a decodable ForgeFrame payload of any protocol version. A payload from an older or newer ForgeFrame counts, so the page reaches `initHost()` and its upgrade error instead of rendering standalone. It returns `false` outside a browser and for a name that has the ForgeFrame prefix but no valid payload, where `initHost()` returns `null`. It stays `true` after `destroy()`, because the channel metadata is kept for a re-start.
 
 Only channel metadata stays in `window.name`, so reloads and later host documents can reconnect and receive the latest props. Browser policies that clear window names across sites can prevent reconnection.
 
@@ -718,7 +718,6 @@ await props.export({ validate: () => true });
 props.getConsumer();
 props.getConsumerDomain();
 props.consumer.props;
-await props.consumer.export(data);
 
 const peers = await props.getPeerInstances();
 cancel();
@@ -742,10 +741,8 @@ Peers are other instances rendered by the same consumer whose hosts it verified 
 | `export()` | Export methods/data to consumer |
 | `getConsumer()` | Get consumer window reference |
 | `getConsumerDomain()` | Get consumer origin |
-| `consumer.props` | Access consumer's props |
-| `consumer.export()` | Send data to consumer from host context |
+| `consumer.props` | The consumer's full prop snapshot, replaced on every update |
 | `getPeerInstances()` | Get peer component instances from the same consumer and host origin |
-| `children` | Nested component factories provided by consumer (if configured) |
 
 </details>
 
@@ -771,6 +768,8 @@ await instance.render('#container');
 const isValid = await instance.exports.validate();
 const data = await instance.exports.getFormData();
 ```
+
+`export()` is the one way to send data to the consumer; it bridges functions and `Date` values. To push events instead, call a callback prop the consumer passed in.
 
 ---
 
@@ -977,61 +976,52 @@ const host = initHost(SecureComponent, {
 
 The host verifies the consumer by requiring a response from the expected parent or opener window at its exact origin. Verification works with `Referrer-Policy: no-referrer` and after full-page host navigation. If the origin is not allowed, `initHost()` throws before any props are requested; if the consumer cannot complete the handshake, `ready` rejects. The allowlist belongs to the host that enforces it, so `create()` throws if it still receives the removed `allowedConsumerDomains` option.
 
-### Eligibility Checks
+### Pre-render Checks
 
-`eligible` decides whether an instance may render.
+The component `validate` option is the single gate before rendering. `render()` runs schema validation and then `validate({ props })` before it resolves the URL or creates an iframe or popup; throw to stop the render. `updateProps()` runs `validate` on the next props too.
 
 ```typescript
 const FeatureComponent = create({
   tag: 'feature',
   url: 'https://widgets.example.com/feature',
   props: { userId: prop.string().optional() },
-  eligible: ({ props }) => {
-    if (!props.userId) return { eligible: false, reason: 'User must be logged in' };
-    return { eligible: true };
+  validate: ({ props }) => {
+    if (!props.userId) throw new Error('User must be logged in');
   },
 });
 
-const instance = FeatureComponent({ userId: currentUser?.id });
-if (instance.isEligible()) {
-  await instance.render('#container');
-}
+await FeatureComponent({ userId: currentUser?.id }).render('#container');
 ```
 
 ### Nested Components
 
-`children` exposes component factories that the host can render from inside the iframe or popup.
+A host page renders child components the same way a consumer does: it imports the child's definition and calls it. The child page starts its own host and allows the parent host's origin.
 
-> **`Consumer`**
-
-```typescript
-const ContainerComponent = create({
-  tag: 'container',
-  url: 'https://widgets.example.com/container',
-  children: () => ({
-    CardField: CardFieldComponent,
-    CVVField: CVVFieldComponent,
-  }),
-});
-```
-
-> **`Host`**
+> **`Parent host`**
 
 ```typescript
-// Import or define the same child factories before calling initHost().
-// Their schemas remain executable code and are never JSON-serialized.
 import { initHost } from 'forgeframe';
-import { CardFieldComponent, CVVFieldComponent } from './child-components';
-import { ContainerComponent } from './container-component';
+import { CardField } from './shared/card-field';
+import { Checkout } from './shared/checkout';
 
-const host = initHost(ContainerComponent, { consumerOrigins });
+const host = initHost(Checkout, { consumerOrigins: ['https://shop.example.com'] });
 if (host) {
-  const { children } = await host.ready;
-  children.CardField({ onValid: () => {} }).render('#card-container');
+  await host.ready;
+  await CardField({ onValid: () => {} }).render('#card-container');
 }
 ```
 
-A child window's consumer is the host page that renders it, so the child page's own `initHost()` must allow that host page's origin in `consumerOrigins`. Register every child tag in the host bundle before `initHost()`. The host takes validators, defaults, decorators, and regular expressions from its own registered factories; only child metadata arrives, through the verified bootstrap response. Child URLs must be static strings. Child names are used verbatim, including `__proto__`.
+> **`Child host page`**
+
+```typescript
+import { initHost } from 'forgeframe';
+import { CardField } from './shared/card-field';
+
+// The child's consumer is the parent host page.
+const host = initHost(CardField, { consumerOrigins: ['https://checkout.example.com'] });
+```
+
+The child keeps its real types and schemas, and like any component it may use a function `url`.
 
 ---
 
@@ -1130,6 +1120,65 @@ host.init();
 
 **`canRenderTo`.** Before: `await Component.canRenderTo(win)`. After: removed; it always returned `win === window`.
 
+**`isHost()`.** Before: true whenever `window.name` started with the ForgeFrame prefix, even when the payload behind it was malformed. After: true when a host is active or `window.name` holds a decodable ForgeFrame payload of any protocol version; false for a malformed payload. It still stays true after `host.destroy()`.
+
+### Removed zoid-era APIs
+
+Each of these duplicated another API. TypeScript reports every removed member and option, and `create()` throws a migration error if a JavaScript caller still passes `eligible` or `children`.
+
+**`renderTo`.** Before: `await instance.renderTo(window, '#container', 'popup')`. After: `await instance.render('#container', 'popup')`.
+
+**`clone()`.** Before: `const copy = instance.clone()`. After: call the factory again with the props you want, such as `const copy = Component({ ...currentProps })`.
+
+**`destroy(instance)`.** Before: `await destroy(instance)`. After: `await instance.close()`.
+
+**`destroyByTag(tag)`.** Before: `await destroyByTag('payment-form')`. After: `await Promise.all(PaymentForm.instances.map((i) => i.close()))`.
+
+**`destroyAll()`.** Before: `await destroyAll()`. After: `await closeAll()`. It closes every live instance, resolves once all have closed, and if any close fails it rejects with an `AggregateError` after the others finish.
+
+**`eligible` and `isEligible()`.** Before:
+
+```typescript
+create({ ..., eligible: ({ props }) => ({ eligible: !!props.userId, reason: 'Log in' }) });
+if (instance.isEligible()) await instance.render('#c');
+```
+
+After:
+
+```typescript
+create({ ..., validate: ({ props }) => { if (!props.userId) throw new Error('Log in'); } });
+// check the same condition in your app before calling render()
+```
+
+**`instance.state` and `ctx.state`.** Before: `instance.state.step = 2`. After: keep per-instance state in your own code, such as a `WeakMap` keyed by the instance or a closure.
+
+**`hostProps.consumer.export()`.** Before: `await hostProps.consumer.export({ token })`, read on the consumer through a cast. After: `await hostProps.export({ token })`, read from `instance.exports`, or call a consumer callback prop. `hostProps.consumer.props` stays.
+
+**Nested `children`.** Before:
+
+```typescript
+create({ ..., children: () => ({ CardField }) });
+// host:
+hostProps.children.CardField({...}).render('#card');
+```
+
+After:
+
+```typescript
+// consumer: remove children
+// parent host:
+import { CardField } from './shared/card-field';
+CardField({...}).render('#card');
+// child host page:
+initHost(CardField, { consumerOrigins: ['https://parent-host.example'] });
+```
+
+`children` stays a reserved prop name, so `create()` still rejects a custom `children` definition.
+
+**Mutating `Component.instances`.** Before: `Component.instances.splice(0)`. After: `instances` returns a new frozen snapshot on each read. Close instances with `close()` or `closeAll()`, then read `instances` again.
+
+**Removed types.** `ChildrenDefinition`, `ConsumerNamespace`, `EligibilityResult` and `ForgeFrameComponentReference` are gone; delete their imports. `HostProps<P>['consumer']` is `{ props }`.
+
 ### Named exports only
 
 Before:
@@ -1158,11 +1207,9 @@ ForgeFrame 2 has named exports only. Use `import * as ForgeFrame from 'forgefram
 ```typescript
 import {
   create,               // Create a component
-  destroy,              // Destroy an instance
-  destroyByTag,         // Destroy all instances of a tag
-  destroyAll,           // Destroy all instances
+  closeAll,             // Close every live instance
   initHost,             // Start the host runtime; await host.ready before reading props
-  isHost,               // Whether this window carries ForgeFrame channel metadata
+  isHost,               // Whether a host is active or this window holds a ForgeFrame payload
   isStandardSchema,     // Check if value is a Standard Schema
   prop,                 // Prop schema builders
   CONTEXT,              // Context constants (IFRAME, POPUP)
@@ -1189,12 +1236,10 @@ interface ComponentOptions<P, I = P, SchemaInputs = I> {
   prerenderTemplate?: (ctx: TemplateContext<P>) => HTMLElement | null;
   domain?: DomainMatcher;      // Consumer-side trusted host origins
   peerDomains?: DomainMatcher; // Other host origins that may discover these instances as peers
-  eligible?: (opts: { props: P }) => { eligible: boolean; reason?: string };
   validate?: (opts: { props: P }) => void;
   attributes?: IframeAttributes | ((props: P) => IframeAttributes);
   style?: IframeStyles | ((props: P) => IframeStyles);
   timeout?: number;
-  children?: (opts: { props: P }) => Record<string, ForgeFrameComponentReference>;
 }
 ```
 
@@ -1204,20 +1249,19 @@ interface ComponentOptions<P, I = P, SchemaInputs = I> {
 const instance = MyComponent(props);
 
 await instance.render(container, context?)   // Render into a container (container is required)
-await instance.renderTo(window, container)   // Supports only current window; throws for other windows
 await instance.close()                       // Close and destroy
 await instance.focus()                       // Focus
 await instance.resize({ width, height })     // Resize
 await instance.show()                        // Show
 await instance.hide()                        // Hide
 await instance.updateProps(newProps)         // Update props (normalized + validated)
-instance.clone()                             // Clone with same props
-instance.isEligible()                        // Check eligibility
 
 instance.uid                                 // Unique ID
 instance.event                               // Event emitter
-instance.state                               // Mutable state
 instance.exports                             // Host exports
+
+MyComponent.instances                        // Frozen snapshot of live instances, in creation order
+await closeAll()                             // Close every live instance of every component
 ```
 
 ### Instance Lifecycle

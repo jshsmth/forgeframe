@@ -5,7 +5,7 @@
  * handshake across separate consumer and host windows.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { z } from "zod";
+import { deserializeMessage } from "@/communication/protocol";
 import { getHost } from "@/core/host/bootstrap";
 import { create, EVENT, prop } from "@/index";
 import type { PropsDefinition } from "@/types";
@@ -33,70 +33,65 @@ describe("Consumer/host handshake integration", () => {
 		vi.restoreAllMocks();
 	});
 
-	it.each([
-		{ names: ["__proto__"] },
-		{ names: ["__proto__", "constructor", "toString", "ordinary"] },
-	])(
-		"preserves own child names through bootstrap: $names",
-		async ({ names }) => {
-			harness = createIframeIntegrationHarness();
-			const Child = create({
-				tag: "own-name-child",
-				url: "https://host.example.com/child",
-			});
-			const Parent = create({
-				tag: "own-name-parent",
-				url: "https://host.example.com/widget",
-				children: () => Object.fromEntries(names.map((name) => [name, Child])),
-			});
-			const container = document.createElement("div");
-			document.body.append(container);
-			const instance = Parent();
-			const rendering = instance.render(container);
-			void rendering.catch(() => {});
-			const { hostProps } = await harness.bootstrapIframeHost(container);
-			await expect(rendering).resolves.toBeUndefined();
-			const children = hostProps.children;
-			expect(Object.keys(children ?? {})).toEqual(names);
-			expect(Object.getPrototypeOf(children)).toBe(Object.prototype);
-			for (const name of names) {
-				expect(Object.hasOwn(children ?? {}, name)).toBe(true);
-				expect(children?.[name]).toBe(Child);
-			}
-			await instance.updateProps({});
-			expect(hostProps.children).toBe(children);
-			await hostProps.close();
-			expect(container.querySelector("iframe")).toBeNull();
-		},
-	);
-
-	it("bootstraps a parent without serializing its child's recursive schema", async () => {
+	it("rejects render() before creating a frame when the component validate throws", async () => {
 		harness = createIframeIntegrationHarness();
-		const tree = z.object({
-			name: z.string(),
-			get children(): z.ZodArray<typeof tree> {
-				return z.array(tree);
-			},
-		});
-		const Child = create({
-			tag: "recursive-schema-child",
-			url: "https://host.example.com/child",
-			props: { tree },
-		});
-		const Parent = create({
-			tag: "recursive-schema-parent",
+		const Component = create({
+			tag: "validate-gate-component",
 			url: "https://host.example.com/widget",
-			children: () => ({ Child }),
+			props: { amount: prop.number() },
+			validate: ({ props }) => {
+				if (props.amount < 0) throw new Error("Amount must be positive");
+			},
 		});
 		const container = document.createElement("div");
 		document.body.append(container);
-		const instance = Parent();
+
+		await expect(Component({ amount: -1 }).render(container)).rejects.toThrow(
+			"Amount must be positive",
+		);
+		expect(container.querySelector("iframe")).toBeNull();
+	});
+
+	it("bootstraps with props only and exposes consumer.props without export", async () => {
+		harness = createIframeIntegrationHarness();
+		const definitions = { amount: prop.number() };
+		const Component = create({
+			tag: "bootstrap-props-only",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const container = document.createElement("div");
+		document.body.append(container);
+		const instance = Component({ amount: 1 });
+		const posted = vi.spyOn(harness.hostWindow, "postMessage");
 		const rendering = instance.render(container);
-		void rendering.catch(() => {});
-		const { hostProps } = await harness.bootstrapIframeHost(container, {});
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			definitions,
+		);
 		await expect(rendering).resolves.toBeUndefined();
-		expect(hostProps.children?.Child).toBe(Child);
-		expect(tree.safeParse({ name: "root", children: [] }).success).toBe(true);
+
+		const bootstrapResponses = posted.mock.calls
+			.map(([data]) => deserializeMessage(data))
+			.filter(
+				(message) =>
+					message?.type === "response" &&
+					typeof message.data === "object" &&
+					message.data !== null &&
+					"props" in message.data,
+			);
+		expect(bootstrapResponses).toHaveLength(1);
+		expect(bootstrapResponses[0]?.data).toEqual({
+			props: { amount: 1 },
+		});
+		expect(Object.hasOwn(hostProps, "children")).toBe(false);
+		expect(Object.keys(hostProps.consumer)).toEqual(["props"]);
+		expect(hostProps.consumer.props).toEqual({ amount: 1 });
+
+		const consumer = hostProps.consumer;
+		await instance.updateProps({ amount: 2 });
+		expect(hostProps.consumer).toBe(consumer);
+		expect(hostProps.consumer.props).toEqual({ amount: 2 });
 	});
 
 	it("initializes a fresh host after public teardown and clears stale host props", async () => {
@@ -326,7 +321,7 @@ describe("Consumer/host handshake integration", () => {
 		expect(typeof hostProps.onProps).toBe("function");
 		expect(typeof hostProps.onError).toBe("function");
 		expect(typeof hostProps.export).toBe("function");
-		expect(typeof hostProps.consumer.export).toBe("function");
+		expect(Object.keys(hostProps.consumer)).toEqual(["props"]);
 		expect(typeof hostProps.getPeerInstances).toBe("function");
 		expect(hostProps.getConsumer()).toBe(harness.consumerWindow);
 		expect(hostProps.getConsumerDomain()).toBe(harness.consumerOrigin);

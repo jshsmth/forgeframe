@@ -33,29 +33,14 @@ import { generateUID } from "../utils/uid";
 import { appendComponentQuery, resolveComponentHostUrl } from "../utils/url";
 import { isSameDomain } from "../window/helpers";
 import { emitConsumerError, invokePropCallback } from "./consumer/callbacks";
-import { buildNestedHostRefs } from "./consumer/child-refs";
 import {
 	ConsumerPropsPipeline,
-	type ConsumerPropsPipelineSnapshot,
 	type ConsumerPropsUpdateHooks,
 } from "./consumer/props-pipeline";
 import { ConsumerRenderer } from "./consumer/renderer";
 import { getSiblingInstances } from "./consumer/siblings";
 import { ConsumerTransport } from "./consumer/transport";
 import type { NormalizedOptions } from "./consumer/types";
-
-/**
- * Registration callback used to track instances through their owning component.
- * @internal
- */
-type ConsumerInstanceTracker<
-	P extends Record<string, unknown>,
-	X,
-	I extends Record<string, unknown>,
-	SchemaInputs extends Record<string, unknown>,
-> = (
-	instance: ConsumerComponent<P, X, I, SchemaInputs>,
-) => ConsumerComponent<P, X, I, SchemaInputs>;
 
 /**
  * Consumer-side component implementation.
@@ -81,14 +66,8 @@ export class ConsumerComponent<
 	/** Event emitter for lifecycle events. */
 	public event: EventEmitter;
 
-	/** Arbitrary state storage for the component instance. */
-	public state: Record<string, unknown> = {};
-
 	/** Data exported by the host component. */
 	public exports?: RemoteValue<X>;
-
-	/** Data exported from the consumer by the host. */
-	public consumerExports?: unknown;
 
 	/** @internal */
 	private _uid: string;
@@ -148,15 +127,11 @@ export class ConsumerComponent<
 	 *
 	 * @param options - Component configuration options
 	 * @param props - Initial props to pass to the component
-	 * @param trackInstance - Owning component registration callback used for clones
-	 * @param propsSnapshot - Existing normalized pipeline state used by clones
 	 * @param untrackInstance - Owning factory cleanup independent of public observers
 	 */
 	constructor(
 		options: ComponentOptions<P, I, SchemaInputs>,
 		props?: ConsumerPropsInput<P, I, SchemaInputs>,
-		private trackInstance?: ConsumerInstanceTracker<P, X, I, SchemaInputs>,
-		propsSnapshot?: ConsumerPropsPipelineSnapshot<P>,
 		private untrackInstance?: (
 			instance: ConsumerComponent<P, X, I, SchemaInputs>,
 		) => void,
@@ -182,7 +157,6 @@ export class ConsumerComponent<
 			this.options,
 			{ ...props },
 			(nextProps) => this.createPropContext(nextProps),
-			propsSnapshot,
 		);
 
 		this.transport = new ConsumerTransport(
@@ -369,33 +343,6 @@ export class ConsumerComponent<
 		this.assertRenderActive();
 		this.options.validate?.({ props: this.propsPipeline.props });
 		this.assertRenderActive();
-		this.checkEligibility();
-		this.assertRenderActive();
-	}
-
-	/**
-	 * Renders the component into a container in a different window.
-	 *
-	 * @remarks
-	 * Only rendering into the current window is supported. Passing a
-	 * different window throws explicitly to prevent silent misuse.
-	 *
-	 * @param win - Target window
-	 * @param container - CSS selector or HTMLElement to render into
-	 * @param context - Override the default rendering context
-	 */
-	async renderTo(
-		win: Window,
-		container: string | HTMLElement,
-		context?: ContextType,
-	): Promise<void> {
-		if (win !== window) {
-			throw new Error(
-				"Cross-window renderTo is not supported; pass the current window",
-			);
-		}
-
-		return this.render(container, context);
 	}
 
 	/**
@@ -604,22 +551,6 @@ export class ConsumerComponent<
 		await this.transport.sendPropsUpdateToHost(nextProps, this.options.props);
 	}
 
-	/**
-	 * Creates a clone of this instance with the same props.
-	 *
-	 * @returns A new unrendered component instance with identical configuration
-	 */
-	clone(): ForgeFrameComponentInstance<P, X, I, SchemaInputs> {
-		const cloned = new ConsumerComponent<P, X, I, SchemaInputs>(
-			this.options,
-			undefined,
-			this.trackInstance,
-			this.propsPipeline.createSnapshot(),
-			this.untrackInstance,
-		);
-		return this.trackInstance ? this.trackInstance(cloned) : cloned;
-	}
-
 	/** Returns whether construction or lifecycle callbacks destroyed this instance. @internal */
 	isDestroyed(): boolean {
 		return this.destroyed;
@@ -638,19 +569,6 @@ export class ConsumerComponent<
 	/** Returns other host origins allowed to discover this instance as a peer. @internal */
 	getPeerDomains(): DomainMatcher | undefined {
 		return this.options.peerDomains;
-	}
-
-	/**
-	 * Checks if the component is eligible to render based on the eligible option.
-	 *
-	 * @returns True if eligible or no eligibility check defined
-	 */
-	isEligible(): boolean {
-		if (!this.options.eligible) return true;
-
-		this.propsPipeline.ensureSchemaValidated();
-		const result = this.options.eligible({ props: this.propsPipeline.props });
-		return result.eligible;
 	}
 
 	/**
@@ -722,7 +640,6 @@ export class ConsumerComponent<
 
 		return {
 			props: contextProps,
-			state: this.state,
 			close: () => {
 				if (this.constructing) {
 					this.constructionActions.push("close");
@@ -758,21 +675,6 @@ export class ConsumerComponent<
 	 */
 	private resolveContainer(container?: string | HTMLElement): HTMLElement {
 		return this.renderer.resolveContainer(container);
-	}
-
-	/**
-	 * Checks eligibility and throws if component cannot render.
-	 * @internal
-	 */
-	private checkEligibility(): void {
-		if (!this.options.eligible) return;
-
-		const result = this.options.eligible({ props: this.propsPipeline.props });
-		if (!result.eligible) {
-			throw new Error(
-				`Component not eligible: ${result.reason ?? "Unknown reason"}`,
-			);
-		}
 	}
 
 	/**
@@ -941,12 +843,10 @@ export class ConsumerComponent<
 							propsForHost as Record<string, unknown>,
 							{ resetLocalReferences },
 						),
-						children: buildNestedHostRefs(this.options, props),
 					};
 				}),
 			onReconnect: () => {
 				this.exports = undefined;
-				this.consumerExports = undefined;
 			},
 			onClose: async () => this.close(),
 			onResize: async (dimensions) => this.resizeForHost(dimensions),
@@ -961,9 +861,6 @@ export class ConsumerComponent<
 				),
 			onExport: (exports) => {
 				this.exports = exports;
-			},
-			onConsumerExport: (data) => {
-				this.consumerExports = data;
 			},
 			onGetSiblings: (request) => getSiblingInstances(request),
 		});

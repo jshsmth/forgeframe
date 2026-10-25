@@ -276,10 +276,21 @@ describe("isForgeFrameWindow", () => {
 
 	it("should return true for a ForgeFrame window from another protocol", () => {
 		const win = {
-			name: encodeWindowName({ tag: "test-component", protocolVersion: 2 }),
+			name: encodeWindowName({
+				...createPayload({ protocolVersion: 2 }),
+				version: "1.1.0",
+			}),
 		} as Window;
 
 		expect(isForgeFrameWindow(win)).toBe(true);
+	});
+
+	it.each([
+		["an undecodable payload", `${WINDOW_NAME_PREFIX}%%%not-base64`],
+		["a payload without channel metadata", encodeWindowName({ tag: "x" })],
+		["a prefix with no payload", WINDOW_NAME_PREFIX],
+	])("should return false for %s after the prefix", (_label, name) => {
+		expect(isForgeFrameWindow({ name } as Window)).toBe(false);
 	});
 
 	it("should return false for non-ForgeFrame window", () => {
