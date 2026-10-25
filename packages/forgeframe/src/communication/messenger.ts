@@ -65,16 +65,24 @@ function isPendingResponseSourceMatch(
  * Resolves a message target to the exact origin that receives it and answers.
  * URL-like targets normalize to their origin, as `postMessage` does.
  * @throws If the target is not an absolute URL, including the `"*"` wildcard
- * and the `"/"` same-origin token.
+ * and the `"/"` same-origin token, or if its origin is opaque, as for
+ * `data:` and `about:` URLs, which no window can be addressed by.
  */
 function resolveTargetOrigin(targetDomain: string, name: string): string {
+	let origin: string;
 	try {
-		return new URL(targetDomain).origin;
+		origin = new URL(targetDomain).origin;
 	} catch {
 		throw new Error(
 			`Cannot send "${name}": target origin "${targetDomain}" is not an absolute URL`,
 		);
 	}
+	if (isOpaqueOrigin(origin)) {
+		throw new Error(
+			`Cannot send "${name}": target origin "${targetDomain}" is opaque`,
+		);
+	}
+	return origin;
 }
 
 /**

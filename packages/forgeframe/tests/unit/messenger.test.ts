@@ -344,6 +344,23 @@ describe("Messenger", () => {
 			},
 		);
 
+		it.each(["data:text/plain,hi", "about:blank"])(
+			'should reject the opaque-origin target "%s" before posting',
+			async (targetDomain) => {
+				await expect(
+					messenger.send(targetWindow, targetDomain, "opaqueTarget"),
+				).rejects.toThrow(
+					`Cannot send "opaqueTarget": target origin "${targetDomain}" is opaque`,
+				);
+
+				expect(targetWindow.postMessage).not.toHaveBeenCalled();
+				expect(
+					(messenger as unknown as { pending: Map<string, unknown> }).pending
+						.size,
+				).toBe(0);
+			},
+		);
+
 		it("should normalize URL-like targetDomain values when matching response origins", async () => {
 			const sendPromise = messenger.send(
 				targetWindow,
@@ -467,6 +484,19 @@ describe("Messenger", () => {
 				expect(targetWindow.postMessage).not.toHaveBeenCalled();
 			},
 		);
+
+		it("should reject an opaque-origin target before posting", () => {
+			const targetWindow = {
+				postMessage: vi.fn(),
+			} as unknown as Window;
+
+			expect(() =>
+				messenger.post(targetWindow, "data:text/plain,hi", "notify"),
+			).toThrow(
+				'Cannot send "notify": target origin "data:text/plain,hi" is opaque',
+			);
+			expect(targetWindow.postMessage).not.toHaveBeenCalled();
+		});
 	});
 
 	describe("on", () => {

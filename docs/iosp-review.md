@@ -5,7 +5,7 @@ desc: Runtime callable responsibilities, IOSP classifications, and boundary test
 tags: []
 sources: []
 created: 2026-10-01T01:55:30Z
-updated: 2026-10-25T11:03:09Z
+updated: 2026-10-25T11:33:45Z
 ---
 
 # ForgeFrame callable reference
@@ -62,12 +62,12 @@ Evidence: [messaging](#evidence-messaging); typecheck.
 
 ### [communication/messenger.ts](../packages/forgeframe/src/communication/messenger.ts)
 
-Admission precedes decoding, and channel, usable source, expected origin, and pending target identity are each checked explicitly. A messenger never trusts its own origin when that origin is opaque (`"null"`), because every opaque document serializes the same way. Consumers construct their messenger without a listener and attach it once with `listen()` when host content opens. A `null` send timeout waits for the response or for rejection; `rejectPending` rejects one message type's requests to a window whose document can no longer answer, and teardown rejects the rest. Request execution and response encoding are cohesive boundary operations; the request workflow and posting are named separately. `send` and `post` resolve the target before encoding: only an absolute URL is accepted, normalized to its origin as `postMessage` does, and responses must come from exactly that origin. `"*"`, `"/"`, and other strings throw before anything is posted. Trusted-domain recursion is one matcher-registry algorithm.
+Admission precedes decoding, and channel, usable source, expected origin, and pending target identity are each checked explicitly. A messenger never trusts its own origin when that origin is opaque (`"null"`), because every opaque document serializes the same way. Consumers construct their messenger without a listener and attach it once with `listen()` when host content opens. A `null` send timeout waits for the response or for rejection; `rejectPending` rejects one message type's requests to a window whose document can no longer answer, and teardown rejects the rest. Request execution and response encoding are cohesive boundary operations; the request workflow and posting are named separately. `send` and `post` resolve the target before encoding: only an absolute URL with a non-opaque origin is accepted, normalized to that origin as `postMessage` does, and responses must come from exactly that origin. `"*"`, `"/"`, other strings, and URLs with an opaque origin such as `data:` or `about:blank` throw before anything is posted. Trusted-domain recursion is one matcher-registry algorithm.
 
 - **O:** `isPendingResponseSourceMatch`, `resolveTargetOrigin`, `Messenger.addTrustedDomain`, `Messenger.removeTrustedDomain`, `Messenger.isOriginTrusted`, `Messenger.on`, `Messenger.settlePendingResponse`, `Messenger.executeRequest`, `Messenger.serializeResponse`, `Messenger.postResponse`, `Messenger.rejectPending`.
 - **I:** `Messenger.constructor`, `Messenger.listen`, `Messenger.send`, `Messenger.post`, `Messenger.setupListener`, `Messenger.setupListener.this.listener`, `Messenger.readTrustedMessage`, `Messenger.handleMessage`, `Messenger.handleRequest`, `Messenger.destroy`.
-- **O callbacks:** `Messenger.removeTrustedDomain.callback@201`, `Messenger.removeTrustedDomain.callback@207`, `Messenger.on.callback@348`.
-- **I callbacks:** `Messenger.send.callback@277`.
+- **O callbacks:** `Messenger.removeTrustedDomain.callback@209`, `Messenger.removeTrustedDomain.callback@215`, `Messenger.on.callback@356`.
+- **I callbacks:** `Messenger.send.callback@285`.
 
 Evidence: [messaging](#evidence-messaging); typecheck.
 
@@ -244,12 +244,12 @@ Evidence: [host](#evidence-host); typecheck.
 
 ### [core/host/bootstrap.ts](../packages/forgeframe/src/core/host/bootstrap.ts)
 
-The singleton integration validates a supplied allowlist (empty or blank strings throw; `undefined` is the only "no allowlist" value) and rejects supplied prop definitions that set a removed option, then reuses and configures an existing runtime or constructs a new one. A new runtime without supplied prop definitions or allowlist uses those of the component registered for its tag (`definedComponentOptions`), so a bare call cannot accept props or a consumer that definition refused. `readInitialPayload` classifies the current `window.name` on every new start and never rewrites it: a payload from another protocol throws the upgrade error that `describeUnsupportedPayload` words, before any host state exists or anything is sent to the unverified consumer, and an invalid payload is logged and yields null. There is no pending copy of the payload, so a retry after a failed start or failed asynchronous validation, and a start after `destroy()`, reread the retained channel metadata. Its ready and destruction callbacks clear only the instance they belong to. Cleanup releases the singleton before destroying resources, which prevents reentrant cleanup and lets public teardown be followed by fresh initialization from retained channel metadata.
+The singleton integration validates a supplied allowlist (empty or blank strings throw; `undefined` is the only "no allowlist" value) and rejects supplied prop definitions that set a removed option, then reuses and configures an existing runtime or constructs a new one. A new runtime without supplied prop definitions or allowlist uses those of the component registered for its tag (`definedComponentOptions`), so a bare call cannot accept props or a consumer that definition refused. `readInitialPayload` classifies the current `window.name` on every new start and never rewrites it: a payload from another protocol throws the upgrade error that `describeUnsupportedPayload` words, before any host state exists or anything is sent to the unverified consumer, and an invalid payload is logged and yields null. `hasConsumerWindow` checks first that a parent or opener exists: a stale older payload in a window with neither has no consumer to upgrade, so it yields null, as a current payload without a consumer window does. There is no pending copy of the payload, so a retry after a failed start or failed asynchronous validation, and a start after `destroy()`, reread the retained channel metadata. Its ready and destruction callbacks clear only the instance they belong to. Cleanup releases the singleton before destroying resources, which prevents reentrant cleanup and lets public teardown be followed by fresh initialization from retained channel metadata.
 
 After readiness, a rejected schema replacement keeps the active runtime; initial configuration failures and consumer-domain rejection tear it down. The failure handler uses a captured runtime and checks singleton identity, so validator teardown cannot mask the schema error or clear a replacement. Successful validation makes the same identity check before asserting the domain or flushing INIT, and returns null after reentrant teardown without affecting a replacement's deferred initialization. Public integration tests cover destroy and replacement with successful and rejected validators.
 
 - **O:** `describeUnsupportedPayload`, `getHost`.
-- **I:** `readInitialPayload`, `initHost`, `definedComponentOptions`, `clearHostInstance`.
+- **I:** `readInitialPayload`, `hasConsumerWindow`, `initHost`, `definedComponentOptions`, `clearHostInstance`.
 - **I callbacks:** `initHost.onDestroy`, `initHost.ready.catch`.
 
 Evidence: [host](#evidence-host); typecheck.

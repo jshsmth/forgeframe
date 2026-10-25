@@ -24,7 +24,10 @@ import {
 	getRegisteredComponent,
 } from "../component-registry";
 import { HostComponent } from "./component";
-import { CONSUMER_WINDOW_RESOLUTION_ERROR } from "./security";
+import {
+	CONSUMER_WINDOW_RESOLUTION_ERROR,
+	resolveConsumerWindow,
+} from "./security";
 
 let hostInstance: HostComponent<
 	Record<string, unknown>,
@@ -34,13 +37,16 @@ let hostInstance: HostComponent<
 /**
  * Reads the channel metadata the host starts from.
  *
- * @throws For a payload from another protocol, before anything is sent to its
- * unverified consumer.
+ * @throws For a payload from another protocol in a window with a consumer,
+ * before anything is sent to that unverified consumer.
  */
 function readInitialPayload(): WindowNamePayload | null {
 	const result = readWindowNamePayload();
 	if (!result) return null;
 	if (result.kind === "unsupported") {
+		// A stale name with no parent or opener has no consumer to upgrade, so it
+		// starts nothing, as a current payload without a consumer window does.
+		if (!hasConsumerWindow()) return null;
 		throw new Error(describeUnsupportedPayload(result));
 	}
 	if (result.kind === "invalid") {
@@ -48,6 +54,22 @@ function readInitialPayload(): WindowNamePayload | null {
 		return null;
 	}
 	return result.payload;
+}
+
+/** Whether this window has a parent or opener that could be its consumer. */
+function hasConsumerWindow(): boolean {
+	try {
+		resolveConsumerWindow();
+		return true;
+	} catch (error) {
+		if (
+			error instanceof Error &&
+			error.message === CONSUMER_WINDOW_RESOLUTION_ERROR
+		) {
+			return false;
+		}
+		throw error;
+	}
 }
 
 /** Names the consumer's ForgeFrame line and which side must upgrade. */

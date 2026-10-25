@@ -643,7 +643,7 @@ In iframe mode, ForgeFrame sets `sandbox="allow-scripts allow-same-origin allow-
 
 ### Host Init with initHost
 
-`initHost(propDefinitions?, allowedConsumerDomains?)` starts the host runtime. It reads channel metadata from `window.name`, requests the initial props through origin-checked messaging, validates them, and attaches `window.hostProps`. Await the returned host's `ready` promise before reading props or nested children; initialization errors reject `ready`. Outside a ForgeFrame host window, `initHost()` returns `null`, so handle that case if the page can also run standalone. In a window opened by a consumer on another ForgeFrame major version, `initHost()` throws an error that names the consumer's version and sends that consumer nothing; upgrade consumer and host together.
+`initHost(propDefinitions?, allowedConsumerDomains?)` starts the host runtime. It reads channel metadata from `window.name`, requests the initial props through origin-checked messaging, validates them, and attaches `window.hostProps`. Await the returned host's `ready` promise before reading props or nested children; initialization errors reject `ready`. Outside a ForgeFrame host window, `initHost()` returns `null`, so handle that case if the page can also run standalone. In a window opened by a consumer on another ForgeFrame major version, `initHost()` throws an error that names the consumer's version and sends that consumer nothing; upgrade consumer and host together. A window that only keeps such a name, with no parent or opener left, gets `null`.
 
 Host startup patterns:
 

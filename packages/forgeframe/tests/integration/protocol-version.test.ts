@@ -36,8 +36,12 @@ function readPostedRequests(postMessage: { mock: { calls: unknown[][] } }) {
 
 describe("Bootstrap protocol version", () => {
 	let harness: IframeIntegrationHarness | null = null;
+	// Aborted after each test, so a failed assertion cannot leak listeners.
+	let listeners = new AbortController();
 
 	afterEach(async () => {
+		listeners.abort();
+		listeners = new AbortController();
 		await harness?.cleanup();
 		harness = null;
 		vi.restoreAllMocks();
@@ -137,6 +141,7 @@ describe("Bootstrap protocol version", () => {
 			activeHarness.consumerWindow.addEventListener(
 				"message",
 				consumerMessages,
+				{ signal: listeners.signal },
 			);
 			activeHarness.hostWindow.name = encodeWindowName({
 				uid: "legacy-consumer-uid",
@@ -161,10 +166,32 @@ describe("Bootstrap protocol version", () => {
 			expect(
 				activeHarness.withHostGlobals(() => Reflect.get(window, "hostProps")),
 			).toBeUndefined();
-			activeHarness.consumerWindow.removeEventListener(
-				"message",
-				consumerMessages,
-			);
 		},
 	);
+
+	it("returns null for a stale older payload in a window with no consumer", () => {
+		harness = createIframeIntegrationHarness();
+		const activeHarness = harness;
+		// A top-level window: no parent other than itself, and no opener.
+		Object.defineProperty(activeHarness.hostWindow, "parent", {
+			configurable: true,
+			value: activeHarness.hostWindow,
+		});
+		activeHarness.hostWindow.name = encodeWindowName({
+			uid: "stale-consumer-uid",
+			tag: "protocol-version-stale",
+			version: "1.1.0",
+			protocolVersion: 2,
+			context: "popup",
+			consumerDomain: activeHarness.consumerOrigin,
+			props: {},
+		});
+		const errors = vi.spyOn(console, "error");
+
+		expect(
+			activeHarness.withHostGlobals(() => initHost({ amount: prop.number() })),
+		).toBeNull();
+		expect(getHost()).toBeNull();
+		expect(errors).not.toHaveBeenCalled();
+	});
 });
