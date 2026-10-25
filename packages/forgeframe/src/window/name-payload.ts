@@ -1,24 +1,6 @@
-import type { ConsumerExports } from "../communication/types";
 import type { ContextType } from "../constants";
-import {
-	CONTEXT,
-	PROTOCOL_VERSION,
-	VERSION,
-	WINDOW_NAME_PREFIX,
-} from "../constants";
-import type { SerializedProps } from "../props/types";
-import type { HostComponentRef, WindowNamePayload } from "./types";
-
-const REQUIRED_CONSUMER_EXPORT_KEYS = [
-	"init",
-	"close",
-	"resize",
-	"show",
-	"hide",
-	"onError",
-	"updateProps",
-	"export",
-] as const;
+import { CONTEXT, PROTOCOL_VERSION, WINDOW_NAME_PREFIX } from "../constants";
+import type { WindowNamePayload } from "./types";
 
 /**
  * Maximum allowed size for the window.name payload in bytes.
@@ -28,16 +10,39 @@ const REQUIRED_CONSUMER_EXPORT_KEYS = [
 const MAX_PAYLOAD_SIZE = 32 * 1024;
 
 /**
+ * Result of classifying a decoded window.name value.
+ *
+ * @remarks
+ * - `current`: valid channel metadata for this protocol, copied without unknown fields.
+ * - `unsupported`: a ForgeFrame payload from another protocol. `protocolVersion`
+ *   is `undefined` when the payload has none; `version` is the package version
+ *   an older consumer wrote, when present.
+ * - `invalid`: anything else.
+ *
+ * @internal
+ */
+export type WindowNamePayloadClassification =
+	| { kind: "current"; payload: WindowNamePayload }
+	| {
+			kind: "unsupported";
+			tag: string;
+			protocolVersion: number | undefined;
+			version: string | undefined;
+	  }
+	| { kind: "invalid" };
+
+const INVALID_PAYLOAD: WindowNamePayloadClassification = { kind: "invalid" };
+
+/**
  * Builds a window name string with an encoded payload.
  *
- * @typeParam P - The component props type carried by the payload type.
- * @param payload - The payload to encode into the window name.
+ * @param payload - The channel metadata to encode into the window name.
  * @returns A window name string with the ForgeFrame prefix and base64-encoded payload.
  *
  * @remarks
- * Protocol 2 uses this only for channel metadata. Consumer props and child
- * metadata are delivered through verified messaging instead: window.name may
- * remain readable after redirects and must not carry sensitive data.
+ * The payload carries only channel metadata. Consumer props and child metadata
+ * are delivered through verified messaging instead: window.name may remain
+ * readable after redirects and must not carry sensitive data.
  *
  * @example
  * ```typescript
@@ -47,168 +52,84 @@ const MAX_PAYLOAD_SIZE = 32 * 1024;
  *     tag: 'my-component',
  *     context: 'iframe',
  *     consumerDomain: window.location.origin,
- *     // Props travel in the verified bootstrap, never in window.name.
- *     props: {},
- *     // Message names, which 1.x hosts still validate.
- *     exports: { init: MESSAGE_NAME.INIT, close: MESSAGE_NAME.CLOSE, ... },
  *   }),
  * );
  * ```
  *
  * @internal
  */
-export function buildWindowName<P>(payload: WindowNamePayload<P>): string {
+export function buildWindowName(payload: WindowNamePayload): string {
 	const encoded = encodePayload(payload);
 	return `${WINDOW_NAME_PREFIX}${encoded}`;
-}
-
-/**
- * Parses a window name to extract the encoded payload.
- *
- * @typeParam P - The expected type of the props in the payload.
- * @param name - The window name string to parse.
- * @returns The decoded WindowNamePayload, or `null` if the name is not a valid ForgeFrame window name.
- *
- * @remarks
- * This function checks if the window name starts with the ForgeFrame prefix,
- * then decodes the base64-encoded payload. Returns `null` if the name doesn't
- * have the expected format or if decoding fails.
- *
- * @internal
- */
-function parseWindowName<P>(name: string): WindowNamePayload<P> | null {
-	// biome-ignore lint/complexity/useOptionalChain: Keep rejecting all falsy runtime inputs before invoking string methods.
-	if (!name || !name.startsWith(WINDOW_NAME_PREFIX)) {
-		return null;
-	}
-
-	const encoded = name.slice(WINDOW_NAME_PREFIX.length);
-	return decodePayload<P>(encoded);
 }
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null;
 }
 
-function isValidSerializedProps(value: unknown): value is SerializedProps {
-	return isObjectRecord(value);
+function isNonEmptyString(value: unknown): value is string {
+	return typeof value === "string" && value.length > 0;
 }
 
-function isValidConsumerExports(value: unknown): value is ConsumerExports {
-	return (
-		isObjectRecord(value) &&
-		REQUIRED_CONSUMER_EXPORT_KEYS.every(
-			(key) => typeof value[key] === "string" && value[key].length > 0,
-		)
-	);
+function isContext(value: unknown): value is ContextType {
+	return value === CONTEXT.IFRAME || value === CONTEXT.POPUP;
 }
 
-function isValidHostComponentRef(value: unknown): value is HostComponentRef {
-	if (!isObjectRecord(value)) {
-		return false;
+/**
+ * Classifies a decoded window.name value by protocol, without reading browser state.
+ *
+ * @param value - The JSON value decoded from a ForgeFrame window name, or
+ * `undefined` when decoding failed.
+ * @returns The classification the host start-up reacts to.
+ *
+ * @remarks
+ * A payload is recognised as ForgeFrame's when it is an object with a non-empty
+ * `tag`. Its `protocolVersion` must then be missing or a positive integer to
+ * count as another protocol; any other value, and a current payload with
+ * missing or malformed metadata, is invalid.
+ *
+ * @internal
+ */
+export function classifyWindowNamePayload(
+	value: unknown,
+): WindowNamePayloadClassification {
+	if (!isObjectRecord(value) || !isNonEmptyString(value.tag)) {
+		return INVALID_PAYLOAD;
 	}
 
-	if (typeof value.tag !== "string" || value.tag.length === 0) {
-		return false;
-	}
-
-	if (typeof value.url !== "string" || value.url.length === 0) {
-		return false;
-	}
-
-	if (value.props !== undefined && !isObjectRecord(value.props)) {
-		return false;
-	}
-
-	if (
-		value.defaultContext !== undefined &&
-		value.defaultContext !== CONTEXT.IFRAME &&
-		value.defaultContext !== CONTEXT.POPUP
-	) {
-		return false;
-	}
-
-	if (value.dimensions !== undefined) {
-		if (!isObjectRecord(value.dimensions)) {
-			return false;
-		}
-
-		const { width, height } = value.dimensions;
+	const { protocolVersion } = value;
+	if (protocolVersion === PROTOCOL_VERSION) {
+		const { uid, tag, context, consumerDomain } = value;
 		if (
-			(width !== undefined &&
-				typeof width !== "string" &&
-				typeof width !== "number") ||
-			(height !== undefined &&
-				typeof height !== "string" &&
-				typeof height !== "number")
+			!isNonEmptyString(uid) ||
+			!isContext(context) ||
+			!isNonEmptyString(consumerDomain)
 		) {
-			return false;
+			return INVALID_PAYLOAD;
 		}
-	}
-
-	return true;
-}
-
-function isValidChildrenMap(
-	value: unknown,
-): value is Record<string, HostComponentRef> {
-	if (!isObjectRecord(value)) {
-		return false;
-	}
-
-	return Object.values(value).every((child) => isValidHostComponentRef(child));
-}
-
-function isValidWindowNamePayload<P>(
-	value: unknown,
-): value is WindowNamePayload<P> {
-	if (!isObjectRecord(value)) {
-		return false;
-	}
-
-	if (typeof value.uid !== "string" || value.uid.length === 0) {
-		return false;
-	}
-
-	if (typeof value.tag !== "string" || value.tag.length === 0) {
-		return false;
-	}
-
-	if (typeof value.version !== "string" || value.version.length === 0) {
-		return false;
+		return {
+			kind: "current",
+			payload: { uid, tag, protocolVersion, context, consumerDomain },
+		};
 	}
 
 	if (
-		value.protocolVersion !== undefined &&
-		value.protocolVersion !== 1 &&
-		value.protocolVersion !== PROTOCOL_VERSION
+		protocolVersion !== undefined &&
+		!(
+			typeof protocolVersion === "number" &&
+			Number.isInteger(protocolVersion) &&
+			protocolVersion >= 1
+		)
 	) {
-		return false;
+		return INVALID_PAYLOAD;
 	}
 
-	if (value.context !== CONTEXT.IFRAME && value.context !== CONTEXT.POPUP) {
-		return false;
-	}
-
-	if (
-		typeof value.consumerDomain !== "string" ||
-		value.consumerDomain.length === 0
-	) {
-		return false;
-	}
-
-	if (
-		!isValidSerializedProps(value.props) ||
-		!isValidConsumerExports(value.exports)
-	) {
-		return false;
-	}
-
-	if (value.children !== undefined && !isValidChildrenMap(value.children)) {
-		return false;
-	}
-
-	return true;
+	return {
+		kind: "unsupported",
+		tag: value.tag,
+		protocolVersion,
+		version: isNonEmptyString(value.version) ? value.version : undefined,
+	};
 }
 
 /**
@@ -219,15 +140,8 @@ function isValidWindowNamePayload<P>(
  *
  * @remarks
  * A ForgeFrame host window is identified by having a window name that starts
- * with the ForgeFrame prefix. This function safely handles cross-origin errors.
- *
- * @example
- * ```typescript
- * if (isForgeFrameWindow()) {
- *   // This window was created by ForgeFrame
- *   const payload = getInitialPayload();
- * }
- * ```
+ * with the ForgeFrame prefix, whatever protocol its payload uses. This
+ * function safely handles cross-origin errors.
  *
  * @internal
  */
@@ -244,29 +158,18 @@ export function isForgeFrameWindow(win: Window = window): boolean {
  *
  * @param tag - The component tag to check for.
  * @param win - The window to check. Defaults to the current window.
- * @returns `true` if the window's payload has the specified tag, `false` otherwise.
+ * @returns `true` if the window holds current channel metadata for the tag.
  *
- * @remarks
- * This function parses the window name and checks if the tag in the payload
- * matches the specified tag. Useful for component-specific initialization logic.
- *
- * @example
- * ```typescript
- * if (isHostOfComponent('payment-form')) {
- *   // Initialize payment-specific features
- * }
- * ```
- *
- * @public
+ * @internal
  */
 export function isHostOfComponent(tag: string, win: Window = window): boolean {
-	return getInitialPayload(win)?.tag === tag;
+	const result = readWindowNamePayload(win);
+	return result?.kind === "current" && result.payload.tag === tag;
 }
 
 /**
  * Encodes a payload to a base64 string for use in window.name.
  *
- * @typeParam P - The type of the props in the payload.
  * @param payload - The payload to encode.
  * @returns A base64-encoded string representing the payload.
  * @throws Error if JSON serialization or encoding fails, or if payload exceeds size limit.
@@ -280,7 +183,7 @@ export function isHostOfComponent(tag: string, win: Window = window): boolean {
  *
  * @internal
  */
-function encodePayload<P>(payload: WindowNamePayload<P>): string {
+function encodePayload(payload: WindowNamePayload): string {
 	try {
 		const json = JSON.stringify(payload);
 		const encoded = btoa(encodeURIComponent(json));
@@ -289,8 +192,7 @@ function encodePayload<P>(payload: WindowNamePayload<P>): string {
 		const byteSize = encoded.length;
 		if (byteSize > MAX_PAYLOAD_SIZE) {
 			throw new Error(
-				`Payload size (${Math.round(byteSize / 1024)}KB) exceeds maximum allowed size (${MAX_PAYLOAD_SIZE / 1024}KB). ` +
-					`Consider reducing the amount of data passed via props.`,
+				`Payload size (${Math.round(byteSize / 1024)}KB) exceeds maximum allowed size (${MAX_PAYLOAD_SIZE / 1024}KB).`,
 			);
 		}
 
@@ -306,205 +208,99 @@ function encodePayload<P>(payload: WindowNamePayload<P>): string {
 /**
  * Decodes a base64-encoded payload from a window name.
  *
- * @typeParam P - The expected type of the props in the payload.
  * @param encoded - The base64-encoded string to decode.
- * @returns The decoded WindowNamePayload, or `null` if decoding fails.
+ * @returns The decoded JSON value, or `undefined` if decoding fails.
  *
  * @remarks
  * Reverses the encoding performed by {@link encodePayload}: base64-decodes,
- * URI-decodes, and JSON-parses the string. Returns `null` on any error.
+ * URI-decodes, and JSON-parses the string.
  *
  * @internal
  */
-function decodePayload<P>(encoded: string): WindowNamePayload<P> | null {
+function decodePayload(encoded: string): unknown {
 	if (encoded.length > MAX_PAYLOAD_SIZE) {
-		return null;
+		return undefined;
 	}
 
 	try {
-		const json = decodeURIComponent(atob(encoded));
-		const parsed = JSON.parse(json) as unknown;
-		return isValidWindowNamePayload<P>(parsed) ? parsed : null;
+		return JSON.parse(decodeURIComponent(atob(encoded))) as unknown;
 	} catch {
-		return null;
+		return undefined;
 	}
 }
 
 /**
- * Creates a window payload object for encoding into a window name.
+ * Creates the channel metadata payload for encoding into a window name.
  *
- * @typeParam P - The component props type carried by the payload type.
- * @param options - The options for creating the payload.
- * @param options.uid - Unique identifier for the host window.
+ * @param options - The channel metadata.
+ * @param options.uid - Unique identifier of the consumer instance.
  * @param options.tag - Component tag name.
  * @param options.context - The context type (e.g., 'iframe' or 'popup').
  * @param options.consumerDomain - The origin of the consumer window.
- * @param options.props - Legacy props field. The consumer always writes `{}`;
- * protocol 2 delivers props through the verified bootstrap.
- * @param options.exports - Consumer message names, which 1.x hosts validate.
- * @param options.children - Legacy nested component references. The consumer
- * never writes them; protocol 2 delivers children through the bootstrap.
  * @returns A WindowNamePayload object ready for encoding.
  *
  * @remarks
- * This is a factory function that creates a properly structured payload with
- * the current ForgeFrame version and protocol version automatically included.
+ * The current protocol version is included automatically.
  *
  * @example
  * ```typescript
- * const payload = createWindowPayload({
- *   uid: generateUID(),
- *   tag: 'checkout-form',
- *   context: 'iframe',
- *   consumerDomain: window.location.origin,
- *   props: {},
- *   exports: { init: MESSAGE_NAME.INIT, close: MESSAGE_NAME.CLOSE, ... },
- * });
- *
- * const windowName = buildWindowName(payload);
+ * const windowName = buildWindowName(
+ *   createWindowPayload({
+ *     uid: generateUID(),
+ *     tag: 'checkout-form',
+ *     context: 'iframe',
+ *     consumerDomain: window.location.origin,
+ *   }),
+ * );
  * ```
  *
  * @internal
  */
-export function createWindowPayload<P>(options: {
+export function createWindowPayload(options: {
 	uid: string;
 	tag: string;
 	context: ContextType;
 	consumerDomain: string;
-	props: SerializedProps;
-	exports: ConsumerExports;
-	children?: Record<string, HostComponentRef>;
-}): WindowNamePayload<P> {
+}): WindowNamePayload {
 	return {
 		uid: options.uid,
 		tag: options.tag,
-		version: VERSION,
 		protocolVersion: PROTOCOL_VERSION,
 		context: options.context,
 		consumerDomain: options.consumerDomain,
-		props: options.props,
-		exports: options.exports,
-		children: options.children,
 	};
 }
 
 /**
- * Gets the initial payload from a window's name.
+ * Reads and classifies the ForgeFrame payload in a window's name.
  *
- * @typeParam P - The expected type of the props in the payload.
- * @param win - The window to read the payload from. Defaults to the current window.
- * @returns The decoded WindowNamePayload, or `null` if not a ForgeFrame window.
+ * @param win - The window to read. Defaults to the current window.
+ * @returns The payload classification, or `null` when the name is unreadable or
+ * lacks the ForgeFrame prefix.
  *
  * @remarks
- * This is a convenience function typically used by host components during
- * initialization to read the data passed by the consumer window.
+ * Reading never writes `window.name`, so the channel metadata stays in place
+ * for same-page retries, reloads, and navigations. Undecodable and oversized
+ * names are classified as invalid.
  *
- * @example
- * ```typescript
- * // In host window initialization
- * const payload = getInitialPayload<MyProps>();
- * if (payload) {
- *   initializeComponent(payload.props);
- *   setupConsumerCommunication(payload.consumerDomain);
- * }
- * ```
- *
- * @public
+ * @internal
  */
-export function getInitialPayload<P>(
+export function readWindowNamePayload(
 	win: Window = window,
-): WindowNamePayload<P> | null {
+): WindowNamePayloadClassification | null {
+	let name: unknown;
 	try {
-		return parseWindowName(win.name);
+		name = win.name;
 	} catch {
 		// Unusual or inaccessible windows can throw when their name is read.
 		return null;
 	}
-}
 
-/**
- * Copies channel metadata while clearing props and nested child definitions for reconnection.
- * The input and its other metadata are preserved; no window-name write occurs here.
- * @internal
- */
-function retainChannelMetadata<P>(
-	payload: WindowNamePayload<P>,
-): WindowNamePayload<P> {
-	return { ...payload, props: {}, children: undefined };
-}
-
-/**
- * Reads the initial ForgeFrame channel metadata or legacy payload from a window name.
- *
- * @typeParam P - The expected type of the props in the payload.
- * @param win - The window to consume the payload from. Defaults to the current window.
- * @returns The decoded WindowNamePayload, or `null` if not a valid ForgeFrame window.
- *
- * @remarks
- * Protocol 2 retains channel metadata for reconnection across navigations,
- * stripping any props and children. Legacy payloads are cleared after parsing.
- *
- * @internal
- */
-export function consumeInitialPayload<P>(
-	win: Window = window,
-): WindowNamePayload<P> | null {
-	let name: string;
-	try {
-		name = win.name;
-	} catch {
+	if (typeof name !== "string" || !name.startsWith(WINDOW_NAME_PREFIX)) {
 		return null;
 	}
 
-	const payload = parseWindowName<P>(name);
-	if (!payload) {
-		return null;
-	}
-
-	if (payload.protocolVersion === PROTOCOL_VERSION) {
-		// Retain only channel metadata so a new document can reconnect. Props and
-		// executable child metadata must never persist across navigations.
-		try {
-			if (win.name === name) {
-				win.name = buildWindowName(retainChannelMetadata(payload));
-			}
-		} catch {
-			// Bootstrap can proceed even if an unusual window rejects name writes.
-		}
-	} else {
-		clearInitialPayload(win, name);
-	}
-
-	return payload;
-}
-
-/**
- * Clears the current ForgeFrame bootstrap payload from a window name.
- *
- * @param win - The window to clear. Defaults to the current window.
- * @param expectedName - Optional exact window.name value that must still be present.
- *
- * @remarks
- * The `expectedName` guard prevents clearing a newer or externally replaced
- * `window.name` value after a delayed bootstrap path.
- *
- * @internal
- */
-export function clearInitialPayload(
-	win: Window = window,
-	expectedName?: string,
-): void {
-	try {
-		if (expectedName !== undefined) {
-			if (win.name !== expectedName) {
-				return;
-			}
-		} else if (!getInitialPayload(win)) {
-			return;
-		}
-
-		win.name = "";
-	} catch {
-		// Clearing can fail for unusual window objects; host initialization can still succeed.
-	}
+	return classifyWindowNamePayload(
+		decodePayload(name.slice(WINDOW_NAME_PREFIX.length)),
+	);
 }

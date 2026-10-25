@@ -7,6 +7,7 @@
  * init flushing decisions, and cleanup for `initHost()`/`clearHostInstance()`.
  */
 
+import { PROTOCOL_VERSION } from "../../constants";
 import { assertNoRemovedPropOptions } from "../../props/removed-options";
 import type { HostPropsDefinition } from "../../types/props";
 import type { ComponentOptions, HostProps } from "../../types/runtime";
@@ -14,8 +15,8 @@ import type { DomainMatcher } from "../../types/utility";
 import { hasBrowserWindow } from "../../utils/browser";
 import { assertDomainMatcher } from "../../utils/domain-pattern";
 import {
-	consumeInitialPayload,
-	isForgeFrameWindow,
+	readWindowNamePayload,
+	type WindowNamePayloadClassification,
 } from "../../window/name-payload";
 import type { WindowNamePayload } from "../../window/types";
 import {
@@ -29,24 +30,42 @@ let hostInstance: HostComponent<
 	Record<string, unknown>,
 	Record<string, unknown>
 > | null = null;
-let pendingInitialPayload: WindowNamePayload<Record<string, unknown>> | null =
-	null;
 
-function readInitialPayload<P>(): WindowNamePayload<P> | null {
-	if (isForgeFrameWindow()) {
-		const payload = consumeInitialPayload<P>();
-		if (!payload) {
-			console.error("Failed to parse ForgeFrame payload from window.name");
-			return null;
-		}
-
-		pendingInitialPayload = payload as WindowNamePayload<
-			Record<string, unknown>
-		>;
-		return payload;
+/**
+ * Reads the channel metadata the host starts from.
+ *
+ * @throws For a payload from another protocol, before anything is sent to its
+ * unverified consumer.
+ */
+function readInitialPayload(): WindowNamePayload | null {
+	const result = readWindowNamePayload();
+	if (!result) return null;
+	if (result.kind === "unsupported") {
+		throw new Error(describeUnsupportedPayload(result));
 	}
+	if (result.kind === "invalid") {
+		console.error("Failed to parse ForgeFrame payload from window.name");
+		return null;
+	}
+	return result.payload;
+}
 
-	return pendingInitialPayload as WindowNamePayload<P> | null;
+/** Names the consumer's ForgeFrame line and which side must upgrade. */
+function describeUnsupportedPayload(
+	result: Extract<WindowNamePayloadClassification, { kind: "unsupported" }>,
+): string {
+	const { tag, protocolVersion, version } = result;
+	const protocol =
+		protocolVersion === undefined
+			? "no protocol version"
+			: `protocol ${protocolVersion}`;
+	const evidence = version ? `${protocol}, package ${version}` : protocol;
+	const prefix = `ForgeFrame host for "${tag}" cannot start:`;
+	if (protocolVersion !== undefined && protocolVersion > PROTOCOL_VERSION) {
+		return `${prefix} the consumer uses a newer ForgeFrame protocol (${evidence}). Upgrade the host to the consumer's ForgeFrame version.`;
+	}
+	const line = protocolVersion === 2 ? "1.x" : "0.x";
+	return `${prefix} the consumer uses ForgeFrame ${line} (${evidence}). Upgrade the consumer and host to ForgeFrame 2 together.`;
 }
 
 /**
@@ -58,6 +77,8 @@ function readInitialPayload<P>(): WindowNamePayload<P> | null {
  *
  * @returns The host runtime, or `null` outside a ForgeFrame host context or
  * when validation destroys or replaces the runtime being configured.
+ * @throws When the window was opened by a consumer on another ForgeFrame
+ * major version; consumer and host must be upgraded together.
  * @public
  */
 export function initHost<P extends Record<string, unknown>, SchemaInputs = P>(
@@ -111,7 +132,7 @@ export function initHost<P extends Record<string, unknown>, SchemaInputs = P>(
 		return hostInstance as HostComponent<P, SchemaInputs>;
 	}
 
-	const payload = readInitialPayload<P>();
+	const payload = readInitialPayload();
 	if (!payload) {
 		return null;
 	}
@@ -131,7 +152,6 @@ export function initHost<P extends Record<string, unknown>, SchemaInputs = P>(
 			},
 		) as HostComponent<Record<string, unknown>, Record<string, unknown>>;
 		hostInstance = nextHostInstance;
-		pendingInitialPayload = null;
 		void nextHostInstance.ready.catch(() => {
 			// Async validation failures must allow the same-page retry that
 			// synchronous bootstrap failures already support.
@@ -167,7 +187,6 @@ export function getHost<
 }
 
 export function clearHostInstance(): void {
-	pendingInitialPayload = null;
 	const previousHost = hostInstance;
 	hostInstance = null;
 	previousHost?.destroy();

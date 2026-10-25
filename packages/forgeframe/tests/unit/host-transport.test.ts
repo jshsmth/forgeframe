@@ -1,8 +1,8 @@
 /**
  * Unit tests for `@/core/host/transport`.
  *
- * Covers trusted-domain updates, deferred init scheduling guards, init failure
- * normalization, props handler filtering, and idempotent teardown behavior.
+ * Covers deferred init scheduling guards, the INIT and GET_SIBLINGS wire shapes,
+ * init failure normalization, props handler filtering, and idempotent teardown.
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -23,18 +23,16 @@ const createdTransports: HostTransport[] = [];
 
 function createTransport({
 	uid = "host-transport-uid",
-	tag = "host-transport-component",
 	context = CONTEXT.IFRAME,
 	consumerDomain = "https://consumer.example.com",
 	getConsumerDomain,
 	deferInit = true,
-	beforeInit,
+	beforeInit = () => Promise.resolve(),
 	consumerWindow = { postMessage: vi.fn() } as unknown as Window,
 }: Partial<HostTransportOptions> = {}) {
 	const event = new EventEmitter();
 	const options: HostTransportOptions = {
 		uid,
-		tag,
 		context,
 		event,
 		consumerWindow,
@@ -142,31 +140,6 @@ describe("HostTransport", () => {
 		expect(applySerializedProps).toHaveBeenCalledWith(payload);
 	});
 
-	it("should update trusted consumer domains only when the previous domain changes", () => {
-		const { transport } = createTransport();
-		const removeSpy = vi.spyOn(transport.messenger, "removeTrustedDomain");
-		const addSpy = vi.spyOn(transport.messenger, "addTrustedDomain");
-
-		transport.updateTrustedConsumerDomain("", "https://next.example.com");
-		transport.updateTrustedConsumerDomain(
-			"https://same.example.com",
-			"https://same.example.com",
-		);
-
-		expect(removeSpy).not.toHaveBeenCalled();
-		expect(addSpy).not.toHaveBeenCalled();
-
-		transport.updateTrustedConsumerDomain(
-			"https://old.example.com",
-			"https://new.example.com",
-		);
-
-		expect(removeSpy).toHaveBeenCalledTimes(1);
-		expect(removeSpy).toHaveBeenCalledWith("https://old.example.com");
-		expect(addSpy).toHaveBeenCalledTimes(1);
-		expect(addSpy).toHaveBeenCalledWith("https://new.example.com");
-	});
-
 	it("should schedule deferred init once and avoid resending after init has flushed", async () => {
 		const { transport, consumerWindow } = createTransport({ deferInit: true });
 		const sendSpy = vi
@@ -176,17 +149,12 @@ describe("HostTransport", () => {
 		transport.handleHostPropsAccess();
 		transport.handleHostPropsAccess();
 
-		await flushMicrotasks();
-
-		expect(sendSpy).toHaveBeenCalledTimes(1);
+		await vi.waitFor(() => expect(sendSpy).toHaveBeenCalledTimes(1));
 		expect(sendSpy).toHaveBeenCalledWith(
 			consumerWindow,
 			"https://consumer.example.com",
 			MESSAGE_NAME.INIT,
-			{
-				uid: "host-transport-uid",
-				tag: "host-transport-component",
-			},
+			{ sessionId: expect.any(String) },
 			undefined,
 			undefined,
 		);
@@ -225,11 +193,14 @@ describe("HostTransport", () => {
 	it("does not report an INIT rejected by routine teardown as a failure", async () => {
 		const pendingSend = createDeferred<unknown>();
 		const { transport, event } = createTransport();
-		vi.spyOn(transport.messenger, "send").mockReturnValue(pendingSend.promise);
+		const sendSpy = vi
+			.spyOn(transport.messenger, "send")
+			.mockReturnValue(pendingSend.promise);
 		const emitSpy = vi.spyOn(event, "emit");
 		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
 		transport.flushInit();
+		await vi.waitFor(() => expect(sendSpy).toHaveBeenCalledOnce());
 		transport.destroy();
 		pendingSend.reject(new Error("Messenger destroyed"));
 		await flushMicrotasks();
@@ -292,10 +263,11 @@ describe("HostTransport", () => {
 		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
 		transport.flushInit();
-		await flushMicrotasks();
+		await vi.waitFor(() =>
+			expect(transport.getInitError()).toBeInstanceOf(Error),
+		);
 
 		expect(sendSpy).toHaveBeenCalledTimes(1);
-		expect(transport.getInitError()).toBeInstanceOf(Error);
 		expect(transport.getInitError()?.message).toBe("init send failed");
 		expect(emitSpy).toHaveBeenCalledWith(
 			EVENT.ERROR,
@@ -332,11 +304,7 @@ describe("HostTransport", () => {
 			consumerWindow,
 			"https://consumer.example.com",
 			MESSAGE_NAME.GET_SIBLINGS,
-			{
-				uid: "host-transport-uid",
-				tag: "host-transport-component",
-				options: { anyConsumer: true },
-			},
+			{ options: { anyConsumer: true } },
 		);
 
 		activeDomain = "https://updated.example.com";
@@ -347,11 +315,7 @@ describe("HostTransport", () => {
 			consumerWindow,
 			"https://updated.example.com",
 			MESSAGE_NAME.GET_SIBLINGS,
-			{
-				uid: "host-transport-uid",
-				tag: "host-transport-component",
-				options: undefined,
-			},
+			{ options: undefined },
 		);
 	});
 

@@ -5,20 +5,13 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { MessageHandler } from "@/communication/messenger";
+import { type MessageHandler, Messenger } from "@/communication/messenger";
 import {
 	createRequestMessage,
 	serializeMessage,
 } from "@/communication/protocol";
-import type { ConsumerExports } from "@/communication/types";
-import {
-	CONTEXT,
-	EVENT,
-	MESSAGE_NAME,
-	PROTOCOL_VERSION,
-	VERSION,
-} from "@/constants";
-import { clearHostInstance, HostComponent, initHost } from "@/core/host";
+import { CONTEXT, EVENT, MESSAGE_NAME, PROTOCOL_VERSION } from "@/constants";
+import { clearHostInstance, type HostComponent, initHost } from "@/core/host";
 import * as hostSecurity from "@/core/host/security";
 import { prop } from "@/props/prop";
 import { buildWindowName } from "@/window/name-payload";
@@ -26,29 +19,57 @@ import type { WindowNamePayload } from "@/window/types";
 import { requireValue } from "../require-value";
 
 const originalWindowName = window.name;
-const originalDocumentReferrer = document.referrer;
 let dispatchedMessageCount = 0;
 type HandlerSource = Parameters<MessageHandler>[1];
 type DirectHandler = (
 	data: Record<string, unknown>,
 	source: HandlerSource,
 ) => unknown;
-const VALID_EXPORTS: ConsumerExports = {
-	init: MESSAGE_NAME.INIT,
-	close: MESSAGE_NAME.CLOSE,
-	resize: MESSAGE_NAME.RESIZE,
-	show: MESSAGE_NAME.SHOW,
-	hide: MESSAGE_NAME.HIDE,
-	onError: MESSAGE_NAME.ERROR,
-	updateProps: MESSAGE_NAME.PROPS,
-	export: MESSAGE_NAME.EXPORT,
-};
 
-function setDocumentReferrer(referrer: string): void {
-	Object.defineProperty(document, "referrer", {
-		configurable: true,
-		value: referrer,
-	});
+/** Builds current-protocol channel metadata for a host window. */
+function createPayload(
+	overrides: Partial<WindowNamePayload> = {},
+): WindowNamePayload {
+	return {
+		uid: "host-uid",
+		tag: "secure-component",
+		protocolVersion: PROTOCOL_VERSION,
+		context: CONTEXT.IFRAME,
+		consumerDomain: "https://trusted.example.com",
+		...overrides,
+	};
+}
+
+/**
+ * Starts a deferred host whose verified bootstrap delivers `props`, and counts
+ * the INIT messages it sends afterwards.
+ */
+async function startBootstrappedHost(
+	consumerWindow: Window,
+	payload: WindowNamePayload,
+	props: Record<string, unknown> = {},
+	propDefinitions?: Parameters<typeof initHost>[0],
+): Promise<{
+	host: HostComponent<Record<string, unknown>>;
+	countInitMessages: () => number;
+}> {
+	vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
+		consumerWindow,
+	);
+	window.name = buildWindowName(payload);
+	const send = vi
+		.spyOn(Messenger.prototype, "send")
+		.mockResolvedValueOnce({ props })
+		.mockResolvedValue(undefined);
+	const host = requireValue(
+		initHost(propDefinitions, undefined, { deferInit: true }),
+	);
+	await host.ready;
+	return {
+		host,
+		countInitMessages: () =>
+			send.mock.calls.filter(([, , name]) => name === MESSAGE_NAME.INIT).length,
+	};
 }
 
 /** Creates a consumer window whose origin the browser exposes to the host. */
@@ -130,38 +151,26 @@ function createMessageSource(
 afterEach(() => {
 	clearHostInstance();
 	window.name = originalWindowName;
-	setDocumentReferrer(originalDocumentReferrer);
 	dispatchedMessageCount = 0;
 	vi.useRealTimers();
 	vi.restoreAllMocks();
 });
 
 describe("Host security", () => {
-	it("should preserve built-in hostProps when bootstrap props reuse reserved names", () => {
+	it("should preserve built-in hostProps when bootstrap props reuse reserved names", async () => {
 		const consumerWindow = { postMessage: vi.fn() } as unknown as Window;
-
-		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
+		const { host } = await startBootstrappedHost(
 			consumerWindow,
-		);
-
-		const host = new HostComponent(
-			{
+			createPayload({
 				uid: "host-uid-reserved-bootstrap",
 				tag: "secure-component-reserved-bootstrap",
-				version: VERSION,
-				context: CONTEXT.IFRAME,
-				consumerDomain: "https://trusted.example.com",
-				props: {
-					uid: "spoofed-uid",
-					close: "spoofed-close",
-					consumer: "spoofed-consumer",
-					title: "Visible title",
-				},
-				exports: VALID_EXPORTS,
+			}),
+			{
+				uid: "spoofed-uid",
+				close: "spoofed-close",
+				consumer: "spoofed-consumer",
+				title: "Visible title",
 			},
-			{},
-			undefined,
-			true,
 		);
 
 		expect(host.hostProps.uid).toBe("host-uid-reserved-bootstrap");
@@ -177,30 +186,17 @@ describe("Host security", () => {
 		});
 	});
 
-	it("should ignore reserved names during prop sync without deleting built-ins", () => {
+	it("should ignore reserved names during prop sync without deleting built-ins", async () => {
 		const consumerWindow = { postMessage: vi.fn() } as unknown as Window;
-
-		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
+		const { host } = await startBootstrappedHost(
 			consumerWindow,
-		);
-
-		const host = new HostComponent(
-			{
+			createPayload({
 				uid: "host-uid-reserved-sync",
 				tag: "secure-component-reserved-sync",
-				version: VERSION,
-				context: CONTEXT.IFRAME,
-				consumerDomain: "https://trusted.example.com",
-				props: {
-					amount: 10,
-					close: "initial-close",
-				},
-				exports: VALID_EXPORTS,
-			},
-			{},
-			undefined,
-			true,
+			}),
+			{ amount: 10, close: "initial-close" },
 		);
+		expect(host.hostProps.amount).toBe(10);
 
 		const propsHandler = (
 			host as unknown as {
@@ -236,28 +232,14 @@ describe("Host security", () => {
 	it("should ignore spoofed PROPS from a different trusted window and accept the resolved consumer window", async () => {
 		const consumerWindow = { postMessage: vi.fn() } as unknown as Window;
 		const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
-
-		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
+		const { host } = await startBootstrappedHost(
 			consumerWindow,
-		);
-
-		const host = new HostComponent(
-			{
+			createPayload({
 				uid: "host-uid-pinned-props",
 				tag: "secure-component-pinned-props",
-				version: VERSION,
-				context: CONTEXT.IFRAME,
-				consumerDomain: "https://trusted.example.com",
-				props: {
-					amount: 10,
-				},
-				exports: VALID_EXPORTS,
-			},
-			{
-				amount: { schema: prop.number() },
-			},
-			undefined,
-			true,
+			}),
+			{ amount: 10 },
+			{ amount: { schema: prop.number() } },
 		);
 
 		const onProps = vi.fn();
@@ -306,15 +288,13 @@ describe("Host security", () => {
 			vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
 				createAccessibleConsumerWindow("https://evil.example.com"),
 			);
-			window.name = buildWindowName({
-				uid: "host-uid-invalid-allowlist",
-				tag: "secure-component-invalid-allowlist",
-				version: VERSION,
-				context: CONTEXT.IFRAME,
-				consumerDomain: "https://evil.example.com",
-				props: {},
-				exports: VALID_EXPORTS,
-			});
+			window.name = buildWindowName(
+				createPayload({
+					uid: "host-uid-invalid-allowlist",
+					tag: "secure-component-invalid-allowlist",
+					consumerDomain: "https://evil.example.com",
+				}),
+			);
 
 			expect(() =>
 				// @ts-expect-error Invalid JavaScript configuration is rejected at runtime.
@@ -330,15 +310,13 @@ describe("Host security", () => {
 		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
 			createAccessibleConsumerWindow("https://trusted.example.com"),
 		);
-		window.name = buildWindowName({
-			uid: "host-uid-empty-allowlist",
-			tag: "secure-component-empty-allowlist",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://trusted.example.com",
-			props: {},
-			exports: VALID_EXPORTS,
-		});
+		window.name = buildWindowName(
+			createPayload({
+				uid: "host-uid-empty-allowlist",
+				tag: "secure-component-empty-allowlist",
+				consumerDomain: "https://trusted.example.com",
+			}),
+		);
 
 		expect(() => initHost({}, [])).toThrow(
 			'Consumer domain "https://trusted.example.com" is not allowed',
@@ -350,15 +328,11 @@ describe("Host security", () => {
 			createAccessibleConsumerWindow("https://evil.example.com"),
 		);
 
-		const payload: WindowNamePayload<Record<string, unknown>> = {
+		const payload = createPayload({
 			uid: "host-uid",
 			tag: "secure-component",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
 			consumerDomain: "https://evil.example.com",
-			props: {},
-			exports: VALID_EXPORTS,
-		};
+		});
 
 		window.name = buildWindowName(payload);
 
@@ -367,20 +341,16 @@ describe("Host security", () => {
 		);
 	});
 
-	it("should clear the bootstrap window name but preserve same-page retry when allowlist validation fails", () => {
+	it("should keep the bootstrap window name and allow a same-page retry when allowlist validation fails", () => {
 		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
 			createAccessibleConsumerWindow("https://evil.example.com"),
 		);
 
-		const payload: WindowNamePayload<Record<string, unknown>> = {
+		const payload = createPayload({
 			uid: "host-uid-allowlist-retry",
 			tag: "secure-component-allowlist-retry",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
 			consumerDomain: "https://evil.example.com",
-			props: {},
-			exports: VALID_EXPORTS,
-		};
+		});
 		const bootstrapWindowName = buildWindowName(payload);
 
 		window.name = bootstrapWindowName;
@@ -389,7 +359,7 @@ describe("Host security", () => {
 			"is not allowed",
 		);
 
-		expect(window.name).toBe("");
+		expect(window.name).toBe(bootstrapWindowName);
 		expect(
 			(window as unknown as { hostProps?: unknown }).hostProps,
 		).toBeUndefined();
@@ -400,7 +370,7 @@ describe("Host security", () => {
 		expect(host?.hostProps.getConsumerDomain()).toBe(
 			"https://evil.example.com",
 		);
-		expect(window.name).toBe("");
+		expect(window.name).toBe(bootstrapWindowName);
 	});
 
 	it("should allow wildcard consumer domains during host initialization and bind the verified origin", () => {
@@ -408,15 +378,11 @@ describe("Host security", () => {
 			createAccessibleConsumerWindow("https://api.trusted.example.com"),
 		);
 
-		const payload: WindowNamePayload<Record<string, unknown>> = {
+		const payload = createPayload({
 			uid: "host-uid-wildcard",
 			tag: "secure-component-wildcard",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
 			consumerDomain: "https://api.trusted.example.com",
-			props: {},
-			exports: VALID_EXPORTS,
-		};
+		});
 
 		window.name = buildWindowName(payload);
 
@@ -440,15 +406,11 @@ describe("Host security", () => {
 			createAccessibleConsumerWindow("https://evil.example.com"),
 		);
 
-		const payload: WindowNamePayload<Record<string, unknown>> = {
+		const payload = createPayload({
 			uid: "host-uid-spoofed-domain",
 			tag: "secure-component-spoofed-domain",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
 			consumerDomain: "https://trusted.example.com",
-			props: {},
-			exports: VALID_EXPORTS,
-		};
+		});
 
 		window.name = buildWindowName(payload);
 
@@ -462,15 +424,11 @@ describe("Host security", () => {
 			createAccessibleConsumerWindow("https://verified.example.com"),
 		);
 
-		const payload: WindowNamePayload<Record<string, unknown>> = {
+		const payload = createPayload({
 			uid: "host-uid-verified-domain",
 			tag: "secure-component-verified-domain",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
 			consumerDomain: "https://claimed.example.com",
-			props: {},
-			exports: VALID_EXPORTS,
-		};
+		});
 
 		window.name = buildWindowName(payload);
 
@@ -481,185 +439,136 @@ describe("Host security", () => {
 		);
 	});
 
-	it("should reject host initialization when consumer origin cannot be verified for an allowlist", () => {
+	it("should request bootstrap from an inaccessible consumer only at its exact allowlisted claimed origin", () => {
 		const inaccessibleConsumerWindow = createInaccessibleConsumerWindow();
+		const postMessage = vi.mocked(inaccessibleConsumerWindow.postMessage);
 
 		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
 			inaccessibleConsumerWindow,
 		);
 
-		const payload: WindowNamePayload<Record<string, unknown>> = {
-			uid: "host-uid-unverified-domain",
-			tag: "secure-component-unverified-domain",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://trusted.example.com",
-			props: {},
-			exports: VALID_EXPORTS,
-		};
+		window.name = buildWindowName(
+			createPayload({
+				uid: "host-uid-unverified-domain",
+				tag: "secure-component-unverified-domain",
+				consumerDomain: "https://evil.example.com",
+			}),
+		);
+		expect(() => initHost({}, "https://trusted.example.com")).toThrow(
+			'Consumer domain "https://evil.example.com" is not allowed',
+		);
+		expect(postMessage).not.toHaveBeenCalled();
 
-		window.name = buildWindowName(payload);
-
+		window.name = buildWindowName(
+			createPayload({
+				uid: "host-uid-unverified-domain",
+				tag: "secure-component-unverified-domain",
+				consumerDomain: "https://trusted.example.com/path",
+			}),
+		);
 		expect(() => initHost({}, "https://trusted.example.com")).toThrow(
 			"Could not verify consumer origin",
+		);
+		expect(postMessage).not.toHaveBeenCalled();
+
+		window.name = buildWindowName(
+			createPayload({
+				uid: "host-uid-unverified-domain",
+				tag: "secure-component-unverified-domain",
+				consumerDomain: "https://trusted.example.com",
+			}),
+		);
+		const host = initHost({}, "https://trusted.example.com", {
+			deferInit: true,
+		});
+
+		expect(host?.hostProps.getConsumerDomain()).toBe(
+			"https://trusted.example.com",
+		);
+		expect(postMessage).toHaveBeenCalledOnce();
+		expect(postMessage).toHaveBeenCalledWith(
+			expect.stringContaining(MESSAGE_NAME.BOOTSTRAP),
+			"https://trusted.example.com",
 		);
 	});
 
-	it.each(["legacy", "messaging"])(
-		"validates late definitions with deferred INIT for %s bootstrap",
-		(bootstrap) => {
-			vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
-
-			const payload: WindowNamePayload<Record<string, unknown>> = {
+	it("validates late definitions against props received before bootstrap completes", () => {
+		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
+		window.name = buildWindowName(
+			createPayload({
 				uid: "host-uid-preinit-validation",
-				protocolVersion:
-					bootstrap === "messaging" ? PROTOCOL_VERSION : undefined,
 				tag: "secure-component-preinit-validation",
-				version: VERSION,
-				context: CONTEXT.IFRAME,
-				consumerDomain: "https://trusted.example.com",
-				props: { amount: "not-a-number" },
-				exports: VALID_EXPORTS,
-			};
+			}),
+		);
 
-			window.name = buildWindowName(payload);
-
-			const host = initHost(undefined, undefined, { deferInit: true });
-			expect(host).not.toBeNull();
-			const snapshot = requireValue(host).hostProps;
-			if (bootstrap === "messaging") {
-				const handler = (
-					host as unknown as {
-						messenger: { handlers: Map<string, DirectHandler> };
-					}
-				).messenger.handlers.get(MESSAGE_NAME.PROPS);
-				expect(
-					requireValue(handler)(
-						payload.props,
-						createMessageSource(window, window.location.origin),
-					),
-				).toEqual({ success: true });
+		const host = initHost(undefined, undefined, { deferInit: true });
+		expect(host).not.toBeNull();
+		const handler = (
+			host as unknown as {
+				messenger: { handlers: Map<string, DirectHandler> };
 			}
-			expect(
-				(window as unknown as { hostProps?: unknown }).hostProps,
-			).toBeDefined();
+		).messenger.handlers.get(MESSAGE_NAME.PROPS);
+		expect(
+			requireValue(handler)(
+				{ amount: "not-a-number" },
+				createMessageSource(window, window.location.origin),
+			),
+		).toEqual({ success: true });
+		expect(
+			(window as unknown as { hostProps?: unknown }).hostProps,
+		).toBeDefined();
 
-			expect(() =>
-				initHost(
-					{
-						amount: { schema: prop.number() },
-					},
-					undefined,
-					{ deferInit: true },
-				),
-			).toThrow("Validation failed: amount: Expected number, got string");
-			if (bootstrap === "messaging") {
-				expect(
-					(window as unknown as { hostProps?: unknown }).hostProps,
-				).toBeUndefined();
-			} else {
-				expect((window as unknown as { hostProps?: unknown }).hostProps).toBe(
-					snapshot,
-				);
-				expect(
-					initHost({ amount: prop.string() }, undefined, { deferInit: true }),
-				).toBe(host);
-				expect(snapshot.amount).toBe("not-a-number");
-			}
-		},
-	);
+		expect(() =>
+			initHost(
+				{
+					amount: { schema: prop.number() },
+				},
+				undefined,
+				{ deferInit: true },
+			),
+		).toThrow("Validation failed: amount: Expected number, got string");
+		expect(
+			(window as unknown as { hostProps?: unknown }).hostProps,
+		).toBeUndefined();
+	});
 
-	it.each(["legacy", "messaging"])(
-		"does not relax required sameDomain props for unverified %s bootstrap with deferred INIT",
-		(bootstrap) => {
-			const inaccessibleConsumerWindow = createInaccessibleConsumerWindow();
-
-			vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
-				inaccessibleConsumerWindow,
-			);
-
-			const payload: WindowNamePayload<Record<string, unknown>> = {
-				uid: "host-uid-unverified-same-domain-required",
-				protocolVersion:
-					bootstrap === "messaging" ? PROTOCOL_VERSION : undefined,
-				tag: "secure-component-unverified-same-domain-required",
-				version: VERSION,
-				context: CONTEXT.IFRAME,
-				consumerDomain: window.location.origin,
-				props: {},
-				exports: VALID_EXPORTS,
-			};
-
-			window.name = buildWindowName(payload);
-
-			const host = initHost(undefined, undefined, { deferInit: true });
-			expect(host).not.toBeNull();
-			const snapshot = requireValue(host).hostProps;
-			if (bootstrap === "messaging") {
-				const handler = (
-					host as unknown as {
-						messenger: { handlers: Map<string, DirectHandler> };
-					}
-				).messenger.handlers.get(MESSAGE_NAME.PROPS);
-				expect(
-					requireValue(handler)(
-						{},
-						createMessageSource(
-							inaccessibleConsumerWindow,
-							window.location.origin,
-						),
-					),
-				).toEqual({ success: true });
-			}
-
-			expect(() =>
-				initHost(
-					{
-						secret: { schema: prop.string(), sameDomain: true, required: true },
-					},
-					undefined,
-					{ deferInit: true },
-				),
-			).toThrow('Prop "secret" is required but was not provided');
-			if (bootstrap === "messaging") {
-				expect(
-					(window as unknown as { hostProps?: unknown }).hostProps,
-				).toBeUndefined();
-			} else {
-				expect((window as unknown as { hostProps?: unknown }).hostProps).toBe(
-					snapshot,
-				);
-				expect(initHost(undefined, undefined, { deferInit: true })).toBe(host);
-				expect(Object.hasOwn(snapshot, "secret")).toBe(false);
-			}
-		},
-	);
-
-	it("should reject allowlist rechecks when the existing host never verified the consumer origin", () => {
+	it("does not relax required sameDomain props in late definitions before bootstrap completes", () => {
 		const inaccessibleConsumerWindow = createInaccessibleConsumerWindow();
 
 		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
 			inaccessibleConsumerWindow,
 		);
-
-		const payload: WindowNamePayload<Record<string, unknown>> = {
-			uid: "host-uid-unverified-recheck",
-			tag: "secure-component-unverified-recheck",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://trusted.example.com",
-			props: {},
-			exports: VALID_EXPORTS,
-		};
-
-		window.name = buildWindowName(payload);
+		window.name = buildWindowName(
+			createPayload({
+				uid: "host-uid-unverified-same-domain-required",
+				tag: "secure-component-unverified-same-domain-required",
+				consumerDomain: window.location.origin,
+			}),
+		);
 
 		const host = initHost(undefined, undefined, { deferInit: true });
 		expect(host).not.toBeNull();
+		const handler = (
+			host as unknown as {
+				messenger: { handlers: Map<string, DirectHandler> };
+			}
+		).messenger.handlers.get(MESSAGE_NAME.PROPS);
+		expect(
+			requireValue(handler)(
+				{},
+				createMessageSource(inaccessibleConsumerWindow, window.location.origin),
+			),
+		).toEqual({ success: true });
 
-		expect(() => initHost({}, "https://trusted.example.com")).toThrow(
-			"Could not verify consumer origin",
-		);
+		expect(() =>
+			initHost(
+				{
+					secret: { schema: prop.string(), sameDomain: true, required: true },
+				},
+				undefined,
+				{ deferInit: true },
+			),
+		).toThrow('Prop "secret" is required but was not provided');
 		expect(
 			(window as unknown as { hostProps?: unknown }).hostProps,
 		).toBeUndefined();
@@ -668,15 +577,11 @@ describe("Host security", () => {
 	it("should clear window.hostProps when existing host fails allowlist recheck", () => {
 		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
 
-		const payload: WindowNamePayload<Record<string, unknown>> = {
+		const payload = createPayload({
 			uid: "host-uid-existing",
 			tag: "secure-component-existing",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
 			consumerDomain: "https://evil.example.com",
-			props: {},
-			exports: VALID_EXPORTS,
-		};
+		});
 
 		window.name = buildWindowName(payload);
 
@@ -693,278 +598,72 @@ describe("Host security", () => {
 		).toBeUndefined();
 	});
 
-	it("should keep deferred init unsent until explicitly flushed", () => {
-		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
+	it("should keep deferred init unsent until explicitly flushed", async () => {
+		const { countInitMessages } = await startBootstrappedHost(
+			window,
+			createPayload({
+				uid: "host-uid-deferred",
+				tag: "secure-component-deferred",
+			}),
+		);
 
-		const payload: WindowNamePayload<Record<string, unknown>> = {
-			uid: "host-uid-deferred",
-			tag: "secure-component-deferred",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://evil.example.com",
-			props: {},
-			exports: VALID_EXPORTS,
-		};
-
-		window.name = buildWindowName(payload);
-
-		const host = initHost(undefined, undefined, { deferInit: true });
-		expect(host).not.toBeNull();
-
-		const sendSpy = vi
-			.spyOn(
-				(
-					host as unknown as {
-						messenger: { send: (...args: unknown[]) => Promise<unknown> };
-					}
-				).messenger,
-				"send",
-			)
-			.mockResolvedValue(undefined);
-
-		expect(sendSpy).not.toHaveBeenCalled();
+		await flushMessages();
+		expect(countInitMessages()).toBe(0);
 		initHost();
-		expect(sendSpy).toHaveBeenCalledTimes(1);
+		await vi.waitFor(() => expect(countInitMessages()).toBe(1));
 	});
 
 	it("should auto-flush deferred init when window.hostProps is accessed", async () => {
-		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
-
-		const payload: WindowNamePayload<Record<string, unknown>> = {
-			uid: "host-uid-deferred-access",
-			tag: "secure-component-deferred-access",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://evil.example.com",
-			props: {},
-			exports: VALID_EXPORTS,
-		};
-
-		window.name = buildWindowName(payload);
-
-		const host = initHost(undefined, undefined, { deferInit: true });
-		expect(host).not.toBeNull();
-
-		const sendSpy = vi
-			.spyOn(
-				(
-					host as unknown as {
-						messenger: { send: (...args: unknown[]) => Promise<unknown> };
-					}
-				).messenger,
-				"send",
-			)
-			.mockResolvedValue(undefined);
+		const { countInitMessages } = await startBootstrappedHost(
+			window,
+			createPayload({
+				uid: "host-uid-deferred-access",
+				tag: "secure-component-deferred-access",
+			}),
+		);
 
 		void (window as unknown as { hostProps?: unknown }).hostProps;
-		await Promise.resolve();
-
-		expect(sendSpy).toHaveBeenCalledTimes(1);
+		await vi.waitFor(() => expect(countInitMessages()).toBe(1));
 	});
 
-	it("should not send deferred init before allowlist recheck", () => {
-		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
-
-		const payload: WindowNamePayload<Record<string, unknown>> = {
-			uid: "host-uid-deferred-allowlist",
-			tag: "secure-component-deferred-allowlist",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://evil.example.com",
-			props: {},
-			exports: VALID_EXPORTS,
-		};
-
-		window.name = buildWindowName(payload);
-
-		const host = initHost(undefined, undefined, { deferInit: true });
-		expect(host).not.toBeNull();
-
-		const sendSpy = vi
-			.spyOn(
-				(
-					host as unknown as {
-						messenger: { send: (...args: unknown[]) => Promise<unknown> };
-					}
-				).messenger,
-				"send",
-			)
-			.mockResolvedValue(undefined);
+	it("should not send deferred init before allowlist recheck", async () => {
+		const { countInitMessages } = await startBootstrappedHost(
+			window,
+			createPayload({
+				uid: "host-uid-deferred-allowlist",
+				tag: "secure-component-deferred-allowlist",
+			}),
+		);
 
 		expect(() => initHost({}, "https://trusted.example.com")).toThrow(
 			"is not allowed",
 		);
-		expect(sendSpy).not.toHaveBeenCalled();
+		await flushMessages();
+		expect(countInitMessages()).toBe(0);
 		expect(
 			(window as unknown as { hostProps?: unknown }).hostProps,
 		).toBeUndefined();
 	});
 
 	it("should not flush deferred init when allowlist recheck fails in the same tick", async () => {
-		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
-
-		const payload: WindowNamePayload<Record<string, unknown>> = {
-			uid: "host-uid-deferred-same-tick",
-			tag: "secure-component-deferred-same-tick",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://evil.example.com",
-			props: {},
-			exports: VALID_EXPORTS,
-		};
-
-		window.name = buildWindowName(payload);
-
-		const host = initHost(undefined, undefined, { deferInit: true });
-		expect(host).not.toBeNull();
-
-		const sendSpy = vi
-			.spyOn(
-				(
-					host as unknown as {
-						messenger: { send: (...args: unknown[]) => Promise<unknown> };
-					}
-				).messenger,
-				"send",
-			)
-			.mockResolvedValue(undefined);
+		const { countInitMessages } = await startBootstrappedHost(
+			window,
+			createPayload({
+				uid: "host-uid-deferred-same-tick",
+				tag: "secure-component-deferred-same-tick",
+			}),
+		);
 
 		void (window as unknown as { hostProps?: unknown }).hostProps;
 		expect(() => initHost({}, "https://trusted.example.com")).toThrow(
 			"is not allowed",
 		);
 
-		await Promise.resolve();
+		await flushMessages();
 
-		expect(sendSpy).not.toHaveBeenCalled();
+		expect(countInitMessages()).toBe(0);
 		expect(
 			(window as unknown as { hostProps?: unknown }).hostProps,
 		).toBeUndefined();
-	});
-
-	it("should validate initial host props against host prop definitions", () => {
-		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
-
-		const payload: WindowNamePayload<Record<string, unknown>> = {
-			uid: "host-uid-invalid-initial-props",
-			tag: "secure-component-invalid-initial-props",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://trusted.example.com",
-			props: { amount: "not-a-number" },
-			exports: VALID_EXPORTS,
-		};
-
-		window.name = buildWindowName(payload);
-
-		expect(() =>
-			initHost(
-				{
-					amount: { schema: prop.number() },
-				},
-				undefined,
-				{ deferInit: true },
-			),
-		).toThrow("Validation failed: amount: Expected number, got string");
-	});
-});
-
-describe("Legacy payload consumer identity", () => {
-	const inaccessibleConsumerWindow = createInaccessibleConsumerWindow();
-
-	function writeLegacyPayload(consumerDomain: string): void {
-		window.name = buildWindowName({
-			uid: "host-uid-legacy-referrer",
-			tag: "secure-component-legacy-referrer",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
-			consumerDomain,
-			props: { amount: 999999, payee: "attacker" },
-			exports: VALID_EXPORTS,
-		});
-	}
-
-	it("should not accept an allowlisted referrer as a cross-origin consumer's identity", () => {
-		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
-			inaccessibleConsumerWindow,
-		);
-		// The referrer names the page that started navigation, not the parent/opener.
-		setDocumentReferrer("https://trusted.example.com/redirect");
-		writeLegacyPayload("https://trusted.example.com");
-
-		expect(() =>
-			initHost(
-				{ amount: prop.number(), payee: prop.string() },
-				"https://trusted.example.com",
-			),
-		).toThrow(
-			'Could not verify consumer origin for component "secure-component-legacy-referrer"',
-		);
-		expect(
-			(window as unknown as { hostProps?: unknown }).hostProps,
-		).toBeUndefined();
-	});
-
-	it("should keep an unverified claimed origin when only the referrer differs", () => {
-		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
-			inaccessibleConsumerWindow,
-		);
-		setDocumentReferrer("https://referrer.example.com/flow");
-		writeLegacyPayload("https://claimed.example.com");
-
-		const host = initHost(undefined, undefined, { deferInit: true });
-
-		expect(host?.hostProps.getConsumerDomain()).toBe(
-			"https://claimed.example.com",
-		);
-		expect(() => initHost({}, "https://referrer.example.com")).toThrow(
-			"Could not verify consumer origin",
-		);
-		expect(
-			(window as unknown as { hostProps?: unknown }).hostProps,
-		).toBeUndefined();
-	});
-});
-
-describe("Host security helpers", () => {
-	it("should reject reassertion when the resolved consumer domain is empty under an allowlist", () => {
-		const consumerWindow = {} as Window;
-
-		expect(() =>
-			hostSecurity.reassertAllowedConsumerDomain({
-				consumerWindow,
-				consumerDomain: "",
-				consumerDomainVerified: true,
-				allowedConsumerDomains: "https://trusted.example.com",
-				tag: "secure-component-helper",
-			}),
-		).toThrow(
-			'Could not verify consumer origin for component "secure-component-helper"',
-		);
-	});
-
-	it("should notify when the verified consumer domain changes during reassertion", () => {
-		const onConsumerDomainChange = vi.fn();
-		const consumerWindow = createAccessibleConsumerWindow(
-			"https://verified.example.com",
-		);
-
-		const context = hostSecurity.reassertAllowedConsumerDomain({
-			consumerWindow,
-			consumerDomain: "https://claimed.example.com",
-			consumerDomainVerified: true,
-			allowedConsumerDomains: "https://verified.example.com",
-			tag: "secure-component-helper",
-			onConsumerDomainChange,
-		});
-
-		expect(onConsumerDomainChange).toHaveBeenCalledWith(
-			"https://claimed.example.com",
-			"https://verified.example.com",
-		);
-		expect(context).toEqual({
-			consumerDomain: "https://verified.example.com",
-			consumerDomainVerified: true,
-		});
 	});
 });

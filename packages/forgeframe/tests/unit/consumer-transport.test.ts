@@ -401,7 +401,7 @@ describe("ConsumerTransport", () => {
 		expect(transport.initPromise).toBe(replacement);
 	});
 
-	it("reports a host's initialization failure only in the handshake that received it", async () => {
+	it("reports a host's initialization failure only in the handshake that received it, and otherwise hints at a version mismatch", async () => {
 		vi.useFakeTimers();
 		const transport = createTransport();
 		const first = transport.waitForHost(
@@ -412,7 +412,7 @@ describe("ConsumerTransport", () => {
 		(transport as unknown as { hostInitFailure: Error }).hostInitFailure =
 			new Error("Host initialization failed: bad props");
 		const firstRejection = expect(first).rejects.toThrow(
-			"within 25ms. Host initialization failed: bad props",
+			/within 25ms\. Host initialization failed: bad props \(25ms\)$/,
 		);
 		await vi.advanceTimersByTimeAsync(25);
 		await firstRejection;
@@ -422,8 +422,9 @@ describe("ConsumerTransport", () => {
 			"consumer-transport-component",
 			vi.fn(),
 		);
+		// A 1.x host refuses a v2 payload without replying, so only the timeout can say why.
 		const secondRejection = expect(second).rejects.toThrow(
-			"within 25ms. Check that the host page loads correctly",
+			"within 25ms. Check that the host page loads correctly and calls the initialization code, and that consumer and host run the same ForgeFrame major version.",
 		);
 		await vi.advanceTimersByTimeAsync(25);
 		await secondRejection;

@@ -5,22 +5,11 @@
  * ForgeFrame-shaped window payloads are present in host-like window contexts.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ConsumerExports } from "@/communication/types";
-import { CONTEXT, MESSAGE_NAME, VERSION } from "@/constants";
+import { CONTEXT, PROTOCOL_VERSION } from "@/constants";
 import { buildWindowName } from "@/window/name-payload";
 import type { WindowNamePayload } from "@/window/types";
 
 const originalWindowName = window.name;
-const VALID_EXPORTS: ConsumerExports = {
-	init: MESSAGE_NAME.INIT,
-	close: MESSAGE_NAME.CLOSE,
-	resize: MESSAGE_NAME.RESIZE,
-	show: MESSAGE_NAME.SHOW,
-	hide: MESSAGE_NAME.HIDE,
-	onError: MESSAGE_NAME.ERROR,
-	updateProps: MESSAGE_NAME.PROPS,
-	export: MESSAGE_NAME.EXPORT,
-};
 
 afterEach(async () => {
 	const { clearHostInstance } = await import("@/core/host");
@@ -33,17 +22,16 @@ afterEach(async () => {
 
 describe("Index side effects", () => {
 	it("should not initialize host state until initHost() is called explicitly", async () => {
-		const payload: WindowNamePayload<Record<string, unknown>> = {
+		const payload: WindowNamePayload = {
 			uid: "index-side-effect-free-uid",
 			tag: "index-side-effect-free-component",
-			version: VERSION,
+			protocolVersion: PROTOCOL_VERSION,
 			context: CONTEXT.IFRAME,
 			consumerDomain: "https://consumer.example.com",
-			props: {},
-			exports: VALID_EXPORTS,
 		};
+		const bootstrapWindowName = buildWindowName(payload);
 
-		window.name = buildWindowName(payload);
+		window.name = bootstrapWindowName;
 		vi.resetModules();
 		const hostSecurity = await import("@/core/host/security");
 		const { Messenger } = await import("@/communication/messenger");
@@ -70,7 +58,7 @@ describe("Index side effects", () => {
 
 		expect(host).not.toBeNull();
 		expect(getHost()).toBe(host);
-		expect(window.name).toBe("");
+		expect(window.name).toBe(bootstrapWindowName);
 		expect(publicEntrypoint.isHost()).toBe(true);
 		expect(publicEntrypoint.isEmbedded()).toBe(true);
 		expect(publicEntrypoint.getHostProps()).toBe(host?.hostProps);

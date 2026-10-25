@@ -2,7 +2,6 @@
  * Internal window/bootstrap wire contracts.
  */
 
-import type { ConsumerExports } from "../communication/types";
 import type { ContextType } from "../constants";
 import type { SerializedProps } from "../props/types";
 import type { PropsDefinition } from "../types/props";
@@ -27,32 +26,22 @@ export interface HostComponentRef {
 }
 
 /**
- * Channel metadata encoded in window.name. Protocol 2 delivers props and
- * children separately through verified messaging; legacy payloads include them.
- *
- * @typeParam _P - The props type (unused, for compatibility)
+ * Channel metadata encoded in window.name. Props and children arrive only
+ * through the verified bootstrap, so the payload never carries them.
  *
  * @internal
  */
-export interface WindowNamePayload<_P = Record<string, unknown>> {
+export interface WindowNamePayload {
 	/** Consumer component instance UID */
 	uid: string;
 	/** Component tag name */
 	tag: string;
-	/** ForgeFrame version */
-	version: string;
 	/** Stable ForgeFrame wire protocol version */
-	protocolVersion?: number;
+	protocolVersion: number;
 	/** Rendering context */
 	context: ContextType;
 	/** Consumer window domain */
 	consumerDomain: string;
-	/** Serialized props */
-	props: SerializedProps;
-	/** Consumer method message names */
-	exports: ConsumerExports;
-	/** Nested component references */
-	children?: Record<string, HostComponentRef>;
 }
 
 /** Props and child references delivered only over verified messaging. @internal */

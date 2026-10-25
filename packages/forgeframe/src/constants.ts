@@ -125,9 +125,13 @@ export const MESSAGE_NAME = {
 /**
  * Stable wire protocol version for consumer-host bootstrap payloads.
  *
+ * @remarks
+ * A missing protocol or protocol 1 identifies ForgeFrame 0.x, protocol 2
+ * identifies 1.x, and protocol 3 identifies 2.x. Hosts accept only this version.
+ *
  * @internal
  */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 /**
  * Window name prefix for identifying ForgeFrame host windows.

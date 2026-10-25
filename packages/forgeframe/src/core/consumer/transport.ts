@@ -13,7 +13,6 @@ import {
 	serializeFunctions,
 } from "../../communication/bridge";
 import { type MessageHandler, Messenger } from "../../communication/messenger";
-import type { ConsumerExports } from "../../communication/types";
 import type { ContextType } from "../../constants";
 import { MESSAGE_NAME } from "../../constants";
 import { getPropsForHost, serializeProps } from "../../props";
@@ -259,21 +258,14 @@ export class ConsumerTransport<
 	 *
 	 * @remarks
 	 * Props and child definitions never travel in `window.name`; the host
-	 * receives them through the verified bootstrap. The payload keeps an empty
-	 * `props` object and the `exports` names because 1.x hosts validate them.
+	 * receives them through the verified bootstrap.
 	 */
-	buildWindowName(options: {
-		tag: string;
-		context: ContextType;
-		exports: ConsumerExports;
-	}): string {
+	buildWindowName(options: { tag: string; context: ContextType }): string {
 		const payload = createWindowPayload({
 			uid: this.uid,
 			tag: options.tag,
 			context: options.context,
 			consumerDomain: getDomain(),
-			props: {},
-			exports: options.exports,
 		});
 
 		return buildWindowName(payload);
@@ -301,7 +293,8 @@ export class ConsumerTransport<
 				() =>
 					`Host component "${tag}" (uid: ${this.uid}) did not initialize within ${timeout}ms. ` +
 					(this.hostInitFailure?.message ??
-						"Check that the host page loads correctly and calls the initialization code."),
+						"Check that the host page loads correctly and calls the initialization code, " +
+							"and that consumer and host run the same ForgeFrame major version."),
 			);
 		} catch (err) {
 			onError(err as Error);

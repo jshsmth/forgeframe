@@ -21,12 +21,7 @@ export const CONSUMER_WINDOW_RESOLUTION_ERROR =
 	"Could not resolve consumer window";
 export { CONSUMER_ORIGIN_VERIFICATION_ERROR } from "./consumer-origin-policy";
 
-import {
-	assertVerifiedConsumerContext,
-	selectConsumerSecurityContext,
-	selectObservedConsumerContext,
-	validateMessagingConsumerContext,
-} from "./consumer-origin-policy";
+import { validateMessagingConsumerContext } from "./consumer-origin-policy";
 
 export function resolveConsumerWindow(hostWindow: Window = window): Window {
 	if (isIframe(hostWindow)) {
@@ -63,18 +58,6 @@ export function getAccessibleConsumerOrigin(
 	}
 }
 
-export function resolveConsumerSecurityContext(options: {
-	consumerWindow: Window;
-	claimedConsumerDomain: string;
-	allowedConsumerDomains?: DomainMatcher;
-	tag: string;
-}): HostSecurityContext {
-	return selectConsumerSecurityContext(
-		options,
-		getAccessibleConsumerOrigin(options.consumerWindow),
-	);
-}
-
 /** Selects an exact messaging target; the bootstrap response verifies it. */
 export function resolveMessagingConsumerContext(options: {
 	consumerWindow: Window;
@@ -90,35 +73,4 @@ export function resolveMessagingConsumerContext(options: {
 		options.allowedConsumerDomains,
 		options.tag,
 	);
-}
-
-/**
- * Re-observes the consumer origin and enforces verified identity plus the allowlist.
- * An origin-change callback runs before the allowlist check, allowing obsolete
- * transport trust to be removed even when the newly observed origin is rejected.
- */
-export function reassertAllowedConsumerDomain(options: {
-	consumerWindow: Window;
-	consumerDomain: string;
-	consumerDomainVerified: boolean;
-	allowedConsumerDomains: DomainMatcher;
-	tag: string;
-	onConsumerDomainChange?: (previousDomain: string, nextDomain: string) => void;
-}): HostSecurityContext {
-	const context = selectObservedConsumerContext(
-		getAccessibleConsumerOrigin(options.consumerWindow),
-		options,
-	);
-	if (context.consumerDomain !== options.consumerDomain) {
-		options.onConsumerDomainChange?.(
-			options.consumerDomain,
-			context.consumerDomain,
-		);
-	}
-	assertVerifiedConsumerContext(
-		context,
-		options.allowedConsumerDomains,
-		options.tag,
-	);
-	return context;
 }

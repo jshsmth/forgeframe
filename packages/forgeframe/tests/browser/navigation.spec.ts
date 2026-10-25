@@ -3,6 +3,15 @@ import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 import { build } from "vite";
 
+/** The only fields a v2 consumer writes into window.name. */
+const CHANNEL_METADATA_KEYS = [
+	"consumerDomain",
+	"context",
+	"protocolVersion",
+	"tag",
+	"uid",
+];
+
 let consumerOrigin: string;
 let hostOrigin: string;
 let attackerOrigin: string;
@@ -101,6 +110,18 @@ test.beforeAll(async () => {
 					`<!doctype html><script>
 			const payload = JSON.parse(decodeURIComponent(atob(window.name.slice('__forgeframe__'.length))));
 			parent.postMessage('forgeframe:' + JSON.stringify({ id:'legacy-init',type:'request',name:'forgeframe_init',data:{},source:{uid:payload.uid,domain:location.origin}}), '${consumerOrigin}');
+			</script>`,
+				);
+			}
+			if (req.url === "/v2-host-for-v1-consumer") {
+				return respond(
+					res,
+					`<!doctype html><script type="module">
+			import {initHost,prop} from '/library.js';
+			try { initHost({count:prop.number()}, ['${consumerOrigin}']); window.outcome = 'started'; }
+			catch (error) { window.outcome = error.message; }
+			// Messages from one window arrive in order, so this marks the end of host traffic.
+			parent.postMessage('v2-host-finished', '${consumerOrigin}');
 			</script>`,
 				);
 			}
@@ -1449,12 +1470,9 @@ test("redirected pages cannot read restricted props or complete initialization",
 	const attacker = await navigation;
 	await attacker.waitForFunction(() => "captured" in window);
 	const captured = await attacker.evaluate(
-		() =>
-			(window as unknown as { captured: { props: object; children?: unknown } })
-				.captured,
+		() => (window as unknown as { captured: object }).captured,
 	);
-	expect(captured.props).toEqual({});
-	expect(captured.children).toBeUndefined();
+	expect(Object.keys(captured).sort()).toEqual(CHANNEL_METADATA_KEYS);
 	expect(JSON.stringify(captured)).not.toContain("browser-secret-sentinel");
 	expect(
 		await page.evaluate(
@@ -1531,6 +1549,65 @@ test("legacy hosts cannot bypass the verified bootstrap handshake", async ({
 			() => (window as unknown as { outcome: Promise<string> }).outcome,
 		),
 	).toContain("did not initialize");
+});
+
+test("a v2 host refuses a 1.x consumer's payload without contacting it", async ({
+	page,
+}) => {
+	await page.goto(consumerOrigin);
+	const loaded = page.waitForEvent("framenavigated", {
+		predicate: (frame) => frame.url().startsWith(hostOrigin),
+	});
+	await page.evaluate(
+		({ hostOrigin, consumerOrigin }) => {
+			const received: unknown[] = [];
+			(window as unknown as { received: unknown[] }).received = received;
+			window.addEventListener("message", (event) => received.push(event.data));
+			// A ForgeFrame 1.x consumer wrote protocol 2 with props and exports.
+			const payload = {
+				uid: "v1-consumer-uid",
+				tag: "v1-consumer-widget",
+				version: "1.1.0",
+				protocolVersion: 2,
+				context: "iframe",
+				consumerDomain: consumerOrigin,
+				props: {},
+				exports: {
+					init: "forgeframe_init",
+					close: "forgeframe_close",
+					resize: "forgeframe_resize",
+					show: "forgeframe_show",
+					hide: "forgeframe_hide",
+					onError: "forgeframe_error",
+					updateProps: "forgeframe_props",
+					export: "forgeframe_export",
+				},
+			};
+			const iframe = document.createElement("iframe");
+			iframe.name = `__forgeframe__${btoa(encodeURIComponent(JSON.stringify(payload)))}`;
+			iframe.src = `${hostOrigin}/v2-host-for-v1-consumer`;
+			document.querySelector("#mount")?.append(iframe);
+		},
+		{ hostOrigin, consumerOrigin },
+	);
+	const host = await loaded;
+	await page.waitForFunction(() =>
+		(window as unknown as { received: unknown[] }).received.includes(
+			"v2-host-finished",
+		),
+	);
+	expect(
+		await host.evaluate(
+			() => (window as unknown as { outcome: string }).outcome,
+		),
+	).toBe(
+		'ForgeFrame host for "v1-consumer-widget" cannot start: the consumer uses ForgeFrame 1.x (protocol 2, package 1.1.0). Upgrade the consumer and host to ForgeFrame 2 together.',
+	);
+	expect(
+		await page.evaluate(
+			() => (window as unknown as { received: unknown[] }).received,
+		),
+	).toEqual(["v2-host-finished"]);
 });
 
 test("growing a widget also grows its clipping container", async ({ page }) => {
@@ -1990,15 +2067,16 @@ for (const context of ["iframe", "popup"] as const) {
 				),
 			).toBe(navigation === "reload" ? 1 : 2);
 			expect(
-				await host.evaluate(
-					() =>
+				await host.evaluate(() =>
+					Object.keys(
 						JSON.parse(
 							decodeURIComponent(
 								atob(window.name.slice("__forgeframe__".length)),
 							),
-						).props,
+						),
+					).sort(),
 				),
-			).toEqual({});
+			).toEqual(CHANNEL_METADATA_KEYS);
 		}
 	});
 }

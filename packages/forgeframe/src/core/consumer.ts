@@ -8,9 +8,8 @@
  * embedded in iframes or popups.
  */
 
-import type { ConsumerExports } from "../communication/types";
 import type { ContextType } from "../constants";
-import { CONTEXT, EVENT, MESSAGE_NAME } from "../constants";
+import { CONTEXT, EVENT } from "../constants";
 import { EventEmitter } from "../events/emitter";
 import {
 	getPropsForHost,
@@ -877,22 +876,7 @@ export class ConsumerComponent<
 		return this.transport.buildWindowName({
 			tag: this.options.tag,
 			context: this.renderer.context,
-			exports: this.createConsumerExports(),
 		});
-	}
-
-	/** Message names retained in channel metadata for payload compatibility. @internal */
-	private createConsumerExports(): ConsumerExports {
-		return {
-			init: MESSAGE_NAME.INIT,
-			close: MESSAGE_NAME.CLOSE,
-			resize: MESSAGE_NAME.RESIZE,
-			show: MESSAGE_NAME.SHOW,
-			hide: MESSAGE_NAME.HIDE,
-			onError: MESSAGE_NAME.ERROR,
-			updateProps: MESSAGE_NAME.PROPS,
-			export: MESSAGE_NAME.EXPORT,
-		};
 	}
 
 	/**
