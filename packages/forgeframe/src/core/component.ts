@@ -41,7 +41,7 @@ import {
 	registerComponent,
 } from "./component-registry";
 import { ConsumerComponent } from "./consumer";
-import { HOST_PROPS_BUILTIN_KEYS } from "./host/builtin-keys";
+import { assertNoReservedPropDefinitions } from "./host/builtin-keys";
 
 /**
  * Validates component configuration options.
@@ -127,16 +127,7 @@ function assertComponentShape<P, I, SchemaInputs>(
 	}
 
 	if (options.props) {
-		for (const key of Object.keys(options.props)) {
-			if (
-				HOST_PROPS_BUILTIN_KEYS.has(key) &&
-				options.props[key as keyof P] !== undefined
-			) {
-				throw new Error(
-					`Prop "${key}" is reserved by hostProps built-ins and cannot be defined as a custom prop`,
-				);
-			}
-		}
+		assertNoReservedPropDefinitions(options.props);
 		assertNoRemovedPropOptions(options.props);
 	}
 }

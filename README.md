@@ -604,8 +604,11 @@ const counter = Counter({ getCount: () => 42 });
 await counter.render('#container');
 
 // Host: use await even though getCount's local implementation returns a number.
-const props = await initHost(Counter, { consumerOrigins }).ready;
-const count = await props.getCount();
+const host = initHost(Counter, { consumerOrigins });
+if (host) {
+  const props = await host.ready;
+  const count = await props.getCount();
+}
 ```
 
 Callback arguments and results are JSON-serialized. Pass plain objects, arrays, strings, finite numbers, booleans, and `null`; a callback may return `undefined` for no result. Convert `Date` values to ISO strings and copy plain fields out of `FormData` before the call. Functions in arguments or results are not bridged, and cyclic or `BigInt` results reject with a serialization error. Prop snapshots and `hostProps.export(...)` are different: they bridge functions and preserve `Date` values.
@@ -943,7 +946,7 @@ Browsers do not let one origin resize another origin's window. For a popup that 
 - `consumerOrigins`, passed to `initHost()`, is host-side trust: the consumer origins that may embed and initialize the host.
 - Use both for payment, auth, account, and other sensitive workflows.
 
-Both accept a string, a `RegExp`, or an array mixing them. Strings support `*` wildcards, such as `'https://*.example.com'`, and `'*'` alone matches any origin. Empty or blank strings, `null`, and other values throw, so a missing setting such as `process.env.CONSUMER_ORIGIN || ''` cannot silently trust every origin. An empty array is valid and admits no origin. `peerDomains` follows the same rules.
+Both accept a string, a `RegExp`, or an array mixing them. Strings support `*` wildcards, such as `'https://*.example.com'`; for `consumerOrigins`, `'*'` alone allows any consumer origin. Empty or blank strings, `null`, and other values throw, so a missing setting such as `process.env.CONSUMER_ORIGIN || ''` cannot silently trust every origin. An empty array is valid and admits no origin. `peerDomains` follows the same rules.
 
 ```typescript
 // secure-component.ts, shared by the consumer and the host

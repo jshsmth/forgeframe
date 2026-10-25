@@ -19,6 +19,7 @@ import type {
 	Host,
 	InitHostOptions,
 } from "../../types/runtime";
+import type { DomainMatcher } from "../../types/utility";
 import { hasBrowserWindow } from "../../utils/browser";
 import { assertDomainMatcher } from "../../utils/domain-pattern";
 import {
@@ -27,6 +28,7 @@ import {
 } from "../../window/name-payload";
 import type { WindowNamePayload } from "../../window/types";
 import { getComponentOptions } from "../component-registry";
+import { assertNoReservedPropDefinitions } from "./builtin-keys";
 import { HostComponent } from "./component";
 import {
 	CONSUMER_WINDOW_RESOLUTION_ERROR,
@@ -170,18 +172,29 @@ function readInitHostOptions(
 			`initHost() requires consumerOrigins, the consumer origins allowed to embed this host; pass '*' to allow any origin. Use ${INIT_HOST_CALL_SHAPE}.`,
 		);
 	}
-	assertDomainMatcher(consumerOrigins, "initHost() consumerOrigins");
+	try {
+		assertDomainMatcher(consumerOrigins, "initHost() consumerOrigins");
+	} catch (error) {
+		throw new TypeError(
+			`${(error as Error).message}. Use ${INIT_HOST_CALL_SHAPE}.`,
+		);
+	}
 	if (autoInit !== undefined && typeof autoInit !== "boolean") {
-		throw new TypeError("initHost() autoInit must be a boolean");
+		throw new TypeError(
+			`initHost() autoInit must be a boolean. Use ${INIT_HOST_CALL_SHAPE}.`,
+		);
 	}
 	if (props !== undefined) {
 		if (typeof props !== "object" || props === null || Array.isArray(props)) {
-			throw new TypeError("initHost() props must be a prop definitions object");
+			throw new TypeError(
+				`initHost() props must be a prop definitions object. Use ${INIT_HOST_CALL_SHAPE}.`,
+			);
 		}
+		assertNoReservedPropDefinitions(props as Record<string, unknown>);
 		assertNoRemovedPropOptions(props);
 	}
 	return {
-		consumerOrigins,
+		consumerOrigins: consumerOrigins as DomainMatcher,
 		autoInit,
 		props: props as HostPropsDefinition<Record<string, unknown>> | undefined,
 	};

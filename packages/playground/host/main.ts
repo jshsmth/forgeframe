@@ -12,7 +12,7 @@ import { requireValue } from "../require-value";
 const NESTED_CHILD_TAG = "playground-browser-nested-child";
 const hostOrigin = window.location.origin;
 const consumerUrl =
-	import.meta.env.VITE_CONSUMER_URL || "https://localhost:5173";
+	import.meta.env.VITE_CONSUMER_URL || `${location.protocol}//localhost:5173`;
 // A nested child's consumer is this host page, so its own origin is allowed too.
 const consumerOrigins = [new URL(consumerUrl).origin, hostOrigin];
 

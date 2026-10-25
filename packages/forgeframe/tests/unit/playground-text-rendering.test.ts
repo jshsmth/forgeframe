@@ -45,6 +45,13 @@ describe("playground cross-window text", () => {
 		hostRuntime.initHost.mockReturnValue({ ready: Promise.resolve(props) });
 		await import("../../../playground/host/main");
 		await vi.waitFor(() => expect(onProps).toHaveBeenCalledOnce());
+		// The default consumer origin follows this page's protocol, so HTTP dev works.
+		expect(hostRuntime.initHost).toHaveBeenCalledWith({
+			consumerOrigins: [
+				`${window.location.protocol}//localhost:5173`,
+				window.location.origin,
+			],
+		});
 		expect(
 			document.querySelector("[data-injected], img, svg[data-injected]"),
 		).toBeNull();

@@ -236,6 +236,12 @@ export class HostTransport {
 	private async sendInit(): Promise<void> {
 		try {
 			await this.options.beforeInit();
+		} catch {
+			// A failed start rejects ready and has already been reported; no INIT
+			// was attempted.
+			return;
+		}
+		try {
 			if (this.destroyed) return;
 			await this.sendMessage(MESSAGE_NAME.INIT, { sessionId: this.sessionId });
 		} catch (error) {

@@ -238,4 +238,20 @@ export class EventEmitter implements EventEmitterInterface {
 	removeAllListeners(): void {
 		this.listeners.clear();
 	}
+
+	/**
+	 * Returns the number of listeners registered for a specific event.
+	 *
+	 * @param event - The name of the event to check
+	 * @returns The number of handlers currently subscribed to the event
+	 *
+	 * @remarks
+	 * ForgeFrame does not call this. It stays because consumer instances expose
+	 * this class at runtime through `instance.event`.
+	 *
+	 * @internal
+	 */
+	listenerCount(event: string): number {
+		return this.listeners.get(event)?.size ?? 0;
+	}
 }

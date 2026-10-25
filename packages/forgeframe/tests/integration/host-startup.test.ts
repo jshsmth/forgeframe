@@ -23,9 +23,10 @@ describe("Explicit host start-up", () => {
 	let harness: IframeIntegrationHarness | null = null;
 
 	afterEach(async () => {
+		// Restore spies first, so cleanup's own restores are not overwritten.
+		vi.restoreAllMocks();
 		await harness?.cleanup();
 		harness = null;
-		vi.restoreAllMocks();
 	});
 
 	/**
@@ -133,7 +134,8 @@ describe("Explicit host start-up", () => {
 					(initHost as (...args: unknown[]) => unknown)(component, {
 						consumerOrigins: " ",
 					}),
-				message: "initHost() consumerOrigins must be a non-empty origin string",
+				message:
+					"initHost() consumerOrigins must be a non-empty origin string, a RegExp, or an array of them. Use initHost(Component, { consumerOrigins })",
 			},
 			{
 				label: "an unknown option",
@@ -185,7 +187,8 @@ describe("Explicit host start-up", () => {
 						consumerOrigins: "*",
 						autoInit: "no",
 					}),
-				message: "initHost() autoInit must be a boolean",
+				message:
+					"initHost() autoInit must be a boolean. Use initHost(Component, { consumerOrigins })",
 			},
 			{
 				label: "a third positional argument",
@@ -204,7 +207,18 @@ describe("Explicit host start-up", () => {
 						consumerOrigins: "*",
 						props: [prop.number()],
 					}),
-				message: "initHost() props must be a prop definitions object",
+				message:
+					"initHost() props must be a prop definitions object. Use initHost(Component, { consumerOrigins })",
+			},
+			{
+				label: "props that define a reserved built-in name",
+				call: () =>
+					(initHost as (...args: unknown[]) => unknown)({
+						consumerOrigins: "*",
+						props: { close: prop.string() },
+					}),
+				message:
+					'Prop "close" is reserved by hostProps built-ins and cannot be defined as a custom prop',
 			},
 		])("rejects $label before sending anything", async ({ call, message }) => {
 			harness = createIframeIntegrationHarness();
@@ -544,6 +558,42 @@ describe("Explicit host start-up", () => {
 			await instance.updateProps({ amount: 12 });
 
 			expect(received).toEqual([{ amount: 10 }, { amount: 11 }]);
+		});
+
+		it("reports a rejected start once on on('error'), without an INIT failure", async () => {
+			harness = createIframeIntegrationHarness();
+			const activeHarness = harness;
+			const tag = "host-on-error-rejected-start";
+			await renderConsumer(activeHarness, { tag });
+			const consoleError = vi
+				.spyOn(console, "error")
+				.mockImplementation(() => {});
+			deleteRegisteredComponent(tag);
+			const StrictHostSide = create({
+				tag,
+				url: HOST_URL,
+				props: { amount: prop.number().min(100) },
+			});
+
+			const host = activeHarness.bootstrapHost(StrictHostSide);
+			if (!host) throw new Error("Expected a host");
+			const errors: unknown[] = [];
+			host.on("error", (error) => {
+				errors.push(error);
+			});
+			await expect(host.ready).rejects.toThrow("Number must be >= 100");
+			await activeHarness.flushMessages();
+
+			expect(errors).toEqual([
+				expect.objectContaining({
+					message: expect.stringContaining("Number must be >= 100"),
+				}),
+			]);
+			expect(errors[0]).not.toHaveProperty("type", "init_failed");
+			expect(consoleError).not.toHaveBeenCalledWith(
+				"Failed to send init message:",
+				expect.anything(),
+			);
 		});
 
 		it("reports an INIT delivery failure on on('error')", async () => {
