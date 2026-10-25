@@ -1627,22 +1627,23 @@ test("a host started for another component's tag throws and leaves the consumer 
 	page,
 }) => {
 	await mount(page, "/tag-mismatch");
+	// Read the host's outcome before the consumer's timeout removes its frame.
+	await expect
+		.poll(() =>
+			page
+				.frames()
+				.find((frame) => frame.url().startsWith(hostOrigin))
+				?.evaluate(() => (window as unknown as { outcome?: string }).outcome)
+				.catch(() => undefined),
+		)
+		.toBe(
+			'initHost() received component "browser-navigation-other", but this window was opened for "browser-navigation-review"',
+		);
 	expect(
 		await page.evaluate(
 			() => (window as unknown as { outcome: Promise<string> }).outcome,
 		),
 	).toContain("did not initialize within 1500ms");
-	const host = page
-		.frames()
-		.find((frame) => frame.url().startsWith(hostOrigin));
-	if (!host) throw new Error("Missing host window");
-	expect(
-		await host.evaluate(
-			() => (window as unknown as { outcome: string }).outcome,
-		),
-	).toBe(
-		'initHost() received component "browser-navigation-other", but this window was opened for "browser-navigation-review"',
-	);
 });
 
 test("growing a widget also grows its clipping container", async ({ page }) => {
