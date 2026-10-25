@@ -2,7 +2,6 @@
  * Internal helpers for preserving non-JSON runtime values on ForgeFrame's wire formats.
  */
 
-import { PROP_SERIALIZATION, type SerializationType } from "../constants";
 import { isDate, isPlainObject } from "./realm-values";
 
 interface DateWireValue {
@@ -25,11 +24,9 @@ export function needsRecordEscape(value: Record<string, unknown>): boolean {
 	}
 	if (keys.length !== 2) return false;
 	return (
-		((value.__type__ === "base64" || value.__type__ === "dotify") &&
-			keys.includes("__value__")) ||
-		((value.__forgeframe_wire_type__ === "date" ||
+		(value.__forgeframe_wire_type__ === "date" ||
 			value.__forgeframe_wire_type__ === "record") &&
-			keys.includes("__forgeframe_wire_value__"))
+		keys.includes("__forgeframe_wire_value__")
 	);
 }
 
@@ -68,68 +65,30 @@ export function assertDefinedArrayEntry(value: unknown, path: string[]): void {
 export function assertDefinedArrayEntries(
 	value: unknown,
 	path: string[] = [],
-	encoding: SerializationType = PROP_SERIALIZATION.JSON,
 	seen = new WeakSet<object>(),
 ): void {
 	if (typeof value !== "object" || value === null || seen.has(value)) return;
 	if (isDate(value)) return;
-	// DOTIFY falls back to bridge encoding for arrays and marker-shaped roots.
-	const nodeEncoding =
-		encoding === PROP_SERIALIZATION.DOTIFY &&
-		(Array.isArray(value) ||
-			needsRecordEscape(value as Record<string, unknown>))
-			? PROP_SERIALIZATION.JSON
-			: encoding;
 	// Encoded values are checked during delivery after their encoder runs.
-	if (convertsThroughJsonEncoder(value, nodeEncoding)) return;
+	if (convertsThroughJsonEncoder(value)) return;
 	seen.add(value);
 	if (Array.isArray(value)) {
 		for (let index = 0; index < value.length; index++) {
 			assertDefinedArrayEntry(value[index], [...path, String(index)]);
-			assertDefinedArrayEntries(
-				value[index],
-				[...path, String(index)],
-				nodeEncoding,
-				seen,
-			);
+			assertDefinedArrayEntries(value[index], [...path, String(index)], seen);
 		}
 		return;
 	}
 	for (const [key, entry] of Object.entries(value)) {
-		// Bridge/DOTIFY decoding discards this field; JSON bridge encoding also
-		// omits it before serialization. It cannot change a delivered array.
-		if (key === "__proto__" && nodeEncoding === PROP_SERIALIZATION.JSON)
-			continue;
-		const childEncoding =
-			nodeEncoding === PROP_SERIALIZATION.DOTIFY && !isDotifyObjectBranch(entry)
-				? PROP_SERIALIZATION.BASE64
-				: nodeEncoding;
-		assertDefinedArrayEntries(entry, [...path, key], childEncoding, seen);
+		// Bridge encoding omits this field, so it cannot change a delivered array.
+		if (key === "__proto__") continue;
+		assertDefinedArrayEntries(entry, [...path, key], seen);
 	}
 }
 
-/** Mirrors DOTIFY's own-field object traversal rather than JSON leaf encoding. */
-function isDotifyObjectBranch(value: unknown): boolean {
-	if (typeof value !== "object" || value === null || Array.isArray(value))
-		return false;
-	return (
-		isPlainObject(value) && !needsRecordEscape(value as Record<string, unknown>)
-	);
-}
-
-/**
- * Mirrors which values each codec converts through `toJSON()`: BASE64 converts
- * every value, the JSON bridge converts non-array objects, and DOTIFY walks its
- * own branches and converts only leaves, which it encodes as BASE64 values.
- */
-function convertsThroughJsonEncoder(
-	value: object,
-	encoding: SerializationType,
-): boolean {
-	if (!hasJsonEncoder(value)) return false;
-	if (encoding === PROP_SERIALIZATION.BASE64) return true;
-	if (encoding === PROP_SERIALIZATION.DOTIFY) return false;
-	return !Array.isArray(value);
+/** Mirrors the JSON bridge, which converts non-array objects through `toJSON()`. */
+function convertsThroughJsonEncoder(value: object): boolean {
+	return !Array.isArray(value) && hasJsonEncoder(value);
 }
 
 /** Detects methods without invoking computed encoders during admission. */
@@ -204,87 +163,16 @@ export function decodeDateWireValue(value: DateWireValue): Date {
 		: new Date(value.__forgeframe_wire_value__);
 }
 
+/** The platform's raw-JSON brand check, resolved once when the runtime has one. */
+const nativeIsRawJSON = (JSON as { isRawJSON?: unknown }).isRawJSON;
+
 /**
- * Stringifies a value while preserving Date instances through JSON transport.
- *
- * @param encodeFunction - Optional prop-codec encoder; omitted callbacks keep JSON behavior.
+ * Recognizes native raw JSON, including values from another realm, when the
+ * runtime supports it.
  * @internal
  */
-export function stringifyWireValue(
-	value: unknown,
-	encodeFunction?: (fn: (...args: unknown[]) => unknown) => unknown,
-): string | undefined {
-	const paths = new WeakMap<object, string[]>();
-	const generatedMarkerPaths = new Set<string>();
-	const proxies = new WeakMap<object, object>();
-	const capturedValues = new WeakMap<object, Map<PropertyKey, unknown>>();
-	// Replacers run after JSON has read a property and invoked its encoder.
-	// Observe those reads on the returned traversal object so Date detection
-	// never reads an accessor again. Children stay unwrapped until their own
-	// replacer runs, preserving encoder receivers and native conversion order.
-	const captureReads = (encoded: object): unknown => {
-		// Native raw JSON carries a brand that a proxy cannot preserve.
-		if (
-			"isRawJSON" in JSON &&
-			typeof JSON.isRawJSON === "function" &&
-			JSON.isRawJSON(encoded)
-		) {
-			return encoded;
-		}
-		const converted = unboxJsonPrimitive(encoded);
-		if (converted !== encoded) return converted;
-		const existing = proxies.get(encoded);
-		if (existing) return existing;
-		const values = new Map<PropertyKey, unknown>();
-		const proxy = new Proxy(encoded, {
-			get(target, property) {
-				const entry = Reflect.get(target, property, target);
-				values.set(property, entry);
-				return entry;
-			},
-		});
-		proxies.set(encoded, proxy);
-		capturedValues.set(proxy, values);
-		return proxy;
-	};
-	const json = JSON.stringify(
-		value,
-		function wireValueReplacer(key, jsonValue) {
-			const holder = this as Record<string, unknown>;
-			const holderPath = paths.get(holder);
-			const path = holderPath ? [...holderPath, key] : [];
-			const originalValue = holderPath
-				? capturedValues.get(holder)?.get(key)
-				: value;
-			if (encodeFunction && Array.isArray(holder)) {
-				assertDefinedArrayEntry(jsonValue, path);
-			}
-
-			let encoded = jsonValue;
-			if (isDate(originalValue)) {
-				encoded = {
-					__forgeframe_wire_type__: "date",
-					__forgeframe_wire_value__: jsonValue,
-				};
-				generatedMarkerPaths.add(JSON.stringify(path));
-			} else if (typeof jsonValue === "function" && encodeFunction) {
-				encoded = encodeFunction(jsonValue);
-				generatedMarkerPaths.add(JSON.stringify(path));
-			}
-			if (isObjectRecord(encoded)) {
-				encoded = captureReads(encoded);
-				if (isObjectRecord(encoded)) paths.set(encoded, path);
-			}
-			return encoded;
-		},
-	);
-	if (!encodeFunction || json === undefined) return json;
-
-	// Native JSON conversion runs user encoders once. Escape the resulting
-	// records after nested omission/conversion can no longer change their shape.
-	return JSON.stringify(
-		escapeConvertedRecords(JSON.parse(json), [], generatedMarkerPaths),
-	);
+export function isRawJsonValue(value: object): boolean {
+	return typeof nativeIsRawJSON === "function" && nativeIsRawJSON(value);
 }
 
 /**
@@ -311,31 +199,4 @@ function unboxJsonPrimitive(value: object): unknown {
 	// hooks run once, including for wrappers with customized prototypes.
 	const json = JSON.stringify({ toJSON: () => value }, []);
 	return json === "{}" || json === undefined ? value : JSON.parse(json);
-}
-
-/** Preserves codec-generated markers while escaping indistinguishable ordinary data. */
-function escapeConvertedRecords(
-	value: unknown,
-	path: string[],
-	generatedMarkerPaths: ReadonlySet<string>,
-): unknown {
-	if (!isObjectRecord(value)) return value;
-	if (Array.isArray(value)) {
-		return value.map((entry, index) =>
-			escapeConvertedRecords(
-				entry,
-				[...path, String(index)],
-				generatedMarkerPaths,
-			),
-		);
-	}
-	const record = Object.fromEntries(
-		Object.entries(value).map(([key, entry]) => [
-			key,
-			escapeConvertedRecords(entry, [...path, key], generatedMarkerPaths),
-		]),
-	);
-	return generatedMarkerPaths.has(JSON.stringify(path))
-		? record
-		: escapeWireRecord(record);
 }

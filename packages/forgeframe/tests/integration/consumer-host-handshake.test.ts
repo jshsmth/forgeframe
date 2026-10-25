@@ -370,6 +370,37 @@ describe("Consumer/host handshake integration", () => {
 		expect(getHost()).toBeNull();
 	});
 
+	it("rejects host definitions that use the removed serialization option before starting a host", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const Component = create({
+			tag: "removed-serialization-host",
+			url: "https://host.example.com/widget",
+			props: { profile: prop.object() },
+		});
+		const rendering = Component({ profile: { name: "initial" } }).render(
+			container,
+		);
+		harness.attachHostToIframe(await harness.waitForIframe(container));
+		// A JavaScript host module can still pass the removed option.
+		const legacyDefinitions = {
+			profile: { schema: prop.object(), serialization: "json" },
+		};
+		expect(() => harness?.bootstrapHost(legacyDefinitions)).toThrow(
+			'Prop "profile" uses the removed "serialization" option. ForgeFrame 2 always sends props as JSON; remove the option.',
+		);
+		expect(getHost()).toBeNull();
+
+		const host = harness.bootstrapHost<{ profile: Record<string, unknown> }>({
+			profile: prop.object(),
+		});
+		if (!host) throw new Error("Expected the corrected host to initialize");
+		await host.ready;
+		await rendering;
+		expect(host.hostProps.profile).toEqual({ name: "initial" });
+	});
+
 	it("rejects oversized bootstrap metadata before installing a host and accepts a valid retry", async () => {
 		harness = createIframeIntegrationHarness();
 		const container = document.createElement("div");

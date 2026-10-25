@@ -16,6 +16,7 @@ import {
 	encodeDateWireValue,
 	escapeWireRecord,
 	isDateWireValue,
+	isRawJsonValue,
 	isRecordWireValue,
 	toJsonValue,
 } from "../utils/wire-value";
@@ -64,7 +65,7 @@ const UNSAFE_OBJECT_KEYS = new Set(["__proto__"]);
  * Checks if a key is safe to assign on reconstructed objects.
  * @internal
  */
-function isSafeObjectKey(key: string): boolean {
+export function isSafeObjectKey(key: string): boolean {
 	return !UNSAFE_OBJECT_KEYS.has(key);
 }
 
@@ -525,7 +526,8 @@ export class FunctionBridge {
  * @remarks
  * Objects other than arrays and dates convert through `toJSON(key)` and
  * primitive-wrapper unboxing once, as native JSON does. Arrays encode their
- * indexed entries without calling caller-controlled methods.
+ * indexed entries without calling caller-controlled methods. Native raw JSON
+ * stays as is, so the message's JSON encoding writes its text.
  *
  * @param obj - The object to process
  * @param bridge - The function bridge to use for serialization
@@ -629,12 +631,16 @@ function serializeArray(
 	}
 }
 
-/** Encodes own enumerable fields, skipping unsafe keys and escaping marker shapes. */
+/**
+ * Encodes own enumerable fields, skipping unsafe keys and escaping marker
+ * shapes. Native raw JSON keeps its brand and is returned unchanged.
+ */
 function serializeRecord(
 	value: object,
 	bridge: FunctionBridge,
 	stack: WeakSet<object>,
 ): unknown {
+	if (isRawJsonValue(value)) return value;
 	enterStack(value, stack, CIRCULAR_OBJECT_ERROR);
 	try {
 		const result: Record<string, unknown> = {};
@@ -652,8 +658,8 @@ function serializeRecord(
  * Recursively deserializes all function references in an object.
  *
  * @remarks
- * Input always comes from parsed JSON (message data or a decoded prop
- * wrapper), so it cannot contain cycles.
+ * Input always comes from parsed message data, so it cannot contain
+ * cycles.
  *
  * @param obj - The object to process
  * @param bridge - The function bridge to use for deserialization

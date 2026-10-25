@@ -1,7 +1,7 @@
 // Core API
 
 // Constants
-import { CONTEXT, EVENT, PROP_SERIALIZATION, VERSION } from "./constants";
+import { CONTEXT, EVENT, VERSION } from "./constants";
 import {
 	create,
 	destroy,
@@ -127,12 +127,6 @@ export const ForgeFrame = {
 	 * @returns The host component instance if running embedded, otherwise null
 	 */
 	initHost,
-
-	/**
-	 * Serialization strategy constants.
-	 * @see {@link PROP_SERIALIZATION}
-	 */
-	PROP_SERIALIZATION,
 
 	/**
 	 * Rendering context constants (IFRAME, POPUP).

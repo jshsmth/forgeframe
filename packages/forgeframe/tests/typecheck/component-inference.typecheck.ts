@@ -14,6 +14,7 @@ import {
 	type ForgeFrameComponentInstance,
 	type HostPropsDefinition,
 	initHost,
+	type PropDefinition,
 	prop,
 	type SchemaPropDefinition,
 	withReactComponent,
@@ -294,6 +295,27 @@ const WrappedSchemaDefaultComponent = create({
 });
 
 void WrappedSchemaDefaultComponent({});
+
+const removedSerializationDefinition: PropDefinition = {
+	schema: prop.object(),
+	// @ts-expect-error typed prop definitions reject the removed serialization option
+	serialization: "dotify",
+};
+void removedSerializationDefinition;
+
+void create<{ profile: Record<string, unknown> }>({
+	tag: "removed-serialization-component",
+	url: "https://example.com/removed-serialization",
+	props: {
+		profile: {
+			schema: prop.object(),
+			// @ts-expect-error explicit-generic definitions reject the removed serialization option
+			serialization: "json",
+		},
+	},
+});
+// The inferred create() overload captures a literal's extra keys, so it does
+// not report serialization at compile time; create() rejects it at runtime.
 
 const ContextualCallbacksComponent = create({
 	tag: "contextual-callbacks-component",

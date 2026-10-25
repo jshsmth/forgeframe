@@ -2,7 +2,6 @@
  * Shared public prop-system types.
  */
 
-import type { SerializationType } from "../constants";
 import type {
 	InferInput,
 	InferOutput,
@@ -121,8 +120,6 @@ interface PropDefinitionOptions<
 	/** List of trusted domains that can receive this prop */
 	trustedDomains?: DomainMatcher[];
 
-	/** Serialization strategy for cross-domain transfer */
-	serialization?: SerializationType;
 	/** Pass prop via URL query parameter */
 	queryParam?: boolean | string | ((opts: { value: Output }) => string);
 	/** Pass prop via POST body parameter */

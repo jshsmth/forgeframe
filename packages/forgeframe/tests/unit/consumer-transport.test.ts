@@ -176,7 +176,6 @@ describe("ConsumerTransport", () => {
 							]),
 						),
 					},
-					createOptions().props,
 					{ resetLocalReferences },
 				),
 			};
@@ -342,19 +341,15 @@ describe("ConsumerTransport", () => {
 		circular.push(circular);
 		const serializeSpy = vi.spyOn(transport.bridge, "serialize");
 
-		const serialized = transport.serializePropsForHost(
-			{ onReady: () => "retained" },
-			createOptions().props,
-		) as { onReady: { __id__: string } };
+		const serialized = transport.serializePropsForHost({
+			onReady: () => "retained",
+		}) as { onReady: { __id__: string } };
 
 		expect(() =>
-			transport.serializePropsForHost(
-				{
-					onReady: () => {},
-					payload: { circular },
-				},
-				createOptions().props,
-			),
+			transport.serializePropsForHost({
+				onReady: () => {},
+				payload: { circular },
+			}),
 		).toThrow(
 			"Circular reference detected in props - arrays cannot contain circular references",
 		);

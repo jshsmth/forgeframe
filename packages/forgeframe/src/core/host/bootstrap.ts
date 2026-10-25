@@ -7,6 +7,7 @@
  * init flushing decisions, and cleanup for `initHost()`/`clearHostInstance()`.
  */
 
+import { assertNoRemovedPropOptions } from "../../props/removed-options";
 import type { HostPropsDefinition } from "../../types/props";
 import type { ComponentOptions, HostProps } from "../../types/runtime";
 import type { DomainMatcher } from "../../types/utility";
@@ -67,6 +68,7 @@ export function initHost<P extends Record<string, unknown>, SchemaInputs = P>(
 	if (!hasBrowserWindow()) return null;
 	if (allowedConsumerDomains !== undefined)
 		assertDomainMatcher(allowedConsumerDomains, "allowedConsumerDomains");
+	if (propDefinitions) assertNoRemovedPropOptions(propDefinitions);
 	if (hostInstance) {
 		const configuredHost = hostInstance;
 		try {

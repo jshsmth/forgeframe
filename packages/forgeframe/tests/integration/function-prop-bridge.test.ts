@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Messenger } from "@/communication/messenger";
 import { deserializeMessage } from "@/communication/protocol";
-import { create, initHost, PROP_SERIALIZATION, prop } from "@/index";
+import { create, initHost, prop } from "@/index";
 import type { PropsDefinition } from "@/types";
 import {
 	createIframeIntegrationHarness,
@@ -215,62 +215,52 @@ describe("Function prop bridge integration", () => {
 		await expect(instance.exports?.wait()).resolves.toBe("next");
 	});
 
-	it.each([
-		["JSON", undefined],
-		["BASE64", PROP_SERIALIZATION.BASE64],
-		["DOTIFY", PROP_SERIALIZATION.DOTIFY],
-	] as const)(
-		"enforces callback capacity atomically across %s updates",
-		async (_label, serialization) => {
-			harness = createIframeIntegrationHarness();
-			const container = document.createElement("div");
-			document.body.append(container);
-			const definitions = {
-				callbacks: {
-					schema: prop.record(prop.function<() => number>()),
-					serialization,
-				},
-			};
-			const Component = create({
-				tag: "integration-callback-capacity",
-				url: "https://host.example.com/widget",
-				props: definitions,
-			});
-			const callbacks = Object.fromEntries(
-				Array.from({ length: 500 }, (_, index) => [`c${index}`, () => index]),
-			);
-			const instance = Component({ callbacks });
-			const rendering = instance.render(container);
-			const { hostProps } = await harness.bootstrapIframeHost(
-				container,
-				definitions,
-			);
-			await rendering;
-			const cached = hostProps.callbacks.c0;
-			if (!cached) throw new Error("Missing initial callback");
-			await expect(cached()).resolves.toBe(0);
-			await expect(hostProps.callbacks.c499?.()).resolves.toBe(499);
-			const oversized = Object.fromEntries(
-				Array.from({ length: 501 }, (_, index) => [
-					`c${index}`,
-					() => index + 1000,
-				]),
-			);
-			const rejected = instance.updateProps({ callbacks: oversized });
-			const replacement = Object.fromEntries(
-				Array.from({ length: 500 }, (_, index) => [
-					`c${index}`,
-					() => index + 500,
-				]),
-			);
-			const recovered = instance.updateProps({ callbacks: replacement });
-			await expect(rejected).rejects.toThrow("500 distinct callback limit");
-			await recovered;
-			await expect(hostProps.callbacks.c0?.()).resolves.toBe(500);
-			await expect(hostProps.callbacks.c499?.()).resolves.toBe(999);
-			await expect(cached()).rejects.toThrow("not found");
-		},
-	);
+	it("enforces callback capacity atomically across updates", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const definitions = {
+			callbacks: prop.record(prop.function<() => number>()),
+		};
+		const Component = create({
+			tag: "integration-callback-capacity",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const callbacks = Object.fromEntries(
+			Array.from({ length: 500 }, (_, index) => [`c${index}`, () => index]),
+		);
+		const instance = Component({ callbacks });
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			definitions,
+		);
+		await rendering;
+		const cached = hostProps.callbacks.c0;
+		if (!cached) throw new Error("Missing initial callback");
+		await expect(cached()).resolves.toBe(0);
+		await expect(hostProps.callbacks.c499?.()).resolves.toBe(499);
+		const oversized = Object.fromEntries(
+			Array.from({ length: 501 }, (_, index) => [
+				`c${index}`,
+				() => index + 1000,
+			]),
+		);
+		const rejected = instance.updateProps({ callbacks: oversized });
+		const replacement = Object.fromEntries(
+			Array.from({ length: 500 }, (_, index) => [
+				`c${index}`,
+				() => index + 500,
+			]),
+		);
+		const recovered = instance.updateProps({ callbacks: replacement });
+		await expect(rejected).rejects.toThrow("500 distinct callback limit");
+		await recovered;
+		await expect(hostProps.callbacks.c0?.()).resolves.toBe(500);
+		await expect(hostProps.callbacks.c499?.()).resolves.toBe(999);
+		await expect(cached()).rejects.toThrow("not found");
+	});
 
 	it("recovers callback capacity after final props message encoding fails", async () => {
 		harness = createIframeIntegrationHarness();
@@ -445,142 +435,120 @@ describe("Function prop bridge integration", () => {
 		await expect(hostProps.callbacks.fresh?.()).resolves.toBe(1001);
 	});
 
-	it.each([
-		["default", undefined],
-		["BASE64", PROP_SERIALIZATION.BASE64],
-		["DOTIFY", PROP_SERIALIZATION.DOTIFY],
-	] as const)(
-		"retires replaced callbacks after acknowledged %s updates",
-		async (_label, serialization) => {
-			harness = createIframeIntegrationHarness();
-			const container = document.createElement("div");
-			document.body.append(container);
-			const definitions = {
-				config: {
-					schema: prop.object().shape({ run: prop.function<() => string>() }),
-					serialization,
-				},
-			};
-			const Component = create({
-				tag: "integration-replaced-callback",
-				url: "https://host.example.com/widget",
-				props: definitions,
-			});
-			const original = vi.fn(() => "original");
-			const instance = Component({ config: { run: original } });
-			const rendering = instance.render(container);
-			const { hostProps } = await harness.bootstrapIframeHost(
-				container,
-				definitions,
-			);
-			await rendering;
-			const cached = hostProps.config.run;
-			await expect(cached()).resolves.toBe("original");
-			await instance.updateProps({ config: { run: () => "replacement" } });
-			await expect(hostProps.config.run()).resolves.toBe("replacement");
-			await expect(cached()).rejects.toThrow(/Function with id ".+" not found/);
-			expect(original).toHaveBeenCalledOnce();
-		},
-	);
+	it("retires replaced callbacks after acknowledged updates", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const definitions = {
+			config: prop.object().shape({ run: prop.function<() => string>() }),
+		};
+		const Component = create({
+			tag: "integration-replaced-callback",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const original = vi.fn(() => "original");
+		const instance = Component({ config: { run: original } });
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			definitions,
+		);
+		await rendering;
+		const cached = hostProps.config.run;
+		await expect(cached()).resolves.toBe("original");
+		await instance.updateProps({ config: { run: () => "replacement" } });
+		await expect(hostProps.config.run()).resolves.toBe("replacement");
+		await expect(cached()).rejects.toThrow(/Function with id ".+" not found/);
+		expect(original).toHaveBeenCalledOnce();
+	});
 
-	it.each([PROP_SERIALIZATION.BASE64, PROP_SERIALIZATION.DOTIFY])(
-		"bridges nested callbacks across %s bootstrap and updates",
-		async (serialization) => {
-			harness = createIframeIntegrationHarness();
-			const container = document.createElement("div");
-			document.body.appendChild(container);
-			const definitions = {
+	it("bridges nested callbacks and Dates across bootstrap and updates", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+		const definitions = {
+			config: prop.object().shape({
+				onComplete: prop.function<() => number>(),
+				list: prop.array().of(prop.function<() => number>()),
+				date: prop.date(),
+			}),
+			label: prop.string().optional(),
+		};
+		const Component = create({
+			tag: "integration-nested-callback",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const date = new Date("2026-01-02T03:04:05.678Z");
+		const instance = Component({
+			config: { onComplete: () => 42, list: [() => 7], date },
+		});
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			definitions,
+		);
+		await rendering;
+		await expect(hostProps.config.onComplete()).resolves.toBe(42);
+		await expect(hostProps.config.list[0]?.()).resolves.toBe(7);
+		expect(hostProps.config.date).toEqual(date);
+		const cached = hostProps.config.onComplete;
+		await instance.updateProps({ label: "unrelated" });
+		await expect(cached()).resolves.toBe(42);
+		await expect(
+			instance.updateProps({
 				config: {
-					schema: prop.object().shape({
-						onComplete: prop.function<() => number>(),
-						list: prop.array().of(prop.function<() => number>()),
-						date: prop.date(),
-					}),
-					serialization,
+					onComplete: () => 99,
+					list: [],
+					date: new Date(Number.NaN),
 				},
-				label: prop.string().optional(),
-			};
-			const Component = create({
-				tag: `integration-nested-callback-${serialization}`,
-				url: "https://host.example.com/widget",
-				props: definitions,
-			});
-			const date = new Date("2026-01-02T03:04:05.678Z");
-			const instance = Component({
-				config: { onComplete: () => 42, list: [() => 7], date },
-			});
-			const rendering = instance.render(container);
-			const { hostProps } = await harness.bootstrapIframeHost(
-				container,
-				definitions,
-			);
-			await rendering;
-			await expect(hostProps.config.onComplete()).resolves.toBe(42);
-			await expect(hostProps.config.list[0]?.()).resolves.toBe(7);
-			expect(hostProps.config.date).toEqual(date);
-			const cached = hostProps.config.onComplete;
-			await instance.updateProps({ label: "unrelated" });
-			await expect(cached()).resolves.toBe(42);
-			await expect(
-				instance.updateProps({
-					config: {
-						onComplete: () => 99,
-						list: [],
-						date: new Date(Number.NaN),
-					},
-				}),
-			).rejects.toThrow("Validation failed");
-			await expect(cached()).resolves.toBe(42);
-			await instance.updateProps({
-				config: { onComplete: () => 84, list: [() => 14], date },
-			});
-			await expect(hostProps.config.onComplete()).resolves.toBe(84);
-			await expect(hostProps.config.list[0]?.()).resolves.toBe(14);
-			expect(hostProps.config.date).toEqual(date);
-		},
-	);
+			}),
+		).rejects.toThrow("Validation failed");
+		await expect(cached()).resolves.toBe(42);
+		await instance.updateProps({
+			config: { onComplete: () => 84, list: [() => 14], date },
+		});
+		await expect(hostProps.config.onComplete()).resolves.toBe(84);
+		await expect(hostProps.config.list[0]?.()).resolves.toBe(14);
+		expect(hostProps.config.date).toEqual(date);
+	});
 
-	it.each([PROP_SERIALIZATION.BASE64, PROP_SERIALIZATION.DOTIFY])(
-		"retains live callbacks after failed %s encoding and recovers",
-		async (serialization) => {
-			harness = createIframeIntegrationHarness();
-			const container = document.createElement("div");
-			document.body.appendChild(container);
-			const definitions = {
-				config: {
-					schema: prop.object<{ onComplete: () => number; failure?: object }>(),
-					serialization,
-				},
-			};
-			const Component = create({
-				tag: `integration-encoding-recovery-${serialization}`,
-				url: "https://host.example.com/widget",
-				props: definitions,
-			});
-			const instance = Component({ config: { onComplete: () => 42 } });
-			const rendering = instance.render(container);
-			const { hostProps } = await harness.bootstrapIframeHost(
-				container,
-				definitions,
-			);
-			await rendering;
-			const cached = hostProps.config.onComplete;
-			class FailingValue {
-				toJSON() {
-					throw new Error("encoding failed");
-				}
+	it("retains live callbacks after failed encoding and recovers", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+		const definitions = {
+			config: prop.object<{ onComplete: () => number; failure?: object }>(),
+		};
+		const Component = create({
+			tag: "integration-encoding-recovery",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const instance = Component({ config: { onComplete: () => 42 } });
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			definitions,
+		);
+		await rendering;
+		const cached = hostProps.config.onComplete;
+		class FailingValue {
+			toJSON() {
+				throw new Error("encoding failed");
 			}
-			await expect(
-				instance.updateProps({
-					config: { onComplete: () => 99, failure: new FailingValue() },
-				}),
-			).rejects.toThrow("encoding failed");
-			await expect(cached()).resolves.toBe(42);
-			await expect(hostProps.config.onComplete()).resolves.toBe(42);
-			await instance.updateProps({ config: { onComplete: () => 84 } });
-			await expect(hostProps.config.onComplete()).resolves.toBe(84);
-		},
-	);
+		}
+		await expect(
+			instance.updateProps({
+				config: { onComplete: () => 99, failure: new FailingValue() },
+			}),
+		).rejects.toThrow("encoding failed");
+		await expect(cached()).resolves.toBe(42);
+		await expect(hostProps.config.onComplete()).resolves.toBe(42);
+		await instance.updateProps({ config: { onComplete: () => 84 } });
+		await expect(hostProps.config.onComplete()).resolves.toBe(84);
+	});
 
 	it("should report unserializable callback results without waiting for a message timeout", async () => {
 		harness = createIframeIntegrationHarness();

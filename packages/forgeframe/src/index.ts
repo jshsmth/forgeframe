@@ -30,17 +30,8 @@
  * ```
  */
 
-export type {
-	ContextType,
-	EventType,
-	SerializationType,
-} from "./constants";
-export {
-	CONTEXT,
-	EVENT,
-	PROP_SERIALIZATION,
-	VERSION,
-} from "./constants";
+export type { ContextType, EventType } from "./constants";
+export { CONTEXT, EVENT, VERSION } from "./constants";
 
 // Named exports for tree-shaking
 export {
