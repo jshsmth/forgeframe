@@ -14,7 +14,12 @@ import type { NormalizedOptions } from "@/core/consumer/types";
 import { prop } from "@/props/prop";
 import type { Dimensions, SiblingInfo } from "@/types";
 import { createDeferred } from "@/utils/promise";
-import { callConsumerCallback } from "../consumer-bridge";
+import {
+	callConsumerCallback,
+	HOST_ORIGIN,
+	hostSource,
+	sentCallbackId,
+} from "../consumer-bridge";
 import { requireValue } from "../require-value";
 
 type TestProps = {
@@ -121,7 +126,7 @@ describe("ConsumerTransport", () => {
 	it("withholds bootstrap from other windows and origins, including the consumer's own origin", async () => {
 		const transport = createTransport();
 		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
-		transport.attachHostWindow(hostWindow, "https://host.example.com");
+		transport.attachHostWindow(hostWindow, HOST_ORIGIN);
 		const onBootstrap = vi.fn(async () => ({ props: { secret: "private" } }));
 		transport.setupMessageHandlers({ ...createHandlers(), onBootstrap });
 		const handler = getHandler(transport, MESSAGE_NAME.BOOTSTRAP);
@@ -154,7 +159,7 @@ describe("ConsumerTransport", () => {
 	it("releases a full recovery pool only for a verified new bootstrap session", async () => {
 		const transport = createTransport();
 		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
-		transport.attachHostWindow(hostWindow, "https://host.example.com");
+		transport.attachHostWindow(hostWindow, HOST_ORIGIN);
 		let rejectBootstrap = false;
 		const onBootstrap = async (
 			_source: HandlerSource,
@@ -214,7 +219,7 @@ describe("ConsumerTransport", () => {
 	it("requires INIT to match the latest verified bootstrap session", async () => {
 		const transport = createTransport();
 		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
-		transport.attachHostWindow(hostWindow, "https://host.example.com");
+		transport.attachHostWindow(hostWindow, HOST_ORIGIN);
 		transport.setupMessageHandlers({
 			...createHandlers(),
 			onBootstrap: async () => ({ props: {} }),
@@ -290,21 +295,11 @@ describe("ConsumerTransport", () => {
 
 	it("should retain both callback snapshots after a props delivery attempt fails", async () => {
 		const transport = createTransport();
-		transport.attachHostWindow(window, "https://host.example.com");
+		transport.attachHostWindow(window, HOST_ORIGIN);
 
 		const sendSpy = vi.spyOn(transport.messenger, "send");
 		sendSpy.mockResolvedValueOnce(undefined);
-		const source = {
-			uid: "consumer-transport-uid",
-			domain: "https://host.example.com",
-			window,
-		};
-		const sentCallbackId = (call: number) =>
-			(
-				requireValue(sendSpy.mock.calls[call])[3] as {
-					onReady: { __id__: string };
-				}
-			).onReady.__id__;
+		const source = hostSource(window);
 
 		await transport.sendPropsUpdateToHost(
 			{ onReady: () => "first" },
@@ -324,21 +319,25 @@ describe("ConsumerTransport", () => {
 		).rejects.toThrow("props sync failed");
 
 		await expect(
-			callConsumerCallback(transport, sentCallbackId(0), source),
+			callConsumerCallback(
+				transport,
+				sentCallbackId(sendSpy, 0, "onReady"),
+				source,
+			),
 		).resolves.toBe("first");
 		await expect(
-			callConsumerCallback(transport, sentCallbackId(1), source),
+			callConsumerCallback(
+				transport,
+				sentCallbackId(sendSpy, 1, "onReady"),
+				source,
+			),
 		).resolves.toBe("second");
 	});
 
 	it("should keep existing callback references when serialization fails mid-batch", async () => {
 		const transport = createTransport();
-		transport.attachHostWindow(window, "https://host.example.com");
-		const source = {
-			uid: "consumer-transport-uid",
-			domain: "https://host.example.com",
-			window,
-		};
+		transport.attachHostWindow(window, HOST_ORIGIN);
+		const source = hostSource(window);
 		const circular: unknown[] = [];
 		circular.push(circular);
 		const serializeSpy = vi.spyOn(transport.bridge, "serialize");
@@ -449,7 +448,7 @@ describe("ConsumerTransport", () => {
 			.spyOn(transport.messenger, "send")
 			.mockResolvedValue("callback-result");
 
-		transport.attachHostWindow(hostWindow, "https://host.example.com");
+		transport.attachHostWindow(hostWindow, HOST_ORIGIN);
 		transport.openedHostDomain = configuredOrigin;
 		transport.setupMessageHandlers(handlers);
 

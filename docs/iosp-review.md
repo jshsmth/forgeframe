@@ -5,7 +5,7 @@ desc: Runtime callable responsibilities, IOSP classifications, and boundary test
 tags: []
 sources: []
 created: 2026-10-01T01:55:30Z
-updated: 2026-10-25T03:23:12Z
+updated: 2026-10-25T05:07:13Z
 ---
 
 # ForgeFrame callable reference
@@ -223,8 +223,8 @@ A peer append commits only after the response passes native JSON encoding. If fi
 
 - **O:** `ConsumerTransport.getHostDomain`, `ConsumerTransport.isHostConnected`, `ConsumerTransport.isHostControlSource`, `ConsumerTransport.resetHostWindow`, `collectTrustedDomains`.
 - **I:** `ConsumerTransport.constructor`, `ConsumerTransport.attachHostWindow`, `ConsumerTransport.buildTrustedDomains`, `ConsumerTransport.syncTrustedDomainForUrl`, `ConsumerTransport.serializePropsForHost`, `ConsumerTransport.sendPropsUpdateToHost`, `ConsumerTransport.buildWindowName`, `ConsumerTransport.waitForHost`, `ConsumerTransport.setupMessageHandlers`, `ConsumerTransport.onHostControl`, `ConsumerTransport.destroy`.
-- **O callbacks:** `ConsumerTransport.waitForHost.callback@305`.
-- **I callbacks:** `ConsumerTransport.constructor.callback@127`, `ConsumerTransport.setupMessageHandlers.callback@328`, `ConsumerTransport.setupMessageHandlers.callback@361`, `ConsumerTransport.setupMessageHandlers.callback@382`, `ConsumerTransport.setupMessageHandlers.callback@391`, `ConsumerTransport.setupMessageHandlers.callback@396`, `ConsumerTransport.setupMessageHandlers.callback@401`, `ConsumerTransport.setupMessageHandlers.callback@407`, `ConsumerTransport.setupMessageHandlers.callback@412`, `ConsumerTransport.setupMessageHandlers.callback@419`, `ConsumerTransport.setupMessageHandlers.callback@435`, `ConsumerTransport.setupMessageHandlers.callback@449`, `ConsumerTransport.setupMessageHandlers.callback@456`, `ConsumerTransport.onHostControl.callback@488`.
+- **O callbacks:** `ConsumerTransport.waitForHost.callback@307`.
+- **I callbacks:** `ConsumerTransport.constructor.callback@127`, `ConsumerTransport.setupMessageHandlers.callback@330`, `ConsumerTransport.setupMessageHandlers.callback@363`, `ConsumerTransport.setupMessageHandlers.callback@384`, `ConsumerTransport.setupMessageHandlers.callback@393`, `ConsumerTransport.setupMessageHandlers.callback@398`, `ConsumerTransport.setupMessageHandlers.callback@403`, `ConsumerTransport.setupMessageHandlers.callback@409`, `ConsumerTransport.setupMessageHandlers.callback@414`, `ConsumerTransport.setupMessageHandlers.callback@421`, `ConsumerTransport.setupMessageHandlers.callback@437`, `ConsumerTransport.setupMessageHandlers.callback@451`, `ConsumerTransport.setupMessageHandlers.callback@458`, `ConsumerTransport.onHostControl.callback@490`.
 
 Evidence: [consumer](#evidence-consumer); typecheck.
 

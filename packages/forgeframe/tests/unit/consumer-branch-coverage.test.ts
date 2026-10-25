@@ -4,7 +4,7 @@
  * Covers domain trust variants, render helper delegation, prop update edge paths, and guarded branches around URL/origin handling.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CONTEXT, EVENT, MESSAGE_NAME } from "@/constants";
+import { CONTEXT, EVENT } from "@/constants";
 import { ConsumerComponent } from "@/core/consumer";
 import { emitConsumerError } from "@/core/consumer/callbacks";
 import { buildNestedHostRefs } from "@/core/consumer/child-refs";
@@ -12,11 +12,12 @@ import { EventEmitter } from "@/events/emitter";
 import { prop } from "@/props/prop";
 import * as iframeRender from "@/render/iframe";
 import * as popupRender from "@/render/popup";
-import { callConsumerCallback } from "../consumer-bridge";
-import { requireValue } from "../require-value";
-
-/** Origin of the default component URL, recorded when host content opens. */
-const HOST_ORIGIN = "https://host.example.com";
+import {
+	callConsumerCallback,
+	HOST_ORIGIN,
+	hostSource,
+	sentCallbackId,
+} from "../consumer-bridge";
 
 const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
 
@@ -97,23 +98,11 @@ function callHostCallback(
 	consumer: ConsumerComponent<Record<string, unknown>>,
 	id: string,
 ): unknown {
-	return callConsumerCallback(getInternals(consumer).transport, id, {
-		uid: "host-uid",
-		domain: HOST_ORIGIN,
-		window,
-	});
-}
-
-/** Reads the callback ID from the props update at `index` sent to the host. */
-function sentCallbackId(
-	sendSpy: { mock: { calls: unknown[][] } },
-	index: number,
-) {
-	const updates = sendSpy.mock.calls.filter(
-		(args) => args[2] === MESSAGE_NAME.PROPS,
+	return callConsumerCallback(
+		getInternals(consumer).transport,
+		id,
+		hostSource(window),
 	);
-	return (requireValue(updates[index])[3] as { onSubmit: { __id__: string } })
-		.onSubmit.__id__;
 }
 
 afterEach(async () => {
@@ -415,10 +404,10 @@ describe("Consumer branch coverage and edge paths", () => {
 		await consumer.updateProps({ onSubmit: () => "second" });
 
 		await expect(
-			callHostCallback(consumer, sentCallbackId(sendSpy, 0)),
+			callHostCallback(consumer, sentCallbackId(sendSpy, 0, "onSubmit")),
 		).rejects.toThrow("not found");
 		await expect(
-			callHostCallback(consumer, sentCallbackId(sendSpy, 1)),
+			callHostCallback(consumer, sentCallbackId(sendSpy, 1, "onSubmit")),
 		).resolves.toBe("second");
 	});
 
@@ -441,7 +430,7 @@ describe("Consumer branch coverage and edge paths", () => {
 			.mockResolvedValue(undefined);
 
 		await consumer.updateProps({ onSubmit: () => "previous" });
-		const previousRefId = sentCallbackId(sendSpy, 0);
+		const previousRefId = sentCallbackId(sendSpy, 0, "onSubmit");
 
 		sendSpy.mockImplementationOnce(async () => {
 			// The host may still call the previous callback until it acknowledges.
@@ -458,7 +447,7 @@ describe("Consumer branch coverage and edge paths", () => {
 			"not found",
 		);
 		await expect(
-			callHostCallback(consumer, sentCallbackId(sendSpy, 1)),
+			callHostCallback(consumer, sentCallbackId(sendSpy, 1, "onSubmit")),
 		).resolves.toBe("next");
 	});
 
@@ -513,10 +502,10 @@ describe("Consumer branch coverage and edge paths", () => {
 
 		await expect(secondUpdate).resolves.toBeUndefined();
 		await expect(
-			callHostCallback(consumer, sentCallbackId(sendSpy, 0)),
+			callHostCallback(consumer, sentCallbackId(sendSpy, 0, "onSubmit")),
 		).rejects.toThrow("not found");
 		await expect(
-			callHostCallback(consumer, sentCallbackId(sendSpy, 1)),
+			callHostCallback(consumer, sentCallbackId(sendSpy, 1, "onSubmit")),
 		).resolves.toBe("second");
 	});
 
@@ -676,11 +665,7 @@ describe("Consumer branch coverage and edge paths", () => {
 
 		internal.renderer.context = CONTEXT.POPUP;
 
-		await (
-			consumer as unknown as {
-				open: (baseUrl: string) => Promise<void>;
-			}
-		).open("https://host.example.com/widget");
+		await getInternals(consumer).open("https://host.example.com/widget");
 
 		expect(openPopupSpy).toHaveBeenCalledTimes(1);
 		expect(watchSpy).toHaveBeenCalledWith(popupWindow, expect.any(Function));
@@ -719,11 +704,7 @@ describe("Consumer branch coverage and edge paths", () => {
 			)
 			.mockImplementation(() => {});
 
-		await (
-			consumer as unknown as {
-				open: (baseUrl: string) => Promise<void>;
-			}
-		).open("https://host.example.com/widget");
+		await getInternals(consumer).open("https://host.example.com/widget");
 
 		expect(submitBodyFormSpy).toHaveBeenCalledTimes(1);
 		expect(submitBodyFormSpy).toHaveBeenCalledWith(
@@ -766,11 +747,7 @@ describe("Consumer branch coverage and edge paths", () => {
 			)
 			.mockImplementation(() => {});
 
-		await (
-			consumer as unknown as {
-				open: (baseUrl: string) => Promise<void>;
-			}
-		).open("https://host.example.com/widget");
+		await getInternals(consumer).open("https://host.example.com/widget");
 
 		expect(openPopupSpy).toHaveBeenCalledWith(
 			expect.objectContaining({

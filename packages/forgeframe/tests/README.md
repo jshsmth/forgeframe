@@ -73,7 +73,7 @@ What each test file covers, how to run it, and how to choose new tests. Paths ar
 
 `react-driver-test-harness.ts` provides deterministic hook and component mocks for the React driver tests.
 
-`../consumer-bridge.ts` calls a consumer callback through the function bridge's CALL handler, so transport and consumer suites can check whether a callback is still held. `../peer-host-domain.ts`, shared with the integration tests, marks unrendered instances as connected or still loading at a host origin, so peer-discovery tests do not need a rendered host for every peer.
+`../consumer-bridge.ts` reads the callback IDs a consumer sent to its host and calls them through the function bridge's CALL handler, so transport and consumer suites can check whether a callback is still held. `../peer-host-domain.ts`, shared with the integration tests, marks unrendered instances as connected or still loading at a host origin, so peer-discovery tests do not need a rendered host for every peer.
 
 `npm run typecheck` compiles all unit tests and fixtures through `unit/tsconfig.json` with the library's strict settings. Intentionally invalid public inputs use a documented `@ts-expect-error` at the negative fixture only.
 

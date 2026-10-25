@@ -865,11 +865,7 @@ describe("Consumer lifecycle behavior", () => {
 		getInternals(consumer).renderer.context = CONTEXT.IFRAME;
 
 		await expect(
-			(
-				consumer as unknown as {
-					open: (baseUrl: string) => Promise<void>;
-				}
-			).open("https://host.example.com/widget"),
+			getInternals(consumer).open("https://host.example.com/widget"),
 		).rejects.toThrow("Iframe not created during prerender");
 	});
 
@@ -882,10 +878,9 @@ describe("Consumer lifecycle behavior", () => {
 			openFailure as unknown as { prerender: () => Promise<void> },
 			"prerender",
 		).mockResolvedValue(undefined);
-		vi.spyOn(
-			openFailure as unknown as { open: (baseUrl: string) => Promise<void> },
-			"open",
-		).mockRejectedValue(new Error("open failed"));
+		vi.spyOn(getInternals(openFailure), "open").mockRejectedValue(
+			new Error("open failed"),
+		);
 		const openDestroySpy = vi.spyOn(
 			openFailure as unknown as { destroy: () => Promise<void> },
 			"destroy",
@@ -899,10 +894,7 @@ describe("Consumer lifecycle behavior", () => {
 			waitFailure as unknown as { prerender: () => Promise<void> },
 			"prerender",
 		).mockResolvedValue(undefined);
-		vi.spyOn(
-			waitFailure as unknown as { open: (baseUrl: string) => Promise<void> },
-			"open",
-		).mockResolvedValue(undefined);
+		vi.spyOn(getInternals(waitFailure), "open").mockResolvedValue(undefined);
 		vi.spyOn(
 			waitFailure as unknown as { waitForHost: () => Promise<void> },
 			"waitForHost",
@@ -924,10 +916,7 @@ describe("Consumer lifecycle behavior", () => {
 			prerenderTemplate: () => null,
 		});
 
-		vi.spyOn(
-			consumer as unknown as { open: (baseUrl: string) => Promise<void> },
-			"open",
-		).mockResolvedValue(undefined);
+		vi.spyOn(getInternals(consumer), "open").mockResolvedValue(undefined);
 		vi.spyOn(
 			consumer as unknown as { waitForHost: () => Promise<void> },
 			"waitForHost",
@@ -979,11 +968,7 @@ describe("Consumer lifecycle behavior", () => {
 			"buildBodyParams",
 		).mockReturnValue(new URLSearchParams());
 
-		await (
-			consumer as unknown as {
-				open: (baseUrl: string) => Promise<void>;
-			}
-		).open("https://host.example.com/widget");
+		await getInternals(consumer).open("https://host.example.com/widget");
 
 		expect(closeCallbackRef.current).toBeTypeOf("function");
 		closeCallbackRef.current?.();

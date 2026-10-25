@@ -177,6 +177,8 @@ export class ConsumerTransport<
 			return this.openedHostDomain;
 		}
 
+		// Reachable when a URL function closes the instance during updateProps:
+		// teardown clears both origins before the update validates delivery.
 		return this.resolveUrlOrigin(this.resolveUrl());
 	}
 
