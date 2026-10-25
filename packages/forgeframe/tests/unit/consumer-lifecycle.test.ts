@@ -55,7 +55,7 @@ type ConsumerInternals = {
 	buildWindowName: () => string;
 	buildUrl: () => string;
 	buildBodyParams: () => URLSearchParams;
-	resolveUrl: () => string;
+	options: { url: string };
 	resolveUrlOrigin: (url: string) => string;
 	rendered: boolean;
 };
@@ -98,13 +98,16 @@ function trackInstances<T extends object>(...instances: T[]): T[] {
 	return instances;
 }
 
-/** Attaches host content the way open() does: the opened origin is recorded first. */
+/**
+ * Attaches host content the way open() does: the opened origin is recorded
+ * first. It reads the static URL directly, so no prop validation runs here.
+ */
 function attachOpenedHost(
 	internal: ConsumerInternals,
 	hostWindow: Window | null,
 ): void {
 	internal.transport.openedHostDomain = internal.resolveUrlOrigin(
-		internal.resolveUrl(),
+		internal.options.url,
 	);
 	internal.transport.attachHostWindow(hostWindow);
 }

@@ -3,8 +3,9 @@
  * Props handling module for ForgeFrame.
  *
  * @remarks
- * This module handles prop normalization, validation, serialization, and
- * deserialization for cross-domain component communication.
+ * Re-exports the prop helpers other subsystems import: host delivery
+ * filtering, query and body parameters, serialization, schema detection, and
+ * the schema classes.
  */
 
 export {

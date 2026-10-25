@@ -5,7 +5,7 @@ desc: Runtime callable responsibilities, IOSP classifications, and boundary test
 tags: []
 sources: []
 created: 2026-10-01T01:55:30Z
-updated: 2026-10-25T01:58:50Z
+updated: 2026-10-25T02:38:15Z
 ---
 
 # ForgeFrame callable reference
@@ -542,7 +542,7 @@ Evidence: [render](#evidence-render), [popup-layout.test](../packages/forgeframe
 
 ### [render/popup.ts](../packages/forgeframe/src/render/popup.ts)
 
-Opening coordinates geometry with the browser action; a `null` window and the module-private `isPopupBlocked` heuristics both reject with `PopupOpenError`. `resizePopup` reports `false` when the browser denies access to another origin's window. Polling is one timer resource with a supplied `onClose` callback; its cancellation closure only clears the owned timer.
+Opening coordinates geometry with the browser action; a `null` window and the module-private `isPopupBlocked` heuristics both make it throw `PopupOpenError`. `resizePopup` reports `false` when the browser denies access to another origin's window. Polling is one timer resource with a supplied `onClose` callback; its cancellation closure only clears the owned timer.
 
 - **O:** `PopupOpenError.constructor`, `closePopup`, `focusPopup`, `isPopupBlocked`, `watchPopupClose`, `watchPopupClose.invokeCallback`, `watchPopupClose.check`, `resizePopup`.
 - **I:** `openPopup`.

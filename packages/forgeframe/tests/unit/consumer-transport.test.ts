@@ -236,20 +236,6 @@ describe("ConsumerTransport", () => {
 		const transport = createTransport();
 		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
 		attachOpenedHost(transport, hostWindow);
-		transport.buildWindowName({
-			tag: "host",
-			context: CONTEXT.IFRAME,
-			exports: {
-				init: MESSAGE_NAME.INIT,
-				close: MESSAGE_NAME.CLOSE,
-				resize: MESSAGE_NAME.RESIZE,
-				show: MESSAGE_NAME.SHOW,
-				hide: MESSAGE_NAME.HIDE,
-				onError: MESSAGE_NAME.ERROR,
-				updateProps: MESSAGE_NAME.PROPS,
-				export: MESSAGE_NAME.EXPORT,
-			},
-		});
 		transport.setupMessageHandlers({
 			...createHandlers(),
 			onBootstrap: async () => ({ props: {} }),
