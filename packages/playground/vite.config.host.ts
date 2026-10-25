@@ -33,6 +33,8 @@ export default defineConfig(({ command }) => {
 		cacheDir: resolve(import.meta.dirname, "node_modules/.vite-host"),
 		define: {
 			__FORGEFRAME_VERSION__: JSON.stringify(forgeframePackageJson.version),
+			// Browser tests turn this on to reach the payment host's ready props.
+			__FORGEFRAME_PAYMENT_TEST_HOOK__: "false",
 		},
 		resolve: {
 			alias: {

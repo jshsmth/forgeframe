@@ -9,7 +9,7 @@ describe("consumer origin policy from supplied evidence", () => {
 		"null",
 	])("rejects a non-exact messaging origin: %s", (origin) => {
 		expect(() =>
-			validateMessagingConsumerContext(origin, undefined, "widget"),
+			validateMessagingConsumerContext(origin, "*", "widget"),
 		).toThrow("Could not verify consumer origin");
 	});
 });

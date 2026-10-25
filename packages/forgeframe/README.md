@@ -16,7 +16,7 @@ A TypeScript library for embedding cross-domain iframes and popups. The embeddin
 Every integration has two sides:
 
 - **Consumer**: the outer app. It renders the iframe or popup and passes props into it.
-- **Host**: the inner app running in the iframe or popup. It reads those props from `window.hostProps`.
+- **Host**: the inner app running in the iframe or popup. It starts with `initHost()` and reads those props from `await host.ready`.
 
 For example, a payment provider lets merchants embed its checkout form:
 
@@ -39,7 +39,7 @@ For example, a payment provider lets merchants embed its checkout form:
 │      │  Host (payment form, pay.example.com)        │           │
 │      │                                              │           │
 │      │  const { amount, onSuccess, close }          │           │
-│      │    = window.hostProps;                       │           │
+│      │    = await host.ready;                       │           │
 │      │                                              │           │
 │      │  // The user enters card details and pays    │           │
 │      │  onSuccess({ paymentId: 'xyz', amount });    │           │
@@ -91,10 +91,13 @@ npm install forgeframe
 
 > **`Consumer`**
 
-```typescript
-import ForgeFrame, { prop } from 'forgeframe';
+Define the component once, in a module that the consumer and the host both import.
 
-const PaymentForm = ForgeFrame.create({
+```typescript
+// payment-form.ts
+import { create, prop } from 'forgeframe';
+
+export const PaymentForm = create({
   tag: 'payment-form',
   url: 'https://pay.example.com/checkout',
   dimensions: { width: 400, height: 300 },
@@ -103,6 +106,10 @@ const PaymentForm = ForgeFrame.create({
     onSuccess: prop.function<(txn: { transactionId: string }) => void>(),
   },
 });
+```
+
+```typescript
+import { PaymentForm } from './payment-form';
 
 const payment = PaymentForm({
   amount: 99.99,
@@ -115,37 +122,25 @@ await payment.render('#payment-container');
 > **`Host`**
 
 ```typescript
-import { initHost, prop, type HostProps } from 'forgeframe';
+import { initHost } from 'forgeframe';
+import { PaymentForm } from './payment-form';
 
-interface PaymentProps {
-  amount: number;
-  onSuccess: (txn: { transactionId: string }) => void;
+const host = initHost(PaymentForm, {
+  consumerOrigins: ['https://shop.example.com'],
+});
+
+if (host) {
+  const { amount, onSuccess, close } = await host.ready;
+
+  document.getElementById('total')!.textContent = `$${amount}`;
+  document.getElementById('pay-btn')!.onclick = async () => {
+    await onSuccess({ transactionId: 'TXN_123' });
+    await close();
+  };
 }
-
-const paymentProps = {
-  amount: prop.number(),
-  onSuccess: prop.function<(txn: { transactionId: string }) => void>(),
-};
-
-const allowedConsumerDomains = ['https://shop.example.com'];
-
-declare global {
-  interface Window {
-    hostProps: HostProps<PaymentProps>;
-  }
-}
-
-await initHost(paymentProps, allowedConsumerDomains)?.ready;
-const { amount, onSuccess, close } = window.hostProps;
-
-document.getElementById('total')!.textContent = `$${amount}`;
-document.getElementById('pay-btn')!.onclick = async () => {
-  await onSuccess({ transactionId: 'TXN_123' });
-  await close();
-};
 ```
 
-The host awaits `initHost(propDefinitions, allowedConsumerDomains)?.ready` before reading props; see [Host Init with initHost](#host-init-with-inithost). Always pass an allowlist for payment, auth, or account flows. Omit `allowedConsumerDomains` only for widgets that any site may embed.
+The host starts with `initHost(Component, { consumerOrigins })` and reads its props from `await host.ready`; see [Host Init with initHost](#host-init-with-inithost). `consumerOrigins` is required. List the consumer origins for payment, auth, or account flows, and pass `'*'` only for widgets that any site may embed. `initHost()` returns `null` when the page is not opened by ForgeFrame.
 
 ---
 
@@ -155,10 +150,10 @@ The host awaits `initHost(propDefinitions, allowedConsumerDomains)?.ready` befor
 
 > **`Consumer`**
 
-`ForgeFrame.create()` returns a reusable component factory.
+`create()` returns a reusable component factory. Export it so the host page can import the same definition.
 
 ```typescript
-import ForgeFrame, { prop } from 'forgeframe';
+import { create, prop } from 'forgeframe';
 
 type LoginProps = {
   email?: string;
@@ -166,7 +161,7 @@ type LoginProps = {
   onCancel?: () => void;
 };
 
-const LoginForm = ForgeFrame.create<LoginProps>({
+export const LoginForm = create<LoginProps>({
   tag: 'login-form',
   url: 'https://auth.example.com/login',
   dimensions: { width: 400, height: 350 },
@@ -192,58 +187,44 @@ const LoginForm = ForgeFrame.create<LoginProps>({
 
 > **`Host`**
 
-The host page is served at the component's `url` and reads its props from `window.hostProps`.
+The host page is served at the component's `url`. It starts the host runtime with `initHost()` and reads its props from `host.ready`.
 
 ```typescript
-import { initHost, prop, type HostProps } from 'forgeframe';
+import { initHost } from 'forgeframe';
+import { LoginForm } from './login-form';
 
-interface LoginProps {
-  email?: string;
-  onLogin: (user: { id: number; name: string }) => void;
-  onCancel?: () => void;
+const host = initHost(LoginForm, {
+  consumerOrigins: ['https://app.example.com'],
+});
+
+if (host) {
+  const { email, onLogin, onCancel, close } = await host.ready;
+
+  if (email) document.getElementById('email')!.value = email;
+
+  document.getElementById('login-form')!.onsubmit = async (e) => {
+    e.preventDefault();
+    await onLogin({
+      id: 1,
+      name: 'John Doe',
+    });
+    await close();
+  };
+
+  document.getElementById('cancel')!.onclick = async () => {
+    await onCancel?.();
+    await close();
+  };
 }
-
-const loginProps = {
-  email: prop.string().optional(),
-  onLogin: prop.function<(user: { id: number; name: string }) => void>(),
-  onCancel: prop.function().optional(),
-};
-
-const allowedConsumerDomains = ['https://app.example.com'];
-
-declare global {
-  interface Window {
-    hostProps: HostProps<LoginProps>;
-  }
-}
-
-await initHost(loginProps, allowedConsumerDomains)?.ready;
-const { email, onLogin, onCancel, close } = window.hostProps;
-
-if (email) document.getElementById('email')!.value = email;
-
-document.getElementById('login-form')!.onsubmit = async (e) => {
-  e.preventDefault();
-  await onLogin({
-    id: 1,
-    name: 'John Doe',
-  });
-  await close();
-};
-
-document.getElementById('cancel')!.onclick = async () => {
-  await onCancel?.();
-  await close();
-};
 ```
 
 <details>
 <summary>Explanation</summary>
 
-- **`HostProps<LoginProps>`**: your props plus the built-in methods such as `close` and `resize`.
-- **`initHost(propDefinitions, allowedConsumerDomains)?.ready`**: await it before reading props. Pass `allowedConsumerDomains` for security-sensitive embeds; omit it only for widgets any site may embed. A host that also defines the component with `ForgeFrame.create(...)` is initialized by that definition, but must still await `ready`.
-- **`window.hostProps`**: the consumer's props plus the built-in methods.
+- **`initHost(LoginForm, { consumerOrigins })`**: starts the host runtime. It validates the incoming props with the component's schemas and infers their types, so the host needs no separate props interface. `consumerOrigins` lists the consumer origins that may embed this page; `'*'` allows any. It returns `null` when the page is not opened by ForgeFrame.
+- **`await host.ready`**: resolves to the consumer's props plus the built-in methods. Read props only after it resolves.
 - **`close()`**: closes the iframe or popup.
+- Defining a component with `create()` never starts a host, so importing the shared definition has no side effects.
 
 </details>
 
@@ -309,9 +290,9 @@ Props are declared with the fluent `prop` schema builders. Every `prop` schema i
 ### Defining Props
 
 ```typescript
-import ForgeFrame, { prop } from 'forgeframe';
+import { create, prop } from 'forgeframe';
 
-const MyComponent = ForgeFrame.create({
+const MyComponent = create({
   tag: 'my-component',
   url: 'https://widgets.example.com/component',
   props: {
@@ -433,11 +414,11 @@ ForgeFrame reads each indexed entry directly, so arrays with a null prototype or
 ForgeFrame accepts any [Standard Schema](https://standardschema.dev/) compliant library (Zod, Valibot, ArkType, etc.):
 
 ```typescript
-import ForgeFrame from 'forgeframe';
+import { create } from 'forgeframe';
 import { z } from 'zod';
 import * as v from 'valibot';
 
-const MyComponent = ForgeFrame.create({
+const MyComponent = create({
   tag: 'my-component',
   url: 'https://widgets.example.com/component',
   props: {
@@ -455,9 +436,9 @@ Validation is synchronous. If a schema's `~standard.validate` returns a promise,
 Use the object form when a prop needs transport rules in addition to validation.
 
 ```typescript
-import ForgeFrame, { prop } from 'forgeframe';
+import { create, prop } from 'forgeframe';
 
-const SecureWidget = ForgeFrame.create({
+const SecureWidget = create({
   tag: 'secure-widget',
   url: 'https://widgets.example.com/secure',
   props: {
@@ -493,7 +474,7 @@ When an input schema changes the value's type, use the wrapped form with an `out
 ```typescript
 import { z } from 'zod';
 
-const AmountComponent = ForgeFrame.create({
+const AmountComponent = create({
   tag: 'amount-component',
   url: 'https://widgets.example.com/amount',
   props: {
@@ -525,7 +506,7 @@ type WidgetSchemaInputs = {
   email: string;
 };
 
-const Widget = ForgeFrame.create<
+const Widget = create<
   WidgetProps,
   unknown,
   LegacyWidgetInput,
@@ -548,8 +529,6 @@ Factories, prop updates, and React wrappers accept either the canonical schema-i
 
 A `sendToHost: false` definition validates consumer input only. Hosts that share the definition discard the field from received bootstrap and update snapshots before decoding or validation, even if a stale consumer sends it. A required local prop does not block host initialization, and discarded values never reach `hostProps`, `hostProps.consumer.props`, or prop notifications. Origin restrictions still apply to delivered props.
 
-Host definitions can also arrive after bootstrap, through a matching `create()` or another `initHost()`. Applying them removes newly consumer-only fields from the current host snapshots and validates the remaining values before reconciling. Built-in controls and retained callbacks keep their identity, and no prop notification is emitted.
-
 Prefer inferred component and React-wrapper types. When you explicitly annotate an aliased component whose schema inputs differ from its host props, pass the canonical schema-input type as the fifth `ForgeFrameComponent` generic (after the required-props flag) or the fourth `ForgeFrameComponentInstance` generic. React wrappers infer it; with explicit wrapper type arguments, it is the sixth generic.
 
 Transport notes:
@@ -566,7 +545,7 @@ Transport notes:
 Use these flags only when the host server needs values in its initial HTTP request:
 
 ```typescript
-const Checkout = ForgeFrame.create({
+const Checkout = create({
   tag: 'checkout',
   url: 'https://payments.example.com/checkout',
   props: {
@@ -595,17 +574,18 @@ await instance.render('#container');
 await instance.updateProps({ name: 'Updated' });
 ```
 
-The host receives updates through `onProps`:
+The host receives updates through `onProps`, or through `host.on('props', handler)`, which also receives the bootstrap snapshot:
 
 ```typescript
-window.hostProps.onProps((newProps) => {
+const props = await host.ready;
+props.onProps((newProps) => {
   console.log('Props updated:', newProps);
 });
 ```
 
 Subscribers run in registration order after props are committed. A subscriber added or re-registered during a notification waits for the next update, and a subscription cancelled before its turn is skipped. A stale cancellation handle cannot cancel a later registration of the same callback. Thrown errors and rejected promises are caught and logged. Async subscribers are not awaited, so they do not delay other subscribers or the update acknowledgement.
 
-Built-in `window.hostProps` names are reserved. A consumer prop named `uid`, `tag`, `close`, `focus`, `resize`, `show`, `hide`, `onProps`, `onError`, `getConsumer`, `getConsumerDomain`, `export`, `consumer`, `getPeerInstances`, or `children` is available only in `hostProps.consumer.props`; it does not replace the built-in on `window.hostProps`.
+Built-in `hostProps` names are reserved. A consumer prop named `uid`, `tag`, `close`, `focus`, `resize`, `show`, `hide`, `onProps`, `onError`, `getConsumer`, `getConsumerDomain`, `export`, `consumer`, `getPeerInstances`, or `children` is available only in `hostProps.consumer.props`; it does not replace the built-in on `hostProps`.
 
 ### Cross-Window Callback Values
 
@@ -615,7 +595,7 @@ Declare every signature of a generic or overloaded callback with a `Promise` ret
 
 ```typescript
 // Consumer definition: the local implementation can be synchronous.
-const Counter = ForgeFrame.create({
+const Counter = create({
   tag: 'counter',
   url: 'https://widgets.example.com/counter',
   props: { getCount: prop.function<() => number>() },
@@ -624,7 +604,11 @@ const counter = Counter({ getCount: () => 42 });
 await counter.render('#container');
 
 // Host: use await even though getCount's local implementation returns a number.
-const count = await window.hostProps.getCount();
+const host = initHost(Counter, { consumerOrigins });
+if (host) {
+  const props = await host.ready;
+  const count = await props.getCount();
+}
 ```
 
 Callback arguments and results are JSON-serialized. Pass plain objects, arrays, strings, finite numbers, booleans, and `null`; a callback may return `undefined` for no result. Convert `Date` values to ISO strings and copy plain fields out of `FormData` before the call. Functions in arguments or results are not bridged, and cyclic or `BigInt` results reject with a serialization error. Prop snapshots and `hostProps.export(...)` are different: they bridge functions and preserve `Date` values.
@@ -635,7 +619,7 @@ Remote calls have no timeout. A call waits until the callback in the other windo
 
 ## Host Window API (hostProps)
 
-In a host window, `window.hostProps` holds the consumer's props and the host control methods. Type it as shown in [Typing Host hostProps](#typing-host-hostprops).
+In a host window, the object that `await host.ready` resolves to holds the consumer's props and the host control methods. `host.hostProps` is the same live object. Its types are inferred from the component passed to `initHost`; see [Typing Host hostProps](#typing-host-hostprops).
 
 Props come from another origin. Render received strings with `textContent` or other DOM text properties, never by interpolating them into HTML.
 
@@ -643,24 +627,53 @@ In iframe mode, ForgeFrame sets `sandbox="allow-scripts allow-same-origin allow-
 
 ### Host Init with initHost
 
-`initHost(propDefinitions?, allowedConsumerDomains?)` starts the host runtime. It reads channel metadata from `window.name`, requests the initial props through origin-checked messaging, validates them, and attaches `window.hostProps`. Await the returned host's `ready` promise before reading props or nested children; initialization errors reject `ready`. Outside a ForgeFrame host window, `initHost()` returns `null`, so handle that case if the page can also run standalone. In a window opened by a consumer on another ForgeFrame major version, `initHost()` throws an error that names the consumer's version and sends that consumer nothing; upgrade consumer and host together. A window that only keeps such a name, with no parent or opener left, gets `null`.
+`initHost()` is the only way to start the host runtime. It reads channel metadata from `window.name`, checks the consumer origin against `consumerOrigins`, requests the initial props through origin-checked messaging, and validates them. It has two forms:
 
-Host startup patterns:
+- `initHost(Component, { consumerOrigins, autoInit? })` takes the component returned by `create()`. It validates props with the component's schemas, infers their types, and throws if the window was opened for another component's tag.
+- `initHost({ props?, consumerOrigins, autoInit? })` accepts a window opened for any tag, for hosts that serve many components. `props` are host prop definitions; without them, delivered props are not validated. With shared prop definitions, this form also keeps `create()` and the consumer runtime out of a size-sensitive host bundle.
 
-- Call `initHost(propDefinitions, allowedConsumerDomains)` at startup, await `ready`, then read `window.hostProps`.
-- Call `initHost(propDefinitions)` or `initHost()` without an allowlist only for hosts that any consumer origin may embed.
-- If the host bundle defines the component with `ForgeFrame.create(...)`, that definition initializes the runtime; still await `initHost()?.ready` before reading props. A definition never throws for host startup failures, such as a disallowed consumer: it logs them, and a later `initHost()` call reports the same error to its caller. An `initHost()` call without prop definitions or an allowlist applies the `props` and `allowedConsumerDomains` of the component defined for the same tag, so it cannot start a host with props or a consumer that the definition refused. A definition that applies to an already running host keeps that host's INIT timing, including `deferInit`.
-- The factory's `isHost()`, `isEmbedded()`, and `hostProps` only read state. They never start, configure, or reconnect a host; `hostProps` is `undefined` until a host for that tag is initialized.
+`consumerOrigins` is required. It takes a string, a `RegExp`, or an array of them (see [Domain Security](#domain-security)). `'*'` allows any consumer origin, and an empty array allows none. A disallowed consumer makes `initHost()` throw before any props are requested.
 
-An explicit `initHost()` call also gives deterministic init timing for tests and instrumentation, and works when the first `window.hostProps` access is delayed by lazy-loaded modules, async startup, or gated initialization.
+`initHost()` returns a `Host` object:
+
+| Member | Description |
+|--------|-------------|
+| `ready` | Resolves to the host props once the consumer's verified bootstrap has passed validation |
+| `hostProps` | The same live object. It holds only the built-in controls until `ready` resolves, and later updates are applied to it |
+| `init()` | Sends INIT when `autoInit` is `false`; see [Deferring INIT](#deferring-init) |
+| `destroy()` | Tears down the host and tells the consumer the session ended |
+| `on('props' \| 'error', handler)` | Observes committed consumer props (the bootstrap snapshot, then every update) or host errors; returns an unsubscribe function |
+
+`initHost()` returns `null` without browser globals, outside a ForgeFrame window, for malformed channel metadata, or when the page has no parent or opener to talk to, so the page can also render standalone. Arguments are checked first, in every environment: a missing `consumerOrigins`, an unknown option, a v1 call shape such as `initHost(definitions, origins)`, or a bare `initHost()` throws, even on a standalone page or the server. In a window opened by a consumer on another ForgeFrame major version, `initHost()` throws an error that names the consumer's version and sends that consumer nothing; upgrade consumer and host together. A window that only keeps such a name, with no parent or opener left, gets `null`.
+
+Only one host can be active in a window. A second `initHost()` call throws while a host is starting or running. Call `host.destroy()` before starting again; a later `initHost()` creates a fresh runtime from the retained channel metadata. A start whose `ready` rejects releases the host before your rejection handler runs, so the handler can call `initHost()` again.
+
+`create()` never starts a host, even in a window opened for its tag.
+
+`isHost()` reports whether this window carries ForgeFrame channel metadata. It stays `true` for malformed metadata, where `initHost()` returns `null`, and after `destroy()`, because the metadata is kept for reconnection.
 
 Only channel metadata stays in `window.name`, so reloads and later host documents can reconnect and receive the latest props. Browser policies that clear window names across sites can prevent reconnection.
 
 If the host's schemas reject the consumer's props, `ready` rejects and the host tells the consumer why. The consumer keeps waiting, so a same-page `initHost()` retry can still connect without any error being reported; if none succeeds, `render()` rejects at its `timeout`, and its single `error` event and `onError` call include `Host initialization failed: ...`.
 
-The returned host's `destroy()` disposes the runtime and removes `window.hostProps`. If the channel metadata is still available, a later `initHost()` creates a fresh runtime; await its new `ready` before using props or controls. If configuration validation destroys or replaces the existing host, that `initHost()` call returns `null` and leaves the replacement's configuration and deferred initialization alone.
+`host.destroy()` can be called more than once. Controls on the old `hostProps` reject afterwards, and destroying a stale host never affects a newer one.
 
-When a shared definition uses a type-changing schema, pass both the normalized host props and the schema-input shapes to `HostPropsDefinition` and `initHost`, so TypeScript requires the normalized `outputSchema`:
+#### Deferring INIT
+
+By default the host sends INIT as soon as `ready` resolves, which resolves the consumer's `render()`. To prepare the frame first, for example to hide or resize it, pass `autoInit: false` and call `host.init()` when ready:
+
+```typescript
+const host = initHost(LoginForm, { consumerOrigins, autoInit: false });
+if (host) {
+  const props = await host.ready;
+  await props.hide();
+  host.init();
+}
+```
+
+`init()` returns nothing and is safe to call twice, before `ready` resolves (INIT then waits for it), or after `destroy()`. It sends nothing if `ready` rejects. INIT delivery failures are reported through `host.on('error')`. If the host never calls `init()`, the consumer's `render()` rejects at its `timeout`. Reading `hostProps` never sends INIT.
+
+When a tag-agnostic host uses a type-changing schema, pass both the normalized host props and the schema-input shapes to `HostPropsDefinition` and `initHost`, so TypeScript requires the normalized `outputSchema`:
 
 ```typescript
 type AmountProps = { amount: number };
@@ -674,13 +687,16 @@ const amountProps = {
   },
 } satisfies HostPropsDefinition<AmountProps, AmountInputs>;
 
-await initHost<AmountProps, AmountInputs>(amountProps, allowedConsumerDomains)?.ready;
+const host = initHost<AmountProps, AmountInputs>({
+  props: amountProps,
+  consumerOrigins,
+});
 ```
 
 ### Available Methods
 
 ```typescript
-const props = window.hostProps;
+const props = await host.ready;
 
 props.email;
 await props.onLogin(user);
@@ -738,7 +754,7 @@ The host can export data and methods for the consumer to call.
 > **`Host`**
 
 ```typescript
-await window.hostProps.export({
+await host.hostProps.export({
   validate: () => document.getElementById('form').checkValidity(),
   getFormData: () => ({ email: document.getElementById('email').value }),
 });
@@ -763,7 +779,7 @@ const data = await instance.exports.getFormData();
 `containerTemplate` builds the element that wraps the iframe, such as a modal overlay.
 
 ```typescript
-const ModalComponent = ForgeFrame.create({
+const ModalComponent = create({
   tag: 'modal',
   url: 'https://widgets.example.com/modal',
   dimensions: { width: 500, height: 400 },
@@ -808,7 +824,7 @@ const ModalComponent = ForgeFrame.create({
 const toCssSize = (value?: string | number) =>
   typeof value === 'number' ? `${value}px` : (value ?? '');
 
-const MyComponent = ForgeFrame.create({
+const MyComponent = create({
   tag: 'my-component',
   url: 'https://widgets.example.com/component',
 
@@ -836,9 +852,9 @@ const MyComponent = ForgeFrame.create({
 
 ```tsx
 import React, { useState } from 'react';
-import ForgeFrame, { prop, createReactComponent } from 'forgeframe';
+import { create, prop, createReactComponent } from 'forgeframe';
 
-const LoginComponent = ForgeFrame.create({
+const LoginComponent = create({
   tag: 'login',
   url: 'https://auth.example.com/login',
   dimensions: { width: 400, height: 350 },
@@ -913,7 +929,7 @@ Pass `'popup'` to `render()`, or set `defaultContext: 'popup'` on the component.
 ```typescript
 await instance.render('#container', 'popup');
 
-const PopupComponent = ForgeFrame.create({
+const PopupComponent = create({
   tag: 'popup-component',
   url: 'https://widgets.example.com/popup',
   defaultContext: 'popup',
@@ -927,23 +943,29 @@ Browsers do not let one origin resize another origin's window. For a popup that 
 ### Domain Security
 
 - `domain` is consumer-side trust: the host origins the consumer will render and message.
-- `allowedConsumerDomains` is host-side trust: the consumer origins that may embed and initialize the host.
+- `consumerOrigins`, passed to `initHost()`, is host-side trust: the consumer origins that may embed and initialize the host.
 - Use both for payment, auth, account, and other sensitive workflows.
 
-Both accept a string, a `RegExp`, or an array mixing them. Strings support `*` wildcards, such as `'https://*.example.com'`. Empty or blank strings, `null`, and other values throw, so a missing setting such as `process.env.CONSUMER_ORIGIN || ''` cannot silently trust every origin. An empty array is valid and admits no origin. `peerDomains` follows the same rules.
+Both accept a string, a `RegExp`, or an array mixing them. Strings support `*` wildcards, such as `'https://*.example.com'`; for `consumerOrigins`, `'*'` alone allows any consumer origin. Empty or blank strings, `null`, and other values throw, so a missing setting such as `process.env.CONSUMER_ORIGIN || ''` cannot silently trust every origin. An empty array is valid and admits no origin. `peerDomains` follows the same rules.
 
 ```typescript
-const secureProps = {
-  accountId: prop.string(),
-  onComplete: prop.function<(result: { ok: true }) => void>(),
-};
-
-const SecureComponent = ForgeFrame.create({
+// secure-component.ts, shared by the consumer and the host
+export const SecureComponent = create({
   tag: 'secure',
   url: 'https://secure.example.com/widget',
-  props: secureProps,
+  props: {
+    accountId: prop.string(),
+    onComplete: prop.function<(result: { ok: true }) => void>(),
+  },
   domain: 'https://secure.example.com',
-  allowedConsumerDomains: [
+});
+```
+
+On the host page, pass the component and the consumer allowlist to `initHost`:
+
+```typescript
+const host = initHost(SecureComponent, {
+  consumerOrigins: [
     'https://app.example.com',
     'https://*.app.example.com',
     /^https:\/\/[a-z0-9-]+\.partner\.example$/,
@@ -951,24 +973,14 @@ const SecureComponent = ForgeFrame.create({
 });
 ```
 
-On the host page, pass the same host prop definitions and the consumer allowlist into `initHost`:
-
-```typescript
-await initHost(secureProps, [
-  'https://app.example.com',
-  'https://*.app.example.com',
-  /^https:\/\/[a-z0-9-]+\.partner\.example$/,
-])?.ready;
-```
-
-The host verifies the consumer by requiring a response from the expected parent or opener window at its exact origin. Verification works with `Referrer-Policy: no-referrer` and after full-page host navigation. If the origin is not allowed or the consumer cannot complete the handshake, initialization fails.
+The host verifies the consumer by requiring a response from the expected parent or opener window at its exact origin. Verification works with `Referrer-Policy: no-referrer` and after full-page host navigation. If the origin is not allowed, `initHost()` throws before any props are requested; if the consumer cannot complete the handshake, `ready` rejects. The allowlist belongs to the host that enforces it, so `create()` throws if it still receives the removed `allowedConsumerDomains` option.
 
 ### Eligibility Checks
 
 `eligible` decides whether an instance may render.
 
 ```typescript
-const FeatureComponent = ForgeFrame.create({
+const FeatureComponent = create({
   tag: 'feature',
   url: 'https://widgets.example.com/feature',
   props: { userId: prop.string().optional() },
@@ -991,7 +1003,7 @@ if (instance.isEligible()) {
 > **`Consumer`**
 
 ```typescript
-const ContainerComponent = ForgeFrame.create({
+const ContainerComponent = create({
   tag: 'container',
   url: 'https://widgets.example.com/container',
   children: () => ({
@@ -1004,16 +1016,20 @@ const ContainerComponent = ForgeFrame.create({
 > **`Host`**
 
 ```typescript
-// Import or define the same child factories before initializing hostProps.
+// Import or define the same child factories before calling initHost().
 // Their schemas remain executable code and are never JSON-serialized.
+import { initHost } from 'forgeframe';
 import { CardFieldComponent, CVVFieldComponent } from './child-components';
+import { ContainerComponent } from './container-component';
 
-await initHost(containerPropDefinitions, allowedConsumerDomains)?.ready;
-const { children } = window.hostProps;
-children.CardField({ onValid: () => {} }).render('#card-container');
+const host = initHost(ContainerComponent, { consumerOrigins });
+if (host) {
+  const { children } = await host.ready;
+  children.CardField({ onValid: () => {} }).render('#card-container');
+}
 ```
 
-Register every child tag in the host bundle before `initHost()`. The host takes validators, defaults, decorators, and regular expressions from its own registered factories; only child metadata arrives, through the verified bootstrap response. Child URLs must be static strings. Child names are used verbatim, including `__proto__`.
+A child window's consumer is the host page that renders it, so the child page's own `initHost()` must allow that host page's origin in `consumerOrigins`. Register every child tag in the host bundle before `initHost()`. The host takes validators, defaults, decorators, and regular expressions from its own registered factories; only child metadata arrives, through the verified bootstrap response. Child URLs must be static strings. Child names are used verbatim, including `__proto__`.
 
 ---
 
@@ -1029,32 +1045,129 @@ ForgeFrame 1.x follows semantic versioning for its public API. Read the [GitHub 
 
 ## Migrating from v1 to v2
 
+### Upgrade consumer and host together
+
 **Upgrade consumer and host together.** ForgeFrame 2 uses bootstrap protocol 3. A v2 host accepts only v2 consumers. When a page embedded by a ForgeFrame 0.x or 1.x consumer calls `initHost()`, it throws an error that names the consumer's version and tells you to upgrade both. A 1.x host cannot start for a v2 consumer, so the v2 consumer reports its handshake timeout. The v1 staged upgrade ("deploy hosts first") no longer works. Deploy consumer and host together, or serve the v2 host at a new URL and point the v2 consumer at it while 1.x consumers keep using the old URL. `window.name` now holds only channel metadata (uid, tag, protocol, context and consumer origin). v1 never stored application data there either, so nothing needs converting.
+
+### Host start-up and props
+
+A host now starts only through `initHost()`, which requires a consumer allowlist, and reads its props only from `await host.ready`.
+
+**Positional `initHost(propDefinitions, allowedConsumerDomains)`.** Before:
+
+```typescript
+await initHost(paymentProps, ['https://shop.example.com'])?.ready;
+const { amount, onSuccess } = window.hostProps;
+```
+
+After:
+
+```typescript
+const host = initHost(PaymentForm, { consumerOrigins: ['https://shop.example.com'] });
+if (!host) renderStandalone();
+else {
+  const { amount, onSuccess } = await host.ready;
+}
+// or, without a shared component:
+// initHost({ props: paymentProps, consumerOrigins: ['https://shop.example.com'] })
+```
+
+**A bare `initHost()`, or a host started by `create()`.** Before:
+
+```typescript
+const PaymentForm = create({ ..., allowedConsumerDomains: ['https://shop.example.com'] });
+await initHost()?.ready;
+```
+
+After: `create()` no longer starts or configures a host, and it throws if it receives `allowedConsumerDomains`.
+
+```typescript
+const PaymentForm = create({ ... });
+const host = initHost(PaymentForm, { consumerOrigins: ['https://shop.example.com'] });
+```
+
+**Open widgets that omitted the allowlist.** Before: `initHost(definitions)`. After: `initHost(Component, { consumerOrigins: '*' })`.
+
+**Reading props.** Before: `window.hostProps.amount`, `getHostProps()`, `Component.hostProps` or `host.getProps()`. After: `(await host.ready).amount`, or `host.hostProps.amount` once `ready` has resolved.
+
+**`Window` augmentation.** Before:
+
+```typescript
+declare global { interface Window { hostProps: HostProps<P> } }
+```
+
+After: delete it. Types are inferred from `initHost(Component, ...)`, and `HostProps<P>` remains for helper parameters.
+
+**The `hostProps` setter.** Before: `host.hostProps = replacement`. After: removed; `hostProps` is a read-only, live object.
+
+**Deferred INIT.** Before:
+
+```typescript
+const host = initHost(definitions, origins, { deferInit: true });
+await host.ready;
+await host.hostProps.hide();
+host.flushInit(); // or the first read of window.hostProps
+```
+
+After:
+
+```typescript
+const host = initHost(Component, { consumerOrigins, autoInit: false });
+const props = await host.ready;
+await props.hide();
+host.init();
+```
+
+**Reconfiguring with a second `initHost()`.** Before: the second call replaced the schema or allowlist. After: it throws while a host is active. Pass the final definitions to the single call; to restart, call `host.destroy()` and then `initHost(...)`.
+
+**Host internals.** Before: `host.event.on('props', fn)`, `host.getInitError()`, `host.flushInit()`. After: `host.on('props', fn)` and `host.on('error', fn)`, which return an unsubscribe function, and `host.init()`.
+
+**Host detection.** Before: `isEmbedded()`, `Component.isHost()`, `Component.isEmbedded()`. After: `isHost()`.
+
+**`canRenderTo`.** Before: `await Component.canRenderTo(win)`. After: removed; it always returned `win === window`.
+
+### Named exports only
+
+Before:
+
+```typescript
+import ForgeFrame from 'forgeframe';
+ForgeFrame.create(...);
+```
+
+After:
+
+```typescript
+import { create } from 'forgeframe';
+create(...);
+// or: import * as ForgeFrame from 'forgeframe'
+```
 
 ---
 
 ## API Reference
 
-### ForgeFrame Object
+### Exports
+
+ForgeFrame 2 has named exports only. Use `import * as ForgeFrame from 'forgeframe'` if you prefer a namespace.
 
 ```typescript
-import ForgeFrame, { prop } from 'forgeframe';
-
-ForgeFrame.create(options)        // Create a component
-ForgeFrame.destroy(instance)      // Destroy an instance
-ForgeFrame.destroyByTag(tag)      // Destroy all instances of a tag
-ForgeFrame.destroyAll()           // Destroy all instances
-ForgeFrame.isHost()               // Check if in host context
-ForgeFrame.isEmbedded()           // Alias for isHost()
-ForgeFrame.initHost(props?, allowedConsumerDomains?) // Await the returned host.ready before reading props
-ForgeFrame.getHostProps()         // Get hostProps in host context
-ForgeFrame.isStandardSchema(val)  // Check if value is a Standard Schema
-
-ForgeFrame.prop                   // Prop schema builders (also exported as `prop`)
-ForgeFrame.CONTEXT                // Context constants (IFRAME, POPUP)
-ForgeFrame.EVENT                  // Event name constants
-ForgeFrame.PopupOpenError         // Popup blocker/open failures
-ForgeFrame.VERSION                // Library version
+import {
+  create,               // Create a component
+  destroy,              // Destroy an instance
+  destroyByTag,         // Destroy all instances of a tag
+  destroyAll,           // Destroy all instances
+  initHost,             // Start the host runtime; await host.ready before reading props
+  isHost,               // Whether this window carries ForgeFrame channel metadata
+  isStandardSchema,     // Check if value is a Standard Schema
+  prop,                 // Prop schema builders
+  CONTEXT,              // Context constants (IFRAME, POPUP)
+  EVENT,                // Event name constants
+  PopupOpenError,       // Popup blocker/open failures
+  VERSION,              // Library version
+  createReactComponent, // React adapter
+  withReactComponent,   // React adapter factory
+} from 'forgeframe';
 ```
 
 ### Component Options
@@ -1070,9 +1183,8 @@ interface ComponentOptions<P, I = P, SchemaInputs = I> {
   defaultContext?: 'iframe' | 'popup';
   containerTemplate?: (ctx: TemplateContext<P>) => HTMLElement | null;
   prerenderTemplate?: (ctx: TemplateContext<P>) => HTMLElement | null;
-  domain?: DomainMatcher;                 // Consumer-side trusted host origins
-  allowedConsumerDomains?: DomainMatcher; // Host-side allowed consumer origins
-  peerDomains?: DomainMatcher;            // Other host origins that may discover these instances as peers
+  domain?: DomainMatcher;      // Consumer-side trusted host origins
+  peerDomains?: DomainMatcher; // Other host origins that may discover these instances as peers
   eligible?: (opts: { props: P }) => { eligible: boolean; reason?: string };
   validate?: (opts: { props: P }) => void;
   attributes?: IframeAttributes | ((props: P) => IframeAttributes);
@@ -1121,7 +1233,9 @@ Numeric `style` values become pixels, except for unitless CSS properties, which 
 ForgeFrame is written in TypeScript and exports all types.
 
 ```typescript
-import ForgeFrame, {
+import {
+  create,
+  initHost,
   prop,
   PropSchema,
   StringSchema,
@@ -1135,7 +1249,9 @@ import ForgeFrame, {
   type ComponentOptions,
   type ForgeFrameComponent,
   type ForgeFrameComponentInstance,
+  type Host,
   type HostProps,
+  type InitHostOptions,
   type StandardSchemaV1,
   type TemplateContext,
   type Dimensions,
@@ -1146,33 +1262,27 @@ import ForgeFrame, {
 
 ### Typing Host hostProps
 
+`initHost(Component, ...)` infers the host props from the component, so the host needs no `Window` augmentation or separate interface. Annotate helpers that receive the props with `HostProps<P>`.
+
 ```typescript
-import { initHost, prop, type HostProps } from 'forgeframe';
+import { initHost, type HostProps } from 'forgeframe';
+import { MyComponent, type MyProps } from './my-component';
 
-interface MyProps {
-  name: string;
-  onSubmit: (data: { email: string }) => void;
+function submit(props: HostProps<MyProps>) {
+  return props.onSubmit({ email: 'user@example.com' });
 }
 
-const hostProps = {
-  name: prop.string(),
-  onSubmit: prop.function<(data: { email: string }) => void>(),
-};
-
-const allowedConsumerDomains = ['https://app.example.com'];
-
-declare global {
-  interface Window {
-    hostProps?: HostProps<MyProps>;
-  }
+const host = initHost(MyComponent, { consumerOrigins: ['https://app.example.com'] });
+if (host) {
+  const props = await host.ready; // HostProps<MyProps>
+  props.name;
+  props.close;
+  props.resize;
+  await submit(props);
 }
-
-await initHost(hostProps, allowedConsumerDomains)?.ready;
-window.hostProps!.name;
-window.hostProps!.onSubmit;
-window.hostProps!.close;
-window.hostProps!.resize;
 ```
+
+`host.hostProps` is read-only and keeps its identity, so references you keep see later updates.
 
 ---
 

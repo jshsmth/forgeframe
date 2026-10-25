@@ -2,7 +2,7 @@
  * Component rendering for ForgeFrame Playground
  */
 
-import ForgeFrame, { type PropSchema, prop } from "forgeframe";
+import { create, type PropSchema, prop } from "forgeframe";
 import { requireValue } from "../require-value";
 import { getComponentDimensions } from "./config";
 import { updateConfigurationStatus } from "./configuration-status";
@@ -102,7 +102,7 @@ export function createModalTemplate(config: PlaygroundConfig) {
 	const modalWidth = ms.width || 500;
 	const modalHeight = ms.height || 400;
 
-	const component = ForgeFrame.create<DynamicProps>({
+	const component = create<DynamicProps>({
 		tag: `${config.tag}-modal-${++componentSequence}`,
 		url: config.url,
 		dimensions: { width: modalWidth, height: modalHeight },
@@ -209,7 +209,7 @@ export function createComponent(
 
 	const dimensions = getComponentDimensions(config, context);
 
-	const component = ForgeFrame.create<DynamicProps>({
+	const component = create<DynamicProps>({
 		tag: uniqueTag,
 		url: config.url,
 		dimensions,

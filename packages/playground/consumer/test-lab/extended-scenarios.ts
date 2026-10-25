@@ -1,4 +1,4 @@
-import ForgeFrame, { prop } from "forgeframe";
+import { CONTEXT, create, destroyByTag, prop } from "forgeframe";
 import { requireValue } from "../../require-value";
 import type { TestResult } from "./types";
 
@@ -40,7 +40,7 @@ export async function runConfigurationScenario(
 
 	let containerTemplateCalls = 0;
 	let prerenderTemplateCalls = 0;
-	const Component = ForgeFrame.create<
+	const Component = create<
 		ConfigurationProps,
 		ConfigurationExports,
 		ConfigurationInput
@@ -99,18 +99,6 @@ export async function runConfigurationScenario(
 	});
 
 	try {
-		const currentWindowSupported = await Component.canRenderTo(window);
-		const foreignWindowSupported = await Component.canRenderTo(
-			requireValue(foreignFrame.contentWindow),
-		);
-		results.push(
-			assertResult(
-				"Render-target capability is explicit",
-				currentWindowSupported && !foreignWindowSupported,
-				`current: ${currentWindowSupported}; foreign: ${foreignWindowSupported}`,
-			),
-		);
-
 		await instance.renderTo(window, container);
 		await waitFor(() => instance.exports?.observed);
 		const iframe = requireValue(
@@ -244,7 +232,7 @@ export async function runInstancesScenario(
 ): Promise<TestResult[]> {
 	const results: TestResult[] = [];
 	const tag = uniqueTag("instances");
-	const Component = ForgeFrame.create<InstanceProps, InstanceExports>({
+	const Component = create<InstanceProps, InstanceExports>({
 		tag,
 		url: `${HOST_URL}?scenario=instances`,
 		dimensions: { width: "100%", height: 300 },
@@ -297,7 +285,7 @@ export async function runInstancesScenario(
 			),
 		);
 
-		await ForgeFrame.destroyByTag(tag);
+		await destroyByTag(tag);
 		results.push(
 			assertResult(
 				"destroyByTag removes every live frame and tracked instance",
@@ -306,7 +294,7 @@ export async function runInstancesScenario(
 				`tracked: ${Component.instances.length}; frames: ${sandbox.querySelectorAll("iframe").length}`,
 			),
 		);
-		await ForgeFrame.destroyByTag(tag);
+		await destroyByTag(tag);
 		results.push(
 			assertResult(
 				"Bulk destruction is idempotent",
@@ -356,7 +344,7 @@ export async function runHostControlsScenario(
 	let resizeEvents = 0;
 	let focusEvents = 0;
 	let closeEvents = 0;
-	const Component = ForgeFrame.create<HostControlProps, HostControlExports>({
+	const Component = create<HostControlProps, HostControlExports>({
 		tag: uniqueTag("host-controls"),
 		url: `${HOST_URL}?scenario=host-controls`,
 		dimensions: { width: "100%", height: 320 },
@@ -471,7 +459,7 @@ export async function runTransportScenario(
 ): Promise<TestResult[]> {
 	const results: TestResult[] = [];
 	const trustContainer = createContainer(sandbox);
-	const TrustComponent = ForgeFrame.create<TrustPolicyProps, TransportExports>({
+	const TrustComponent = create<TrustPolicyProps, TransportExports>({
 		tag: uniqueTag("trust-policy"),
 		url: `${HOST_URL}?scenario=transport`,
 		dimensions: { width: "100%", height: 320 },
@@ -527,17 +515,15 @@ export async function runTransportScenario(
 	}
 
 	const postContainer = createContainer(sandbox);
-	const PostComponent = ForgeFrame.create<PostTransportProps, TransportExports>(
-		{
-			tag: uniqueTag("post-transport"),
-			url: `${HOST_URL}?scenario=transport`,
-			dimensions: { width: "100%", height: 320 },
-			props: {
-				scenario: prop.string(),
-				bodySecret: { schema: prop.string(), bodyParam: "payload" },
-			},
+	const PostComponent = create<PostTransportProps, TransportExports>({
+		tag: uniqueTag("post-transport"),
+		url: `${HOST_URL}?scenario=transport`,
+		dimensions: { width: "100%", height: 320 },
+		props: {
+			scenario: prop.string(),
+			bodySecret: { schema: prop.string(), bodyParam: "payload" },
 		},
-	);
+	});
 	const postInstance = PostComponent({
 		scenario: "transport",
 		bodySecret: "posted-not-queried",
@@ -589,7 +575,7 @@ export async function runReliabilityScenario(
 	const results: TestResult[] = [];
 	let countRenderUrlCalls = false;
 	let renderUrlCalls = 0;
-	const Component = ForgeFrame.create<ReliabilityProps, ReliabilityExports>({
+	const Component = create<ReliabilityProps, ReliabilityExports>({
 		tag: uniqueTag("reliability"),
 		url: () => {
 			if (!countRenderUrlCalls) {
@@ -755,19 +741,17 @@ export async function runCommonActionsScenario(
 	let callbackMessage = "";
 	let focusEvents = 0;
 	let closeEvents = 0;
-	const Component = ForgeFrame.create<CommonActionsProps, CommonActionsExports>(
-		{
-			tag: uniqueTag("common-actions"),
-			url: `${HOST_URL}?scenario=common-actions`,
-			dimensions: { width: "100%", height: 320 },
-			props: {
-				scenario: prop.string(),
-				label: prop.string(),
-				count: prop.number().int(),
-				onAction: prop.function<(message: string) => void>(),
-			},
+	const Component = create<CommonActionsProps, CommonActionsExports>({
+		tag: uniqueTag("common-actions"),
+		url: `${HOST_URL}?scenario=common-actions`,
+		dimensions: { width: "100%", height: 320 },
+		props: {
+			scenario: prop.string(),
+			label: prop.string(),
+			count: prop.number().int(),
+			onAction: prop.function<(message: string) => void>(),
 		},
-	);
+	});
 	const instance = Component({
 		scenario: "common-actions",
 		label: "initial",
@@ -879,20 +863,18 @@ export async function runRedirectScenario(
 	let callbackMessage = "";
 	const redirectUrl = new URL("/redirect.html", window.location.origin);
 	redirectUrl.searchParams.set("scenario", "common-actions");
-	const Component = ForgeFrame.create<CommonActionsProps, CommonActionsExports>(
-		{
-			tag: uniqueTag("redirect"),
-			url: redirectUrl.toString(),
-			domain: [window.location.origin, HOST_ORIGIN],
-			dimensions: { width: "100%", height: 320 },
-			props: {
-				scenario: prop.string(),
-				label: prop.string(),
-				count: prop.number().int(),
-				onAction: prop.function<(message: string) => void>(),
-			},
+	const Component = create<CommonActionsProps, CommonActionsExports>({
+		tag: uniqueTag("redirect"),
+		url: redirectUrl.toString(),
+		domain: [window.location.origin, HOST_ORIGIN],
+		dimensions: { width: "100%", height: 320 },
+		props: {
+			scenario: prop.string(),
+			label: prop.string(),
+			count: prop.number().int(),
+			onAction: prop.function<(message: string) => void>(),
 		},
-	);
+	});
 	const instance = Component({
 		scenario: "common-actions",
 		label: "before-redirect",
@@ -959,10 +941,7 @@ export async function runTimeoutRecoveryScenario(
 ): Promise<TestResult[]> {
 	const results: TestResult[] = [];
 	const timeoutContainer = createContainer(sandbox);
-	const TimeoutComponent = ForgeFrame.create<
-		ReliabilityProps,
-		ReliabilityExports
-	>({
+	const TimeoutComponent = create<ReliabilityProps, ReliabilityExports>({
 		tag: uniqueTag("timeout"),
 		url: `${HOST_URL}?scenario=reliability&initDelay=300`,
 		timeout: 100,
@@ -1002,10 +981,7 @@ export async function runTimeoutRecoveryScenario(
 	await timedOut.close().catch(() => undefined);
 
 	const recoveryContainer = createContainer(sandbox);
-	const RecoveryComponent = ForgeFrame.create<
-		ReliabilityProps,
-		ReliabilityExports
-	>({
+	const RecoveryComponent = create<ReliabilityProps, ReliabilityExports>({
 		tag: uniqueTag("timeout-recovery"),
 		url: `${HOST_URL}?scenario=reliability`,
 		dimensions: { width: "100%", height: 260 },
@@ -1052,7 +1028,7 @@ export async function runStressScenario(
 	sandbox: HTMLElement,
 ): Promise<TestResult[]> {
 	const results: TestResult[] = [];
-	const Component = ForgeFrame.create<ReliabilityProps, ReliabilityExports>({
+	const Component = create<ReliabilityProps, ReliabilityExports>({
 		tag: uniqueTag("stress"),
 		url: `${HOST_URL}?scenario=reliability`,
 		dimensions: { width: "100%", height: 180 },
@@ -1174,10 +1150,10 @@ export async function runPopupScenario(
 	let focusEvents = 0;
 	let resizeEvents = 0;
 	let closeEvents = 0;
-	const Component = ForgeFrame.create<PopupProps, PopupExports>({
+	const Component = create<PopupProps, PopupExports>({
 		tag: uniqueTag("popup"),
 		url: `${HOST_URL}?scenario=popup`,
-		defaultContext: ForgeFrame.CONTEXT.POPUP,
+		defaultContext: CONTEXT.POPUP,
 		dimensions: { width: 520, height: 420 },
 		props: { scenario: prop.string() },
 	});
@@ -1285,7 +1261,7 @@ export async function runCheckoutE2EScenario(
 	const container = createContainer(sandbox);
 	const lifecycle: string[] = [];
 	let approvedReceipt: CheckoutReceipt | undefined;
-	const Component = ForgeFrame.create<CheckoutProps, CheckoutExports>({
+	const Component = create<CheckoutProps, CheckoutExports>({
 		tag: uniqueTag("checkout"),
 		url: `${HOST_URL}?scenario=checkout-e2e`,
 		dimensions: { width: "100%", height: 420 },

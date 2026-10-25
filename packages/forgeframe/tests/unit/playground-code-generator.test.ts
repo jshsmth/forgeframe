@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { clearComponents, destroyAll, getComponent } from "@/core/component";
 import { getComponentOptions } from "@/core/component-registry";
 import { ConsumerComponent } from "@/core/consumer";
-import ForgeFrame, { prop } from "@/index";
+import { create, prop } from "@/index";
 import { generateCode } from "../../../playground/consumer/code-generator";
 import { createComponent } from "../../../playground/consumer/renderer";
 import { resetPropValues } from "../../../playground/consumer/state";
@@ -44,11 +44,11 @@ describe("playground generated examples", () => {
 				};
 				const code = generateCode(config, context, style);
 				const run = new Function(
-					"ForgeFrame",
+					"create",
 					"prop",
 					`return (async () => {${code.replace(/^import .*\n/, "")} })()`,
 				);
-				await run(ForgeFrame, prop);
+				await run(create, prop);
 				expect(code).not.toContain('"onClose":');
 				expect(code).not.toContain('"onGreet":');
 				const Component = requireValue(getComponent(config.tag));
@@ -73,11 +73,11 @@ describe("playground generated examples", () => {
 				style,
 			);
 			const run = new Function(
-				"ForgeFrame",
+				"create",
 				"prop",
 				`return (async () => {${code.replace(/^import .*\n/, "")} })()`,
 			);
-			await run(ForgeFrame, prop);
+			await run(create, prop);
 			expect(render).toHaveBeenCalledOnce();
 			expect(code).toContain("onGreet: prop.function().optional()");
 		},
@@ -103,11 +103,11 @@ describe("playground generated examples", () => {
 		};
 		const code = generateCode(config, "iframe", "modal");
 		const run = new Function(
-			"ForgeFrame",
+			"create",
 			"prop",
 			`return (async () => {${code.replace(/^import .*\n/, "")} })()`,
 		);
-		await run(ForgeFrame, prop);
+		await run(create, prop);
 		const Component = requireValue(getComponent(config.tag));
 		expect(Component.instances).toHaveLength(1);
 	});
@@ -132,11 +132,11 @@ describe("playground generated examples", () => {
 			}).render("#container", "popup");
 			const code = generateCode(config, "popup", "embedded");
 			const run = new Function(
-				"ForgeFrame",
+				"create",
 				"prop",
 				`return (async () => {${code.replace(/^import .*\n/, "")} })()`,
 			);
-			await run(ForgeFrame, prop);
+			await run(create, prop);
 			expect(render).toHaveBeenCalledTimes(2);
 			const generated = requireValue(getComponent(config.tag));
 			const expected = {

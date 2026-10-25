@@ -2,12 +2,12 @@
  * Integration test covering post-connect prop synchronization.
  *
  * Verifies that `instance.updateProps()` updates the host snapshot, removes
- * omitted optional keys from `window.hostProps`, and notifies subscribers once.
+ * omitted optional keys from `hostProps`, and notifies subscribers once.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { deleteRegisteredComponent } from "@/core/component-registry";
-import { create, EVENT, getHostProps, initHost, prop } from "@/index";
+import { getHost } from "@/core/host/bootstrap";
+import { create, prop } from "@/index";
 import type { PropsDefinition } from "@/types";
 import {
 	createIframeIntegrationHarness,
@@ -115,103 +115,6 @@ describe("Props sync integration", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("rejects invalid schema replacement from a bootstrap observer and permits a fresh host retry", async () => {
-		harness = createIframeIntegrationHarness();
-		const activeHarness = harness;
-		const definitions = {
-			amount: prop.number(),
-			callback: prop.function<() => number>(),
-		};
-		const instance = create({
-			tag: "integration-bootstrap-invalid-replacement",
-			url: "https://host.example.com/widget",
-			props: definitions,
-		})({ amount: -1, callback: () => 7 });
-		const container = document.createElement("div");
-		document.body.append(container);
-		const rendering = instance.render(container);
-		void rendering.catch(() => undefined);
-		const iframe = await activeHarness.waitForIframe(container);
-		activeHarness.attachHostToIframe(iframe);
-		const host = activeHarness.bootstrapHost(definitions);
-		if (!host) throw new Error("Missing initial host");
-		const replacementErrors: unknown[] = [];
-		host.event.once(EVENT.PROPS, () => {
-			try {
-				activeHarness.withHostGlobals(() =>
-					initHost({ ...definitions, amount: prop.number().min(0) }),
-				);
-			} catch (error) {
-				replacementErrors.push(error);
-			}
-		});
-		await expect(host.ready).rejects.toThrow(
-			"Host destroyed before bootstrap completed",
-		);
-		expect(replacementErrors).toEqual([
-			expect.objectContaining({ message: expect.stringContaining(">= 0") }),
-		]);
-		expect(activeHarness.withHostGlobals(() => getHostProps())).toBeUndefined();
-		const retry = activeHarness.bootstrapHost(definitions);
-		if (!retry) throw new Error("Missing retry host");
-		expect(retry).not.toBe(host);
-		await retry.ready;
-		await rendering;
-		expect(retry.hostProps.amount).toBe(-1);
-		await expect(retry.hostProps.callback()).resolves.toBe(7);
-		await instance.updateProps({ amount: 2 });
-		expect(retry.hostProps.amount).toBe(2);
-		await expect(retry.hostProps.callback()).resolves.toBe(7);
-	});
-
-	it("accepts valid schema replacement from a bootstrap observer without replacing callbacks or controls", async () => {
-		harness = createIframeIntegrationHarness();
-		const activeHarness = harness;
-		const definitions = {
-			amount: prop.number(),
-			callback: prop.function<() => number>(),
-		};
-		const instance = create({
-			tag: "integration-bootstrap-valid-replacement",
-			url: "https://host.example.com/widget",
-			props: definitions,
-		})({ amount: 1, callback: () => 7 });
-		const container = document.createElement("div");
-		document.body.append(container);
-		const rendering = instance.render(container);
-		const iframe = await activeHarness.waitForIframe(container);
-		activeHarness.attachHostToIframe(iframe);
-		const host = activeHarness.bootstrapHost(definitions);
-		if (!host) throw new Error("Missing initial host");
-		const close = host.hostProps.close;
-		const callbacks: unknown[] = [];
-		const configurations: unknown[] = [];
-		host.event.once(EVENT.PROPS, () => {
-			callbacks.push(host.hostProps.callback);
-			configurations.push(
-				activeHarness.withHostGlobals(() =>
-					initHost({ ...definitions, amount: prop.number().min(0) }),
-				),
-			);
-			callbacks.push(host.hostProps.callback);
-		});
-		await host.ready;
-		await rendering;
-		expect(configurations).toEqual([host]);
-		expect(callbacks).toHaveLength(2);
-		expect(callbacks[0]).toBe(callbacks[1]);
-		expect(host.hostProps.callback).toBe(callbacks[0]);
-		expect(host.hostProps.close).toBe(close);
-		await expect(host.hostProps.callback()).resolves.toBe(7);
-		vi.spyOn(console, "error").mockImplementation(() => undefined);
-		await expect(instance.updateProps({ amount: -1 })).rejects.toThrow(">= 0");
-		expect(host.hostProps.amount).toBe(1);
-		await instance.updateProps({ amount: 2 });
-		expect(host.hostProps.amount).toBe(2);
-		expect(host.hostProps.callback).toBe(callbacks[0]);
-		await expect(host.hostProps.callback()).resolves.toBe(7);
-	});
-
 	it("rejects readiness when a bootstrap observer destroys the host", async () => {
 		harness = createIframeIntegrationHarness();
 		const activeHarness = harness;
@@ -229,364 +132,20 @@ describe("Props sync integration", () => {
 		activeHarness.attachHostToIframe(iframe);
 		const host = activeHarness.bootstrapHost(definitions);
 		if (!host) throw new Error("Missing initial host");
-		host.event.once(EVENT.PROPS, () =>
-			activeHarness.withHostGlobals(() => host.destroy()),
-		);
+		const unsubscribe = host.on("props", () => {
+			unsubscribe();
+			activeHarness.withHostGlobals(() => host.destroy());
+		});
 		await expect(host.ready).rejects.toThrow(
 			"Host destroyed before bootstrap completed",
 		);
-		expect(activeHarness.withHostGlobals(() => getHostProps())).toBeUndefined();
+		expect(getHost()).toBeNull();
 		await instance.close();
 		await expect(rendering).rejects.toThrow(
 			"was closed before rendering completed",
 		);
 		expect(container.querySelector("iframe")).toBeNull();
 	});
-
-	it("preserves the active host after rejected public schema replacement and accepts a later valid configuration", async () => {
-		harness = createIframeIntegrationHarness();
-		const activeHarness = harness;
-		const definitions = {
-			amount: prop.number(),
-			callback: prop.function<() => number>(),
-		};
-		const Component = create({
-			tag: "integration-host-configuration-rollback",
-			url: "https://host.example.com/widget",
-			props: definitions,
-		});
-		const container = document.createElement("div");
-		document.body.append(container);
-		const instance = Component({ amount: 10, callback: () => 7 });
-		const rendering = instance.render(container);
-		const { host, hostProps, iframe } = await activeHarness.bootstrapIframeHost(
-			container,
-			definitions,
-		);
-		await rendering;
-		const callback = hostProps.callback;
-		const resize = hostProps.resize;
-		const onProps = vi.fn();
-		hostProps.onProps(onProps);
-		const invalidDefinitions = {
-			...definitions,
-			amount: prop.number().min(100),
-		};
-		for (const allowedDomains of [
-			undefined,
-			"https://other-consumer.example.com",
-		]) {
-			expect(() =>
-				activeHarness.withHostGlobals(() =>
-					initHost(invalidDefinitions, allowedDomains),
-				),
-			).toThrow(/100/);
-			expect(activeHarness.withHostGlobals(() => getHostProps())).toBe(
-				hostProps,
-			);
-			expect(activeHarness.withHostGlobals(() => initHost())).toBe(host);
-		}
-		expect(hostProps.callback).toBe(callback);
-		expect(hostProps.resize).toBe(resize);
-		await expect(callback()).resolves.toBe(7);
-		await activeHarness.withHostGlobalsAsync(() => resize({ width: 401 }));
-		expect(iframe.style.width).toBe("401px");
-		await instance.updateProps({ amount: 11 });
-		expect(hostProps.amount).toBe(11);
-		expect(onProps).toHaveBeenCalledExactlyOnceWith({
-			amount: 11,
-			callback,
-		});
-
-		const configuredHost = activeHarness.withHostGlobals(() =>
-			initHost(
-				{ ...definitions, amount: prop.number().min(10) },
-				activeHarness.consumerOrigin,
-			),
-		);
-		expect(configuredHost).toBe(host);
-		expect(configuredHost?.hostProps).toBe(hostProps);
-		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-		await expect(instance.updateProps({ amount: 5 })).rejects.toThrow(/10/);
-		expect(hostProps.amount).toBe(11);
-		await instance.updateProps({ amount: 12 });
-		expect(hostProps.amount).toBe(12);
-		await expect(callback()).resolves.toBe(7);
-		consoleSpy.mockRestore();
-		expect(() =>
-			activeHarness.withHostGlobals(() =>
-				initHost(undefined, "https://other-consumer.example.com"),
-			),
-		).toThrow(/not allowed/);
-		expect(activeHarness.withHostGlobals(() => getHostProps())).toBeUndefined();
-	});
-
-	it.each(["destroy", "replace"] as const)(
-		"preserves schema rejection when its validator requests host %s",
-		async (action) => {
-			harness = createIframeIntegrationHarness();
-			const activeHarness = harness;
-			const definitions = { amount: prop.number() };
-			const Component = create({
-				tag: `integration-host-validation-${action}`,
-				url: "https://host.example.com/widget",
-				props: definitions,
-			});
-			const container = document.createElement("div");
-			document.body.append(container);
-			const instance = Component({ amount: 2 });
-			const rendering = instance.render(container);
-			const { host } = await activeHarness.bootstrapIframeHost(
-				container,
-				definitions,
-			);
-			await rendering;
-			let replacement: typeof host | null = null;
-			const rejectedDefinitions = {
-				amount: {
-					"~standard": {
-						version: 1 as const,
-						vendor: "host-lifecycle-regression",
-						validate: () => {
-							host.destroy();
-							if (action === "replace") replacement = initHost(definitions);
-							return { issues: [{ message: "Requested schema rejection" }] };
-						},
-					},
-				},
-			};
-			expect(() =>
-				activeHarness.withHostGlobals(() => initHost(rejectedDefinitions)),
-			).toThrow("Requested schema rejection");
-			if (action === "destroy") {
-				expect(
-					activeHarness.withHostGlobals(() => getHostProps()),
-				).toBeUndefined();
-			} else {
-				if (!replacement) throw new Error("Missing replacement host");
-				const currentHost = activeHarness.withHostGlobals(() =>
-					initHost(definitions),
-				);
-				expect(currentHost).toBe(replacement);
-				if (!currentHost) throw new Error("Missing current host");
-				await currentHost.ready;
-				await instance.updateProps({ amount: 3 });
-				expect(currentHost.hostProps.amount).toBe(3);
-			}
-		},
-	);
-
-	it.each(["destroy", "replace"] as const)(
-		"returns null when successful configuration validation requests host %s",
-		async (action) => {
-			harness = createIframeIntegrationHarness();
-			const activeHarness = harness;
-			const definitions = { amount: prop.number() };
-			const instance = create({
-				tag: `integration-successful-validation-${action}`,
-				url: "https://host.example.com/widget",
-				props: definitions,
-			})({ amount: 2 });
-			const container = document.createElement("div");
-			document.body.append(container);
-			const rendering = instance.render(container);
-			const { host } = await activeHarness.bootstrapIframeHost(
-				container,
-				definitions,
-			);
-			await rendering;
-			let replacement: typeof host | null = null;
-			let flushReplacement: ReturnType<typeof vi.spyOn> | undefined;
-			const configuration = {
-				amount: {
-					"~standard": {
-						version: 1 as const,
-						vendor: "host-lifecycle-regression",
-						validate: (value: unknown) => {
-							host.destroy();
-							if (action === "replace") {
-								replacement = initHost(definitions, undefined, {
-									deferInit: true,
-								});
-								if (!replacement) throw new Error("Missing replacement host");
-								flushReplacement = vi.spyOn(replacement, "flushInit");
-							}
-							return { value };
-						},
-					},
-				},
-			};
-			expect(
-				activeHarness.withHostGlobals(() => initHost(configuration)),
-			).toBeNull();
-			if (action === "destroy") {
-				expect(
-					activeHarness.withHostGlobals(() => getHostProps()),
-				).toBeUndefined();
-			} else {
-				if (!replacement || !flushReplacement)
-					throw new Error("Missing replacement host");
-				expect(flushReplacement).not.toHaveBeenCalled();
-				const currentHost = activeHarness.withHostGlobals(() =>
-					initHost(definitions),
-				);
-				expect(currentHost).toBe(replacement);
-				if (!currentHost) throw new Error("Missing current host");
-				await currentHost.ready;
-				await instance.updateProps({ amount: 3 });
-				expect(currentHost.hostProps.amount).toBe(3);
-				await currentHost.hostProps.hide();
-				expect(container.querySelector("iframe")?.style.display).toBe("none");
-			}
-		},
-	);
-
-	it("preserves a validator-created replacement while the configured host is still bootstrapping", async () => {
-		vi.spyOn(console, "error").mockImplementation(() => undefined);
-		harness = createIframeIntegrationHarness();
-		const activeHarness = harness;
-		const definitions = { amount: prop.number() };
-		const instance = create({
-			tag: "integration-pending-validation-replacement",
-			url: "https://host.example.com/widget",
-			props: definitions,
-		})({ amount: 2 });
-		const container = document.createElement("div");
-		document.body.append(container);
-		const rendering = instance.render(container);
-		void rendering.catch(() => undefined);
-		const iframe = await activeHarness.waitForIframe(container);
-		activeHarness.attachHostToIframe(iframe);
-		const host = activeHarness.bootstrapHost(definitions);
-		if (!host) throw new Error("Missing bootstrapping host");
-		let replacement: typeof host | null = null;
-		const replacementErrors: unknown[] = [];
-		const rejectedDefinitions = {
-			amount: {
-				"~standard": {
-					version: 1 as const,
-					vendor: "host-lifecycle-regression",
-					validate: () => {
-						host.destroy();
-						replacement = initHost(definitions);
-						return { issues: [{ message: "Requested schema rejection" }] };
-					},
-				},
-			},
-		};
-		host.event.once(EVENT.PROPS, () => {
-			try {
-				activeHarness.withHostGlobals(() => initHost(rejectedDefinitions));
-			} catch (error) {
-				replacementErrors.push(error);
-			}
-		});
-		await expect(host.ready).rejects.toThrow(
-			"Host destroyed before bootstrap completed",
-		);
-		expect(replacementErrors).toEqual([
-			expect.objectContaining({
-				message: expect.stringContaining("Requested schema rejection"),
-			}),
-		]);
-		const currentHost = activeHarness.withHostGlobals(() => initHost());
-		expect(currentHost).toBe(replacement);
-		if (!currentHost) throw new Error("Missing replacement host");
-		await currentHost.ready;
-		await rendering;
-		await instance.updateProps({ amount: 3 });
-		expect(currentHost.hostProps.amount).toBe(3);
-	});
-
-	it.each(["create", "initHost"])(
-		"purges already committed private fields during late configuration when %s supplies definitions",
-		async (configure) => {
-			harness = createIframeIntegrationHarness();
-			const activeHarness = harness;
-			const container = document.createElement("div");
-			document.body.append(container);
-			const tag = "integration-late-private-props";
-			const Component = create({
-				tag,
-				url: "https://host.example.com/widget",
-				props: {
-					title: prop.string(),
-					local: z.unknown(),
-					constructor: z.unknown(),
-					callback: prop.function<() => number>(),
-					extra: prop.string(),
-				},
-			});
-			const instance = Component({
-				title: "initial",
-				local: { private: "accepted before configuration" },
-				constructor: 42,
-				callback: () => 7,
-				extra: "undeclared",
-			});
-			const rendering = instance.render(container);
-			const { host, hostProps } = await activeHarness.bootstrapIframeHost<{
-				title: string;
-				local: unknown;
-				constructor: unknown;
-				callback: () => number;
-				extra: string;
-			}>(container);
-			await rendering;
-			expect(hostProps.local).toEqual({
-				private: "accepted before configuration",
-			});
-			expect(hostProps.constructor).toBe(42);
-			const close = hostProps.close;
-			const callback = hostProps.callback;
-			const onProps = vi.fn();
-			const onEvent = vi.fn();
-			hostProps.onProps(onProps);
-			host.event.on(EVENT.PROPS, onEvent);
-			const definitions = {
-				title: prop.string(),
-				local: { schema: prop.string(), required: true, sendToHost: false },
-				constructor: { schema: prop.string(), sendToHost: false },
-				callback: prop.function<() => number>(),
-			};
-			// These two test windows share one module registry. Remove only the
-			// stale declaration to model the host bundle's matching registration.
-			if (configure === "create") deleteRegisteredComponent(tag);
-			const configuredProps = activeHarness.withHostGlobals(() =>
-				configure === "create"
-					? create({
-							tag,
-							url: "https://host.example.com/widget",
-							props: definitions,
-						}).hostProps
-					: initHost(definitions)?.hostProps,
-			);
-			expect(configuredProps).toBe(hostProps);
-			expect(hostProps.consumer.props).toEqual({
-				title: "initial",
-				callback,
-				extra: "undeclared",
-			});
-			for (const key of ["local", "constructor"]) {
-				expect(Object.hasOwn(hostProps, key)).toBe(false);
-			}
-			expect(hostProps.close).toBe(close);
-			await expect(callback()).resolves.toBe(7);
-			expect(onProps).not.toHaveBeenCalled();
-			expect(onEvent).not.toHaveBeenCalled();
-			await instance.updateProps({
-				title: "updated",
-				local: "still private",
-			});
-			expect(hostProps.consumer.props).toEqual({
-				title: "updated",
-				callback,
-				extra: "undeclared",
-			});
-			expect(onProps).toHaveBeenCalledExactlyOnceWith(hostProps.consumer.props);
-			expect(onEvent).toHaveBeenCalledExactlyOnceWith(hostProps.consumer.props);
-		},
-	);
 
 	it("discards consumer-only fields from a stale consumer's bootstrap and updates", async () => {
 		harness = createIframeIntegrationHarness();
@@ -640,7 +199,7 @@ describe("Props sync integration", () => {
 		hostProps.onProps((props) => {
 			snapshots.push(props);
 		});
-		host.event.on(EVENT.PROPS, (props) => {
+		host.on("props", (props) => {
 			events.push(props);
 		});
 		await instance.updateProps({
@@ -687,7 +246,7 @@ describe("Props sync integration", () => {
 		hostProps.onProps(({ amount }) => {
 			snapshots.push(amount);
 		});
-		host.event.on(EVENT.ERROR, () => {
+		host.on("error", () => {
 			rejectedSnapshots.push({
 				amount: hostProps.amount,
 				consumer: hostProps.consumer.props,

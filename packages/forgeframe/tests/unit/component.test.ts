@@ -6,8 +6,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { Messenger } from "@/communication/messenger";
-import { CONTEXT, EVENT, PROTOCOL_VERSION } from "@/constants";
+import { CONTEXT, EVENT } from "@/constants";
 import {
 	clearComponents,
 	create,
@@ -20,11 +19,9 @@ import {
 import { getComponentOptions } from "@/core/component-registry";
 import { buildNestedHostRefs } from "@/core/consumer/child-refs";
 import { getSiblingInstances } from "@/core/consumer/siblings";
-import { clearHostInstance, getHostProps, initHost, isHost } from "@/core/host";
-import * as hostSecurity from "@/core/host/security";
+import { clearHostInstance, isHost } from "@/core/host";
 import { prop } from "@/props/prop";
 import type { ComponentOptions, PropContext } from "@/types";
-import { buildWindowName } from "@/window/name-payload";
 import {
 	PEER_HOST_DOMAIN,
 	setOpenedHostDomain,
@@ -120,7 +117,6 @@ describe("Component Creation", () => {
 
 		expect(MyComponent).toBeDefined();
 		expect(typeof MyComponent).toBe("function");
-		expect(MyComponent.isHost()).toBe(false);
 		expect(MyComponent.instances).toEqual([]);
 	});
 
@@ -131,7 +127,6 @@ describe("Component Creation", () => {
 		});
 
 		expect(MyComponent).toBeDefined();
-		expect(MyComponent.isHost()).toBe(false);
 	});
 
 	it.each([
@@ -285,9 +280,9 @@ describe("Component Creation", () => {
 
 	it.each([
 		{ option: "domain", value: "" },
-		{ option: "allowedConsumerDomains", value: " " },
+		{ option: "domain", value: " " },
 		{ option: "peerDomains", value: ["https://partner.example.com", ""] },
-		{ option: "allowedConsumerDomains", value: null },
+		{ option: "peerDomains", value: null },
 	] as const)(
 		"rejects $option values that would disable its origin policy: $value",
 		({ option, value }) => {
@@ -309,11 +304,27 @@ describe("Component Creation", () => {
 			create({
 				tag: "empty-domain-matcher-component",
 				url: "https://host.example.com/widget",
-				allowedConsumerDomains: [],
 				peerDomains: [],
 			}),
 		).not.toThrow();
 	});
+
+	it.each([["https://shop.example.com"], [[]], [null]])(
+		"rejects the removed allowedConsumerDomains option (%j) with its migration",
+		(value) => {
+			expect(() =>
+				create({
+					tag: "removed-allowlist-component",
+					url: "https://host.example.com/widget",
+					// Invalid JavaScript configuration is rejected at runtime.
+					...({ allowedConsumerDomains: value } as object),
+				}),
+			).toThrow(
+				'Component option "allowedConsumerDomains" was removed. Pass the allowlist to the host instead: initHost(Component, { consumerOrigins }).',
+			);
+			expect(getComponent("removed-allowlist-component")).toBeUndefined();
+		},
+	);
 
 	it.each(["onError", "close", "children"])(
 		"omits an undefined reserved definition for %s during declaration",
@@ -2165,7 +2176,6 @@ describe("Host Context Detection", () => {
 		clearHostInstance();
 		clearComponents();
 		vi.restoreAllMocks();
-		delete (window as unknown as { hostProps?: unknown }).hostProps;
 		window.name = originalWindowName;
 	});
 
@@ -2173,133 +2183,6 @@ describe("Host Context Detection", () => {
 		it("should return false when not in a ForgeFrame host window", () => {
 			// In normal test environment, we're not in a host window
 			expect(isHost()).toBe(false);
-		});
-	});
-
-	describe("getHostProps", () => {
-		it("should return undefined when not in a host context", () => {
-			const props = getHostProps();
-			expect(props).toBeUndefined();
-		});
-
-		it("should return hostProps from window when available", () => {
-			// Temporarily set hostProps on window
-			const mockHostProps = {
-				uid: "test-uid",
-				tag: "test-tag",
-				testProp: "value",
-				close: vi.fn(),
-				focus: vi.fn(),
-				resize: vi.fn(),
-				show: vi.fn(),
-				hide: vi.fn(),
-				onProps: vi.fn(),
-				onError: vi.fn(),
-				getConsumer: vi.fn(),
-				getConsumerDomain: vi.fn(),
-				export: vi.fn(),
-				consumer: { props: {}, export: vi.fn() },
-				getPeerInstances: vi.fn(),
-			};
-
-			(window as unknown as { hostProps: typeof mockHostProps }).hostProps =
-				mockHostProps;
-
-			const props = getHostProps();
-			expect(props).toBe(mockHostProps);
-
-			// Cleanup
-			delete (window as unknown as { hostProps?: typeof mockHostProps })
-				.hostProps;
-		});
-	});
-
-	describe("Component.isHost", () => {
-		it("should return false when not in component host context", () => {
-			const MyComponent = create({
-				tag: "host-check-component",
-				url: "https://example.com",
-			});
-
-			expect(MyComponent.isHost()).toBe(false);
-		});
-
-		it("should resolve host state after explicit initHost reads window name", async () => {
-			const props = {
-				label: prop.string(),
-			};
-			const bootstrapWindowName = buildWindowName({
-				uid: "post-init-component-uid",
-				tag: "post-init-component",
-				protocolVersion: PROTOCOL_VERSION,
-				context: CONTEXT.IFRAME,
-				consumerDomain: "https://consumer.example.com",
-			});
-			window.name = bootstrapWindowName;
-
-			vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
-			vi.spyOn(Messenger.prototype, "send")
-				.mockResolvedValueOnce({ props: { label: "ready" } })
-				.mockResolvedValue(undefined);
-
-			const host = initHost<{ label: string }>(props, undefined, {
-				deferInit: true,
-			});
-			await host?.ready;
-			expect(window.name).toBe(bootstrapWindowName);
-
-			const MyComponent = create<{ label: string }>({
-				tag: "post-init-component",
-				url: "https://example.com",
-				props,
-			});
-
-			expect(MyComponent.isHost()).toBe(true);
-			expect(MyComponent.hostProps).toBe(host?.hostProps);
-			expect(MyComponent.hostProps?.label).toBe("ready");
-		});
-	});
-
-	describe("Component.canRenderTo", () => {
-		it("should return true for current window", async () => {
-			const MyComponent = create({
-				tag: "render-to-test",
-				url: "https://example.com",
-			});
-
-			const canRender = await MyComponent.canRenderTo(window);
-
-			expect(canRender).toBe(true);
-		});
-
-		it("should return false for other windows", async () => {
-			const MyComponent = create({
-				tag: "render-to-domain-test",
-				url: "https://example.com",
-			});
-
-			const otherWindow = {
-				location: { origin: window.location.origin },
-			} as unknown as Window;
-			await expect(MyComponent.canRenderTo(otherWindow)).resolves.toBe(false);
-		});
-
-		it("should return false for cross-domain windows even when domain is configured", async () => {
-			const MyComponent = create({
-				tag: "render-to-cross-origin-window-test",
-				url: "https://example.com",
-				domain: "https://example.com",
-			});
-
-			const crossOriginWindow = {
-				get location() {
-					throw new Error("Cross-origin access denied");
-				},
-			} as unknown as Window;
-
-			await expect(MyComponent.canRenderTo(crossOriginWindow)).resolves.toBe(
-				false,
-			);
 		});
 	});
 

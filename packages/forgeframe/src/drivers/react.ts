@@ -316,9 +316,9 @@ export interface ReactComponentType<P, E = unknown> {
  * @example
  * ```tsx
  * import React from 'react';
- * import ForgeFrame, { prop, createReactComponent } from 'forgeframe';
+ * import { create, prop, createReactComponent } from 'forgeframe';
  *
- * const LoginComponent = ForgeFrame.create({
+ * const LoginComponent = create({
  *   tag: 'login-component',
  *   url: 'https://example.com/login',
  *   props: {
@@ -481,14 +481,14 @@ export function createReactComponent<
  * @example
  * ```tsx
  * import React from 'react';
- * import ForgeFrame, { withReactComponent } from 'forgeframe';
+ * import { create, withReactComponent } from 'forgeframe';
  *
  * // Create a reusable component factory
  * const createComponent = withReactComponent(React);
  *
  * // Create multiple React components using the same factory
- * const LoginComponent = ForgeFrame.create({ tag: 'login', url: '...' });
- * const ProfileComponent = ForgeFrame.create({ tag: 'profile', url: '...' });
+ * const LoginComponent = create({ tag: 'login', url: '...' });
+ * const ProfileComponent = create({ tag: 'profile', url: '...' });
  *
  * const LoginReact = createComponent(LoginComponent);
  * const ProfileReact = createComponent(ProfileComponent);

@@ -246,8 +246,8 @@ export class EventEmitter implements EventEmitterInterface {
 	 * @returns The number of handlers currently subscribed to the event
 	 *
 	 * @remarks
-	 * ForgeFrame does not call this. It stays because `initHost()` returns a
-	 * `HostComponent` whose `event` field has this class's type.
+	 * ForgeFrame does not call this. It stays because consumer instances expose
+	 * this class at runtime through `instance.event`.
 	 *
 	 * @internal
 	 */

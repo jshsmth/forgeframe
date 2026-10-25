@@ -1,4 +1,4 @@
-import ForgeFrame, { prop } from "forgeframe";
+import { create, prop } from "forgeframe";
 import { requireValue } from "../../require-value";
 import {
 	runCheckoutE2EScenario,
@@ -19,7 +19,7 @@ const HOST_URL = import.meta.env.VITE_HOST_URL || "https://localhost:5174/";
 const NESTED_CHILD_TAG = "playground-browser-nested-child";
 let tagCounter = 0;
 
-const NestedChildComponent = ForgeFrame.create({
+const NestedChildComponent = create({
 	tag: NESTED_CHILD_TAG,
 	url: `${HOST_URL}?scenario=nested-child`,
 	dimensions: { width: "100%", height: 240 },
@@ -76,7 +76,7 @@ async function runLifecycleScenario(
 ): Promise<TestResult[]> {
 	const results: TestResult[] = [];
 	const container = createContainer(sandbox);
-	const Component = ForgeFrame.create({
+	const Component = create({
 		tag: uniqueTag("lifecycle"),
 		url: HOST_URL,
 		dimensions: { width: "100%", height: 420 },
@@ -133,7 +133,7 @@ async function runLifecycleScenario(
 
 		const cancelledContainer = createContainer(sandbox);
 		const cancelledTag = uniqueTag("lifecycle-cancelled");
-		const CancelledComponent = ForgeFrame.create({
+		const CancelledComponent = create({
 			tag: cancelledTag,
 			url: HOST_URL,
 		});
@@ -174,7 +174,7 @@ async function runSecurityScenario(
 			"Rejects non-HTTP component URLs",
 			() =>
 				Promise.resolve(
-					ForgeFrame.create({
+					create({
 						tag: uniqueTag("protocol"),
 						url: "javascript:alert(1)",
 					}),
@@ -188,7 +188,7 @@ async function runSecurityScenario(
 			"Rejects a URL outside the domain policy",
 			() =>
 				Promise.resolve(
-					ForgeFrame.create({
+					create({
 						tag: uniqueTag("domain"),
 						url: HOST_URL,
 						domain: "https://blocked.example.com",
@@ -199,7 +199,7 @@ async function runSecurityScenario(
 	);
 
 	const reservedContainer = createContainer(sandbox);
-	const ReservedComponent = ForgeFrame.create({
+	const ReservedComponent = create({
 		tag: uniqueTag("reserved-attribute"),
 		url: HOST_URL,
 		attributes: { srcdoc: "<p>override</p>" },
@@ -215,7 +215,7 @@ async function runSecurityScenario(
 	await reservedInstance.close();
 
 	const allowedContainer = createContainer(sandbox);
-	const AllowedComponent = ForgeFrame.create({
+	const AllowedComponent = create({
 		tag: uniqueTag("allowed-domain"),
 		url: HOST_URL,
 		domain: new URL(HOST_URL).origin,
@@ -256,7 +256,7 @@ async function runBridgeScenario(sandbox: HTMLElement): Promise<TestResult[]> {
 	const results: TestResult[] = [];
 	const container = createContainer(sandbox);
 	let callbackArgs: [number, number] | undefined;
-	const Component = ForgeFrame.create<BridgeProps, BridgeExports>({
+	const Component = create<BridgeProps, BridgeExports>({
 		tag: uniqueTag("bridge"),
 		url: HOST_URL,
 		dimensions: { width: "100%", height: 420 },
@@ -323,7 +323,7 @@ async function runPropsScenario(sandbox: HTMLElement): Promise<TestResult[]> {
 	const results: TestResult[] = [];
 	const container = createContainer(sandbox);
 	let observedProps: Record<string, unknown> | undefined;
-	const Component = ForgeFrame.create<PropsScenario>({
+	const Component = create<PropsScenario>({
 		tag: uniqueTag("props"),
 		url: `${HOST_URL}?existing=kept`,
 		dimensions: { width: "100%", height: 420 },
@@ -394,7 +394,7 @@ async function runControlsScenario(
 ): Promise<TestResult[]> {
 	const results: TestResult[] = [];
 	const container = createContainer(sandbox);
-	const Component = ForgeFrame.create({
+	const Component = create({
 		tag: uniqueTag("controls"),
 		url: HOST_URL,
 		dimensions: { width: "100%", height: 420 },
@@ -474,10 +474,7 @@ interface NestedParentExports {
 async function runNestedScenario(sandbox: HTMLElement): Promise<TestResult[]> {
 	const results: TestResult[] = [];
 	const container = createContainer(sandbox);
-	const ParentComponent = ForgeFrame.create<
-		NestedParentProps,
-		NestedParentExports
-	>({
+	const ParentComponent = create<NestedParentProps, NestedParentExports>({
 		tag: uniqueTag("nested-parent"),
 		url: HOST_URL,
 		dimensions: { width: "100%", height: 620 },
@@ -526,14 +523,12 @@ interface ErrorScenarioExports {
 async function runErrorsScenario(sandbox: HTMLElement): Promise<TestResult[]> {
 	const results: TestResult[] = [];
 	const container = createContainer(sandbox);
-	const Component = ForgeFrame.create<ErrorScenarioProps, ErrorScenarioExports>(
-		{
-			tag: uniqueTag("errors"),
-			url: HOST_URL,
-			dimensions: { width: "100%", height: 420 },
-			props: { scenario: prop.string() },
-		},
-	);
+	const Component = create<ErrorScenarioProps, ErrorScenarioExports>({
+		tag: uniqueTag("errors"),
+		url: HOST_URL,
+		dimensions: { width: "100%", height: 420 },
+		props: { scenario: prop.string() },
+	});
 	const instance = Component({ scenario: "errors" });
 	let reportedError = "";
 	instance.event.on("error", (error: Error) => {

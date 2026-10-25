@@ -81,7 +81,7 @@ test.beforeAll(async () => {
 		<button id="invoke">Call consumer</button><output id="result"></output>
 		<script type="module">
 		import {initHost,prop} from '/library.js';
-		const host = initHost({label:prop.string(), count:prop.number().min(0), onAction:prop.function()}, ['${consumerOrigin}']);
+		const host = initHost({props:{label:prop.string(), count:prop.number().min(0), onAction:prop.function()}, consumerOrigins:['${consumerOrigin}']});
 		await host.ready;
 		const props = host.hostProps;
 		const show = () => document.getElementById('snapshot').textContent = props.label + ':' + props.count;

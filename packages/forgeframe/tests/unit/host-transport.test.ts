@@ -26,7 +26,6 @@ function createTransport({
 	context = CONTEXT.IFRAME,
 	consumerDomain = "https://consumer.example.com",
 	getConsumerDomain,
-	deferInit = true,
 	beforeInit = () => Promise.resolve(),
 	consumerWindow = { postMessage: vi.fn() } as unknown as Window,
 }: Partial<HostTransportOptions> = {}) {
@@ -38,7 +37,6 @@ function createTransport({
 		consumerWindow,
 		consumerDomain,
 		getConsumerDomain: getConsumerDomain ?? (() => consumerDomain),
-		deferInit,
 		beforeInit,
 	};
 
@@ -140,15 +138,21 @@ describe("HostTransport", () => {
 		expect(applySerializedProps).toHaveBeenCalledWith(payload);
 	});
 
-	it("should schedule deferred init once and avoid resending after init has flushed", async () => {
-		const { transport, consumerWindow } = createTransport({ deferInit: true });
+	it("sends INIT once, after bootstrap settles, and never after destroy", async () => {
+		const bootstrap = createDeferred<void>();
+		const { transport, consumerWindow } = createTransport({
+			beforeInit: () => bootstrap.promise,
+		});
 		const sendSpy = vi
 			.spyOn(transport.messenger, "send")
 			.mockResolvedValue(undefined);
 
-		transport.handleHostPropsAccess();
-		transport.handleHostPropsAccess();
+		transport.sendInitOnce();
+		transport.sendInitOnce();
+		await flushMicrotasks();
+		expect(sendSpy).not.toHaveBeenCalled();
 
+		bootstrap.resolve();
 		await vi.waitFor(() => expect(sendSpy).toHaveBeenCalledTimes(1));
 		expect(sendSpy).toHaveBeenCalledWith(
 			consumerWindow,
@@ -159,32 +163,12 @@ describe("HostTransport", () => {
 			undefined,
 		);
 
-		transport.handleHostPropsAccess();
-		await flushMicrotasks();
-
-		expect(sendSpy).toHaveBeenCalledTimes(1);
-		expect(transport.getInitError()).toBeNull();
-	});
-
-	it("should not schedule deferred init when deferInit is disabled or after destroy", async () => {
-		const immediate = createTransport({ deferInit: false });
-		const immediateSendSpy = vi
-			.spyOn(immediate.transport.messenger, "send")
-			.mockResolvedValue(undefined);
-
-		immediate.transport.handleHostPropsAccess();
-		await flushMicrotasks();
-
-		expect(immediateSendSpy).not.toHaveBeenCalled();
-
-		const destroyed = createTransport({ deferInit: true });
+		const destroyed = createTransport();
 		const destroyedSendSpy = vi
 			.spyOn(destroyed.transport.messenger, "send")
 			.mockResolvedValue(undefined);
-
-		destroyed.transport.handleHostPropsAccess();
 		destroyed.transport.destroy();
-
+		destroyed.transport.sendInitOnce();
 		await flushMicrotasks();
 
 		expect(destroyedSendSpy).not.toHaveBeenCalled();
@@ -199,7 +183,7 @@ describe("HostTransport", () => {
 		const emitSpy = vi.spyOn(event, "emit");
 		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-		transport.flushInit();
+		transport.sendInitOnce();
 		await vi.waitFor(() => expect(sendSpy).toHaveBeenCalledOnce());
 		transport.destroy();
 		pendingSend.reject(new Error("Messenger destroyed"));
@@ -207,7 +191,6 @@ describe("HostTransport", () => {
 
 		expect(consoleSpy).not.toHaveBeenCalled();
 		expect(emitSpy).not.toHaveBeenCalledWith(EVENT.ERROR, expect.anything());
-		expect(transport.getInitError()).toBeNull();
 	});
 
 	it("resolves focus() once the window receives focus, or after a bounded wait", async () => {
@@ -262,19 +245,18 @@ describe("HostTransport", () => {
 		const emitSpy = vi.spyOn(event, "emit");
 		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-		transport.flushInit();
+		transport.sendInitOnce();
 		await vi.waitFor(() =>
-			expect(transport.getInitError()).toBeInstanceOf(Error),
+			expect(emitSpy).toHaveBeenCalledWith(EVENT.ERROR, expect.anything()),
 		);
 
 		expect(sendSpy).toHaveBeenCalledTimes(1);
-		expect(transport.getInitError()?.message).toBe("init send failed");
 		expect(emitSpy).toHaveBeenCalledWith(
 			EVENT.ERROR,
 			expect.objectContaining({
 				type: "init_failed",
 				message: "Failed to initialize host component: init send failed",
-				error: expect.any(Error),
+				error: expect.objectContaining({ message: "init send failed" }),
 			}),
 		);
 		expect(consoleSpy).toHaveBeenCalledWith(

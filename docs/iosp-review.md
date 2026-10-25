@@ -5,7 +5,7 @@ desc: Runtime callable responsibilities, IOSP classifications, and boundary test
 tags: []
 sources: []
 created: 2026-10-01T01:55:30Z
-updated: 2026-10-25T11:33:45Z
+updated: 2026-10-25T12:13:28Z
 ---
 
 # ForgeFrame callable reference
@@ -30,7 +30,7 @@ Pure policy consumes observed facts; integrations and adapters obtain browser ev
 | <a id="evidence-messaging"></a>messaging | [bridge.test](../packages/forgeframe/tests/unit/bridge.test.ts), [messenger.test](../packages/forgeframe/tests/unit/messenger.test.ts), [messenger-routing.test](../packages/forgeframe/tests/unit/messenger-routing.test.ts), [protocol.test](../packages/forgeframe/tests/unit/protocol.test.ts), [function-prop-bridge.test](../packages/forgeframe/tests/integration/function-prop-bridge.test.ts), [host-controls-routing.test](../packages/forgeframe/tests/integration/host-controls-routing.test.ts) |
 | <a id="evidence-render"></a>render | [consumer-renderer.test](../packages/forgeframe/tests/unit/consumer-renderer.test.ts), [iframe.test](../packages/forgeframe/tests/unit/iframe.test.ts), [popup.test](../packages/forgeframe/tests/unit/popup.test.ts), [render-templates.test](../packages/forgeframe/tests/unit/render-templates.test.ts), [body-param-bootstrap.test](../packages/forgeframe/tests/integration/body-param-bootstrap.test.ts), [popup-host-handshake.test](../packages/forgeframe/tests/integration/popup-host-handshake.test.ts) |
 | <a id="evidence-consumer"></a>consumer | [component.test](../packages/forgeframe/tests/unit/component.test.ts), [component-clone.test](../packages/forgeframe/tests/unit/component-clone.test.ts), [component-instance-index.test](../packages/forgeframe/tests/unit/component-instance-index.test.ts), [consumer-lifecycle.test](../packages/forgeframe/tests/unit/consumer-lifecycle.test.ts), [consumer-branch-coverage.test](../packages/forgeframe/tests/unit/consumer-branch-coverage.test.ts), [consumer-transport.test](../packages/forgeframe/tests/unit/consumer-transport.test.ts), [consumer-host-handshake.test](../packages/forgeframe/tests/integration/consumer-host-handshake.test.ts), [host-controls-routing.test](../packages/forgeframe/tests/integration/host-controls-routing.test.ts) |
-| <a id="evidence-host"></a>host | [host-security.test](../packages/forgeframe/tests/unit/host-security.test.ts), [host-lifecycle.test](../packages/forgeframe/tests/unit/host-lifecycle.test.ts), [host-branch-coverage.test](../packages/forgeframe/tests/unit/host-branch-coverage.test.ts), [host-transport.test](../packages/forgeframe/tests/unit/host-transport.test.ts), [props-sync.test](../packages/forgeframe/tests/integration/props-sync.test.ts), [consumer-host-handshake.test](../packages/forgeframe/tests/integration/consumer-host-handshake.test.ts), [protocol-version.test](../packages/forgeframe/tests/integration/protocol-version.test.ts) |
+| <a id="evidence-host"></a>host | [host-security.test](../packages/forgeframe/tests/unit/host-security.test.ts), [host-lifecycle.test](../packages/forgeframe/tests/unit/host-lifecycle.test.ts), [host-branch-coverage.test](../packages/forgeframe/tests/unit/host-branch-coverage.test.ts), [host-transport.test](../packages/forgeframe/tests/unit/host-transport.test.ts), [props-sync.test](../packages/forgeframe/tests/integration/props-sync.test.ts), [consumer-host-handshake.test](../packages/forgeframe/tests/integration/consumer-host-handshake.test.ts), [host-startup.test](../packages/forgeframe/tests/integration/host-startup.test.ts), [protocol-version.test](../packages/forgeframe/tests/integration/protocol-version.test.ts) |
 | <a id="evidence-react"></a>react | [react-host-sync.test](../packages/forgeframe/tests/integration/react-host-sync.test.ts), [react-driver-lifecycle.test](../packages/forgeframe/tests/unit/react-driver-lifecycle.test.ts), [react-driver-prop-sync.test](../packages/forgeframe/tests/unit/react-driver-prop-sync.test.ts), [react-prop-queue.test](../packages/forgeframe/tests/unit/react-prop-queue.test.ts), [react-driver-dom.test](../packages/forgeframe/tests/integration/react-driver-dom.test.ts) |
 | <a id="evidence-utilities"></a>utilities | [utils.test](../packages/forgeframe/tests/unit/utils.test.ts), [domain-pattern.test](../packages/forgeframe/tests/unit/domain-pattern.test.ts), [window-helpers.test](../packages/forgeframe/tests/unit/window-helpers.test.ts), [window-name-payload.test](../packages/forgeframe/tests/unit/window-name-payload.test.ts), [props-serialize.test](../packages/forgeframe/tests/unit/props-serialize.test.ts), [protocol.test](../packages/forgeframe/tests/unit/protocol.test.ts) |
 | <a id="evidence-contract"></a>contract | [package-contract.test](../packages/forgeframe/tests/unit/package-contract.test.ts), [index-node-smoke.test](../packages/forgeframe/tests/unit/index-node-smoke.test.ts), [index-side-effect-free.test](../packages/forgeframe/tests/unit/index-side-effect-free.test.ts), [component-node-runtime-transition.test](../packages/forgeframe/tests/unit/component-node-runtime-transition.test.ts), [version.test](../packages/forgeframe/tests/unit/version.test.ts) |
@@ -111,14 +111,14 @@ Evidence: [consumer](#evidence-consumer); typecheck.
 
 ### [core/component.ts](../packages/forgeframe/src/core/component.ts)
 
-Declaration policy receives options, including domain-matcher validation, so empty or blank matcher strings throw; static URL context selection receives the observed origin. Factory construction and host configuration are integrations. `configureHostAtDefinition` runs once per definition: it reconfigures a matching active host without changing its INIT timing, or starts the runtime in a host window for the tag, and logs startup failures instead of throwing them. The factory's `isHost()`, `isEmbedded()`, and `hostProps` getters only read the active singleton and window metadata, so after a retry or teardown they follow the current host and never start one. An owner callback removes factory and index identities before destruction observers run, even after public listeners are removed, and propagates to clones; a retained event listener keeps synthetic destroy notifications.
+Declaration policy receives options, including domain-matcher validation, so empty or blank matcher strings throw; static URL context selection receives the observed origin. Factory construction is an integration. Defining a component never starts or configures a host: the module does not import the host runtime, and `initHost(Component, ...)` reads the registered options instead. An owner callback removes factory and index identities before destruction observers run, even after public listeners are removed, and propagates to clones; a retained event listener keeps synthetic destroy notifications.
 
-`assertComponentShape` is an **O** declaration policy. Its reserved-definition guard treats `undefined` entries as omitted, matching normalization, and rejects real host-control definitions; `component.test.ts` covers both cases. It also applies the shared removed-option policy before the factory is registered.
+`assertComponentShape` is an **O** declaration policy. Its reserved-definition guard, the shared `assertNoReservedPropDefinitions`, treats `undefined` entries as omitted, matching normalization, and rejects real host-control definitions; `component.test.ts` covers both cases. It also applies the shared removed-option policy before the factory is registered, and throws a migration error for the removed `allowedConsumerDomains` option, which now belongs to `initHost()`.
 
-- **O:** `assertComponentShape`, `staticUrlValidationContext`, `removeTrackedInstance`, `create.Component.canRenderTo`.
-- **I:** `validateComponentOptions`, `validateStaticComponentUrl`, `configureHostAtDefinition`, `create`, `create.untrackInstance`, `create.createTrackedInstance`, `create.readHostProps`, `create.detectHostState`, `create.Component.isHost`, `create.Component.isEmbedded`, `create.get`, `getComponent`, `destroy`, `destroyByTag`, `destroyAll`, `unregisterComponent`, `clearComponents`.
+- **O:** `assertComponentShape`, `staticUrlValidationContext`, `removeTrackedInstance`.
+- **I:** `validateComponentOptions`, `validateStaticComponentUrl`, `create`, `create.untrackInstance`, `create.createTrackedInstance`, `getComponent`, `destroy`, `destroyByTag`, `destroyAll`, `unregisterComponent`, `clearComponents`.
 - **M:** `create.trackInstance`.
-- **I callbacks:** `create.trackInstance.callback@315`, `create.callback@361`, `destroyByTag.callback@471`, `destroyAll.callback@493`.
+- **I callbacks:** `create.trackInstance.callback@277`, `create.callback@304`, `destroyByTag.callback@395`, `destroyAll.callback@417`.
 - **Retained rationale —** `create.trackInstance`: The factory-local guard, list append, index update and destruction subscription share one lifetime. Keep this short ownership adapter next to construction; removal bookkeeping is named separately.
 
 Evidence: [consumer](#evidence-consumer); typecheck.
@@ -236,49 +236,52 @@ Evidence: [consumer](#evidence-consumer); typecheck.
 
 ### [core/host.ts](../packages/forgeframe/src/core/host.ts)
 
-Public host checks delegate to the bootstrap and window adapters. Importing the module without browser globals has no effect.
+The public host check delegates to the bootstrap and window adapters. `isHost()` reports whether the window carries ForgeFrame channel metadata or runs an active host, so it stays true for malformed metadata and after `destroy()`. Importing the module without browser globals has no effect.
 
-- **I:** `isHost`, `isEmbedded`, `getHostProps`.
+- **I:** `isHost`.
 
 Evidence: [host](#evidence-host); typecheck.
 
 ### [core/host/bootstrap.ts](../packages/forgeframe/src/core/host/bootstrap.ts)
 
-The singleton integration validates a supplied allowlist (empty or blank strings throw; `undefined` is the only "no allowlist" value) and rejects supplied prop definitions that set a removed option, then reuses and configures an existing runtime or constructs a new one. A new runtime without supplied prop definitions or allowlist uses those of the component registered for its tag (`definedComponentOptions`), so a bare call cannot accept props or a consumer that definition refused. `readInitialPayload` classifies the current `window.name` on every new start and never rewrites it: a payload from another protocol throws the upgrade error that `describeUnsupportedPayload` words, before any host state exists or anything is sent to the unverified consumer, and an invalid payload is logged and yields null. `hasConsumerWindow` checks first that a parent or opener exists: a stale older payload in a window with neither has no consumer to upgrade, so it yields null, as a current payload without a consumer window does. There is no pending copy of the payload, so a retry after a failed start or failed asynchronous validation, and a start after `destroy()`, reread the retained channel metadata. Its ready and destruction callbacks clear only the instance they belong to. Cleanup releases the singleton before destroying resources, which prevents reentrant cleanup and lets public teardown be followed by fresh initialization from retained channel metadata.
+`initHost()` is the only host start path. `readInitHostArguments` checks the call shape before any environment check: a component must carry registered options, a tag-agnostic call takes one options object, and a second positional argument (the v1 allowlist position) throws. `readInitHostOptions` is **O** declaration policy over the supplied options: it accepts only `consumerOrigins`, `autoInit`, and, in the tag-agnostic form, `props`; validates the required matcher; and applies the shared reserved-name and removed-option policies to supplied definitions. Each error names the v2 call shape.
 
-After readiness, a rejected schema replacement keeps the active runtime; initial configuration failures and consumer-domain rejection tear it down. The failure handler uses a captured runtime and checks singleton identity, so validator teardown cannot mask the schema error or clear a replacement. Successful validation makes the same identity check before asserting the domain or flushing INIT, and returns null after reentrant teardown without affecting a replacement's deferred initialization. Public integration tests cover destroy and replacement with successful and rejected validators.
+The integration then returns null without browser globals, throws while a host is active, reads the channel metadata, and in the component form throws when the payload's tag differs. It never consults the registry for another component's definitions and never reconfigures a running host. `readInitialPayload` classifies the current `window.name` on every new start and never rewrites it: a payload from another protocol throws the upgrade error that `describeUnsupportedPayload` words, before any host state exists or anything is sent to the unverified consumer, and an invalid payload is logged and yields null. `hasConsumerWindow` checks first that a parent or opener exists: a stale older payload in a window with neither has no consumer to upgrade, so it yields null, as a current payload without a consumer window does. There is no pending copy of the payload, so a retry after a failed start or failed asynchronous validation, and a start after `destroy()`, reread the retained channel metadata.
 
-- **O:** `describeUnsupportedPayload`, `getHost`.
-- **I:** `readInitialPayload`, `hasConsumerWindow`, `initHost`, `definedComponentOptions`, `clearHostInstance`.
-- **I callbacks:** `initHost.onDestroy`, `initHost.ready.catch`.
+`startHostRuntime` makes the runtime the active host from construction until it is destroyed or its start fails. A consumer-window resolution failure yields null; a disallowed consumer origin throws from construction and leaves no active host. Its ready callback is registered before the caller can observe `ready`, so a rejection releases the singleton before the caller's handlers run. The destruction callback is an **O** identity-guarded state transition, so stale or repeated destruction cannot clear a replacement host. `createHost` returns a frozen object with only `ready`, `hostProps`, `init`, `destroy` and `on`; `on` admits only the `props` and `error` events before registering on the runtime's emitter.
+
+- **O:** `readInitHostOptions`, `describeUnsupportedPayload`, `getHost`.
+- **I:** `readInitHostArguments`, `readInitialPayload`, `hasConsumerWindow`, `initHost`, `startHostRuntime`, `createHost`, `createHost.on`, `createHost.init`, `createHost.destroy`, `clearHostInstance`.
+- **O callbacks:** `startHostRuntime.onDestroy`.
+- **I callbacks:** `startHostRuntime.ready.catch`.
 
 Evidence: [host](#evidence-host); typecheck.
 
 ### [core/host/builtin-keys.ts](../packages/forgeframe/src/core/host/builtin-keys.ts)
 
-**Contract only:** types, re-exports, or immutable declarations; no runtime callables.
+The reserved built-in names and the declaration policy that rejects definitions for them. `create()` and `initHost()` share the policy; entries set to `undefined` count as omitted.
+
+- **O:** `assertNoReservedPropDefinitions`.
 
 Evidence: [host](#evidence-host); typecheck.
 
 ### [core/host/component.ts](../packages/forgeframe/src/core/host/component.ts)
 
-Constructor proxies bind the host's own fields and its props and transport runtimes. Accessors delegate. The constructor has one startup path: it selects the messaging target, starts with built-in host props and an empty consumer snapshot, makes `ready` the verified bootstrap, and makes INIT wait for it. Bootstrap readiness, source verification, and teardown are explicit integrations.
+Constructor proxies bind the host's own fields and its props and transport runtimes. Accessors delegate. The constructor has one startup path: it selects the messaging target and checks it against the allowlist before BOOTSTRAP, starts with built-in host props and an empty consumer snapshot, makes `ready` the verified bootstrap, and makes INIT wait for it. With `autoInit`, the constructor calls `init()`; otherwise INIT waits for the caller. Bootstrap readiness, source verification, and teardown are explicit integrations. `ready` resolves to the live host props; its rejection observer only prevents an unhandled rejection.
 
-`HostComponent.destroy` sequences transport, observer, and prop cleanup before notifying its bootstrap owner. The owner callback is local to that owner, so stale or repeated destruction cannot clear a replacement host; `consumer-host-handshake.test.ts` covers this.
+`HostComponent.destroy` notifies its bootstrap owner first, then sequences transport, observer, and prop cleanup. The owner callback is local to that owner, so stale or repeated destruction cannot clear a replacement host; `consumer-host-handshake.test.ts` covers this.
 
-When host schemas reject the bootstrap snapshot, `initializeFromConsumer` asks the transport to report the failure to the verified, allowed consumer before rejecting `ready`; consumer-domain rejections are not reported.
+When host schemas reject the bootstrap snapshot, `initializeFromConsumer` asks the transport to report the failure to the verified, allowed consumer before rejecting `ready`; consumer-domain rejections are not reported. After the bootstrap response, it passes the messaging consumer origin to the shared allowlist policy in `consumer-origin-policy.ts` again, as defence in depth.
 
-`HostComponent.hasCompletedBootstrap` reads readiness state. Configuration validates the prop replacement before updating domain configuration. The readiness fulfillment observer (`ready.then`) records bootstrap completion; its rejection callback leaves an incomplete runtime unready. `assertAllowedConsumerDomain` passes the messaging consumer origin to the shared allowlist policy in `consumer-origin-policy.ts`.
-
-- **O:** `HostComponent.hasCompletedBootstrap`, `HostComponent.constructor.ready.then`, `HostComponent.constructor.getConsumerDomain@88`, `HostComponent.constructor.beforeInit`, `HostComponent.constructor.getConsumerWindow`, `HostComponent.constructor.getConsumerDomain@111`, `HostComponent.constructor.getBridge`, `HostComponent.constructor.get@119`, `HostComponent.constructor.get@123`, `HostComponent.constructor.isConsumerSource`.
-- **I:** `HostComponent.constructor`, `HostComponent.constructor.close`, `HostComponent.constructor.focus`, `HostComponent.constructor.resize`, `HostComponent.constructor.show`, `HostComponent.constructor.hide`, `HostComponent.constructor.onError`, `HostComponent.constructor.exportData`, `HostComponent.constructor.consumerExport`, `HostComponent.constructor.getPeerInstances`, `HostComponent.constructor.onFirstHostPropsAccess`, `HostComponent.constructor.applySerializedProps`, `HostComponent.initializeFromConsumer`, `HostComponent.hostProps@181`, `HostComponent.hostProps@185`, `HostComponent.flushInit`, `HostComponent.getProps`, `HostComponent.getInitError`, `HostComponent.applyHostConfiguration`, `HostComponent.assertAllowedConsumerDomain`, `HostComponent.destroy`.
-- **O callbacks:** `HostComponent.constructor.callback@142`.
+- **O:** `HostComponent.constructor.getConsumerDomain@92`, `HostComponent.constructor.beforeInit`, `HostComponent.constructor.getConsumerWindow`, `HostComponent.constructor.getConsumerDomain@114`, `HostComponent.constructor.getBridge`, `HostComponent.constructor.get@121`, `HostComponent.constructor.get@125`, `HostComponent.constructor.isConsumerSource`.
+- **I:** `HostComponent.constructor`, `HostComponent.constructor.close`, `HostComponent.constructor.focus`, `HostComponent.constructor.resize`, `HostComponent.constructor.show`, `HostComponent.constructor.hide`, `HostComponent.constructor.onError`, `HostComponent.constructor.exportData`, `HostComponent.constructor.consumerExport`, `HostComponent.constructor.getPeerInstances`, `HostComponent.constructor.applySerializedProps`, `HostComponent.initializeFromConsumer`, `HostComponent.hostProps`, `HostComponent.init`, `HostComponent.destroy`.
+- **O callbacks:** `HostComponent.constructor.callback@139`.
 
 Evidence: [host](#evidence-host); typecheck.
 
 ### [core/host/consumer-origin-policy.ts](../packages/forgeframe/src/core/host/consumer-origin-policy.ts)
 
-All trust policy works from supplied origins and options. A messaging target must be an exact HTTP(S) origin that passes the allowlist, and stays provisional until the bootstrap exchange verifies the source window. `validateMessagingConsumerContext` returns that origin unchanged. `assertAllowedConsumerDomain` is the one allowlist check: the messaging context and a host's later allowlist recheck both use it.
+All trust policy works from supplied origins and options. A messaging target must be an exact HTTP(S) origin that passes the allowlist, and stays provisional until the bootstrap exchange verifies the source window. `validateMessagingConsumerContext` returns that origin unchanged. `assertAllowedConsumerDomain` is the one allowlist check: the messaging context and the coordinator's post-bootstrap check both use it. The allowlist is always supplied.
 
 - **O:** `assertAllowedConsumerDomain`, `validateMessagingConsumerContext`.
 
@@ -288,18 +291,18 @@ Evidence: [host](#evidence-host), [consumer-origin-policy.test](../packages/forg
 
 Building stable built-in references is separate from consumer snapshot commitment (`commitSerializedProps`) and subscriber notification (`publishProps`). An update acknowledged before a messaging bootstrap completes is committed but not published; `applyBootstrap` attaches nested children, marks the runtime initialized, and publishes the final snapshot once, so the first `onProps` call can read `hostProps.children`. Stale custom props are found by own-key membership, so inherited names cannot keep an old value. Subscribers run only after reconciliation; notification observes promise and thenable failures without awaiting user work, so acknowledgement and event order are unaffected.
 
-`HostPropsRuntime.filterConsumerOnlyProps` and its filter callback are **O** admission operations that use own-key membership and the delivered definitions; undeclared fields pass through. `deserialize` filters wire snapshots before calling the codec. `applyHostConfiguration` applies the same filter to committed props and validates the candidate against an initialized or already committed bootstrap snapshot before changing definitions or state; it then removes stale keys and reconciles both snapshots without notifying. Built-in controls and retained callbacks keep their identity. Late configuration validates with the same delivered definitions as bootstrap and live updates, which use the current definitions even when an acknowledged update arrives before configuration and bootstrap complete. Consumer-only definitions are excluded from host validation, so required local inputs do not block initialization.
+`HostPropsRuntime.filterConsumerOnlyProps` and its filter callback are **O** admission operations that use own-key membership and the delivered definitions; undeclared fields pass through. `deserialize` filters wire snapshots before calling the codec. The definitions are fixed when the runtime is constructed; bootstrap and live updates validate with the same delivered definitions, including an acknowledged update that arrives before bootstrap completes. Consumer-only definitions are excluded from host validation, so required local inputs do not block initialization. The runtime defines no window global, and reading `hostProps` has no side effects.
 
 Notification snapshots handlers with weak registration tokens. New registrations and cancel-and-register replacements wait for the next notification; cancellation or destruction skips pending delivery. Duplicate registrations keep their original token, and cancellation removes only the registration whose token it captured, so an old or duplicate handle cannot cancel a later registration of the same callback. `onProps` and its cancellation callback are **O** state operations, covered through public update delivery. The snapshot map callback is **O**. The rejection callback in `HostPropsRuntime.notifyPropsHandlers` is an **O** callback boundary: it logs one observer failure and leaves prop state alone.
 
-- **O:** `filterReservedHostPropKeys`, `HostPropsRuntime.constructor`, `HostPropsRuntime.createHostProps.getConsumer`, `HostPropsRuntime.exposeHostProps.set`, `HostPropsRuntime.commitHostProps`, `HostPropsRuntime.notifyPropsHandlers`, `HostPropsRuntime.destroy`, `HostPropsRuntime.onProps`, `HostPropsRuntime.onProps.cancel`, `HostPropsRuntime.removeStaleHostProps`, `HostPropsRuntime.filterConsumerOnlyProps`, `HostPropsRuntime.getDeliveredPropDefinitions`.
-- **I:** `HostPropsRuntime.initializeHostProps`, `HostPropsRuntime.createHostProps`, `HostPropsRuntime.createHostProps.close`, `HostPropsRuntime.createHostProps.focus`, `HostPropsRuntime.createHostProps.resize`, `HostPropsRuntime.createHostProps.show`, `HostPropsRuntime.createHostProps.hide`, `HostPropsRuntime.createHostProps.onProps`, `HostPropsRuntime.createHostProps.onError`, `HostPropsRuntime.createHostProps.getConsumerDomain`, `HostPropsRuntime.createHostProps.export@87`, `HostPropsRuntime.createHostProps.export@90`, `HostPropsRuntime.createHostProps.getPeerInstances`, `HostPropsRuntime.exposeHostProps`, `HostPropsRuntime.exposeHostProps.get`, `HostPropsRuntime.applyHostConfiguration`, `HostPropsRuntime.applyBootstrap`, `HostPropsRuntime.applySerializedProps`, `HostPropsRuntime.commitSerializedProps`, `HostPropsRuntime.publishProps`, `HostPropsRuntime.deserialize`, `HostPropsRuntime.buildNestedComponents`.
+- **O:** `filterReservedHostPropKeys`, `HostPropsRuntime.constructor`, `HostPropsRuntime.createHostProps.getConsumer`, `HostPropsRuntime.commitHostProps`, `HostPropsRuntime.notifyPropsHandlers`, `HostPropsRuntime.destroy`, `HostPropsRuntime.onProps`, `HostPropsRuntime.onProps.cancel`, `HostPropsRuntime.removeStaleHostProps`, `HostPropsRuntime.filterConsumerOnlyProps`, `HostPropsRuntime.getDeliveredPropDefinitions`.
+- **I:** `HostPropsRuntime.initializeHostProps`, `HostPropsRuntime.createHostProps`, `HostPropsRuntime.createHostProps.close`, `HostPropsRuntime.createHostProps.focus`, `HostPropsRuntime.createHostProps.resize`, `HostPropsRuntime.createHostProps.show`, `HostPropsRuntime.createHostProps.hide`, `HostPropsRuntime.createHostProps.onProps`, `HostPropsRuntime.createHostProps.onError`, `HostPropsRuntime.createHostProps.getConsumerDomain`, `HostPropsRuntime.createHostProps.export@86`, `HostPropsRuntime.createHostProps.export@89`, `HostPropsRuntime.createHostProps.getPeerInstances`, `HostPropsRuntime.applyBootstrap`, `HostPropsRuntime.applySerializedProps`, `HostPropsRuntime.commitSerializedProps`, `HostPropsRuntime.publishProps`, `HostPropsRuntime.deserialize`, `HostPropsRuntime.buildNestedComponents`.
 
 Evidence: [host](#evidence-host); typecheck.
 
 ### [core/host/security.ts](../packages/forgeframe/src/core/host/security.ts)
 
-Browser observations are separate from policy. A directly accessible consumer origin is preferred over the payload's claimed origin; the referrer is not observed.
+Browser observations are separate from policy. A directly accessible consumer origin is preferred over the payload's claimed origin; the referrer is not observed. `resolveMessagingConsumerContext` always passes the host's allowlist to the policy.
 
 - **O:** `resolveConsumerWindow`, `getAccessibleConsumerOrigin`.
 - **I:** `resolveMessagingConsumerContext`.
@@ -308,16 +311,13 @@ Evidence: [host](#evidence-host); typecheck.
 
 ### [core/host/transport.ts](../packages/forgeframe/src/core/host/transport.ts)
 
-Outbound export batches share a FIFO queue. A serialization failure aborts new bridge registrations, a send failure keeps possibly delivered references, and acknowledged delivery retires stale IDs. The INIT workflow awaits `beforeInit` (the verified bootstrap), guards against destruction after its await, sends INIT with only the session ID, captures errors, and reports events; a rejection caused by teardown is not an initialization failure and is not logged. `reportInitFailure` sends a best-effort ERROR marked `initFailed`, whose rejection after teardown is ignored. Teardown posts a best-effort one-way TEARDOWN notice before destroying the messenger, because the consumer's calls wait without a timeout and calls not yet dispatched would never be answered. Browser focus is part of the focus integration, which waits briefly for this window to receive the consumer's frame focus before resolving, unless the consumer's acknowledgement reports that its page has no focus to pass on; a popup host resizes its own window before notifying the consumer, which cannot resize it across origins. Peer lookup sends only the caller's options, sequences a correlated response and recursive decoding through the separate peer-call bridge, so prop and export batches cannot retire relay wrappers.
+Outbound export batches share a FIFO queue. A serialization failure aborts new bridge registrations, a send failure keeps possibly delivered references, and acknowledged delivery retires stale IDs. `sendInitOnce` launches the INIT workflow at most once and never after teardown; the coordinator calls it from `init()`. The workflow awaits `beforeInit` (the verified bootstrap); a rejected start sends and reports nothing, because `ready` already reports it. It then guards against destruction after its await, sends INIT with only the session ID, captures errors, and reports events; a rejection caused by teardown is not an initialization failure and is not logged. `reportInitFailure` sends a best-effort ERROR marked `initFailed`, whose rejection after teardown is ignored. Teardown posts a best-effort one-way TEARDOWN notice before destroying the messenger, because the consumer's calls wait without a timeout and calls not yet dispatched would never be answered. Browser focus is part of the focus integration, which waits briefly for this window to receive the consumer's frame focus before resolving, unless the consumer's acknowledgement reports that its page has no focus to pass on; a popup host resizes its own window before notifying the consumer, which cannot resize it across origins. Peer lookup sends only the caller's options, sequences a correlated response and recursive decoding through the separate peer-call bridge, so prop and export batches cannot retire relay wrappers.
 
-- **O:** `HostTransport.getInitError`.
 - **I:** `HostTransport.constructor`, `HostTransport.registerPropsHandler`, `HostTransport.requestBootstrap`, `HostTransport.close`, `HostTransport.focus`, `HostTransport.resize`, `HostTransport.show`, `HostTransport.hide`, `HostTransport.onError`, `HostTransport.reportInitFailure`, `HostTransport.exportData`, `HostTransport.sendExportBatch`, `HostTransport.consumerExport`, `HostTransport.getPeerInstances`, `HostTransport.destroy`, `HostTransport.sendInit`, `HostTransport.sendMessage`.
-- **M:** `HostTransport.handleHostPropsAccess`, `HostTransport.flushInit`, `HostTransport.scheduleDeferredInitFlush`.
-- **O callbacks:** `HostTransport.constructor.callback@57`, `HostTransport.reportInitFailure.callback@168`, `HostTransport.exportData.callback@175`.
-- **I callbacks:** `HostTransport.registerPropsHandler.callback@73`, `HostTransport.exportData.callback@172`, `HostTransport.scheduleDeferredInitFlush.callback@256`.
-- **Retained rationale —** `HostTransport.handleHostPropsAccess`: One deferred-init guard and one scheduling call keep accessor-triggered timing visible.
-- **Retained rationale —** `HostTransport.flushInit`: The idempotent guard, flag transition and launch of sendInit are a short atomic scheduling adapter.
-- **Retained rationale —** `HostTransport.scheduleDeferredInitFlush`: A small ownership guard and microtask registration belong together; splitting the flag writes would hide when another flush may be scheduled.
+- **M:** `HostTransport.sendInitOnce`.
+- **O callbacks:** `HostTransport.constructor.callback@53`, `HostTransport.constructor.callback@59`, `HostTransport.reportInitFailure.callback@155`, `HostTransport.exportData.callback@162`.
+- **I callbacks:** `HostTransport.registerPropsHandler.callback@69`, `HostTransport.exportData.callback@159`.
+- **Retained rationale —** `HostTransport.sendInitOnce`: The idempotent guard, flag transition and launch of sendInit are a short atomic adapter.
 
 Evidence: [host](#evidence-host); typecheck.
 
@@ -368,7 +368,7 @@ Evidence: [react](#evidence-react); typecheck.
 
 ### [events/emitter.ts](../packages/forgeframe/src/events/emitter.ts)
 
-Listener storage keeps one registration token per handler and event, as DOM listeners do: registering a handler again keeps the first registration, and `off(event, handler)` also cancels a pending `once`. Each returned unsubscribe function removes only the registration it created, so a stale handle cannot remove a newer registration of the same handler. Emission runs each supplied observer in isolation, from a registration snapshot, in subscription order, and skips registrations removed before their turn, including by bulk removal. A `once` registration is removed immediately before its observer runs. New or replaced registrations wait for the next emission, so a rearmed `once` observer cannot loop within one dispatch. `listenerCount` has no internal caller; it stays because `initHost()` exposes the class through `HostComponent.event`.
+Listener storage keeps one registration token per handler and event, as DOM listeners do: registering a handler again keeps the first registration, and `off(event, handler)` also cancels a pending `once`. Each returned unsubscribe function removes only the registration it created, so a stale handle cannot remove a newer registration of the same handler. Emission runs each supplied observer in isolation, from a registration snapshot, in subscription order, and skips registrations removed before their turn, including by bulk removal. A `once` registration is removed immediately before its observer runs. New or replaced registrations wait for the next emission, so a rearmed `once` observer cannot loop within one dispatch. `listenerCount` has no internal caller; it stays because consumer instances expose the class at runtime through `instance.event`.
 
 - **O:** `EventEmitter.register`, `EventEmitter.register.callback@109`, `EventEmitter.removeRegistration`, `EventEmitter.invokeHandler`, `EventEmitter.off`, `EventEmitter.removeAllListeners`, `EventEmitter.listenerCount`.
 - **I:** `EventEmitter.on`, `EventEmitter.once`, `EventEmitter.emit`.
@@ -376,15 +376,9 @@ Listener storage keeps one registration token per handler and event, as DOM list
 
 Evidence: [contract](#evidence-contract), [emitter.test](../packages/forgeframe/tests/unit/emitter.test.ts); typecheck.
 
-### [forgeframe.ts](../packages/forgeframe/src/forgeframe.ts)
-
-**Contract only:** types, re-exports, or immutable declarations; no runtime callables.
-
-Evidence: [contract](#evidence-contract); typecheck.
-
 ### [index.ts](../packages/forgeframe/src/index.ts)
 
-**Contract only:** types, re-exports, or immutable declarations; no runtime callables.
+**Contract only:** types, re-exports, or immutable declarations; no runtime callables. The entrypoint has named exports only.
 
 Evidence: [contract](#evidence-contract); typecheck.
 
@@ -714,7 +708,7 @@ Evidence: [utilities](#evidence-utilities); typecheck.
 Envelope framing is separate from protocol classification. `classifyWindowNamePayload` is pure policy over a decoded value: current protocol 3 metadata (copied without unknown fields), a payload from another protocol with its protocol and package version, or invalid. An older payload is recognised only when it carries the channel fields every older consumer wrote (uid, tag, context, consumer domain); a newer one needs only its tag. Reading never writes `window.name`; a name that throws or lacks the prefix yields null, and an undecodable or oversized one is invalid.
 
 - **O:** `buildWindowName`, `isObjectRecord`, `isNonEmptyString`, `isContext`, `classifyWindowNamePayload`, `isForgeFrameWindow`, `encodePayload`, `decodePayload`, `createWindowPayload`.
-- **I:** `isHostOfComponent`, `readWindowNamePayload`.
+- **I:** `readWindowNamePayload`.
 
 Evidence: [utilities](#evidence-utilities); typecheck.
 

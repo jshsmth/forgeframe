@@ -2,14 +2,19 @@
  * Host Component Example
  *
  * This demonstrates how to use ForgeFrame from the host (embedded) side.
- * The host receives props from the consumer via window.hostProps.
+ * The host starts explicitly with initHost() and reads its props from
+ * `await host.ready`.
  */
 
-import { create, type HostProps, initHost, isHost, prop } from "forgeframe";
+import { create, type HostProps, initHost, prop } from "forgeframe";
 import { requireValue } from "../require-value";
 
 const NESTED_CHILD_TAG = "playground-browser-nested-child";
 const hostOrigin = window.location.origin;
+const consumerUrl =
+	import.meta.env.VITE_CONSUMER_URL || `${location.protocol}//localhost:5173`;
+// A nested child's consumer is this host page, so its own origin is allowed too.
+const consumerOrigins = [new URL(consumerUrl).origin, hostOrigin];
 
 create({
 	tag: NESTED_CHILD_TAG,
@@ -41,31 +46,17 @@ interface MyProps extends Record<string, unknown> {
 	onAction?: (message: string) => void | Promise<void>;
 }
 
-/**
- * Type window.hostProps using ForgeFrame's HostProps generic.
- * HostProps<MyProps> includes:
- * - All your custom props (name, count, onGreet, etc.)
- * - Built-in ForgeFrame methods (close, resize, focus, show, hide, export, etc.)
- * - Context info (uid, tag, getConsumerDomain, etc.)
- */
-declare global {
-	interface Window {
-		hostProps?: HostProps<MyProps>;
-	}
-}
-
 const app = requireValue(document.getElementById("app"));
 
 /**
  * Render when embedded via ForgeFrame
+ *
+ * HostProps<MyProps> includes:
+ * - All props passed from consumer (name, count, onGreet, etc.)
+ * - Built-in methods (close, resize, focus, show, hide, export, etc.)
+ * - Context info (uid, tag, getConsumerDomain, etc.)
  */
-function renderEmbedded() {
-	// window.hostProps is provided by ForgeFrame and contains:
-	// - All props passed from consumer (name, count, onGreet, etc.)
-	// - Built-in methods (close, resize, focus, show, hide, export, etc.)
-	// - Context info (uid, tag, getConsumerDomain, etc.)
-	const hostProps = requireValue(window.hostProps);
-
+function renderEmbedded(hostProps: HostProps<MyProps>) {
 	// Built-in hostProps keys to exclude from "Received Props"
 	const builtInKeys = new Set([
 		"uid",
@@ -480,14 +471,12 @@ async function waitFor(read: () => boolean, timeoutMs = 4000): Promise<void> {
  * Render when opened directly (not embedded)
  */
 function renderStandalone() {
-	const consumerUrl =
-		import.meta.env.VITE_CONSUMER_URL || "https://localhost:5173";
 	app.innerHTML = `
     <div class="not-embedded">
       <h2>Host Component</h2>
       <p>This page is designed to be embedded via ForgeFrame.</p>
       <p>Open <code>${consumerUrl}</code> and click <strong>Render</strong>.</p>
-      <p class="hint">window.hostProps is not available (no ForgeFrame payload)</p>
+      <p class="hint">initHost() returned null (no ForgeFrame payload)</p>
     </div>
   `;
 }
@@ -501,12 +490,10 @@ const initDelay =
 		: 0;
 
 const initializeHostPage = async () => {
-	// Explicitly initialize the host runtime before reading window.hostProps.
-	const host = initHost();
-	await host?.ready;
-
-	if (isHost()) {
-		renderEmbedded();
+	// This page serves many tags, so it uses the tag-agnostic form.
+	const host = initHost<MyProps>({ consumerOrigins });
+	if (host) {
+		renderEmbedded(await host.ready);
 	} else {
 		renderStandalone();
 	}

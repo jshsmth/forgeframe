@@ -13,10 +13,9 @@ import { deleteRegisteredComponent } from "@/core/component-registry";
 import { ConsumerComponent } from "@/core/consumer";
 import {
 	clearHostInstance,
-	getHostProps,
+	getHost,
 	HostComponent,
 	initHost,
-	isEmbedded,
 	isHost,
 } from "@/core/host";
 import * as hostSecurity from "@/core/host/security";
@@ -54,12 +53,12 @@ function createPayload(
  */
 function createHost({
 	payload = createPayload(),
-	deferInit = true,
+	autoInit = false,
 	consumerWindow = window,
 	propDefinitions = {},
 }: {
 	payload?: WindowNamePayload;
-	deferInit?: boolean;
+	autoInit?: boolean;
 	consumerWindow?: Window;
 	propDefinitions?: HostPropsDefinition<Record<string, unknown>>;
 } = {}): HostComponent<Record<string, unknown>> {
@@ -67,7 +66,7 @@ function createHost({
 		consumerWindow,
 	);
 
-	return new HostComponent(payload, propDefinitions, undefined, deferInit);
+	return new HostComponent(payload, propDefinitions, "*", autoInit);
 }
 
 /**
@@ -136,67 +135,23 @@ afterEach(async () => {
 	}
 	clearHostInstance();
 	vi.restoreAllMocks();
-	delete (window as unknown as { hostProps?: unknown }).hostProps;
 	window.name = originalWindowName;
 });
 
 describe("Host lifecycle behavior", () => {
-	it("reconciles late private fields only after replacement validation succeeds", async () => {
-		const host = await createBootstrappedHost({
-			amount: 10,
-			local: "private",
-			close: "wire value",
-		});
-		try {
-			const previous = host.hostProps.consumer.props;
-			const close = host.hostProps.close;
-			const privateDefinitions = {
-				local: { schema: prop.string(), required: true, sendToHost: false },
-				close: { schema: prop.string(), sendToHost: false },
-			};
-			expect(() =>
-				host.applyHostConfiguration({
-					...privateDefinitions,
-					amount: prop.number().min(100),
-				}),
-			).toThrow("Number must be >= 100");
-			expect(host.hostProps.consumer.props).toBe(previous);
-			expect(host.hostProps.local).toBe("private");
-			const propsHandler = requireValue(
-				(
-					host as unknown as {
-						messenger: { handlers: Map<string, DirectHandler> };
-					}
-				).messenger.handlers.get(MESSAGE_NAME.PROPS),
-			);
-			expect(
-				propsHandler(
-					{ amount: 11, local: "next", close: "wire value" },
-					createMessageSource(window),
-				),
-			).toEqual({ success: true });
-			expect(host.hostProps.local).toBe("next");
-			const definitions = { ...privateDefinitions, amount: prop.number() };
-			host.applyHostConfiguration(definitions);
-			expect(host.hostProps.consumer.props).toEqual({ amount: 11 });
-			expect(Object.hasOwn(host.hostProps, "local")).toBe(false);
-			expect(host.hostProps.close).toBe(close);
-			const filtered = host.hostProps.consumer.props;
-			host.applyHostConfiguration(definitions);
-			expect(host.hostProps.consumer.props).toBe(filtered);
-		} finally {
-			host.destroy();
-		}
-	});
-
-	it("does not restore purged acknowledged fields when pending bootstrap completes", async () => {
+	it("keeps consumer-only fields out of an acknowledged update that outlives a pending bootstrap", async () => {
 		const bootstrap = createDeferred<{
 			props: { amount: number; local: string };
 		}>();
 		vi.spyOn(Messenger.prototype, "send").mockImplementation(
 			() => bootstrap.promise,
 		);
-		const host = createHost();
+		const host = createHost({
+			propDefinitions: {
+				amount: prop.number(),
+				local: { schema: prop.string(), required: true, sendToHost: false },
+			},
+		});
 		try {
 			const propsHandler = requireValue(
 				(
@@ -211,10 +166,6 @@ describe("Host lifecycle behavior", () => {
 					createMessageSource(window),
 				),
 			).toEqual({ success: true });
-			host.applyHostConfiguration({
-				amount: prop.number(),
-				local: { schema: prop.string(), required: true, sendToHost: false },
-			});
 			expect(host.hostProps.consumer.props).toEqual({ amount: 42 });
 			bootstrap.resolve({ props: { amount: 10, local: "old private" } });
 			await host.ready;
@@ -320,7 +271,11 @@ describe("Host lifecycle behavior", () => {
 
 		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
 
-		const host = initHost(definitions, undefined, { deferInit: true });
+		const host = initHost({
+			props: definitions,
+			consumerOrigins: "*",
+			autoInit: false,
+		});
 
 		expect(host).not.toBeNull();
 		expect(requireValue(host).hostProps.label).toBeUndefined();
@@ -337,14 +292,11 @@ describe("Host lifecycle behavior", () => {
 			.mockResolvedValueOnce({ props: { amount: 42 } })
 			.mockResolvedValue(undefined);
 
-		const host = requireValue(
-			initHost(undefined, undefined, { deferInit: true }),
-		);
+		const host = requireValue(initHost({ consumerOrigins: "*" }));
 
 		expect(window.name).toBe(bootstrapWindowName);
 		expect(isHost()).toBe(true);
-		expect(isEmbedded()).toBe(true);
-		expect(getHostProps()).toBe(host.hostProps);
+		expect(getHost()?.hostProps).toBe(host.hostProps);
 		await host.ready;
 		expect(host.hostProps.amount).toBe(42);
 		expect(window.name).toBe(bootstrapWindowName);
@@ -377,11 +329,11 @@ describe("Host lifecycle behavior", () => {
 		vi.spyOn(Messenger.prototype, "send").mockResolvedValueOnce({
 			props: { amount: 42 },
 		});
-		const host = initHost<{ amount: number }, { amount: string }>(
-			definitions,
-			undefined,
-			{ deferInit: true },
-		);
+		const host = initHost<{ amount: number }, { amount: string }>({
+			props: definitions,
+			consumerOrigins: "*",
+			autoInit: false,
+		});
 		await host?.ready;
 
 		expect(host?.hostProps.amount).toBe(42);
@@ -407,12 +359,6 @@ describe("Host lifecycle behavior", () => {
 		);
 		expect(optionalOutputHost.hostProps.amount).toBeUndefined();
 		optionalOutputHost.destroy();
-
-		const unconfiguredHost = await createBootstrappedHost({});
-		expect(() =>
-			unconfiguredHost.applyHostConfiguration(optionalOutputDefinitions),
-		).not.toThrow();
-		unconfiguredHost.destroy();
 
 		vi.spyOn(console, "error").mockImplementation(() => {});
 		await expect(
@@ -469,65 +415,21 @@ describe("Host lifecycle behavior", () => {
 		);
 	});
 
-	it("should validate normalized props when host configuration arrives after bootstrap", async () => {
-		const host = await createBootstrappedHost({ amount: 42 });
-
-		expect(() =>
-			host.applyHostConfiguration({
-				amount: {
-					schema: z.string().transform(Number),
-					outputSchema: z.number().int().positive(),
-				},
-			}),
-		).not.toThrow();
-		expect(host.hostProps.amount).toBe(42);
-	});
-
-	it("should preserve the previous host configuration when a replacement is invalid", async () => {
-		const host = await createBootstrappedHost(
-			{ amount: 10 },
-			{ propDefinitions: { amount: { schema: prop.number() } } },
-		);
-
-		expect(() =>
-			host.applyHostConfiguration({
-				amount: {
-					schema: z.string().transform(Number),
-					outputSchema: z.number().min(100),
-				},
-			}),
-		).toThrow("Too small: expected number to be >=100");
-
-		const propsHandler = (
-			host as unknown as {
-				messenger: { handlers: Map<string, DirectHandler> };
-			}
-		).messenger.handlers.get(MESSAGE_NAME.PROPS);
-
-		expect(propsHandler).toBeDefined();
-		expect(
-			requireValue(propsHandler)({ amount: 11 }, createMessageSource(window)),
-		).toEqual({
-			success: true,
-		});
-		expect(host.hostProps.amount).toBe(11);
-	});
-
 	it("should not create a host instance for invalid bootstrap payloads", () => {
 		const invalidName = "__forgeframe__not-valid-base64";
 		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 		window.name = invalidName;
 
-		expect(initHost(undefined, undefined, { deferInit: true })).toBeNull();
+		expect(initHost({ consumerOrigins: "*" })).toBeNull();
 		expect(isHost()).toBe(true);
-		expect(getHostProps()).toBeUndefined();
+		expect(getHost()).toBeNull();
 		expect(window.name).toBe(invalidName);
 		expect(errorSpy).toHaveBeenCalledWith(
 			"Failed to parse ForgeFrame payload from window.name",
 		);
 	});
 
-	it("validates late configuration of a verified same-origin host without relaxing required sameDomain props", async () => {
+	it("does not relax required sameDomain props for a verified same-origin host", async () => {
 		window.name = buildWindowName(
 			createPayload({ consumerDomain: window.location.origin }),
 		);
@@ -535,26 +437,23 @@ describe("Host lifecycle behavior", () => {
 		vi.spyOn(Messenger.prototype, "send").mockResolvedValueOnce({
 			props: { label: "visible" },
 		});
-		const host = requireValue(
-			initHost({ label: prop.string() }, undefined, { deferInit: true }),
-		);
-		await host.ready;
-		expect(host.hostProps.getConsumerDomain()).toBe(window.location.origin);
 		vi.spyOn(console, "error").mockImplementation(() => {});
-
-		// Bootstrap and updates would reject this snapshot, so late configuration does too.
-		expect(() =>
-			initHost(
-				{
+		const host = requireValue(
+			initHost({
+				props: {
 					label: prop.string(),
 					secret: { schema: prop.string(), sameDomain: true, required: true },
 				},
-				undefined,
-				{ deferInit: true },
-			),
-		).toThrow('Prop "secret" is required but was not provided');
-		expect(getHostProps()).toBe(host.hostProps);
-		expect(host.hostProps.label).toBe("visible");
+				consumerOrigins: window.location.origin,
+				autoInit: false,
+			}),
+		);
+
+		await expect(host.ready).rejects.toThrow(
+			'Prop "secret" is required but was not provided',
+		);
+		expect(host.hostProps.getConsumerDomain()).toBe(window.location.origin);
+		expect(getHost()).toBeNull();
 	});
 
 	it("should still reject missing required sameDomain props for cross-origin hosts", async () => {
@@ -795,7 +694,7 @@ describe("Host lifecycle behavior", () => {
 		vi.spyOn(helpers, "getConsumer").mockReturnValue(consumerWindow);
 		vi.spyOn(helpers, "isPopup").mockReturnValue(false);
 
-		const host = new HostComponent(createPayload(), {}, undefined, true);
+		const host = new HostComponent(createPayload(), {}, "*", false);
 		expect(host.hostProps.getConsumer()).toBe(consumerWindow);
 	});
 
@@ -805,7 +704,7 @@ describe("Host lifecycle behavior", () => {
 		vi.spyOn(helpers, "isPopup").mockReturnValue(true);
 		vi.spyOn(helpers, "getOpener").mockReturnValue(openerWindow);
 
-		const host = new HostComponent(createPayload(), {}, undefined, true);
+		const host = new HostComponent(createPayload(), {}, "*", false);
 		expect(host.hostProps.getConsumer()).toBe(openerWindow);
 	});
 
@@ -813,8 +712,8 @@ describe("Host lifecycle behavior", () => {
 		vi.spyOn(helpers, "isIframe").mockReturnValue(false);
 		vi.spyOn(helpers, "isPopup").mockReturnValue(false);
 
-		expect(
-			() => new HostComponent(createPayload(), {}, undefined, true),
-		).toThrow("Could not resolve consumer window");
+		expect(() => new HostComponent(createPayload(), {}, "*", false)).toThrow(
+			"Could not resolve consumer window",
+		);
 	});
 });

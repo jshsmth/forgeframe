@@ -101,6 +101,8 @@ test.beforeAll(async () => {
 					"import.meta.env.VITE_CONSUMER_URL": JSON.stringify(
 						fixture.consumerOrigin,
 					),
+					// Exposes the payment host's ready props to these tests only.
+					__FORGEFRAME_PAYMENT_TEST_HOOK__: "true",
 				},
 				build: { write: false },
 			}),
@@ -331,7 +333,10 @@ for (const context of ["iframe", "popup"] as const) {
 		await page.goto(`${consumerOrigin}/company`);
 		const provider = await openPayment(page, context);
 		const rejection = await provider.locator("body").evaluate(async () => {
-			const props = Reflect.get(window, "hostProps");
+			const { hostProps: props } = Reflect.get(
+				window,
+				"__forgeframePaymentTest",
+			);
 			try {
 				await props.onResult({
 					status: "approved",

@@ -15,9 +15,4 @@ export {
 	destroyByTag,
 } from "./component";
 
-export {
-	getHostProps,
-	initHost,
-	isEmbedded,
-	isHost,
-} from "./host";
+export { initHost, isHost } from "./host";
