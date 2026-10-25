@@ -111,18 +111,6 @@ export class HostTransport {
 		);
 	}
 
-	updateTrustedConsumerDomain(
-		previousDomain: string,
-		nextDomain: string,
-	): void {
-		if (!previousDomain || previousDomain === nextDomain) {
-			return;
-		}
-
-		this.messenger.removeTrustedDomain(previousDomain);
-		this.messenger.addTrustedDomain(nextDomain);
-	}
-
 	async close(): Promise<void> {
 		await this.sendMessage(MESSAGE_NAME.CLOSE, {});
 	}
@@ -218,17 +206,13 @@ export class HostTransport {
 		options?: GetPeerInstancesOptions,
 	): Promise<SiblingInfo[]> {
 		const response = await this.messenger.send<
-			{ uid: string; tag: string; options?: GetPeerInstancesOptions },
+			{ options?: GetPeerInstancesOptions },
 			SiblingInfo[]
 		>(
 			this.options.consumerWindow,
 			this.options.getConsumerDomain(),
 			MESSAGE_NAME.GET_SIBLINGS,
-			{
-				uid: this.options.uid,
-				tag: this.options.tag,
-				options,
-			},
+			{ options },
 		);
 
 		return deserializeFunctions(
@@ -277,15 +261,9 @@ export class HostTransport {
 
 	private async sendInit(): Promise<void> {
 		try {
-			if (this.options.beforeInit) {
-				await this.options.beforeInit();
-				if (this.destroyed) return;
-			}
-			await this.sendMessage(MESSAGE_NAME.INIT, {
-				uid: this.options.uid,
-				tag: this.options.tag,
-				...(this.options.beforeInit ? { sessionId: this.sessionId } : {}),
-			});
+			await this.options.beforeInit();
+			if (this.destroyed) return;
+			await this.sendMessage(MESSAGE_NAME.INIT, { sessionId: this.sessionId });
 		} catch (error) {
 			// Teardown rejects pending work; that is not an initialization failure.
 			if (this.destroyed) return;

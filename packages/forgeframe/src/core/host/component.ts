@@ -8,19 +8,17 @@
  * preserving the public host runtime surface exported from `src/core/host.ts`.
  */
 
-import { PROTOCOL_VERSION } from "../../constants";
 import { EventEmitter } from "../../events/emitter";
 import { EMPTY_PROP_DEFINITIONS } from "../../props/definitions";
 import type { HostPropsDefinition } from "../../types/props";
 import type { HostProps } from "../../types/runtime";
 import type { DomainMatcher } from "../../types/utility";
 import { normalizeError } from "../../utils/error";
-import { matchDomain } from "../../window/helpers";
 import type { WindowNamePayload } from "../../window/types";
+// Aliased so the method that delegates to it does not read as recursion.
+import { assertAllowedConsumerDomain as assertConsumerDomainAllowed } from "./consumer-origin-policy";
 import { HostPropsRuntime } from "./props-runtime";
 import {
-	reassertAllowedConsumerDomain,
-	resolveConsumerSecurityContext,
 	resolveConsumerWindow,
 	resolveMessagingConsumerContext,
 } from "./security";
@@ -43,8 +41,6 @@ export class HostComponent<
 
 	private consumerDomain!: string;
 
-	private consumerDomainVerified = false;
-
 	private allowedConsumerDomains?: DomainMatcher;
 
 	private transport!: HostTransport;
@@ -52,11 +48,10 @@ export class HostComponent<
 	private propsRuntime!: HostPropsRuntime<P, SchemaInputs>;
 
 	private destroyed = false;
-	private messagingBootstrap: boolean;
 	private bootstrapCompleted = false;
 
 	constructor(
-		payload: WindowNamePayload<P>,
+		payload: WindowNamePayload,
 		propDefinitions: HostPropsDefinition<
 			P,
 			SchemaInputs
@@ -69,8 +64,6 @@ export class HostComponent<
 		this.tag = payload.tag;
 		this.event = new EventEmitter();
 		this.allowedConsumerDomains = allowedConsumerDomains;
-		const deferredProps = payload.protocolVersion === PROTOCOL_VERSION;
-		this.messagingBootstrap = deferredProps;
 
 		let transport: HostTransport | null = null;
 		let propsRuntime: HostPropsRuntime<P, SchemaInputs> | null = null;
@@ -78,30 +71,23 @@ export class HostComponent<
 		try {
 			this.consumerWindow = resolveConsumerWindow();
 
-			const securityContext = (
-				deferredProps
-					? resolveMessagingConsumerContext
-					: resolveConsumerSecurityContext
-			)({
+			// The bootstrap exchange verifies this target before any props arrive.
+			this.consumerDomain = resolveMessagingConsumerContext({
 				consumerWindow: this.consumerWindow,
 				claimedConsumerDomain: payload.consumerDomain,
 				allowedConsumerDomains: this.allowedConsumerDomains,
 				tag: this.tag,
 			});
 
-			this.consumerDomain = securityContext.consumerDomain;
-			this.consumerDomainVerified = securityContext.consumerDomainVerified;
-
 			transport = new HostTransport({
 				uid: this.uid,
-				tag: this.tag,
 				context: payload.context,
 				event: this.event,
 				consumerWindow: this.consumerWindow,
 				consumerDomain: this.consumerDomain,
 				getConsumerDomain: () => this.consumerDomain,
 				deferInit,
-				beforeInit: deferredProps ? () => this.ready : undefined,
+				beforeInit: () => this.ready,
 			});
 			this.transport = transport;
 
@@ -123,7 +109,6 @@ export class HostComponent<
 				},
 				getConsumerWindow: () => this.consumerWindow,
 				getConsumerDomain: () => this.consumerDomain,
-				isConsumerDomainVerified: () => this.consumerDomainVerified,
 				getBridge: () => this.transport.bridge,
 				onFirstHostPropsAccess: () => this.transport.handleHostPropsAccess(),
 			});
@@ -145,18 +130,9 @@ export class HostComponent<
 					this.propsRuntime.applySerializedProps(serializedProps),
 			});
 
-			this.hostProps = this.propsRuntime.initializeHostProps(
-				deferredProps
-					? { ...payload, props: {}, children: undefined }
-					: payload,
-				!deferredProps,
-			);
+			this.hostProps = this.propsRuntime.initializeHostProps();
 			this.propsRuntime.exposeHostProps();
-			// Legacy props have already passed synchronous validation above.
-			this.bootstrapCompleted = !deferredProps;
-			this.ready = deferredProps
-				? this.initializeFromConsumer()
-				: Promise.resolve();
+			this.ready = this.initializeFromConsumer();
 			// Callers can await ready; deferred initialization must not create an
 			// unhandled rejection when the embedding consumer has already closed.
 			void this.ready.then(
@@ -189,7 +165,6 @@ export class HostComponent<
 		) {
 			throw new Error("Invalid consumer bootstrap response");
 		}
-		this.consumerDomainVerified = true;
 		if (this.allowedConsumerDomains !== undefined)
 			this.assertAllowedConsumerDomain(this.allowedConsumerDomains);
 		try {
@@ -242,27 +217,11 @@ export class HostComponent<
 	}
 
 	assertAllowedConsumerDomain(allowedConsumerDomains: DomainMatcher): void {
-		if (this.messagingBootstrap) {
-			if (!matchDomain(allowedConsumerDomains, this.consumerDomain)) {
-				throw new Error(
-					`Consumer domain "${this.consumerDomain}" is not allowed for component "${this.tag}"`,
-				);
-			}
-			return;
-		}
-		const securityContext = reassertAllowedConsumerDomain({
-			consumerWindow: this.consumerWindow,
-			consumerDomain: this.consumerDomain,
-			consumerDomainVerified: this.consumerDomainVerified,
+		assertConsumerDomainAllowed(
 			allowedConsumerDomains,
-			tag: this.tag,
-			onConsumerDomainChange: (previousDomain, nextDomain) => {
-				this.transport.updateTrustedConsumerDomain(previousDomain, nextDomain);
-			},
-		});
-
-		this.consumerDomain = securityContext.consumerDomain;
-		this.consumerDomainVerified = securityContext.consumerDomainVerified;
+			this.consumerDomain,
+			this.tag,
+		);
 	}
 
 	destroy(): void {

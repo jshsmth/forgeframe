@@ -71,7 +71,7 @@ For example, a payment provider lets merchants embed its checkout form:
 - [React Integration (Optional)](#react-integration-optional)
 - [Advanced Features](#advanced-features)
 - [Versioning](#versioning)
-- [Migrating from pre-v1 to v1](#migrating-from-pre-v1-to-v1)
+- [Migrating from v1 to v2](#migrating-from-v1-to-v2)
 - [API Reference](#api-reference)
 - [TypeScript](#typescript)
 - [Browser Support](#browser-support)
@@ -643,7 +643,7 @@ In iframe mode, ForgeFrame sets `sandbox="allow-scripts allow-same-origin allow-
 
 ### Host Init with initHost
 
-`initHost(propDefinitions?, allowedConsumerDomains?)` starts the host runtime. It reads channel metadata from `window.name`, requests the initial props through origin-checked messaging, validates them, and attaches `window.hostProps`. Await the returned host's `ready` promise before reading props or nested children; initialization errors reject `ready`. Outside a ForgeFrame host window, `initHost()` returns `null`, so handle that case if the page can also run standalone.
+`initHost(propDefinitions?, allowedConsumerDomains?)` starts the host runtime. It reads channel metadata from `window.name`, requests the initial props through origin-checked messaging, validates them, and attaches `window.hostProps`. Await the returned host's `ready` promise before reading props or nested children; initialization errors reject `ready`. Outside a ForgeFrame host window, `initHost()` returns `null`, so handle that case if the page can also run standalone. In a window opened by a consumer on another ForgeFrame major version, `initHost()` throws an error that names the consumer's version and sends that consumer nothing; upgrade consumer and host together.
 
 Host startup patterns:
 
@@ -1021,60 +1021,15 @@ Register every child tag in the host bundle before `initHost()`. The host takes 
 
 ForgeFrame 1.x follows semantic versioning for its public API. Read the [GitHub release notes](https://github.com/jshsmth/ForgeFrame/releases) before upgrading, and upgrade consumer and host bundles together when a release changes wire behavior.
 
+- **From 1.x to 2.x:** upgrade the consumer and host together; a v2 host refuses consumers on ForgeFrame 0.x or 1.x. See [Migrating from v1 to v2](#migrating-from-v1-to-v2).
 - **From 1.0.4:** review these behavior changes. Remote callbacks no longer time out after 10 seconds; add your own timer where you need one. `instance.resize()` rejects for a cross-origin popup; resize it from the host with `hostProps.resize()`. JSON props and exports deliver a value's `toJSON()` result. Schema refinements such as `.email().pattern()` now all apply. Empty or blank `domain`, `allowedConsumerDomains`, and `peerDomains` strings throw. Query and body parameters send dates as ISO strings and skip `null`. Iframe renders require an attached container. The factory's `isHost()` and `hostProps` no longer start a host, and defining a component logs host startup errors instead of throwing them. Hosts with an opaque origin are no longer listed as peers. `attributes.sandbox: false` now keeps the default iframe sandbox instead of removing it. Event `once()` registrations follow DOM listener rules: `off()` cancels them, and registering a handler twice keeps one registration.
 - **From 1.0.1:** function prop defaults must use the factory form. Replace `.default(onCancel)` with `.default(() => onCancel)`; the types reject the direct form. Exceeding [callback capacity](#callback-capacity) rejects with an explicit error instead of silently breaking older callbacks.
-- **From 0.x:** follow [Migrating from pre-v1 to v1](#migrating-from-pre-v1-to-v1).
 
 ---
 
-## Migrating from pre-v1 to v1
+## Migrating from v1 to v2
 
-This guide covers `0.2.0` and earlier `0.x` integrations. Stable v1 starts at `1.0.1`; npm permanently reserves `1.0.0` from an earlier, removed publication. Install the same v1 version in the consumer and host projects, rebuild both bundles, and test create/render, prop updates, callbacks, exports, reconnects, and teardown before releasing. The package has one ESM entrypoint, `forgeframe`; internal source paths are not public API. Script-tag and CommonJS consumers need an ESM-aware build.
-
-### Upgrade Checklist
-
-1. Await host readiness before reading initial props, children, or shared-factory `hostProps`:
-
-   ```typescript
-   import { initHost } from 'forgeframe';
-
-   const host = initHost(propDefinitions, allowedConsumerDomains);
-   if (!host) throw new Error('This page must be opened by ForgeFrame');
-   await host.ready;
-   const props = host.hostProps;
-   ```
-
-   Apply this to every host startup path, including hosts that also define the shared component. After a failed bootstrap, `initHost()` can retry on the same page; a successful retry refreshes the factory's props and controls.
-
-2. Remove `undefined` array entries and sparse holes from deliverable props and exports. Use `null` with a nullable item schema or a defined item default. For example, replace `prop.array().of(prop.string().optional())` plus `[undefined]` with `prop.array().of(prop.string().nullable())` plus `[null]`, or with `prop.array().of(prop.string().default('fallback'))`. Item defaults run before transport admission. Standalone schema validation and props withheld by delivery policy still allow optional entries.
-3. Check number props for `NaN` or infinities; `prop.number()` accepts only finite values. Check that URL props are absolute HTTP(S) URLs; `.url()` composes with `.pattern()` and returns the input unchanged unless `.trim()` is used.
-4. Review callbacks and host exports as asynchronous remote calls. Await their returned promises, including nested methods. For generic or overloaded callbacks, declare promise-returning signatures and use async implementations. Callback arguments/results must be JSON-compatible; convert Dates to ISO strings. Props and `hostProps.export()` preserve Dates and bridge functions explicitly.
-5. Pass the host's consumer allowlist to `initHost()`. `domain` is the consumer's trust in host origins; `allowedConsumerDomains` is the host's trust in consumer origins.
-
-### API, Configuration, and Behavior Changes
-
-| Area | v1 contract | Required action |
-|------|-------------|-----------------|
-| Array transport | Deliverable normalized arrays reject undefined entries and holes, including nested arrays, before opening a host or committing an update. Arrays produced by host decorators or custom JSON encoders are checked during delivery. | Supply defined entries or item defaults. Admission failures preserve the previous snapshot; delivery failures keep the committed consumer snapshot, as other transport failures do. |
-| Ordinary object records | Objects resembling function, Date, BASE64, DOTIFY, or escaped-record markers remain ordinary data, including when extra undefined fields disappear on the wire or custom JSON encoders change the final record shape. | Upgrade both bundles to use the record escaping codec. Do not construct or interpret internal wire wrappers yourself. |
-| DOTIFY omission | JSON encoders returning undefined omit their leaf, and nested objects emptied by omission remain empty objects. | Remove reliance on the old literal `"undefined"` leaf value or disappearance of emptied branches. Use explicit strings or null when those values are intended. |
-| Schema inputs and outputs | Explicit undefined differs from omission. Defaults/decorators run in definition order; own properties supply schema fields. Normalized values are revalidated at trust boundaries without applying transforms again. Type-changing input schemas require a validation-only `outputSchema`, including for local props. | Match definitions and host schemas to normalized outputs. Give type-changing schemas an `outputSchema` that validates without transforming. Model alternate input keys through the component input generic. |
-| Component URLs | Static and computed destinations must resolve to HTTP(S) and match `domain`. Relative URLs resolve against the document base; rendered updates cannot change the host origin. | Use valid destinations and an explicit trust policy; create a new instance when switching origins. |
-| Runtime configuration | Options must be an object; tags are lowercase strings; URLs are strings or functions; contexts are iframe or popup; timeouts are finite numbers from 0 through 2147483647 ms. | Correct invalid JavaScript configuration instead of relying on coercion or browser timer overflow. |
-| Rendering and updates | `render()` and `renderTo()` require a container; cross-window render targets are unsupported. Concurrent renders share one operation. Updates serialize in FIFO order and reject while rendering. | Pass a container, await render, and await updates. Close old instances before replacing them. |
-| Initial query/POST props | `sendToHost`, `sameDomain`, and `trustedDomains` govern delivery. Same-domain-only values are withheld from the initial navigation request. Custom converters retain their definition receiver. | Verify server bootstrap fields; keep secrets out of URLs and deliver protected data after verified bootstrap. |
-| Iframe configuration | ForgeFrame owns `name`, `src`, and `srcdoc`; resizing updates the default clipping wrapper. | Remove those custom attributes and use `url`. Custom templates remain responsible for their own layout. |
-| Nested components | Children are resolved through factories registered in the host bundle, preserving executable schemas rather than shipping them as JSON. Child URLs must be static strings. | Import or define every child before `initHost()`; remove computed child URLs. |
-| Removed earlier options | The unused `autoResize` option and `AutoResizeOptions` export are absent. | Remove them; use explicit consumer or host resizing. |
-| Server rendering | Package imports and component declarations are safe without browser globals. `isHost()`/`isEmbedded()` return false, `initHost()` returns null, and `getHostProps()` returns undefined. | Keep instance creation and rendering in browser lifecycle code. |
-| Remote errors | Messages cross the bridge; remote stack traces do not. Invalid message envelopes are ignored. | Capture detailed diagnostics in the originating window; do not depend on remote stacks. |
-| React adapter | Committed props synchronize per mounted instance; removed keys reset to their fallback. Obsolete or failed work cannot overwrite a newer mount. | Pass committed values and handle update errors through the adapter's error callback. Avoid mutating existing prop objects in place. |
-
-### Bootstrap and Data Formats
-
-v1 uses bootstrap protocol 2. Only channel metadata is kept in `window.name`; props and child references arrive through a handshake that verifies the expected window and exact origin. A redirected host therefore cannot read props from the window name, and hosts can reconnect after reload or navigation.
-
-Upgrade both bundles together where possible. For a staged upgrade, deploy hosts first: v1 hosts still read legacy consumer payloads at startup, but v1 consumers require the secure bootstrap and reject older hosts. Redirect protection needs the upgraded consumer. The legacy reader verifies a consumer only when the host can read the consumer window's origin directly, which requires the same origin; `document.referrer` is not consumer evidence, so a cross-origin legacy consumer cannot satisfy `allowedConsumerDomains`. Upgrade those consumers before enabling an allowlist. Marker-shaped records use a new escaped-record envelope, and DOTIFY uses prefixed, JSON-framed path arrays, so do not pass these payloads to older decoders. Application data needs no conversion unless you stored internal ForgeFrame transport payloads; regenerate those from the original values with v1.
+**Upgrade consumer and host together.** ForgeFrame 2 uses bootstrap protocol 3. A v2 host accepts only v2 consumers. When a page embedded by a ForgeFrame 0.x or 1.x consumer calls `initHost()`, it throws an error that names the consumer's version and tells you to upgrade both. A 1.x host cannot start for a v2 consumer, so the v2 consumer reports its handshake timeout. The v1 staged upgrade ("deploy hosts first") no longer works. Deploy consumer and host together, or serve the v2 host at a new URL and point the v2 consumer at it while 1.x consumers keep using the old URL. `window.name` now holds only channel metadata (uid, tag, protocol, context and consumer origin). v1 never stored application data there either, so nothing needs converting.
 
 ---
 

@@ -22,11 +22,6 @@ import type { Dimensions } from "../../types/utility";
 
 export type VerifiedMessageSource = Parameters<MessageHandler>[1];
 
-export interface HostSecurityContext {
-	consumerDomain: string;
-	consumerDomainVerified: boolean;
-}
-
 export interface HostPropsRuntimeControls {
 	close(): Promise<void>;
 	focus(): Promise<void>;
@@ -46,14 +41,12 @@ export interface HostPropsRuntimeOptions {
 	controls: HostPropsRuntimeControls;
 	getConsumerWindow(): Window;
 	getConsumerDomain(): string;
-	isConsumerDomainVerified(): boolean;
 	getBridge(): FunctionBridge;
 	onFirstHostPropsAccess(): void;
 }
 
 export interface HostTransportOptions {
 	uid: string;
-	tag: string;
 	/** Popup hosts resize their own window; consumers cannot across origins. */
 	context: ContextType;
 	event: EventEmitter;
@@ -61,7 +54,8 @@ export interface HostTransportOptions {
 	consumerDomain: string;
 	getConsumerDomain(): string;
 	deferInit: boolean;
-	beforeInit?: () => Promise<void>;
+	/** Settles once the verified bootstrap completes; INIT waits for it. */
+	beforeInit: () => Promise<void>;
 }
 
 export interface HostTransportPropsHandler {

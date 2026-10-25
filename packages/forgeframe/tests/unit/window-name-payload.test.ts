@@ -1,67 +1,53 @@
 /**
  * Unit tests for window name payload helpers in `@/window/name-payload`.
  *
- * Covers payload encoding/parsing, ForgeFrame window detection, reconnection metadata, and size/error guardrails.
+ * Covers envelope encoding, protocol classification of decoded payloads,
+ * ForgeFrame window detection, and size/error guardrails.
  */
 import { describe, expect, it, vi } from "vitest";
-import type { ConsumerExports } from "@/communication/types";
-import {
-	CONTEXT,
-	MESSAGE_NAME,
-	PROTOCOL_VERSION,
-	VERSION,
-	WINDOW_NAME_PREFIX,
-} from "@/constants";
+import { CONTEXT, PROTOCOL_VERSION, WINDOW_NAME_PREFIX } from "@/constants";
 import {
 	buildWindowName,
-	consumeInitialPayload,
+	classifyWindowNamePayload,
 	createWindowPayload,
-	getInitialPayload,
 	isForgeFrameWindow,
 	isHostOfComponent,
+	readWindowNamePayload,
 } from "@/window/name-payload";
 import type { WindowNamePayload } from "@/window/types";
 
-const VALID_EXPORTS: ConsumerExports = {
-	init: MESSAGE_NAME.INIT,
-	close: MESSAGE_NAME.CLOSE,
-	resize: MESSAGE_NAME.RESIZE,
-	show: MESSAGE_NAME.SHOW,
-	hide: MESSAGE_NAME.HIDE,
-	onError: MESSAGE_NAME.ERROR,
-	updateProps: MESSAGE_NAME.PROPS,
-	export: MESSAGE_NAME.EXPORT,
-};
+function createPayload(
+	overrides: Partial<WindowNamePayload> = {},
+): WindowNamePayload {
+	return {
+		uid: "test-uid",
+		tag: "test-component",
+		protocolVersion: PROTOCOL_VERSION,
+		context: CONTEXT.IFRAME,
+		consumerDomain: "https://consumer.com",
+		...overrides,
+	};
+}
+
+/** Encodes any JSON value with the window-name envelope, as another version would. */
+function encodeWindowName(value: unknown): string {
+	return `${WINDOW_NAME_PREFIX}${btoa(encodeURIComponent(JSON.stringify(value)))}`;
+}
+
+/** Reads a window name through the host's payload reader. */
+function readWindowName(name: string) {
+	return readWindowNamePayload({ name } as Window);
+}
 
 describe("buildWindowName", () => {
 	it("should create window name with prefix", () => {
-		const payload: WindowNamePayload<{ test: string }> = {
-			uid: "test-uid",
-			tag: "test-component",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://consumer.com",
-			props: { test: "value" },
-			exports: VALID_EXPORTS,
-		};
-
-		const name = buildWindowName(payload);
-
-		expect(name).toMatch(new RegExp(`^${WINDOW_NAME_PREFIX}`));
+		expect(buildWindowName(createPayload())).toMatch(
+			new RegExp(`^${WINDOW_NAME_PREFIX}`),
+		);
 	});
 
 	it("should encode payload as base64", () => {
-		const payload: WindowNamePayload<Record<string, never>> = {
-			uid: "test-uid",
-			tag: "test-component",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://consumer.com",
-			props: {},
-			exports: VALID_EXPORTS,
-		};
-
-		const name = buildWindowName(payload);
+		const name = buildWindowName(createPayload());
 		const encoded = name.slice(WINDOW_NAME_PREFIX.length);
 
 		// Should be valid base64
@@ -69,36 +55,21 @@ describe("buildWindowName", () => {
 	});
 
 	it("should throw when payload exceeds the maximum size limit", () => {
-		const payload: WindowNamePayload<{ oversized: string }> = {
-			uid: "oversized-uid",
-			tag: "oversized-component",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://consumer.com",
-			props: { oversized: "x".repeat(70 * 1024) },
-			exports: VALID_EXPORTS,
-		};
-
-		expect(() => buildWindowName(payload)).toThrow(
-			"exceeds maximum allowed size",
-		);
+		expect(() =>
+			buildWindowName(createPayload({ tag: "x".repeat(70 * 1024) })),
+		).toThrow("exceeds maximum allowed size");
 	});
 
 	it("should wrap encoding failures with a descriptive error", () => {
 		const circular = {} as Record<string, unknown>;
 		circular.self = circular;
 
-		const payload: WindowNamePayload<Record<string, unknown>> = {
-			uid: "encode-failure-uid",
-			tag: "encode-failure-component",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://consumer.com",
-			props: circular,
-			exports: VALID_EXPORTS,
-		};
-
-		expect(() => buildWindowName(payload)).toThrow("Failed to encode payload");
+		expect(() =>
+			buildWindowName({
+				...createPayload(),
+				circular,
+			} as WindowNamePayload),
+		).toThrow("Failed to encode payload");
 	});
 
 	it("should not depend on Blob when measuring encoded payload size", () => {
@@ -112,456 +83,201 @@ describe("buildWindowName", () => {
 		);
 
 		try {
-			const payload: WindowNamePayload<{ test: string }> = {
-				uid: "test-uid",
-				tag: "test-component",
-				version: VERSION,
-				context: CONTEXT.IFRAME,
-				consumerDomain: "https://consumer.com",
-				props: { test: "value" },
-				exports: VALID_EXPORTS,
-			};
-
-			expect(() => buildWindowName(payload)).not.toThrow();
+			expect(() => buildWindowName(createPayload())).not.toThrow();
 		} finally {
 			vi.unstubAllGlobals();
 		}
 	});
 });
 
-/** Parses a window name through the host's initial-payload reader. */
-function readWindowName<P>(name: string): WindowNamePayload<P> | null {
-	return getInitialPayload<P>({ name } as Window);
-}
+describe("readWindowNamePayload", () => {
+	it("should read current channel metadata", () => {
+		const payload = createPayload({ context: CONTEXT.POPUP });
 
-describe("window name parsing", () => {
-	it("should parse valid window name", () => {
-		const payload: WindowNamePayload<{ value: number }> = {
-			uid: "test-uid",
-			tag: "my-component",
-			version: VERSION,
-			context: CONTEXT.POPUP,
-			consumerDomain: "https://consumer.com",
-			props: { value: 42 },
-			exports: VALID_EXPORTS,
-		};
-
-		const name = buildWindowName(payload);
-		const parsed = readWindowName<{ value: number }>(name);
-
-		expect(parsed).toEqual(payload);
-	});
-
-	it("should parse valid payloads with child host references", () => {
-		const payload: WindowNamePayload<Record<string, never>> = {
-			uid: "test-uid",
-			tag: "my-component",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://consumer.com",
-			props: {},
-			exports: VALID_EXPORTS,
-			children: {
-				Child: {
-					tag: "child-component",
-					url: "https://example.com/child",
-					props: {
-						amount: { required: true },
-					},
-					defaultContext: CONTEXT.POPUP,
-					dimensions: {
-						width: 320,
-						height: "240px",
-					},
-				},
-			},
-		};
-
-		const parsed = readWindowName<Record<string, never>>(
-			buildWindowName(payload),
-		);
-
-		expect(parsed).toEqual(payload);
-	});
-
-	it("should parse valid child host references without dimensions metadata", () => {
-		const payload: WindowNamePayload<Record<string, never>> = {
-			uid: "test-uid",
-			tag: "my-component",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://consumer.com",
-			props: {},
-			exports: VALID_EXPORTS,
-			children: {
-				Child: {
-					tag: "child-component",
-					url: "https://example.com/child",
-					props: {
-						amount: { required: true },
-					},
-					defaultContext: CONTEXT.IFRAME,
-				},
-			},
-		};
-
-		const parsed = readWindowName<Record<string, never>>(
-			buildWindowName(payload),
-		);
-
-		expect(parsed).toEqual(payload);
-	});
-
-	it("should return null for non-ForgeFrame name", () => {
-		expect(readWindowName("some-other-name")).toBeNull();
-		expect(readWindowName("")).toBeNull();
-	});
-
-	it("should return null for invalid base64", () => {
-		const invalidName = `${WINDOW_NAME_PREFIX}not-valid-base64!!!`;
-		expect(readWindowName(invalidName)).toBeNull();
-	});
-
-	it("should return null for invalid JSON", () => {
-		const invalidJson = `${WINDOW_NAME_PREFIX}${btoa("not json")}`;
-		expect(readWindowName(invalidJson)).toBeNull();
-	});
-
-	it("should return null for payloads with an invalid structure", () => {
-		const malformedPayload = {
-			uid: "test-uid",
-			tag: "test-component",
-			version: VERSION,
-			context: "modal",
-			consumerDomain: "https://consumer.com",
-			props: {},
-			exports: VALID_EXPORTS,
-		};
-
-		const malformedName = `${WINDOW_NAME_PREFIX}${btoa(
-			encodeURIComponent(JSON.stringify(malformedPayload)),
-		)}`;
-
-		expect(readWindowName(malformedName)).toBeNull();
-	});
-
-	it("should parse payloads from a different package version when the protocol is supported", () => {
-		const compatiblePayload = {
-			uid: "test-uid",
-			tag: "test-component",
-			version: "999.0.0",
-			protocolVersion: PROTOCOL_VERSION,
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://consumer.com",
-			props: {},
-			exports: VALID_EXPORTS,
-		};
-
-		const compatibleName = `${WINDOW_NAME_PREFIX}${btoa(
-			encodeURIComponent(JSON.stringify(compatiblePayload)),
-		)}`;
-
-		expect(readWindowName(compatibleName)).toEqual(compatiblePayload);
-	});
-
-	it("should return null for payloads with an unsupported protocol version", () => {
-		const malformedPayload = {
-			uid: "test-uid",
-			tag: "test-component",
-			version: VERSION,
-			protocolVersion: PROTOCOL_VERSION + 1,
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://consumer.com",
-			props: {},
-			exports: VALID_EXPORTS,
-		};
-
-		const malformedName = `${WINDOW_NAME_PREFIX}${btoa(
-			encodeURIComponent(JSON.stringify(malformedPayload)),
-		)}`;
-
-		expect(readWindowName(malformedName)).toBeNull();
-	});
-
-	it("should parse legacy payloads without an explicit protocol version", () => {
-		const legacyPayload = {
-			uid: "test-uid",
-			tag: "test-component",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://consumer.com",
-			props: {},
-			exports: VALID_EXPORTS,
-		};
-
-		const legacyName = `${WINDOW_NAME_PREFIX}${btoa(
-			encodeURIComponent(JSON.stringify(legacyPayload)),
-		)}`;
-
-		expect(readWindowName(legacyName)).toEqual(legacyPayload);
-	});
-
-	it("should return null for payloads with invalid exports metadata", () => {
-		const malformedPayload = {
-			uid: "test-uid",
-			tag: "test-component",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://consumer.com",
-			props: {},
-			exports: { close: true },
-		};
-
-		const malformedName = `${WINDOW_NAME_PREFIX}${btoa(
-			encodeURIComponent(JSON.stringify(malformedPayload)),
-		)}`;
-
-		expect(readWindowName(malformedName)).toBeNull();
+		expect(readWindowName(buildWindowName(payload))).toEqual({
+			kind: "current",
+			payload,
+		});
 	});
 
 	it("should round-trip real non-ASCII payload values", () => {
-		const payload: WindowNamePayload<{ message: string }> = {
-			uid: "test-uid",
-			tag: "test-component",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://consumer.com",
-			props: { message: "Héllo 世界 👋 café" },
-			exports: VALID_EXPORTS,
-		};
+		const payload = createPayload({ tag: "Héllo 世界 👋 café" });
 
-		const name = buildWindowName(payload);
-		const parsed = readWindowName<{ message: string }>(name);
+		expect(readWindowName(buildWindowName(payload))).toEqual({
+			kind: "current",
+			payload,
+		});
+	});
 
-		expect(parsed).toEqual(payload);
-		expect(parsed?.props.message).toBe("Héllo 世界 👋 café");
+	it("should return null for non-ForgeFrame names", () => {
+		expect(readWindowName("some-other-name")).toBeNull();
+		expect(readWindowName("")).toBeNull();
+		expect(readWindowNamePayload({ name: 42 } as unknown as Window)).toBeNull();
+	});
+
+	it("should return null when reading the window name throws", () => {
+		const win = {
+			get name(): string {
+				throw new DOMException("Blocked", "SecurityError");
+			},
+		} as Window;
+
+		expect(readWindowNamePayload(win)).toBeNull();
 	});
 
 	it.each([
-		["non-object payload root", "invalid-root"],
+		["invalid base64", `${WINDOW_NAME_PREFIX}not-valid-base64!!!`],
+		["invalid JSON", `${WINDOW_NAME_PREFIX}${btoa("not json")}`],
 		[
-			"empty uid",
-			{
-				uid: "",
-				tag: "test-component",
-				version: VERSION,
-				context: CONTEXT.IFRAME,
-				consumerDomain: "https://consumer.com",
-				props: {},
-				exports: VALID_EXPORTS,
-			},
+			"an oversized name",
+			encodeWindowName({ ...createPayload(), padding: "x".repeat(32 * 1024) }),
 		],
-		[
-			"empty version",
-			{
-				uid: "test-uid",
-				tag: "test-component",
-				version: "",
-				context: CONTEXT.IFRAME,
-				consumerDomain: "https://consumer.com",
-				props: {},
-				exports: VALID_EXPORTS,
-			},
-		],
-		[
-			"empty consumer domain",
-			{
-				uid: "test-uid",
-				tag: "test-component",
-				version: VERSION,
-				context: CONTEXT.IFRAME,
-				consumerDomain: "",
-				props: {},
-				exports: VALID_EXPORTS,
-			},
-		],
-		[
-			"non-object children map",
-			{
-				uid: "test-uid",
-				tag: "test-component",
-				version: VERSION,
-				context: CONTEXT.IFRAME,
-				consumerDomain: "https://consumer.com",
-				props: {},
-				exports: VALID_EXPORTS,
-				children: "invalid-children",
-			},
-		],
-		[
-			"child entry that is not an object",
-			{
-				uid: "test-uid",
-				tag: "test-component",
-				version: VERSION,
-				context: CONTEXT.IFRAME,
-				consumerDomain: "https://consumer.com",
-				props: {},
-				exports: VALID_EXPORTS,
-				children: {
-					BrokenChild: "invalid-child",
-				},
-			},
-		],
-		[
-			"child with invalid default context",
-			{
-				uid: "test-uid",
-				tag: "test-component",
-				version: VERSION,
-				context: CONTEXT.IFRAME,
-				consumerDomain: "https://consumer.com",
-				props: {},
-				exports: VALID_EXPORTS,
-				children: {
-					BrokenChild: {
-						tag: "child-component",
-						url: "https://example.com/child",
-						defaultContext: "modal",
-					},
-				},
-			},
-		],
-		[
-			"child with empty tag",
-			{
-				uid: "test-uid",
-				tag: "test-component",
-				version: VERSION,
-				context: CONTEXT.IFRAME,
-				consumerDomain: "https://consumer.com",
-				props: {},
-				exports: VALID_EXPORTS,
-				children: {
-					BrokenChild: {
-						tag: "",
-						url: "https://example.com/child",
-					},
-				},
-			},
-		],
-		[
-			"child with empty url",
-			{
-				uid: "test-uid",
-				tag: "test-component",
-				version: VERSION,
-				context: CONTEXT.IFRAME,
-				consumerDomain: "https://consumer.com",
-				props: {},
-				exports: VALID_EXPORTS,
-				children: {
-					BrokenChild: {
-						tag: "child-component",
-						url: "",
-					},
-				},
-			},
-		],
-		[
-			"child with non-object dimensions metadata",
-			{
-				uid: "test-uid",
-				tag: "test-component",
-				version: VERSION,
-				context: CONTEXT.IFRAME,
-				consumerDomain: "https://consumer.com",
-				props: {},
-				exports: VALID_EXPORTS,
-				children: {
-					BrokenChild: {
-						tag: "child-component",
-						url: "https://example.com/child",
-						dimensions: "wide",
-					},
-				},
-			},
-		],
-		[
-			"child with invalid dimension type",
-			{
-				uid: "test-uid",
-				tag: "test-component",
-				version: VERSION,
-				context: CONTEXT.IFRAME,
-				consumerDomain: "https://consumer.com",
-				props: {},
-				exports: VALID_EXPORTS,
-				children: {
-					BrokenChild: {
-						tag: "child-component",
-						url: "https://example.com/child",
-						dimensions: {
-							width: true,
-						},
-					},
-				},
-			},
-		],
-		[
-			"child with invalid height dimension type",
-			{
-				uid: "test-uid",
-				tag: "test-component",
-				version: VERSION,
-				context: CONTEXT.IFRAME,
-				consumerDomain: "https://consumer.com",
-				props: {},
-				exports: VALID_EXPORTS,
-				children: {
-					BrokenChild: {
-						tag: "child-component",
-						url: "https://example.com/child",
-						dimensions: {
-							width: "320px",
-							height: false,
-						},
-					},
-				},
-			},
-		],
-		[
-			"child with non-object props metadata",
-			{
-				uid: "test-uid",
-				tag: "test-component",
-				version: VERSION,
-				context: CONTEXT.IFRAME,
-				consumerDomain: "https://consumer.com",
-				props: {},
-				exports: VALID_EXPORTS,
-				children: {
-					BrokenChild: {
-						tag: "child-component",
-						url: "https://example.com/child",
-						props: "invalid-props",
-					},
-				},
-			},
-		],
-	])("should reject prefixed payloads with %s", (_label, malformedPayload) => {
-		const malformedName = `${WINDOW_NAME_PREFIX}${btoa(
-			encodeURIComponent(JSON.stringify(malformedPayload)),
-		)}`;
+	])("should classify %s as invalid", (_label, name) => {
+		expect(readWindowName(name)).toEqual({ kind: "invalid" });
+	});
 
-		expect(readWindowName(malformedName)).toBeNull();
+	it("should never write the window name", () => {
+		const name = buildWindowName(createPayload());
+		const setName = vi.fn();
+		const win = {
+			get name() {
+				return name;
+			},
+			set name(value: string) {
+				setName(value);
+			},
+		} as unknown as Window;
+
+		expect(readWindowNamePayload(win)?.kind).toBe("current");
+		expect(setName).not.toHaveBeenCalled();
+	});
+});
+
+describe("classifyWindowNamePayload", () => {
+	it("should copy only the channel metadata from a current payload", () => {
+		expect(
+			classifyWindowNamePayload({
+				...createPayload(),
+				version: "2.0.0",
+				props: { secret: "ignored" },
+				exports: { init: "ignored" },
+				children: { Child: { tag: "child", url: "https://child.test" } },
+			}),
+		).toEqual({ kind: "current", payload: createPayload() });
+	});
+
+	it.each([
+		["no protocol version (0.x)", undefined, "0.9.0"],
+		["protocol 1 (0.x)", 1, "0.10.0"],
+		["protocol 2 (1.x)", 2, "1.1.0"],
+		["a newer protocol", PROTOCOL_VERSION + 1, "3.0.0"],
+	])(
+		"should report a payload with %s as unsupported",
+		(_label, protocolVersion, version) => {
+			expect(
+				classifyWindowNamePayload({
+					uid: "test-uid",
+					tag: "test-component",
+					version,
+					protocolVersion,
+					context: CONTEXT.IFRAME,
+					consumerDomain: "https://consumer.com",
+					props: { amount: 10 },
+					exports: { init: "forgeframe_init" },
+				}),
+			).toEqual({
+				kind: "unsupported",
+				tag: "test-component",
+				protocolVersion,
+				version,
+			});
+		},
+	);
+
+	it.each([
+		["no package version", {}],
+		["an empty package version", { version: "" }],
+		["a non-string package version", { version: 1 }],
+	])("should omit %s from an unsupported payload", (_label, version) => {
+		expect(
+			classifyWindowNamePayload({
+				...createPayload(),
+				protocolVersion: 2,
+				...version,
+			}),
+		).toEqual({
+			kind: "unsupported",
+			tag: "test-component",
+			protocolVersion: 2,
+			version: undefined,
+		});
+	});
+
+	it.each([
+		["a non-object root", "invalid-root"],
+		["a null root", null],
+		["an undecodable value", undefined],
+		["a missing tag", { ...createPayload(), tag: undefined }],
+		["an empty tag", createPayload({ tag: "" })],
+		["a string protocol", { ...createPayload(), protocolVersion: "3" }],
+		["a null protocol", { ...createPayload(), protocolVersion: null }],
+		["protocol 0", createPayload({ protocolVersion: 0 })],
+		["a negative protocol", createPayload({ protocolVersion: -1 })],
+		["a fractional protocol", createPayload({ protocolVersion: 2.5 })],
+		["a missing uid", { ...createPayload(), uid: undefined }],
+		["an empty uid", createPayload({ uid: "" })],
+		["an invalid context", { ...createPayload(), context: "modal" }],
+		["an empty consumer domain", createPayload({ consumerDomain: "" })],
+		[
+			"a missing consumer domain",
+			{ ...createPayload(), consumerDomain: undefined },
+		],
+		["no protocol and only a tag", { tag: "test-component" }],
+		[
+			"protocol 2 and no uid",
+			{ ...createPayload(), protocolVersion: 2, uid: undefined },
+		],
+		[
+			"protocol 1 and an invalid context",
+			{ ...createPayload(), protocolVersion: 1, context: "modal" },
+		],
+		[
+			"no protocol and no consumer domain",
+			{
+				...createPayload(),
+				protocolVersion: undefined,
+				consumerDomain: undefined,
+			},
+		],
+	])("should classify a payload with %s as invalid", (_label, value) => {
+		expect(classifyWindowNamePayload(value)).toEqual({ kind: "invalid" });
+	});
+
+	it("should report a newer payload by its tag alone, since its other fields are unknown", () => {
+		expect(
+			classifyWindowNamePayload({
+				tag: "test-component",
+				protocolVersion: PROTOCOL_VERSION + 1,
+			}),
+		).toEqual({
+			kind: "unsupported",
+			tag: "test-component",
+			protocolVersion: PROTOCOL_VERSION + 1,
+			version: undefined,
+		});
 	});
 });
 
 describe("isForgeFrameWindow", () => {
 	it("should return true for ForgeFrame window", () => {
-		const payload: WindowNamePayload<Record<string, never>> = {
-			uid: "test-uid",
-			tag: "test-component",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://consumer.com",
-			props: {},
-			exports: VALID_EXPORTS,
-		};
+		const win = { name: buildWindowName(createPayload()) } as Window;
 
+		expect(isForgeFrameWindow(win)).toBe(true);
+	});
+
+	it("should return true for a ForgeFrame window from another protocol", () => {
 		const win = {
-			name: buildWindowName(payload),
+			name: encodeWindowName({ tag: "test-component", protocolVersion: 2 }),
 		} as Window;
 
 		expect(isForgeFrameWindow(win)).toBe(true);
@@ -590,36 +306,16 @@ describe("isForgeFrameWindow", () => {
 
 describe("isHostOfComponent", () => {
 	it("should return true for matching tag", () => {
-		const payload: WindowNamePayload<Record<string, never>> = {
-			uid: "test-uid",
-			tag: "my-component",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://consumer.com",
-			props: {},
-			exports: VALID_EXPORTS,
-		};
-
 		const win = {
-			name: buildWindowName(payload),
+			name: buildWindowName(createPayload({ tag: "my-component" })),
 		} as Window;
 
 		expect(isHostOfComponent("my-component", win)).toBe(true);
 	});
 
 	it("should return false for non-matching tag", () => {
-		const payload: WindowNamePayload<Record<string, never>> = {
-			uid: "test-uid",
-			tag: "other-component",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://consumer.com",
-			props: {},
-			exports: VALID_EXPORTS,
-		};
-
 		const win = {
-			name: buildWindowName(payload),
+			name: buildWindowName(createPayload({ tag: "other-component" })),
 		} as Window;
 
 		expect(isHostOfComponent("my-component", win)).toBe(false);
@@ -630,185 +326,50 @@ describe("isHostOfComponent", () => {
 		expect(isHostOfComponent("my-component", win)).toBe(false);
 	});
 
-	it("returns no payload when reading the window name throws", () => {
+	it("should return false when reading the window name throws", () => {
 		const win = {
 			get name(): string {
 				throw new DOMException("Blocked", "SecurityError");
 			},
 		} as Window;
 		expect(isHostOfComponent("my-component", win)).toBe(false);
-		expect(getInitialPayload(win)).toBeNull();
 	});
 
 	it("should return false for prefixed windows with invalid payloads", () => {
-		const invalidPrefixedWindow = {
-			name: `${WINDOW_NAME_PREFIX}${btoa(
-				encodeURIComponent(
-					JSON.stringify({
-						uid: "test-uid",
-						tag: "",
-						version: VERSION,
-						context: CONTEXT.IFRAME,
-						consumerDomain: "https://consumer.com",
-						props: {},
-						exports: VALID_EXPORTS,
-					}),
-				),
-			)}`,
+		const win = {
+			name: encodeWindowName(createPayload({ tag: "" })),
 		} as Window;
 
-		expect(isHostOfComponent("my-component", invalidPrefixedWindow)).toBe(
-			false,
-		);
+		expect(isHostOfComponent("my-component", win)).toBe(false);
+	});
+
+	it("should return false for payloads from another protocol", () => {
+		const win = {
+			name: encodeWindowName({
+				...createPayload({ tag: "my-component" }),
+				protocolVersion: 2,
+			}),
+		} as Window;
+
+		expect(isHostOfComponent("my-component", win)).toBe(false);
 	});
 });
 
 describe("createWindowPayload", () => {
-	it("should create payload with package and protocol versions", () => {
-		const payload = createWindowPayload<{ data: string }>({
+	it("should create channel metadata with the current protocol version", () => {
+		expect(
+			createWindowPayload({
+				uid: "test-uid",
+				tag: "test-tag",
+				context: CONTEXT.IFRAME,
+				consumerDomain: "https://consumer.com",
+			}),
+		).toEqual({
 			uid: "test-uid",
 			tag: "test-tag",
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://consumer.com",
-			props: { data: "value" },
-			exports: VALID_EXPORTS,
-		});
-
-		expect(payload.version).toBe(VERSION);
-		expect(payload.protocolVersion).toBe(PROTOCOL_VERSION);
-		expect(payload.uid).toBe("test-uid");
-		expect(payload.tag).toBe("test-tag");
-		expect(payload.context).toBe(CONTEXT.IFRAME);
-		expect(payload.consumerDomain).toBe("https://consumer.com");
-		expect(payload.props.data).toBe("value");
-		expect(payload.exports.close).toBe(MESSAGE_NAME.CLOSE);
-	});
-
-	it("should include children when provided", () => {
-		const payload = createWindowPayload({
-			uid: "test-uid",
-			tag: "test-tag",
-			context: CONTEXT.POPUP,
-			consumerDomain: "https://consumer.com",
-			props: {},
-			exports: VALID_EXPORTS,
-			children: {
-				child1: { tag: "child-component", url: "https://example.com/child" },
-			},
-		});
-
-		expect(payload.children).toEqual({
-			child1: { tag: "child-component", url: "https://example.com/child" },
-		});
-	});
-});
-
-describe("getInitialPayload", () => {
-	it("should return payload from window name", () => {
-		const originalPayload: WindowNamePayload<{ value: number }> = {
-			uid: "test-uid",
-			tag: "test-tag",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://consumer.com",
-			props: { value: 123 },
-			exports: VALID_EXPORTS,
-		};
-
-		const win = {
-			name: buildWindowName(originalPayload),
-		} as Window;
-
-		const payload = getInitialPayload<{ value: number }>(win);
-
-		expect(payload).toEqual(originalPayload);
-	});
-
-	it("should return null for non-ForgeFrame window", () => {
-		const win = { name: "not-forgeframe" } as Window;
-		expect(getInitialPayload(win)).toBeNull();
-	});
-});
-
-describe("consumeInitialPayload", () => {
-	it("retains only channel metadata so subsequent host documents can reconnect", () => {
-		const original = createWindowPayload({
-			uid: "reconnect-uid",
-			tag: "reconnect-host",
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://consumer.com",
-			props: { secret: "private" },
-			exports: VALID_EXPORTS,
-			children: {
-				Child: {
-					tag: "child",
-					url: "https://host.com",
-					props: { secret: { default: "private" } },
-				},
-			},
-		});
-		const win = { name: buildWindowName(original) } as Window;
-		expect(consumeInitialPayload(win)).toEqual(original);
-		const retained = getInitialPayload(win);
-		expect(retained).toMatchObject({
-			uid: "reconnect-uid",
-			protocolVersion: PROTOCOL_VERSION,
-			props: {},
-		});
-		expect(retained?.children).toBeUndefined();
-		expect(consumeInitialPayload(win)).toEqual(retained);
-	});
-
-	it("should return payload and clear a legacy ForgeFrame window name", () => {
-		const originalPayload: WindowNamePayload<{ value: number }> = {
-			uid: "test-uid",
-			tag: "test-tag",
-			version: VERSION,
-			protocolVersion: 1,
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://consumer.com",
-			props: { value: 123 },
-			exports: VALID_EXPORTS,
-		};
-
-		const win = {
-			name: buildWindowName(originalPayload),
-		} as Window;
-
-		const payload = consumeInitialPayload<{ value: number }>(win);
-
-		expect(payload).toEqual(originalPayload);
-		expect(win.name).toBe("");
-	});
-
-	it("should leave invalid window names untouched", () => {
-		const win = { name: "not-forgeframe" } as Window;
-
-		expect(consumeInitialPayload(win)).toBeNull();
-		expect(win.name).toBe("not-forgeframe");
-	});
-
-	it("should return payload even when clearing the window name throws", () => {
-		const originalPayload: WindowNamePayload<Record<string, never>> = {
-			uid: "test-uid",
-			tag: "test-tag",
-			version: VERSION,
 			protocolVersion: PROTOCOL_VERSION,
 			context: CONTEXT.IFRAME,
 			consumerDomain: "https://consumer.com",
-			props: {},
-			exports: VALID_EXPORTS,
-		};
-		const encodedName = buildWindowName(originalPayload);
-		const win = {
-			get name() {
-				return encodedName;
-			},
-			set name(_: string) {
-				throw new Error("Cross-origin");
-			},
-		} as unknown as Window;
-
-		expect(consumeInitialPayload(win)).toEqual(originalPayload);
+		});
 	});
 });

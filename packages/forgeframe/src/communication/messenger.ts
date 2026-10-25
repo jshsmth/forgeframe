@@ -50,7 +50,7 @@ interface PendingRequest {
 	deferred: Deferred<unknown>;
 	timeout: ReturnType<typeof setTimeout> | undefined;
 	targetWin: Window;
-	expectedOrigin: string | "*";
+	expectedOrigin: string;
 }
 
 function isPendingResponseSourceMatch(
@@ -58,36 +58,22 @@ function isPendingResponseSourceMatch(
 	sourceWin: Window,
 	origin: string,
 ): boolean {
-	if (sourceWin !== pending.targetWin) {
-		return false;
-	}
-
-	if (pending.expectedOrigin === "*") {
-		return true;
-	}
-
-	return origin === pending.expectedOrigin;
+	return sourceWin === pending.targetWin && origin === pending.expectedOrigin;
 }
 
-function normalizeTargetDomainToExpectedOrigin(
-	targetDomain: string,
-	senderDomain: string,
-): string | "*" {
-	if (targetDomain === "*") {
-		return "*";
-	}
-
-	// "/" is the postMessage same-origin token.
-	if (targetDomain === "/") {
-		return senderDomain;
-	}
-
+/**
+ * Resolves a message target to the exact origin that receives it and answers.
+ * URL-like targets normalize to their origin, as `postMessage` does.
+ * @throws If the target is not an absolute URL, including the `"*"` wildcard
+ * and the `"/"` same-origin token.
+ */
+function resolveTargetOrigin(targetDomain: string, name: string): string {
 	try {
-		return new URL(targetDomain, senderDomain).origin;
+		return new URL(targetDomain).origin;
 	} catch {
-		// Preserve legacy behavior for non-URL strings; send() may still succeed/fail
-		// based on browser postMessage validation.
-		return targetDomain;
+		throw new Error(
+			`Cannot send "${name}": target origin "${targetDomain}" is not an absolute URL`,
+		);
 	}
 }
 
@@ -253,14 +239,15 @@ export class Messenger {
 	 * @typeParam T - The data type being sent
 	 * @typeParam R - The expected response type
 	 * @param targetWin - The target window to send to
-	 * @param targetDomain - The target origin domain
+	 * @param targetDomain - The target origin, as an absolute URL
 	 * @param name - The message name/type
 	 * @param data - Optional data payload
 	 * @param timeout - Timeout in milliseconds (default: 10000); `null` waits
 	 * until the response arrives or the request is rejected
 	 * @param onDeliveryAttempt - Internal notification after encoding, immediately before posting
 	 * @returns Promise resolving to the response data
-	 * @throws Error if messenger is destroyed or timeout occurs
+	 * @throws Error if messenger is destroyed, the target is not an absolute
+	 * URL, or timeout occurs
 	 */
 	async send<T = unknown, R = unknown>(
 		targetWin: Window,
@@ -274,6 +261,7 @@ export class Messenger {
 			throw new Error("Messenger has been destroyed");
 		}
 
+		const targetOrigin = resolveTargetOrigin(targetDomain, name);
 		const id = generateShortUID();
 		const message = createRequestMessage(id, name, data, {
 			uid: this.channelUid,
@@ -298,15 +286,12 @@ export class Messenger {
 			deferred: deferred as Deferred<unknown>,
 			timeout: timeoutId,
 			targetWin,
-			expectedOrigin: normalizeTargetDomainToExpectedOrigin(
-				targetDomain,
-				this.domain,
-			),
+			expectedOrigin: targetOrigin,
 		});
 
 		try {
 			onDeliveryAttempt?.();
-			targetWin.postMessage(serialized, targetDomain);
+			targetWin.postMessage(serialized, targetOrigin);
 		} catch (err) {
 			this.pending.delete(id);
 			clearTimeout(timeoutId);
@@ -321,10 +306,10 @@ export class Messenger {
 	 *
 	 * @typeParam T - The data type being sent
 	 * @param targetWin - The target window to send to
-	 * @param targetDomain - The target origin domain
+	 * @param targetDomain - The target origin, as an absolute URL
 	 * @param name - The message name/type
 	 * @param data - Optional data payload
-	 * @throws Error if messenger is destroyed
+	 * @throws Error if messenger is destroyed or the target is not an absolute URL
 	 */
 	post<T = unknown>(
 		targetWin: Window,
@@ -336,13 +321,14 @@ export class Messenger {
 			throw new Error("Messenger has been destroyed");
 		}
 
+		const targetOrigin = resolveTargetOrigin(targetDomain, name);
 		const id = generateShortUID();
 		const message = createRequestMessage(id, name, data, {
 			uid: this.channelUid,
 			domain: this.domain,
 		});
 
-		targetWin.postMessage(serializeMessage(message), targetDomain);
+		targetWin.postMessage(serializeMessage(message), targetOrigin);
 	}
 
 	/**

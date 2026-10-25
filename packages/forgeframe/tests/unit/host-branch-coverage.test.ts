@@ -6,8 +6,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type MessageHandler, Messenger } from "@/communication/messenger";
-import type { ConsumerExports } from "@/communication/types";
-import { CONTEXT, EVENT, MESSAGE_NAME, VERSION } from "@/constants";
+import { CONTEXT, EVENT, MESSAGE_NAME, PROTOCOL_VERSION } from "@/constants";
 import {
 	clearHostInstance,
 	getHost,
@@ -21,34 +20,23 @@ import { buildWindowName } from "@/window/name-payload";
 import type { HostComponentRef, WindowNamePayload } from "@/window/types";
 import { requireValue } from "../require-value";
 
-const VALID_EXPORTS: ConsumerExports = {
-	init: MESSAGE_NAME.INIT,
-	close: MESSAGE_NAME.CLOSE,
-	resize: MESSAGE_NAME.RESIZE,
-	show: MESSAGE_NAME.SHOW,
-	hide: MESSAGE_NAME.HIDE,
-	onError: MESSAGE_NAME.ERROR,
-	updateProps: MESSAGE_NAME.PROPS,
-	export: MESSAGE_NAME.EXPORT,
-};
-
 type HandlerSource = Parameters<MessageHandler>[1];
 type DirectHandler = (data: unknown, source: HandlerSource) => unknown;
 
+const originalWindowName = window.name;
+
 /**
- * Builds a host window payload with stable defaults for branch-path tests.
+ * Builds current-protocol channel metadata with stable defaults for branch-path tests.
  */
 function createPayload(
-	overrides: Partial<WindowNamePayload<Record<string, unknown>>> = {},
-): WindowNamePayload<Record<string, unknown>> {
+	overrides: Partial<WindowNamePayload> = {},
+): WindowNamePayload {
 	return {
 		uid: "host-internal-uid",
 		tag: "host-internal-component",
-		version: VERSION,
+		protocolVersion: PROTOCOL_VERSION,
 		context: CONTEXT.IFRAME,
 		consumerDomain: "https://consumer.example.com",
-		props: { amount: 10 },
-		exports: VALID_EXPORTS,
 		...overrides,
 	};
 }
@@ -61,7 +49,7 @@ function createHost({
 	deferInit = true,
 	consumerWindow = window,
 }: {
-	payload?: WindowNamePayload<Record<string, unknown>>;
+	payload?: WindowNamePayload;
 	deferInit?: boolean;
 	consumerWindow?: Window;
 } = {}): HostComponent<Record<string, unknown>> {
@@ -70,6 +58,21 @@ function createHost({
 	);
 
 	return new HostComponent(payload, {}, undefined, deferInit);
+}
+
+/**
+ * Creates a deferred host and waits for its stubbed bootstrap response.
+ */
+async function createBootstrappedHost(
+	bootstrap: { props: Record<string, unknown> } & Record<string, unknown> = {
+		props: { amount: 10 },
+	},
+): Promise<HostComponent<Record<string, unknown>>> {
+	vi.spyOn(Messenger.prototype, "send").mockResolvedValueOnce(bootstrap);
+	const host = createHost();
+	await host.ready;
+	vi.mocked(Messenger.prototype.send).mockRestore();
+	return host;
 }
 
 function createMessageSource(
@@ -86,30 +89,41 @@ function createMessageSource(
 afterEach(() => {
 	clearHostInstance();
 	vi.restoreAllMocks();
+	window.name = originalWindowName;
 	delete (window as unknown as { hostProps?: unknown }).hostProps;
 });
 
 describe("Host branch coverage and edge paths", () => {
-	it("should flush init in constructor when deferInit is false", () => {
+	it("should flush init in constructor when deferInit is false", async () => {
 		const sendSpy = vi
 			.spyOn(Messenger.prototype, "send")
+			.mockResolvedValueOnce({ props: {} })
 			.mockResolvedValue(undefined);
 
-		createHost({ deferInit: false });
+		await createHost({ deferInit: false }).ready;
 
-		expect(sendSpy).toHaveBeenCalledTimes(1);
-		expect(sendSpy).toHaveBeenCalledWith(
+		await vi.waitFor(() => expect(sendSpy).toHaveBeenCalledTimes(2));
+		const [bootstrapCall, initCall] = sendSpy.mock.calls;
+		const [targetWindow, targetDomain, name, data] =
+			requireValue(bootstrapCall);
+		expect([targetWindow, targetDomain, name]).toEqual([
+			window,
+			window.location.origin,
+			MESSAGE_NAME.BOOTSTRAP,
+		]);
+		const { sessionId } = data as { sessionId: string };
+		expect(initCall).toEqual([
 			window,
 			window.location.origin,
 			MESSAGE_NAME.INIT,
-			{ uid: "host-internal-uid", tag: "host-internal-component" },
+			{ sessionId },
 			undefined,
 			undefined,
-		);
+		]);
 	});
 
 	it("should only flush deferred init once when hostProps is accessed repeatedly in the same tick", async () => {
-		const host = createHost();
+		const host = await createBootstrappedHost();
 		const sendSpy = vi
 			.spyOn(
 				(
@@ -124,6 +138,7 @@ describe("Host branch coverage and edge paths", () => {
 		void (window as unknown as { hostProps?: unknown }).hostProps;
 		void (window as unknown as { hostProps?: unknown }).hostProps;
 
+		await vi.waitFor(() => expect(sendSpy).toHaveBeenCalledTimes(1));
 		await Promise.resolve();
 		expect(sendSpy).toHaveBeenCalledTimes(1);
 	});
@@ -163,7 +178,7 @@ describe("Host branch coverage and edge paths", () => {
 	});
 
 	it("should capture init failures and expose init error state", async () => {
-		const host = createHost();
+		const host = await createBootstrappedHost();
 		const error = new Error("init send failed");
 		const sendSpy = vi
 			.spyOn(
@@ -179,14 +194,13 @@ describe("Host branch coverage and edge paths", () => {
 		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
 		host.flushInit();
-		await Promise.resolve();
-		await Promise.resolve();
+		await vi.waitFor(() => expect(host.getInitError()).toBe(error));
 
 		expect(sendSpy).toHaveBeenCalledWith(
 			window,
 			window.location.origin,
 			MESSAGE_NAME.INIT,
-			{ uid: "host-internal-uid", tag: "host-internal-component" },
+			{ sessionId: expect.any(String) },
 			undefined,
 			undefined,
 		);
@@ -204,8 +218,8 @@ describe("Host branch coverage and edge paths", () => {
 		);
 	});
 
-	it("should unsubscribe onProps handlers when cancel is called", () => {
-		const host = createHost();
+	it("should unsubscribe onProps handlers when cancel is called", async () => {
+		const host = await createBootstrappedHost();
 		const propsHandler = (
 			host as unknown as { messenger: { handlers: Map<string, DirectHandler> } }
 		).messenger.handlers.get(MESSAGE_NAME.PROPS);
@@ -240,15 +254,11 @@ describe("Host branch coverage and edge paths", () => {
 			window,
 			window.location.origin,
 			MESSAGE_NAME.GET_SIBLINGS,
-			{
-				uid: "host-internal-uid",
-				tag: "host-internal-component",
-				options: { anyConsumer: true },
-			},
+			{ options: { anyConsumer: true } },
 		);
 	});
 
-	it("should warn and skip nested components that fail creation", () => {
+	it("should warn and skip nested components that fail creation", async () => {
 		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 		const invalidChildren: Record<string, HostComponentRef> = {
 			BrokenChild: {
@@ -257,8 +267,9 @@ describe("Host branch coverage and edge paths", () => {
 			},
 		};
 
-		const host = createHost({
-			payload: createPayload({ children: invalidChildren }),
+		const host = await createBootstrappedHost({
+			props: {},
+			children: invalidChildren,
 		});
 
 		expect(host.hostProps.children).toBeUndefined();
@@ -294,7 +305,7 @@ describe("Host branch coverage and edge paths", () => {
 	});
 
 	it("should return null when initHost is called outside ForgeFrame context", () => {
-		vi.spyOn(namePayload, "isForgeFrameWindow").mockReturnValue(false);
+		window.name = "standalone-window";
 
 		const host = initHost();
 
@@ -302,11 +313,9 @@ describe("Host branch coverage and edge paths", () => {
 	});
 
 	it("should fail soft when consumer window cannot be resolved", () => {
-		const payload = createPayload();
+		window.name = buildWindowName(createPayload());
 		const addEventListenerSpy = vi.spyOn(window, "addEventListener");
 		const removeEventListenerSpy = vi.spyOn(window, "removeEventListener");
-		vi.spyOn(namePayload, "isForgeFrameWindow").mockReturnValue(true);
-		vi.spyOn(namePayload, "getInitialPayload").mockReturnValue(payload);
 		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockImplementation(() => {
 			throw new Error("Could not resolve consumer window");
 		});
@@ -326,8 +335,7 @@ describe("Host branch coverage and edge paths", () => {
 	});
 
 	it("should log and return null when ForgeFrame payload parsing fails", () => {
-		vi.spyOn(namePayload, "isForgeFrameWindow").mockReturnValue(true);
-		vi.spyOn(namePayload, "getInitialPayload").mockReturnValue(null);
+		window.name = "__forgeframe__not-valid-base64";
 		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
 		const host = initHost();
@@ -345,8 +353,6 @@ describe("Host branch coverage and edge paths", () => {
 		});
 		window.name = buildWindowName(payload);
 		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
-		vi.spyOn(namePayload, "isForgeFrameWindow").mockReturnValue(true);
-		vi.spyOn(namePayload, "getInitialPayload").mockReturnValue(payload);
 
 		const host = initHost(undefined, undefined, { deferInit: true });
 

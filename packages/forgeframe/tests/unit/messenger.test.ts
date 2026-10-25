@@ -327,28 +327,22 @@ describe("Messenger", () => {
 			await expect(sendPromise).resolves.toEqual({ from: "trusted-origin" });
 		});
 
-		it("should allow responses from any origin when target domain is wildcard", async () => {
-			const sendPromise = messenger.send(targetWindow, "*", "wildcardOrigin");
+		it.each(["*", "/", "target.com", ""])(
+			'should reject the non-URL target "%s" before posting',
+			async (targetDomain) => {
+				await expect(
+					messenger.send(targetWindow, targetDomain, "invalidTarget"),
+				).rejects.toThrow(
+					`Cannot send "invalidTarget": target origin "${targetDomain}" is not an absolute URL`,
+				);
 
-			const sentMessage = JSON.parse(
-				(
-					targetWindow.postMessage as ReturnType<typeof vi.fn>
-				).mock.calls[0][0].slice("forgeframe:".length),
-			);
-
-			const response = createResponseMessage(
-				sentMessage.id,
-				{ ok: true },
-				{ uid: "test-uid", domain: "https://host.com" },
-			);
-			dispatchMessage(
-				serializeMessage(response),
-				targetWindow,
-				"https://host.com",
-			);
-
-			await expect(sendPromise).resolves.toEqual({ ok: true });
-		});
+				expect(targetWindow.postMessage).not.toHaveBeenCalled();
+				expect(
+					(messenger as unknown as { pending: Map<string, unknown> }).pending
+						.size,
+				).toBe(0);
+			},
+		);
 
 		it("should normalize URL-like targetDomain values when matching response origins", async () => {
 			const sendPromise = messenger.send(
@@ -357,11 +351,11 @@ describe("Messenger", () => {
 				"normalizedOrigin",
 			);
 
-			const sentMessage = JSON.parse(
-				(
-					targetWindow.postMessage as ReturnType<typeof vi.fn>
-				).mock.calls[0][0].slice("forgeframe:".length),
-			);
+			const [serialized, targetOrigin] = (
+				targetWindow.postMessage as ReturnType<typeof vi.fn>
+			).mock.calls[0];
+			expect(targetOrigin).toBe("https://target.com");
+			const sentMessage = JSON.parse(serialized.slice("forgeframe:".length));
 
 			const response = createResponseMessage(
 				sentMessage.id,
@@ -375,37 +369,6 @@ describe("Messenger", () => {
 			);
 
 			await expect(sendPromise).resolves.toEqual({ ok: "normalized" });
-		});
-
-		it('should treat "/" targetDomain as same-origin for response correlation', async () => {
-			const sameOriginWindow = {
-				postMessage: vi.fn(),
-			} as unknown as Window;
-
-			const sendPromise = messenger.send(
-				sameOriginWindow,
-				"/",
-				"sameOriginToken",
-			);
-
-			const sentMessage = JSON.parse(
-				(
-					sameOriginWindow.postMessage as ReturnType<typeof vi.fn>
-				).mock.calls[0][0].slice("forgeframe:".length),
-			);
-
-			const response = createResponseMessage(
-				sentMessage.id,
-				{ ok: "same-origin" },
-				{ uid: "test-uid", domain: "https://consumer.com" },
-			);
-			dispatchMessage(
-				serializeMessage(response),
-				sameOriginWindow,
-				"https://consumer.com",
-			);
-
-			await expect(sendPromise).resolves.toEqual({ ok: "same-origin" });
 		});
 
 		it("should cleanup pending request when postMessage throws", async () => {
@@ -488,6 +451,22 @@ describe("Messenger", () => {
 				messenger.post(targetWindow, "https://target.com", "test"),
 			).toThrow("Messenger has been destroyed");
 		});
+
+		it.each(["*", "/", "target.com"])(
+			'should reject the non-URL target "%s" before posting',
+			(targetDomain) => {
+				const targetWindow = {
+					postMessage: vi.fn(),
+				} as unknown as Window;
+
+				expect(() =>
+					messenger.post(targetWindow, targetDomain, "notify"),
+				).toThrow(
+					`Cannot send "notify": target origin "${targetDomain}" is not an absolute URL`,
+				);
+				expect(targetWindow.postMessage).not.toHaveBeenCalled();
+			},
+		);
 	});
 
 	describe("on", () => {

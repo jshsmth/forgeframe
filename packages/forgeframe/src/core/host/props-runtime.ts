@@ -13,19 +13,14 @@ import { isStandardSchema } from "../../props";
 import { validateNormalizedProps } from "../../props/normalize";
 import { deserializeProps } from "../../props/serialize";
 import type { SerializedProps } from "../../props/types";
-import type { HostPropsDefinition, PropDefinition } from "../../types/props";
+import type { HostPropsDefinition } from "../../types/props";
 import type {
 	ForgeFrameComponent,
 	HostProps,
 	RemoteValue,
 } from "../../types/runtime";
 import { normalizeError } from "../../utils/error";
-import { getDomain } from "../../window/helpers";
-import type {
-	HostBootstrapData,
-	HostComponentRef,
-	WindowNamePayload,
-} from "../../window/types";
+import type { HostBootstrapData, HostComponentRef } from "../../window/types";
 import { getRegisteredComponent } from "../component-registry";
 import { HOST_PROPS_BUILTIN_KEYS } from "./builtin-keys";
 import type { HostPropsRuntimeOptions, WindowWithHostProps } from "./types";
@@ -67,36 +62,16 @@ export class HostPropsRuntime<
 		private options: HostPropsRuntimeOptions,
 	) {}
 
-	initializeHostProps(
-		payload: WindowNamePayload<P>,
-		validate = true,
-	): HostProps<P> {
-		const deserializedProps = this.deserialize(payload.props);
-
-		// Shared schemas validate the wire value's shape; deserialization changes
-		// callable return types without changing their runtime function kind.
-		if (validate)
-			validateNormalizedProps(
-				deserializedProps as P,
-				this.getBootstrapValidationDefinitions(),
-			);
-		this.initialized = validate;
-		this.consumerProps = deserializedProps;
-
-		const hostConsumerProps = filterReservedHostPropKeys(deserializedProps);
-
-		this.hostProps = this.createHostProps(hostConsumerProps, payload.children);
-
+	/** Starts with built-in controls only; consumer props arrive through bootstrap. */
+	initializeHostProps(): HostProps<P> {
+		this.consumerProps = {} as RemoteValue<P>;
+		this.hostProps = this.createHostProps();
 		return this.hostProps;
 	}
 
 	/** Constructs the host API surface; callbacks defer control work until invoked. */
-	private createHostProps(
-		hostConsumerProps: RemoteValue<P>,
-		children: WindowNamePayload<P>["children"],
-	): HostProps<P> {
+	private createHostProps(): HostProps<P> {
 		return {
-			...hostConsumerProps,
 			uid: this.options.uid,
 			tag: this.options.tag,
 			close: () => this.options.controls.close(),
@@ -116,8 +91,8 @@ export class HostPropsRuntime<
 			},
 			getPeerInstances: (options) =>
 				this.options.controls.getPeerInstances(options),
-			children: this.buildNestedComponents(children),
-		};
+			children: undefined,
+		} as HostProps<P>;
 	}
 
 	exposeHostProps(): void {
@@ -153,7 +128,7 @@ export class HostPropsRuntime<
 		if (this.initialized || this.pendingBootstrapProps !== null)
 			validateNormalizedProps(
 				nextProps as P,
-				this.getBootstrapValidationDefinitions(propDefinitions),
+				this.getDeliveredPropDefinitions(propDefinitions),
 			);
 		const nextHostProps = filterReservedHostPropKeys(nextProps);
 		this.propDefinitions = propDefinitions;
@@ -316,21 +291,6 @@ export class HostPropsRuntime<
 			: (Object.fromEntries(deliveredEntries) as T);
 	}
 
-	private getBootstrapValidationDefinitions(
-		propDefinitions = this.propDefinitions,
-	): HostPropsDefinition<P, SchemaInputs> {
-		const deliveredDefinitions =
-			this.getDeliveredPropDefinitions(propDefinitions);
-		if (
-			!this.options.isConsumerDomainVerified() ||
-			this.options.getConsumerDomain() !== getDomain()
-		) {
-			return deliveredDefinitions;
-		}
-
-		return relaxSameDomainBootstrapDefinitions(deliveredDefinitions);
-	}
-
 	/** Consumer-only definitions validate local input and are excluded from received snapshots. */
 	private getDeliveredPropDefinitions(
 		propDefinitions = this.propDefinitions,
@@ -388,31 +348,4 @@ export class HostPropsRuntime<
 			delete (this.hostProps as Record<string, unknown>)[key];
 		}
 	}
-}
-
-/** Relaxes only deferred same-domain definitions after the caller verifies the context. */
-function relaxSameDomainBootstrapDefinitions<
-	P extends Record<string, unknown>,
-	SchemaInputs,
->(
-	propDefinitions: HostPropsDefinition<P, SchemaInputs>,
-): HostPropsDefinition<P, SchemaInputs> {
-	let hasDeferredSameDomainProp = false;
-	const bootstrapDefinitions = {
-		...propDefinitions,
-	} as HostPropsDefinition<P, SchemaInputs>;
-
-	for (const [key, definition] of Object.entries(propDefinitions)) {
-		if (!definition || isStandardSchema(definition) || !definition.sameDomain) {
-			continue;
-		}
-
-		hasDeferredSameDomainProp = true;
-		bootstrapDefinitions[key as keyof P] = {
-			...(definition as PropDefinition<unknown, P>),
-			required: false,
-		} as HostPropsDefinition<P, SchemaInputs>[keyof P];
-	}
-
-	return hasDeferredSameDomainProp ? bootstrapDefinitions : propDefinitions;
 }

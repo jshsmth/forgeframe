@@ -6,8 +6,8 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import type { ConsumerExports } from "@/communication/types";
-import { CONTEXT, EVENT, MESSAGE_NAME, VERSION } from "@/constants";
+import { Messenger } from "@/communication/messenger";
+import { CONTEXT, EVENT, PROTOCOL_VERSION } from "@/constants";
 import {
 	clearComponents,
 	create,
@@ -31,17 +31,6 @@ import {
 	setVerifiedHostDomain,
 } from "../peer-host-domain";
 import { requireValue } from "../require-value";
-
-const VALID_EXPORTS: ConsumerExports = {
-	init: MESSAGE_NAME.INIT,
-	close: MESSAGE_NAME.CLOSE,
-	resize: MESSAGE_NAME.RESIZE,
-	show: MESSAGE_NAME.SHOW,
-	hide: MESSAGE_NAME.HIDE,
-	onError: MESSAGE_NAME.ERROR,
-	updateProps: MESSAGE_NAME.PROPS,
-	export: MESSAGE_NAME.EXPORT,
-};
 
 const originalWindowName = window.name;
 
@@ -2235,35 +2224,29 @@ describe("Host Context Detection", () => {
 			expect(MyComponent.isHost()).toBe(false);
 		});
 
-		it("should resolve host state after explicit initHost consumes window name", () => {
+		it("should resolve host state after explicit initHost reads window name", async () => {
 			const props = {
 				label: prop.string(),
 			};
-			window.name = buildWindowName({
+			const bootstrapWindowName = buildWindowName({
 				uid: "post-init-component-uid",
 				tag: "post-init-component",
-				version: VERSION,
+				protocolVersion: PROTOCOL_VERSION,
 				context: CONTEXT.IFRAME,
 				consumerDomain: "https://consumer.example.com",
-				props: { label: "ready" },
-				exports: VALID_EXPORTS,
 			});
+			window.name = bootstrapWindowName;
 
 			vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
+			vi.spyOn(Messenger.prototype, "send")
+				.mockResolvedValueOnce({ props: { label: "ready" } })
+				.mockResolvedValue(undefined);
 
 			const host = initHost<{ label: string }>(props, undefined, {
 				deferInit: true,
 			});
-			expect(window.name).toBe("");
-
-			vi.spyOn(
-				(
-					host as unknown as {
-						messenger: { send: (...args: unknown[]) => Promise<unknown> };
-					}
-				).messenger,
-				"send",
-			).mockResolvedValue(undefined);
+			await host?.ready;
+			expect(window.name).toBe(bootstrapWindowName);
 
 			const MyComponent = create<{ label: string }>({
 				tag: "post-init-component",
