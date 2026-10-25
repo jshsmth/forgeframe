@@ -5,7 +5,7 @@ desc: Runtime callable responsibilities, IOSP classifications, and boundary test
 tags: []
 sources: []
 created: 2026-10-01T01:55:30Z
-updated: 2026-10-25T02:38:15Z
+updated: 2026-10-25T03:19:17Z
 ---
 
 # ForgeFrame callable reference
@@ -368,9 +368,9 @@ Evidence: [react](#evidence-react); typecheck.
 
 ### [events/emitter.ts](../packages/forgeframe/src/events/emitter.ts)
 
-Listener storage keeps one registration token per handler and event, as DOM listeners do: registering a handler again keeps the first registration, and `off(event, handler)` also cancels a pending `once`. Each returned unsubscribe function removes only the registration it created, so a stale handle cannot remove a newer registration of the same handler. Emission runs each supplied observer in isolation, from a registration snapshot, in subscription order, and skips registrations removed before their turn, including by bulk removal. A `once` registration is removed immediately before its observer runs. New or replaced registrations wait for the next emission, so a rearmed `once` observer cannot loop within one dispatch.
+Listener storage keeps one registration token per handler and event, as DOM listeners do: registering a handler again keeps the first registration, and `off(event, handler)` also cancels a pending `once`. Each returned unsubscribe function removes only the registration it created, so a stale handle cannot remove a newer registration of the same handler. Emission runs each supplied observer in isolation, from a registration snapshot, in subscription order, and skips registrations removed before their turn, including by bulk removal. A `once` registration is removed immediately before its observer runs. New or replaced registrations wait for the next emission, so a rearmed `once` observer cannot loop within one dispatch. `listenerCount` has no internal caller; it stays because `initHost()` exposes the class through `HostComponent.event`.
 
-- **O:** `EventEmitter.register`, `EventEmitter.register.callback@109`, `EventEmitter.removeRegistration`, `EventEmitter.invokeHandler`, `EventEmitter.off`, `EventEmitter.removeAllListeners`.
+- **O:** `EventEmitter.register`, `EventEmitter.register.callback@109`, `EventEmitter.removeRegistration`, `EventEmitter.invokeHandler`, `EventEmitter.off`, `EventEmitter.removeAllListeners`, `EventEmitter.listenerCount`.
 - **I:** `EventEmitter.on`, `EventEmitter.once`, `EventEmitter.emit`.
 - **O callbacks:** `EventEmitter.invokeHandler.callback@179`.
 
