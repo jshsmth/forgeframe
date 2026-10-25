@@ -66,7 +66,11 @@ function createHost({
 		consumerWindow,
 	);
 
-	return new HostComponent(payload, propDefinitions, "*", autoInit);
+	return new HostComponent(payload, {
+		props: propDefinitions,
+		consumerOrigins: "*",
+		autoInit,
+	});
 }
 
 /**
@@ -694,7 +698,10 @@ describe("Host lifecycle behavior", () => {
 		vi.spyOn(helpers, "getConsumer").mockReturnValue(consumerWindow);
 		vi.spyOn(helpers, "isPopup").mockReturnValue(false);
 
-		const host = new HostComponent(createPayload(), {}, "*", false);
+		const host = new HostComponent(createPayload(), {
+			consumerOrigins: "*",
+			autoInit: false,
+		});
 		expect(host.hostProps.getConsumer()).toBe(consumerWindow);
 	});
 
@@ -704,7 +711,10 @@ describe("Host lifecycle behavior", () => {
 		vi.spyOn(helpers, "isPopup").mockReturnValue(true);
 		vi.spyOn(helpers, "getOpener").mockReturnValue(openerWindow);
 
-		const host = new HostComponent(createPayload(), {}, "*", false);
+		const host = new HostComponent(createPayload(), {
+			consumerOrigins: "*",
+			autoInit: false,
+		});
 		expect(host.hostProps.getConsumer()).toBe(openerWindow);
 	});
 
@@ -712,8 +722,12 @@ describe("Host lifecycle behavior", () => {
 		vi.spyOn(helpers, "isIframe").mockReturnValue(false);
 		vi.spyOn(helpers, "isPopup").mockReturnValue(false);
 
-		expect(() => new HostComponent(createPayload(), {}, "*", false)).toThrow(
-			"Could not resolve consumer window",
-		);
+		expect(
+			() =>
+				new HostComponent(createPayload(), {
+					consumerOrigins: "*",
+					autoInit: false,
+				}),
+		).toThrow("Could not resolve consumer window");
 	});
 });

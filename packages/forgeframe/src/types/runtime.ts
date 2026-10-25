@@ -914,19 +914,6 @@ export interface InitHostOptions<
 }
 
 /**
- * Payload of the host `error` event.
- *
- * @remarks
- * A rejected prop update reports an `Error`; a failed INIT reports an
- * `init_failed` record.
- *
- * @internal
- */
-type HostErrorEventPayload =
-	| Error
-	| { type: "init_failed"; message: string; error: Error };
-
-/**
  * A started host runtime, returned by `initHost()`.
  *
  * @typeParam P - The host props type, inferred from the component passed to
@@ -997,12 +984,19 @@ export interface Host<P = Record<string, unknown>> {
 	on(event: "props", handler: (props: RemoteValue<P>) => void): () => void;
 
 	/**
-	 * Observes host errors: rejected prop updates and INIT delivery failures.
+	 * Observes host errors.
+	 *
+	 * @remarks
+	 * Rejected props, including a rejected bootstrap snapshot, report an
+	 * `Error`. Any other failed start, and an INIT delivery failure, report an
+	 * `init_failed` record.
 	 *
 	 * @returns A function that removes the handler
 	 */
 	on(
 		event: "error",
-		handler: (error: HostErrorEventPayload) => void,
+		handler: (
+			error: Error | { type: "init_failed"; message: string; error: Error },
+		) => void,
 	): () => void;
 }

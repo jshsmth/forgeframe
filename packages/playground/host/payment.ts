@@ -23,15 +23,14 @@ import {
 	shouldDeclineAttempt,
 } from "../payment/simulation";
 import { requireValue } from "../require-value";
+import { consumerUrl } from "./consumer-url";
 import "./payment.css";
 
 /** Set by browser tests to expose the ready props; production builds drop the hook. */
 declare const __FORGEFRAME_PAYMENT_TEST_HOOK__: boolean;
 
 const app = requireValue(document.querySelector<HTMLElement>("#payment-app"));
-const consumerOrigin = new URL(
-	import.meta.env.VITE_CONSUMER_URL || `${location.protocol}//localhost:5173`,
-).origin;
+const consumerOrigin = new URL(consumerUrl).origin;
 
 function field<T extends HTMLElement>(selector: string): T {
 	return requireValue(app.querySelector<T>(selector));

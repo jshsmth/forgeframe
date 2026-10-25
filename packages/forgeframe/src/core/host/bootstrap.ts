@@ -3,33 +3,30 @@
  * Host start-up and singleton lifecycle.
  *
  * @remarks
- * This internal module owns the only host start path: it checks `initHost()`
- * arguments, enforces one active host per window, starts the runtime from the
- * channel metadata, and returns the narrow `Host` object.
+ * This internal module owns the only host start path: after
+ * `init-host-arguments.ts` checks the call shape, it enforces one active host
+ * per window, starts the runtime from the channel metadata, and returns the
+ * narrow `Host` object.
  */
 
 import { EVENT, PROTOCOL_VERSION } from "../../constants";
-import { assertNoRemovedPropOptions } from "../../props/removed-options";
 import type { EventHandler } from "../../types/events";
-import type { HostPropsDefinition } from "../../types/props";
 import type {
-	ComponentOptions,
 	ForgeFrameComponent,
-	ForgeFrameComponentReference,
 	Host,
 	InitHostOptions,
 } from "../../types/runtime";
-import type { DomainMatcher } from "../../types/utility";
 import { hasBrowserWindow } from "../../utils/browser";
-import { assertDomainMatcher } from "../../utils/domain-pattern";
 import {
 	readWindowNamePayload,
 	type WindowNamePayloadClassification,
 } from "../../window/name-payload";
 import type { WindowNamePayload } from "../../window/types";
-import { getComponentOptions } from "../component-registry";
-import { assertNoReservedPropDefinitions } from "./builtin-keys";
 import { HostComponent } from "./component";
+import {
+	type HostStartOptions,
+	readInitHostArguments,
+} from "./init-host-arguments";
 import {
 	CONSUMER_WINDOW_RESOLUTION_ERROR,
 	resolveConsumerWindow,
@@ -96,109 +93,8 @@ function describeUnsupportedPayload(
 	return `${prefix} the consumer uses ForgeFrame ${line} (${evidence}). Upgrade the consumer and host to ForgeFrame 2 together.`;
 }
 
-const INIT_HOST_CALL_SHAPE =
-	"initHost(Component, { consumerOrigins }) or initHost({ props, consumerOrigins })";
-
 const HOST_ALREADY_ACTIVE_ERROR =
 	"A ForgeFrame host is already active in this window; call destroy() first";
-
-/** Options accepted by the component form, which supplies its own props. */
-type ComponentInitHostOptions = Omit<InitHostOptions, "props">;
-
-/** Validated `initHost()` arguments, before any environment check. */
-interface InitHostArguments {
-	/** The component's registered options, for the component form. */
-	definition?: ComponentOptions;
-	options: InitHostOptions;
-}
-
-/**
- * Checks the call shape without reading the environment.
- *
- * @throws TypeError for a bare call, a non-ForgeFrame component, v1
- * positional arguments, or an unknown option.
- */
-function readInitHostArguments(args: readonly unknown[]): InitHostArguments {
-	const [first, second] = args;
-	if (typeof first === "function") {
-		const definition = getComponentOptions(
-			first as unknown as ForgeFrameComponentReference,
-		);
-		if (!definition) {
-			throw new TypeError(
-				`initHost() expects a component returned by create() as its first argument. Use ${INIT_HOST_CALL_SHAPE}.`,
-			);
-		}
-		if (args.length > 2) {
-			throw new TypeError(
-				`initHost() takes a component and one options object. Use ${INIT_HOST_CALL_SHAPE}.`,
-			);
-		}
-		return { definition, options: readInitHostOptions(second, false) };
-	}
-	if (args.length > 1) {
-		throw new TypeError(
-			`initHost() no longer takes a positional allowlist. Pass consumerOrigins in the options object: ${INIT_HOST_CALL_SHAPE}.`,
-		);
-	}
-	return { options: readInitHostOptions(first, true) };
-}
-
-/** Checks the options object's own keys and values. */
-function readInitHostOptions(
-	value: unknown,
-	acceptsProps: boolean,
-): InitHostOptions {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) {
-		throw new TypeError(
-			`initHost() requires an options object with consumerOrigins. Use ${INIT_HOST_CALL_SHAPE}.`,
-		);
-	}
-	for (const key of Object.keys(value)) {
-		if (key === "props" && !acceptsProps) {
-			throw new TypeError(
-				"initHost(Component, options) does not take props; the component supplies its own prop definitions.",
-			);
-		}
-		if (key !== "consumerOrigins" && key !== "autoInit" && key !== "props") {
-			throw new TypeError(
-				`initHost() does not accept the "${key}" option. Use ${INIT_HOST_CALL_SHAPE}.`,
-			);
-		}
-	}
-	const { consumerOrigins, autoInit, props } = value as Record<string, unknown>;
-	if (consumerOrigins === undefined) {
-		throw new TypeError(
-			`initHost() requires consumerOrigins, the consumer origins allowed to embed this host; pass '*' to allow any origin. Use ${INIT_HOST_CALL_SHAPE}.`,
-		);
-	}
-	try {
-		assertDomainMatcher(consumerOrigins, "initHost() consumerOrigins");
-	} catch (error) {
-		throw new TypeError(
-			`${(error as Error).message}. Use ${INIT_HOST_CALL_SHAPE}.`,
-		);
-	}
-	if (autoInit !== undefined && typeof autoInit !== "boolean") {
-		throw new TypeError(
-			`initHost() autoInit must be a boolean. Use ${INIT_HOST_CALL_SHAPE}.`,
-		);
-	}
-	if (props !== undefined) {
-		if (typeof props !== "object" || props === null || Array.isArray(props)) {
-			throw new TypeError(
-				`initHost() props must be a prop definitions object. Use ${INIT_HOST_CALL_SHAPE}.`,
-			);
-		}
-		assertNoReservedPropDefinitions(props as Record<string, unknown>);
-		assertNoRemovedPropOptions(props);
-	}
-	return {
-		consumerOrigins: consumerOrigins as DomainMatcher,
-		autoInit,
-		props: props as HostPropsDefinition<Record<string, unknown>> | undefined,
-	};
-}
 
 /**
  * Starts the host runtime for a ForgeFrame iframe or popup.
@@ -241,32 +137,55 @@ export function initHost<
 	SchemaInputs,
 >(
 	component: ForgeFrameComponent<P, X, I, RequireProps, SchemaInputs>,
-	options: ComponentInitHostOptions,
+	options: Omit<InitHostOptions, "props">,
 ): Host<P> | null;
+/**
+ * Starts the host runtime for a window opened for any tag.
+ *
+ * @remarks
+ * For hosts that serve many components. `props` validates the consumer's
+ * props and types them; without it, delivered props are not validated. It
+ * otherwise behaves like `initHost(Component, options)`: await `ready` before
+ * reading consumer props, and only one host can be active in a window.
+ *
+ * @example
+ * ```typescript
+ * import { initHost } from 'forgeframe';
+ * import { paymentProps } from './payment-props';
+ *
+ * const host = initHost({ props: paymentProps, consumerOrigins: ['https://shop.example.com'] });
+ * if (host) {
+ *   const { amount } = await host.ready;
+ * }
+ * ```
+ *
+ * @returns The started host, or `null` without browser globals, outside a
+ * ForgeFrame window, for malformed channel metadata, or when the consumer
+ * window cannot be resolved.
+ * @throws For invalid arguments, in every environment. In a ForgeFrame window,
+ * also while another host is active, when the consumer origin is not in
+ * `consumerOrigins`, or when the consumer runs another ForgeFrame major
+ * version.
+ * @public
+ */
 export function initHost<
 	P extends Record<string, unknown> = Record<string, unknown>,
 	SchemaInputs = P,
 >(options: InitHostOptions<P, SchemaInputs>): Host<P> | null;
 export function initHost(...args: unknown[]): Host | null {
-	const { definition, options } = readInitHostArguments(args);
+	const start = readInitHostArguments(args);
 	if (!hasBrowserWindow()) return null;
 	if (hostInstance) throw new Error(HOST_ALREADY_ACTIVE_ERROR);
 
 	const payload = readInitialPayload();
 	if (!payload) return null;
-	if (definition && definition.tag !== payload.tag) {
+	if (start.componentTag !== undefined && start.componentTag !== payload.tag) {
 		throw new Error(
-			`initHost() received component "${definition.tag}", but this window was opened for "${payload.tag}"`,
+			`initHost() received component "${start.componentTag}", but this window was opened for "${payload.tag}"`,
 		);
 	}
 
-	const runtime = startHostRuntime(
-		payload,
-		(definition?.props ?? options.props) as
-			| HostPropsDefinition<Record<string, unknown>>
-			| undefined,
-		options,
-	);
+	const runtime = startHostRuntime(payload, start);
 	return runtime && createHost(runtime);
 }
 
@@ -276,20 +195,18 @@ export function initHost(...args: unknown[]): Host | null {
  */
 function startHostRuntime(
 	payload: WindowNamePayload,
-	propDefinitions: HostPropsDefinition<Record<string, unknown>> | undefined,
-	options: InitHostOptions,
+	start: HostStartOptions,
 ): HostComponent<Record<string, unknown>> | null {
 	let runtime: HostComponent<Record<string, unknown>>;
 	try {
-		runtime = new HostComponent(
-			payload,
-			propDefinitions,
-			options.consumerOrigins,
-			options.autoInit ?? true,
-			() => {
+		runtime = new HostComponent(payload, {
+			props: start.props,
+			consumerOrigins: start.consumerOrigins,
+			autoInit: start.autoInit,
+			onDestroy: () => {
 				if (hostInstance === runtime) hostInstance = null;
 			},
-		);
+		});
 	} catch (error) {
 		if (
 			error instanceof Error &&

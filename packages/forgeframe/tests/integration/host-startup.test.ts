@@ -9,7 +9,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { deserializeMessage } from "@/communication/protocol";
 import { MESSAGE_NAME } from "@/constants";
 import { deleteRegisteredComponent } from "@/core/component-registry";
-import { getHost } from "@/core/host/bootstrap";
 import { HOST_PROPS_BUILTIN_KEYS } from "@/core/host/builtin-keys";
 import { create, EVENT, initHost, isHost, prop } from "@/index";
 import {
@@ -18,6 +17,10 @@ import {
 } from "./helpers";
 
 const HOST_URL = "https://host.example.com/widget";
+const V2_CALL_SHAPE =
+	"initHost(Component, { consumerOrigins }) or initHost({ props, consumerOrigins })";
+/** initHost() typed loosely, for calls that break its signature on purpose. */
+const callInitHost = initHost as (...args: unknown[]) => unknown;
 
 describe("Explicit host start-up", () => {
 	let harness: IframeIntegrationHarness | null = null;
@@ -105,7 +108,6 @@ describe("Explicit host start-up", () => {
 		);
 		expect(await isSettled(activeHarness, rendering)).toBe(false);
 		expect(sent).not.toContain(MESSAGE_NAME.BOOTSTRAP);
-		expect(getHost()).toBeNull();
 		expect(activeHarness.withHostGlobals(() => isHost())).toBe(true);
 
 		const host = activeHarness.bootstrapHost(HostSide);
@@ -115,23 +117,52 @@ describe("Explicit host start-up", () => {
 		expect(host.hostProps.amount).toBe(10);
 	});
 
+	it("rejects the removed allowedConsumerDomains option in a host bundle", async () => {
+		harness = createIframeIntegrationHarness();
+		const activeHarness = harness;
+		const tag = "removed-allowlist-host";
+		const { rendering } = await renderConsumer(activeHarness, { tag });
+		deleteRegisteredComponent(tag);
+
+		expect(() =>
+			activeHarness.withHostGlobals(() =>
+				create({
+					tag,
+					url: HOST_URL,
+					// A JavaScript host module can still pass the removed option.
+					...({
+						allowedConsumerDomains: [activeHarness.consumerOrigin],
+					} as object),
+				}),
+			),
+		).toThrow(
+			'Component option "allowedConsumerDomains" was removed. Pass the allowlist to the host instead: initHost(Component, { consumerOrigins }).',
+		);
+		expect(await isSettled(activeHarness, rendering)).toBe(false);
+	});
+
 	describe("argument checks", () => {
-		it.each([
+		it.each<{
+			label: string;
+			call: (component: unknown) => unknown;
+			message: string;
+			/** Set for shared declaration errors, which name the prop instead. */
+			namesCallShape?: false;
+		}>([
 			{
 				label: "a bare call",
-				call: () => (initHost as (...args: unknown[]) => unknown)(),
+				call: () => callInitHost(),
 				message: "initHost(Component, { consumerOrigins })",
 			},
 			{
 				label: "a missing consumerOrigins",
-				call: (component: unknown) =>
-					(initHost as (...args: unknown[]) => unknown)(component, {}),
+				call: (component: unknown) => callInitHost(component, {}),
 				message: "initHost() requires consumerOrigins",
 			},
 			{
 				label: "an invalid matcher",
 				call: (component: unknown) =>
-					(initHost as (...args: unknown[]) => unknown)(component, {
+					callInitHost(component, {
 						consumerOrigins: " ",
 					}),
 				message:
@@ -140,7 +171,7 @@ describe("Explicit host start-up", () => {
 			{
 				label: "an unknown option",
 				call: (component: unknown) =>
-					(initHost as (...args: unknown[]) => unknown)(component, {
+					callInitHost(component, {
 						consumerOrigins: "*",
 						deferInit: true,
 					}),
@@ -149,7 +180,7 @@ describe("Explicit host start-up", () => {
 			{
 				label: "a v1 definitions map",
 				call: () =>
-					(initHost as (...args: unknown[]) => unknown)({
+					callInitHost({
 						amount: prop.number(),
 					}),
 				message: 'initHost() does not accept the "amount" option',
@@ -157,16 +188,15 @@ describe("Explicit host start-up", () => {
 			{
 				label: "the v1 positional allowlist",
 				call: () =>
-					(initHost as (...args: unknown[]) => unknown)(
-						{ amount: prop.number() },
-						["https://consumer.example.com"],
-					),
+					callInitHost({ amount: prop.number() }, [
+						"https://consumer.example.com",
+					]),
 				message: "initHost() no longer takes a positional allowlist",
 			},
 			{
 				label: "props passed with a component",
 				call: (component: unknown) =>
-					(initHost as (...args: unknown[]) => unknown)(component, {
+					callInitHost(component, {
 						consumerOrigins: "*",
 						props: {},
 					}),
@@ -175,7 +205,7 @@ describe("Explicit host start-up", () => {
 			{
 				label: "a function that is not a component",
 				call: () =>
-					(initHost as (...args: unknown[]) => unknown)(() => undefined, {
+					callInitHost(() => undefined, {
 						consumerOrigins: "*",
 					}),
 				message: "initHost() expects a component returned by create()",
@@ -183,7 +213,7 @@ describe("Explicit host start-up", () => {
 			{
 				label: "a non-boolean autoInit",
 				call: (component: unknown) =>
-					(initHost as (...args: unknown[]) => unknown)(component, {
+					callInitHost(component, {
 						consumerOrigins: "*",
 						autoInit: "no",
 					}),
@@ -193,7 +223,7 @@ describe("Explicit host start-up", () => {
 			{
 				label: "a third positional argument",
 				call: (component: unknown) =>
-					(initHost as (...args: unknown[]) => unknown)(
+					callInitHost(
 						component,
 						{ consumerOrigins: "*" },
 						{ deferInit: true },
@@ -203,7 +233,7 @@ describe("Explicit host start-up", () => {
 			{
 				label: "props that are not a definitions object",
 				call: () =>
-					(initHost as (...args: unknown[]) => unknown)({
+					callInitHost({
 						consumerOrigins: "*",
 						props: [prop.number()],
 					}),
@@ -213,28 +243,38 @@ describe("Explicit host start-up", () => {
 			{
 				label: "props that define a reserved built-in name",
 				call: () =>
-					(initHost as (...args: unknown[]) => unknown)({
+					callInitHost({
 						consumerOrigins: "*",
 						props: { close: prop.string() },
 					}),
 				message:
 					'Prop "close" is reserved by hostProps built-ins and cannot be defined as a custom prop',
+				namesCallShape: false,
 			},
-		])("rejects $label before sending anything", async ({ call, message }) => {
-			harness = createIframeIntegrationHarness();
-			const activeHarness = harness;
-			const { Component } = await renderConsumer(activeHarness, {
-				tag: "argument-checks",
-			});
-			const sent = recordMessagesToConsumer(activeHarness);
+		])(
+			"rejects $label before sending anything",
+			async ({ call, message, namesCallShape }) => {
+				harness = createIframeIntegrationHarness();
+				const activeHarness = harness;
+				const { Component } = await renderConsumer(activeHarness, {
+					tag: "argument-checks",
+				});
+				const sent = recordMessagesToConsumer(activeHarness);
 
-			expect(() =>
-				activeHarness.withHostGlobals(() => call(Component)),
-			).toThrow(message);
-			await activeHarness.flushMessages();
-			expect(sent).toEqual([]);
-			expect(getHost()).toBeNull();
-		});
+				expect(() =>
+					activeHarness.withHostGlobals(() => call(Component)),
+				).toThrow(message);
+				if (namesCallShape !== false) {
+					expect(() =>
+						activeHarness.withHostGlobals(() => call(Component)),
+					).toThrow(V2_CALL_SHAPE);
+				}
+				await activeHarness.flushMessages();
+				expect(sent).toEqual([]);
+				// No host was left active, so a valid start still works.
+				expect(activeHarness.bootstrapHost(Component)).not.toBeNull();
+			},
+		);
 	});
 
 	describe("consumer allowlist", () => {
@@ -255,7 +295,6 @@ describe("Explicit host start-up", () => {
 			);
 			await activeHarness.flushMessages();
 			expect(sent).toEqual([]);
-			expect(getHost()).toBeNull();
 
 			const host = activeHarness.bootstrapHost(Component);
 			await host?.ready;
@@ -339,7 +378,6 @@ describe("Explicit host start-up", () => {
 
 			const host = activeHarness.bootstrapHost(StrictHostSide);
 			await expect(host?.ready).rejects.toThrow("Number must be >= 100");
-			expect(getHost()).toBeNull();
 			const hostReason =
 				"Host initialization failed: Validation failed: amount: Number must be >= 100";
 			await expect(rendering).rejects.toThrow(
@@ -388,7 +426,6 @@ describe("Explicit host start-up", () => {
 			);
 			await activeHarness.flushMessages();
 			expect(sent).toEqual([]);
-			expect(getHost()).toBeNull();
 
 			const host = activeHarness.bootstrapHost(Component);
 			await host?.ready;

@@ -65,7 +65,7 @@ export function getAccessibleConsumerOrigin(
 export function resolveMessagingConsumerContext(options: {
 	consumerWindow: Window;
 	claimedConsumerDomain: string;
-	allowedConsumerDomains: DomainMatcher;
+	consumerOrigins: DomainMatcher;
 	tag: string;
 }): string {
 	const consumerDomain =
@@ -73,7 +73,7 @@ export function resolveMessagingConsumerContext(options: {
 		options.claimedConsumerDomain;
 	return validateMessagingConsumerContext(
 		consumerDomain,
-		options.allowedConsumerDomains,
+		options.consumerOrigins,
 		options.tag,
 	);
 }

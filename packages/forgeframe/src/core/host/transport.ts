@@ -142,6 +142,15 @@ export class HostTransport {
 		});
 	}
 
+	/** Reports a failed start or INIT delivery on the host `error` event. */
+	emitInitFailure(error: Error): void {
+		this.options.event.emit(EVENT.ERROR, {
+			type: "init_failed",
+			message: `Failed to initialize host component: ${error.message}`,
+			error,
+		});
+	}
+
 	/**
 	 * Tells the consumer why initialization failed, so it can report the host's
 	 * reason while the page may still retry. Teardown may follow immediately,
@@ -237,8 +246,7 @@ export class HostTransport {
 		try {
 			await this.options.beforeInit();
 		} catch {
-			// A failed start rejects ready and has already been reported; no INIT
-			// was attempted.
+			// The coordinator reports a failed start; no INIT was attempted.
 			return;
 		}
 		try {
@@ -247,14 +255,7 @@ export class HostTransport {
 		} catch (error) {
 			// Teardown rejects pending work; that is not an initialization failure.
 			if (this.destroyed) return;
-			const initError = normalizeError(error);
-
-			this.options.event.emit(EVENT.ERROR, {
-				type: "init_failed",
-				message: `Failed to initialize host component: ${initError.message}`,
-				error: initError,
-			});
-
+			this.emitInitFailure(normalizeError(error));
 			console.error("Failed to send init message:", error);
 		}
 	}

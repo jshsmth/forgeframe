@@ -5,7 +5,7 @@ desc: Consumer and host state ownership, transport contracts, and lifecycle flow
 tags: []
 sources: []
 created: 2026-10-01T01:55:30Z
-updated: 2026-10-25T11:54:09Z
+updated: 2026-10-25T12:32:45Z
 ---
 
 # ForgeFrame architecture
@@ -23,7 +23,7 @@ Paths are relative to `packages/forgeframe/src`.
 | Consumer props | `core/consumer/props-pipeline.ts` | Raw and normalized snapshots, schema-validation evidence, deferred normalization failures, and the serialized update queue. `prop-update.ts` prepares isolated patches and validation-key sets. |
 | Consumer rendering | `core/consumer/renderer.ts` | Container, owned wrapper, iframe, and prerender element. `render/` implements browser effects and templates; `popup-layout.ts` calculates geometry and polling backoff from supplied data. |
 | Consumer transport | `core/consumer/transport.ts` | Host window, opened/active/dynamic origins, bootstrap session, initialization deferred, messenger, prop function bridge, and a separate peer relay bridge. |
-| Host lifecycle | `core/host/bootstrap.ts`, `core/host/component.ts` | `initHost()` argument checks, the single active host, host identity, consumer window and messaging origin, readiness, deferred INIT, and destruction. Callers reach the runtime only through the narrow `Host` object (`ready`, `hostProps`, `init()`, `destroy()`, `on()`). |
+| Host lifecycle | `core/host/bootstrap.ts`, `core/host/component.ts` | The single active host, host identity, consumer window and messaging origin, readiness, deferred INIT, and destruction. Callers reach the runtime only through the narrow `Host` object (`ready`, `hostProps`, `init()`, `destroy()`, `on()`). `init-host-arguments.ts` checks `initHost()` arguments and reads no browser globals. |
 | Host props | `core/host/props-runtime.ts` | Consumer snapshot, stable built-in host API, pending bootstrap props, and subscribers. |
 | Host security | `core/host/security.ts` | Reads browser origin evidence. `consumer-origin-policy.ts` decides trust from that evidence and reads no browser globals. Allowlists are validated before use, so empty or blank strings throw instead of trusting every consumer. |
 | Host transport | `core/host/transport.ts` | The one-time INIT send, session ID, outbound export queue, messenger, export bridge, and peer-call decoding bridge. |
@@ -46,7 +46,7 @@ Paths are relative to `packages/forgeframe/src`.
 ### Bootstrap details
 
 - **Nested children.** Child references carry only serializable component metadata. Executable prop definitions stay in the local component registry and never enter the parent's bootstrap response, even when a child uses a recursive third-party schema. Reference construction and host factory resolution define child names as own enumerable data properties, so names such as `__proto__` work without changing the dictionary prototype.
-- **Start-up order.** `initHost()` checks its arguments before any environment check, then returns null without browser globals, throws while a host is active, reads the channel metadata, throws in the component form when the payload's tag differs, and checks the consumer origin selected for messaging against `consumerOrigins` before BOOTSTRAP. It never consults the registry for another definition, and nothing reconfigures a running host. After the bootstrap response, the coordinator checks the allowlist again as defence in depth.
+- **Start-up order.** `initHost()` checks its arguments (`init-host-arguments.ts`) before any environment check, then returns null without browser globals, throws while a host is active, reads the channel metadata, throws in the component form when the payload's tag differs, and checks the consumer origin selected for messaging against `consumerOrigins` before BOOTSTRAP. It never consults the registry for another definition, and nothing reconfigures a running host. After the bootstrap response, the coordinator checks the allowlist again as defence in depth. A failed start other than a schema rejection, such as a failed BOOTSTRAP request or an invalid response, is reported as an `init_failed` record on the host `error` event; a schema rejection reports its validation `Error` there instead.
 - **Retries.** A host is active from construction until it is destroyed or its start fails. A rejected `ready` releases the singleton before the caller's rejection handlers run, and `destroy()` releases it before destroying resources, so `initHost()` can start again on the same page; each attempt rereads the retained channel metadata from `window.name`. A tag mismatch or a disallowed origin leaves no active host.
 - **Host teardown.** The bootstrap owner supplies the host's teardown callback. Destruction releases the singleton first, then destroys the transport, events, and props runtime. Teardown is idempotent, the callbacks clear only their own runtime, and destroying a stale host never affects a newer one.
 
