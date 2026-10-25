@@ -113,20 +113,6 @@ function validateNormalizedSchemaValues<
 	});
 }
 
-/** Cloneable consumer-props pipeline state. @internal */
-export interface ConsumerPropsPipelineSnapshot<
-	P extends Record<string, unknown>,
-> {
-	props: P;
-	inputProps: Record<string, unknown>;
-	normalizationPending: boolean;
-	pendingNormalizationError: unknown;
-	schemaValidated: boolean;
-	schemaValidatedKeys: ReadonlySet<string>;
-	revalidationSchemaKeys: ReadonlySet<string>;
-	outputValidationKeys: ReadonlySet<string>;
-}
-
 /**
  * Owns consumer prop normalization, validation, and update queueing.
  * @internal
@@ -166,13 +152,7 @@ export class ConsumerPropsPipeline<
 		private options: NormalizedOptions<P, SchemaInputs>,
 		initialInputProps: Record<string, unknown>,
 		private createPropContext: (props: P) => PropContext<P>,
-		snapshot?: ConsumerPropsPipelineSnapshot<P>,
 	) {
-		if (snapshot) {
-			this.restoreSnapshot(snapshot);
-			return;
-		}
-
 		this.inputProps = materializePropAliases<P, SchemaInputs>(
 			initialInputProps,
 			this.options.props,
@@ -205,17 +185,6 @@ export class ConsumerPropsPipeline<
 		this.schemaValidated = false;
 	}
 
-	private restoreSnapshot(snapshot: ConsumerPropsPipelineSnapshot<P>): void {
-		this.inputProps = { ...snapshot.inputProps };
-		this.props = { ...snapshot.props };
-		this.normalizationPending = snapshot.normalizationPending;
-		this.pendingNormalizationError = snapshot.pendingNormalizationError;
-		this.schemaValidated = snapshot.schemaValidated;
-		this.schemaValidatedKeys = new Set(snapshot.schemaValidatedKeys);
-		this.revalidationSchemaKeys = new Set(snapshot.revalidationSchemaKeys);
-		this.outputValidationKeys = new Set(snapshot.outputValidationKeys);
-	}
-
 	private adoptNormalizedState(
 		normalizedState: ReturnType<
 			ConsumerPropsPipeline<P, SchemaInputs>["normalizeInputSnapshot"]
@@ -236,24 +205,6 @@ export class ConsumerPropsPipeline<
 		this.outputValidationKeys = new Set<string>();
 		const initialProps = { ...this.inputProps } as P;
 		return initialProps;
-	}
-
-	/**
-	 * Copies prop containers and validation-key sets for a clone's independent pipeline.
-	 * Nested prop values and the retained normalization error remain shared references.
-	 * Pending update promises are excluded.
-	 */
-	createSnapshot(): ConsumerPropsPipelineSnapshot<P> {
-		return {
-			props: { ...this.props },
-			inputProps: { ...this.inputProps },
-			normalizationPending: this.normalizationPending,
-			pendingNormalizationError: this.pendingNormalizationError,
-			schemaValidated: this.schemaValidated,
-			schemaValidatedKeys: new Set(this.schemaValidatedKeys),
-			revalidationSchemaKeys: new Set(this.revalidationSchemaKeys),
-			outputValidationKeys: new Set(this.outputValidationKeys),
-		};
 	}
 
 	/**

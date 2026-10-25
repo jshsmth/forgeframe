@@ -36,7 +36,7 @@ export const SCENARIOS: ScenarioDefinition[] = [
 		id: "nested",
 		title: "Nested components",
 		description:
-			"Host-side child registration, two-level rendering, and nested exports.",
+			"A host renders its own imported child component, two levels deep, with nested exports.",
 	},
 	{
 		id: "errors",
@@ -48,13 +48,13 @@ export const SCENARIOS: ScenarioDefinition[] = [
 		id: "configuration",
 		title: "Configuration surface",
 		description:
-			"Dynamic URL and dimensions, schemas, eligibility, validation, attributes, styles, and templates.",
+			"Dynamic URL and dimensions, schemas, validation, attributes, styles, and templates.",
 	},
 	{
 		id: "instances",
 		title: "Instances and peers",
 		description:
-			"Clone snapshots, active-instance tracking, peer discovery, and destroy-by-tag cleanup.",
+			"Per-instance prop snapshots, active-instance tracking, peer discovery, and closeAll() cleanup.",
 	},
 	{
 		id: "host-controls",

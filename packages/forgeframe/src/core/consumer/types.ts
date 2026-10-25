@@ -21,9 +21,7 @@ export interface NormalizedOptions<
 	peerDomains?: ComponentOptions<P>["peerDomains"];
 	containerTemplate?: ComponentOptions<P>["containerTemplate"];
 	prerenderTemplate?: ComponentOptions<P>["prerenderTemplate"];
-	eligible?: ComponentOptions<P>["eligible"];
 	validate?: ComponentOptions<P>["validate"];
 	attributes?: ComponentOptions<P>["attributes"];
 	style?: ComponentOptions<P>["style"];
-	children?: ComponentOptions<P>["children"];
 }

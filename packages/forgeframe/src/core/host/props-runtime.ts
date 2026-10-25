@@ -4,7 +4,7 @@
  *
  * @remarks
  * This internal module owns `hostProps` construction, reserved key filtering,
- * bootstrap validation, live prop reconciliation, and nested child creation.
+ * bootstrap validation, and live prop reconciliation.
  */
 
 import { EVENT } from "../../constants";
@@ -13,14 +13,9 @@ import { validateNormalizedProps } from "../../props/normalize";
 import { deserializeProps } from "../../props/serialize";
 import type { SerializedProps } from "../../props/types";
 import type { HostPropsDefinition } from "../../types/props";
-import type {
-	ForgeFrameComponent,
-	HostProps,
-	RemoteValue,
-} from "../../types/runtime";
+import type { HostProps, RemoteValue } from "../../types/runtime";
 import { normalizeError } from "../../utils/error";
-import type { HostBootstrapData, HostComponentRef } from "../../window/types";
-import { getRegisteredComponent } from "../component-registry";
+import type { HostBootstrapData } from "../../window/types";
 import { HOST_PROPS_BUILTIN_KEYS } from "./builtin-keys";
 import type { HostPropsRuntimeOptions } from "./types";
 
@@ -86,27 +81,23 @@ export class HostPropsRuntime<
 			export: <T>(exports: T) => this.options.controls.exportData(exports),
 			consumer: {
 				props: this.consumerProps,
-				export: <T>(data: T) => this.options.controls.consumerExport(data),
 			},
 			getPeerInstances: (options) =>
 				this.options.controls.getPeerInstances(options),
-			children: undefined,
 		} as HostProps<P>;
 	}
 
 	/**
 	 * Completes bootstrap using any newer acknowledged props received while it was pending.
 	 * The selected snapshot is validated against the host definitions.
-	 * Subscribers are notified once, after children are attached.
+	 * Subscribers are notified once.
 	 */
 	applyBootstrap(data: HostBootstrapData): void {
-		const children = this.buildNestedComponents(data.children);
 		// An acknowledged PROPS update can arrive before this response. Preserve
 		// that newer snapshot.
 		const nextProps = this.commitSerializedProps(
 			this.pendingBootstrapProps ?? data.props,
 		);
-		this.hostProps.children = children;
 		this.initialized = true;
 		this.pendingBootstrapProps = null;
 		this.publishProps(nextProps);
@@ -168,7 +159,9 @@ export class HostPropsRuntime<
 		this.removeStaleHostProps(previousProps, nextHostProps);
 		this.consumerProps = nextProps;
 		Object.assign(this.hostProps, nextHostProps);
-		this.hostProps.consumer.props = this.consumerProps;
+		// The consumer object keeps its identity; only its snapshot is replaced.
+		(this.hostProps.consumer as { props: RemoteValue<P> }).props =
+			this.consumerProps;
 		if (!this.initialized) {
 			this.pendingBootstrapProps = serializedProps;
 		}
@@ -255,34 +248,6 @@ export class HostPropsRuntime<
 					definition.sendToHost !== false,
 			),
 		) as HostPropsDefinition<P, SchemaInputs>;
-	}
-
-	private buildNestedComponents(
-		nestedRefs?: Record<string, HostComponentRef>,
-	): Record<string, ForgeFrameComponent> | undefined {
-		if (!nestedRefs) {
-			return undefined;
-		}
-
-		const components: Record<string, ForgeFrameComponent> = {};
-
-		for (const [name, ref] of Object.entries(nestedRefs)) {
-			const component = getRegisteredComponent(ref.tag);
-			if (component) {
-				Object.defineProperty(components, name, {
-					value: component,
-					enumerable: true,
-					writable: true,
-					configurable: true,
-				});
-			} else {
-				console.warn(
-					`Nested component "${name}" (${ref.tag}) must be registered in the host bundle before hostProps is initialized`,
-				);
-			}
-		}
-
-		return Object.keys(components).length > 0 ? components : undefined;
 	}
 
 	private removeStaleHostProps(

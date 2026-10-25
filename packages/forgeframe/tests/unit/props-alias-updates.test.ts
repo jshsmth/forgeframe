@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EVENT } from "@/constants";
-import { clearComponents, create, destroyAll } from "@/core/component";
+import { clearComponents, closeAll, create } from "@/core/component";
 import { PROP_RESET } from "@/core/consumer/prop-update";
 import { prop } from "@/props/prop";
 
@@ -60,7 +60,7 @@ function withUserEmail<P>(
 
 describe("Consumer prop alias updates", () => {
 	afterEach(async () => {
-		await destroyAll();
+		await closeAll();
 		clearComponents();
 	});
 

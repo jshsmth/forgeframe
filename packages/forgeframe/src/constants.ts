@@ -114,8 +114,6 @@ export const MESSAGE_NAME = {
 	CALL: "forgeframe_call",
 	/** Relayed peer export method call */
 	PEER_CALL: "forgeframe_peer_call",
-	/** Consumer export from host context */
-	CONSUMER_EXPORT: "forgeframe_consumer_export",
 	/** Get sibling components request */
 	GET_SIBLINGS: "forgeframe_get_siblings",
 	/** One-way notice that the host runtime was destroyed */

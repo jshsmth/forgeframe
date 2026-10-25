@@ -34,14 +34,7 @@ export type { ContextType, EventType } from "./constants";
 export { CONTEXT, EVENT, VERSION } from "./constants";
 
 // Named exports for tree-shaking
-export {
-	create,
-	destroy,
-	destroyAll,
-	destroyByTag,
-	initHost,
-	isHost,
-} from "./core";
+export { closeAll, create, initHost, isHost } from "./core";
 // React integration exports
 export {
 	createReactComponent,
@@ -77,23 +70,19 @@ export { isStandardSchema } from "./props/schema";
 export { PopupOpenError } from "./render/popup";
 // Type exports
 export type {
-	ChildrenDefinition,
 	// Component types
 	ComponentOptions,
-	ConsumerNamespace,
 	ConsumerPropsInput,
 	ConsumerPropsUpdate,
 	ContainerTemplate,
 	// Utility types
 	Dimensions,
 	DomainMatcher,
-	EligibilityResult,
 	EventEmitterInterface,
 	// Event types
 	EventHandler,
 	ForgeFrameComponent,
 	ForgeFrameComponentInstance,
-	ForgeFrameComponentReference,
 	GetPeerInstancesOptions,
 	Host,
 	HostProps,

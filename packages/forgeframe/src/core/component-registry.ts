@@ -1,8 +1,4 @@
-import type {
-	ComponentOptions,
-	ForgeFrameComponent,
-	ForgeFrameComponentReference,
-} from "../types/runtime";
+import type { ComponentOptions, ForgeFrameComponent } from "../types/runtime";
 
 const componentRegistry = new Map<
 	string,
@@ -10,6 +6,15 @@ const componentRegistry = new Map<
 >();
 
 const INTERNAL_COMPONENT_OPTIONS = Symbol("forgeframe.component.options");
+
+/** Any factory returned by `create()`, whatever its props and exports. */
+type AnyForgeFrameComponent = ForgeFrameComponent<
+	never,
+	unknown,
+	never,
+	boolean,
+	never
+>;
 
 type InternalForgeFrameComponent<
 	P extends Record<string, unknown> = Record<string, unknown>,
@@ -59,15 +64,11 @@ export function getComponentOptions<
 	I = P,
 	SchemaInputs = I,
 >(
-	component: ForgeFrameComponentReference,
+	component: AnyForgeFrameComponent,
 ): ComponentOptions<P, I, SchemaInputs> | undefined {
 	return (
 		component as unknown as InternalForgeFrameComponent<P, X, I, SchemaInputs>
 	)[INTERNAL_COMPONENT_OPTIONS];
-}
-
-export function getRegisteredComponentTags(): string[] {
-	return Array.from(componentRegistry.keys());
 }
 
 export function deleteRegisteredComponent(tag: string): void {

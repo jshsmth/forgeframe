@@ -20,6 +20,7 @@ export const HOST_PROPS_BUILTIN_KEYS = new Set([
 	"export",
 	"consumer",
 	"getPeerInstances",
+	// Not a built-in any more, but reserved so React JSX children never reach hosts.
 	"children",
 ]);
 

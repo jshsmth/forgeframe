@@ -11,7 +11,7 @@
 
 import { assertNoRemovedPropOptions } from "../../props/removed-options";
 import type { HostPropsDefinition } from "../../types/props";
-import type { ForgeFrameComponentReference } from "../../types/runtime";
+import type { ForgeFrameComponent } from "../../types/runtime";
 import type { DomainMatcher } from "../../types/utility";
 import { assertDomainMatcher } from "../../utils/domain-pattern";
 import { getComponentOptions } from "../component-registry";
@@ -46,9 +46,7 @@ export function readInitHostArguments(
 ): HostStartOptions {
 	const [first, second] = args;
 	if (typeof first === "function") {
-		const componentOptions = getComponentOptions(
-			first as unknown as ForgeFrameComponentReference,
-		);
+		const componentOptions = getComponentOptions(first as ForgeFrameComponent);
 		if (!componentOptions) {
 			throw callShapeError(
 				"initHost() expects a component returned by create() as its first argument.",

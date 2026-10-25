@@ -38,7 +38,6 @@ export interface HostPropsRuntimeControls {
 	hide(): Promise<void>;
 	onError(error: Error): Promise<void>;
 	exportData<T>(exports: T): Promise<void>;
-	consumerExport<T>(data: T): Promise<void>;
 	getPeerInstances(options?: GetPeerInstancesOptions): Promise<SiblingInfo[]>;
 }
 

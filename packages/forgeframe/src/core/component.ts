@@ -5,7 +5,7 @@
  * @remarks
  * This module provides the main entry point for creating ForgeFrame components.
  * It manages a global registry of all defined components and handles component
- * creation, validation, and lifecycle management.
+ * creation, validation, and global teardown.
  */
 
 import { CONTEXT } from "../constants";
@@ -32,6 +32,7 @@ import { resolveComponentHostUrl } from "../utils/url";
 import {
 	clearIndexedInstances,
 	clearIndexedInstancesByTag,
+	getIndexedComponentInstances,
 	indexComponentInstance,
 	removeIndexedComponentInstance,
 } from "./component-instance-index";
@@ -39,7 +40,6 @@ import {
 	clearRegisteredComponents,
 	deleteRegisteredComponent,
 	getRegisteredComponent,
-	getRegisteredComponentTags,
 	hasRegisteredComponent,
 	registerComponent,
 } from "./component-registry";
@@ -113,13 +113,7 @@ function assertComponentShape<P, I, SchemaInputs>(
 		);
 	}
 
-	// The host enforces its consumer allowlist; a definition-side one would be
-	// silently ignored.
-	if (hasOwnDeclaredField(options, "allowedConsumerDomains")) {
-		throw new Error(
-			'Component option "allowedConsumerDomains" was removed. Pass the allowlist to the host instead: initHost(Component, { consumerOrigins }).',
-		);
-	}
+	assertNoRemovedComponentOptions(options);
 
 	for (const option of ["domain", "peerDomains"] as const) {
 		if (options[option] !== undefined)
@@ -129,6 +123,28 @@ function assertComponentShape<P, I, SchemaInputs>(
 	if (options.props) {
 		assertNoReservedPropDefinitions(options.props);
 		assertNoRemovedPropOptions(options.props);
+	}
+}
+
+/**
+ * Removed options a JavaScript caller may still pass. Ignoring them would
+ * silently drop a safeguard or a capability, so each names its replacement.
+ */
+const REMOVED_COMPONENT_OPTIONS: Readonly<Record<string, string>> = {
+	// The host enforces its consumer allowlist; a definition-side one would be
+	// silently ignored.
+	allowedConsumerDomains:
+		'Component option "allowedConsumerDomains" was removed. Pass the allowlist to the host instead: initHost(Component, { consumerOrigins }).',
+	eligible:
+		'Component option "eligible" was removed. Throw from the component validate({ props }) option instead.',
+	children:
+		'Component option "children" was removed. Import child components in the host page and render them there; each child host calls initHost(Child, { consumerOrigins }).',
+};
+
+/** Throws a migration error for any removed component option. */
+function assertNoRemovedComponentOptions(options: object): void {
+	for (const [option, message] of Object.entries(REMOVED_COMPONENT_OPTIONS)) {
+		if (hasOwnDeclaredField(options, option)) throw new Error(message);
 	}
 }
 
@@ -288,8 +304,6 @@ export function create<
 			new ConsumerComponent<P, X, I, SchemaInputs>(
 				runtimeOptions,
 				props,
-				trackInstance,
-				undefined,
 				untrackInstance,
 			),
 		);
@@ -307,7 +321,12 @@ export function create<
 		return createTrackedInstance(props);
 	} as unknown as ForgeFrameComponent<P, X, I, false, SchemaInputs>;
 
-	Component.instances = instances;
+	// A fresh frozen snapshot per read keeps callers from desynchronizing the
+	// factory list from the global instance index.
+	Object.defineProperty(Component, "instances", {
+		get: () => Object.freeze([...instances]),
+		enumerable: true,
+	});
 
 	registerComponent(Component, runtimeOptions);
 
@@ -342,79 +361,38 @@ export function getComponent<
 }
 
 /**
- * Destroys a single component instance.
+ * Closes every live ForgeFrame component instance.
  *
  * @remarks
- * This closes the component and cleans up all associated resources.
+ * Takes a snapshot of every live instance across all components when called,
+ * closes them concurrently, and resolves once every close has finished.
+ * Instances created after the call are left open. Each instance emits its
+ * events and runs its callbacks exactly as a direct `close()` would.
  *
- * @typeParam P - The props type for the component
- * @param instance - The component instance to destroy
+ * @returns A promise that resolves when every instance has closed
+ * @throws AggregateError listing each failed close, after every close has settled
  *
  * @example
  * ```typescript
- * const instance = MyComponent({ prop: 'value' });
- * await instance.render('#container');
- * // Later...
- * await destroy(instance);
+ * // Tear down every embed before leaving the page
+ * await closeAll();
  * ```
  *
  * @public
  */
-export async function destroy<
-	P extends Record<string, unknown>,
-	I = P,
-	SchemaInputs = I,
->(
-	instance: ForgeFrameComponentInstance<P, unknown, I, SchemaInputs>,
-): Promise<void> {
-	await instance.close();
-}
-
-/**
- * Destroys all instances of a specific component by its tag name.
- *
- * @remarks
- * Useful for cleanup when a component type is no longer needed.
- * This destroys all active instances of the component with the given tag.
- *
- * @param tag - The component tag name to destroy all instances of
- *
- * @example
- * ```typescript
- * // Destroy all login component instances
- * await destroyByTag('login-component');
- * ```
- *
- * @public
- */
-export async function destroyByTag(tag: string): Promise<void> {
-	const component = getRegisteredComponent(tag);
-	if (!component) return;
-
-	const instances = [...component.instances];
-	await Promise.all(instances.map((instance) => instance.close()));
-}
-
-/**
- * Destroys all ForgeFrame component instances.
- *
- * @remarks
- * This is a global cleanup function that destroys every component
- * instance across all component types.
- *
- * @example
- * ```typescript
- * // Clean up everything on page unload
- * window.addEventListener('beforeunload', () => {
- *   destroyAll();
- * });
- * ```
- *
- * @public
- */
-export async function destroyAll(): Promise<void> {
-	const tags = getRegisteredComponentTags();
-	await Promise.all(tags.map((tag) => destroyByTag(tag)));
+export async function closeAll(): Promise<void> {
+	const results = await Promise.allSettled(
+		getIndexedComponentInstances().map(({ instance }) => instance.close()),
+	);
+	const errors = results.flatMap((result) =>
+		result.status === "rejected" ? [result.reason] : [],
+	);
+	if (errors.length > 0) {
+		throw new AggregateError(
+			errors,
+			`${errors.length} ForgeFrame instance(s) failed to close`,
+		);
+	}
 }
 
 /**

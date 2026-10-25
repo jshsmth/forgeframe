@@ -90,15 +90,3 @@ export interface IframeStyles {
 	/** CSS properties to apply to the iframe */
 	[key: string]: string | number | undefined;
 }
-
-/**
- * Result of an eligibility check for component rendering.
- *
- * @public
- */
-export interface EligibilityResult {
-	/** Whether the component is eligible to render */
-	eligible: boolean;
-	/** Reason for ineligibility (if not eligible) */
-	reason?: string;
-}

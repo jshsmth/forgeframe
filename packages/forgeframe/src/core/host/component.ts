@@ -102,7 +102,6 @@ export class HostComponent<
 						hide: () => this.transport.hide(),
 						onError: (error) => this.transport.onError(error),
 						exportData: <T>(exports: T) => this.transport.exportData(exports),
-						consumerExport: <T>(data: T) => this.transport.consumerExport(data),
 						getPeerInstances: (options) =>
 							this.transport.getPeerInstances(options),
 					},

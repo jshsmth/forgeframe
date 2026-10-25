@@ -8,8 +8,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { type MessageHandler, Messenger } from "@/communication/messenger";
 import { CONTEXT, EVENT, MESSAGE_NAME, PROTOCOL_VERSION } from "@/constants";
-import { create } from "@/core/component";
-import { deleteRegisteredComponent } from "@/core/component-registry";
 import { ConsumerComponent } from "@/core/consumer";
 import {
 	clearHostInstance,
@@ -199,27 +197,16 @@ describe("Host lifecycle behavior", () => {
 		host.destroy();
 	});
 
-	it("notifies subscribers once, with children attached, when bootstrap completes", async () => {
-		const childTag = "host-lifecycle-bootstrap-child";
-		const Child = create({
-			tag: childTag,
-			url: "https://host.example.com/child",
-		});
-		const bootstrap = createDeferred<{
-			props: { amount: number };
-			children: Record<string, { tag: string; url: string }>;
-		}>();
+	it("notifies subscribers once when bootstrap completes", async () => {
+		const bootstrap = createDeferred<{ props: { amount: number } }>();
 		vi.spyOn(Messenger.prototype, "send").mockImplementation(
 			() => bootstrap.promise,
 		);
 		const host = createHost();
 		try {
-			const notifications: Array<{ amount: unknown; child: unknown }> = [];
+			const notifications: unknown[] = [];
 			host.hostProps.onProps((props) => {
-				notifications.push({
-					amount: props.amount,
-					child: host.hostProps.children?.Child,
-				});
+				notifications.push(props.amount);
 			});
 			const propsEvents = vi.fn();
 			host.event.on(EVENT.PROPS, propsEvents);
@@ -235,19 +222,14 @@ describe("Host lifecycle behavior", () => {
 			);
 			expect(notifications).toEqual([]);
 
-			bootstrap.resolve({
-				props: { amount: 10 },
-				children: {
-					Child: { tag: childTag, url: "https://host.example.com/child" },
-				},
-			});
+			bootstrap.resolve({ props: { amount: 10 } });
 			await host.ready;
 
-			expect(notifications).toEqual([{ amount: 42, child: Child }]);
+			expect(notifications).toEqual([42]);
 			expect(propsEvents).toHaveBeenCalledExactlyOnceWith({ amount: 42 });
+			expect(host.hostProps).not.toHaveProperty("children");
 		} finally {
 			host.destroy();
-			deleteRegisteredComponent(childTag);
 		}
 	});
 
@@ -425,7 +407,7 @@ describe("Host lifecycle behavior", () => {
 		window.name = invalidName;
 
 		expect(initHost({ consumerOrigins: "*" })).toBeNull();
-		expect(isHost()).toBe(true);
+		expect(isHost()).toBe(false);
 		expect(getHost()).toBeNull();
 		expect(window.name).toBe(invalidName);
 		expect(errorSpy).toHaveBeenCalledWith(

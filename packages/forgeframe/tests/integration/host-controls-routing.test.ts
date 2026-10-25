@@ -495,13 +495,6 @@ describe("Host controls and routing integration", () => {
 		expect(exported.ready).toBe(true);
 		await expect(exported.ping("live")).resolves.toBe("pong:live");
 
-		await harness.withHostGlobalsAsync(() =>
-			hostProps.consumer.export({ ping: true }),
-		);
-		expect(
-			(instance as unknown as { consumerExports?: unknown }).consumerExports,
-		).toEqual({ ping: true });
-
 		await expect(
 			harness.withHostGlobalsAsync(() => hostProps.getPeerInstances()),
 		).resolves.toEqual([

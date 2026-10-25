@@ -10,7 +10,7 @@ import {
 	createRequestMessage,
 	serializeMessage,
 } from "@/communication/protocol";
-import { clearComponents, destroyAll } from "@/core/component";
+import { clearComponents, closeAll } from "@/core/component";
 import { clearHostInstance, getHost } from "@/core/host";
 import { initHost } from "@/index";
 import type {
@@ -583,7 +583,7 @@ function createBaseIntegrationHarness(options?: {
 		cleanedUp = true;
 
 		try {
-			await destroyAll();
+			await closeAll();
 		} finally {
 			clearComponents();
 			withHostGlobals(() => {

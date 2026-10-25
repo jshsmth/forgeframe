@@ -2,7 +2,7 @@ import * as React from "react";
 import type { Root } from "react-dom/client";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { create, destroyAll } from "@/core/component";
+import { closeAll, create } from "@/core/component";
 import { createReactComponent } from "@/drivers/react";
 import { prop } from "@/props/prop";
 
@@ -20,7 +20,7 @@ describe("React driver with React DOM", () => {
 	afterEach(async () => {
 		await React.act(async () => root.unmount());
 		container.remove();
-		await destroyAll();
+		await closeAll();
 		vi.unstubAllGlobals();
 	});
 

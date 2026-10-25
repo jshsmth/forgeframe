@@ -15,7 +15,8 @@ const hostOrigin = window.location.origin;
 // A nested child's consumer is this host page, so its own origin is allowed too.
 const consumerOrigins = [new URL(consumerUrl).origin, hostOrigin];
 
-create({
+// The nested scenario's host imports and renders its child like any consumer.
+const NestedChildComponent = create({
 	tag: NESTED_CHILD_TAG,
 	url: `${hostOrigin}/?scenario=nested-child`,
 	dimensions: { width: "100%", height: 240 },
@@ -72,7 +73,6 @@ function renderEmbedded(hostProps: HostProps<MyProps>) {
 		"export",
 		"consumer",
 		"getPeerInstances",
-		"children",
 	]);
 
 	const getUserProps = () => {
@@ -403,11 +403,6 @@ function renderEmbedded(hostProps: HostProps<MyProps>) {
 		}
 
 		if (hostProps.scenario === "nested-parent") {
-			const ChildComponent = hostProps.children?.Child;
-			if (!ChildComponent) {
-				throw new Error("Nested child was not resolved from the host registry");
-			}
-
 			const nestedMount = document.createElement("div");
 			nestedMount.id = "nested-child-container";
 			Object.assign(nestedMount.style, {
@@ -418,7 +413,7 @@ function renderEmbedded(hostProps: HostProps<MyProps>) {
 			});
 			app.appendChild(nestedMount);
 
-			const childInstance = ChildComponent({ scenario: "nested-child" });
+			const childInstance = NestedChildComponent({ scenario: "nested-child" });
 			await childInstance.render(nestedMount);
 			await waitFor(() => childInstance.exports !== undefined);
 			await hostProps.export({

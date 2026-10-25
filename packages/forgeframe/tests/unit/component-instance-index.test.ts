@@ -21,23 +21,18 @@ function createInstance(uid: string): TestInstance {
 	const instance = {
 		uid,
 		render: vi.fn(async () => {}),
-		renderTo: vi.fn(async () => {}),
 		close: vi.fn(async () => {}),
 		focus: vi.fn(async () => {}),
 		resize: vi.fn(async () => {}),
 		show: vi.fn(async () => {}),
 		hide: vi.fn(async () => {}),
 		updateProps: vi.fn(async () => {}),
-		clone: vi.fn(),
-		isEligible: vi.fn(() => true),
 		event: {} as TestInstance["event"],
-		state: {},
 		getVerifiedHostDomain: vi.fn(() => null),
 		getOpenedHostDomain: vi.fn(() => null),
 		getPeerDomains: vi.fn(() => undefined),
 	} as TestInstance;
 
-	instance.clone = vi.fn(() => instance);
 	return instance;
 }
 

@@ -71,7 +71,6 @@ describe("Props Normalization", () => {
 		close: vi.fn(),
 		focus: vi.fn(),
 		onError: vi.fn(),
-		state: {},
 		container: null,
 	});
 

@@ -194,10 +194,6 @@ export class HostTransport {
 		}
 	}
 
-	async consumerExport<T>(data: T): Promise<void> {
-		await this.sendMessage(MESSAGE_NAME.CONSUMER_EXPORT, data);
-	}
-
 	async getPeerInstances(
 		options?: GetPeerInstancesOptions,
 	): Promise<SiblingInfo[]> {
