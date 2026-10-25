@@ -334,6 +334,20 @@ describe("Host branch coverage and edge paths", () => {
 		expect(messageRemoveCount).toBe(messageAddCount);
 	});
 
+	it("should rethrow unexpected errors while looking for an older payload's consumer", () => {
+		window.name = buildWindowName({
+			...createPayload(),
+			protocolVersion: PROTOCOL_VERSION - 1,
+		});
+		const unexpected = new Error("Window access failed");
+		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockImplementation(() => {
+			throw unexpected;
+		});
+
+		expect(() => initHost()).toThrow(unexpected);
+		expect(getHost()).toBeNull();
+	});
+
 	it("should log and return null when ForgeFrame payload parsing fails", () => {
 		window.name = "__forgeframe__not-valid-base64";
 		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
