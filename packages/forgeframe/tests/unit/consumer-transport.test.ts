@@ -14,6 +14,7 @@ import type { NormalizedOptions } from "@/core/consumer/types";
 import { prop } from "@/props/prop";
 import type { Dimensions, SiblingInfo } from "@/types";
 import { createDeferred } from "@/utils/promise";
+import { callConsumerCallback } from "../consumer-bridge";
 import { requireValue } from "../require-value";
 
 type TestProps = {
@@ -81,28 +82,6 @@ function getHandler(
 	).handlers.get(name);
 }
 
-/** Attaches host content the way open() does: the opened origin is recorded first. */
-function attachOpenedHost(
-	transport: ConsumerTransport<TestProps, { ready: boolean }>,
-	hostWindow: Window,
-	origin = "https://host.example.com",
-): void {
-	transport.openedHostDomain = origin;
-	transport.attachHostWindow(hostWindow);
-}
-
-/** Invokes a consumer callback the way the host does, through the bridge's CALL handler. */
-function callConsumerCallback(
-	transport: ConsumerTransport<TestProps, { ready: boolean }>,
-	id: string,
-	source: HandlerSource,
-): unknown {
-	return requireValue(getHandler(transport, MESSAGE_NAME.CALL))(
-		{ id, args: [] },
-		source,
-	);
-}
-
 /** A replace batch that cannot admit a new callback means the recovery pool is full. */
 function expectRecoveryPoolFull(
 	transport: ConsumerTransport<TestProps, { ready: boolean }>,
@@ -142,7 +121,7 @@ describe("ConsumerTransport", () => {
 	it("withholds bootstrap from other windows and origins, including the consumer's own origin", async () => {
 		const transport = createTransport();
 		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
-		attachOpenedHost(transport, hostWindow);
+		transport.attachHostWindow(hostWindow, "https://host.example.com");
 		const onBootstrap = vi.fn(async () => ({ props: { secret: "private" } }));
 		transport.setupMessageHandlers({ ...createHandlers(), onBootstrap });
 		const handler = getHandler(transport, MESSAGE_NAME.BOOTSTRAP);
@@ -175,7 +154,7 @@ describe("ConsumerTransport", () => {
 	it("releases a full recovery pool only for a verified new bootstrap session", async () => {
 		const transport = createTransport();
 		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
-		attachOpenedHost(transport, hostWindow);
+		transport.attachHostWindow(hostWindow, "https://host.example.com");
 		let rejectBootstrap = false;
 		const onBootstrap = async (
 			_source: HandlerSource,
@@ -235,7 +214,7 @@ describe("ConsumerTransport", () => {
 	it("requires INIT to match the latest verified bootstrap session", async () => {
 		const transport = createTransport();
 		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
-		attachOpenedHost(transport, hostWindow);
+		transport.attachHostWindow(hostWindow, "https://host.example.com");
 		transport.setupMessageHandlers({
 			...createHandlers(),
 			onBootstrap: async () => ({ props: {} }),
@@ -311,7 +290,7 @@ describe("ConsumerTransport", () => {
 
 	it("should retain both callback snapshots after a props delivery attempt fails", async () => {
 		const transport = createTransport();
-		attachOpenedHost(transport, window);
+		transport.attachHostWindow(window, "https://host.example.com");
 
 		const sendSpy = vi.spyOn(transport.messenger, "send");
 		sendSpy.mockResolvedValueOnce(undefined);
@@ -354,7 +333,7 @@ describe("ConsumerTransport", () => {
 
 	it("should keep existing callback references when serialization fails mid-batch", async () => {
 		const transport = createTransport();
-		attachOpenedHost(transport, window);
+		transport.attachHostWindow(window, "https://host.example.com");
 		const source = {
 			uid: "consumer-transport-uid",
 			domain: "https://host.example.com",
@@ -470,7 +449,7 @@ describe("ConsumerTransport", () => {
 			.spyOn(transport.messenger, "send")
 			.mockResolvedValue("callback-result");
 
-		attachOpenedHost(transport, hostWindow);
+		transport.attachHostWindow(hostWindow, "https://host.example.com");
 		transport.openedHostDomain = configuredOrigin;
 		transport.setupMessageHandlers(handlers);
 

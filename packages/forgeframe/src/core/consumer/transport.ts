@@ -498,8 +498,8 @@ export class ConsumerTransport<
 	 * Returns true when a lifecycle/control message came from the opened host window.
 	 */
 	private isHostControlSource(source: VerifiedMessageSource): boolean {
-		// open() records the opened origin before it attaches the host window,
-		// and resetHostWindow() clears both.
+		// attachHostWindow() records the opened origin with the window, and
+		// resetHostWindow() clears both.
 		return Boolean(
 			this.hostWindow &&
 				this.openedHostDomain &&
@@ -512,10 +512,11 @@ export class ConsumerTransport<
 	}
 
 	/**
-	 * Records opened host content and starts listening for its messages.
-	 * Unrendered instances never listen.
+	 * Records opened host content and the origin it was opened at, then starts
+	 * listening for its messages. Unrendered instances never listen.
 	 */
-	attachHostWindow(hostWindow: Window | null): void {
+	attachHostWindow(hostWindow: Window | null, openedHostDomain: string): void {
+		this.openedHostDomain = openedHostDomain;
 		this.hostWindow = hostWindow;
 		if (hostWindow) this.messenger.listen();
 	}

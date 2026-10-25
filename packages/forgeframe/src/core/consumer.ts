@@ -803,7 +803,7 @@ export class ConsumerComponent<
 	 */
 	private async open(baseUrl: string): Promise<void> {
 		this.syncTrustedDomainForUrl(baseUrl);
-		this.transport.openedHostDomain = this.resolveUrlOrigin(baseUrl);
+		const openedHostDomain = this.resolveUrlOrigin(baseUrl);
 		this.transport.activeHostDomain = null;
 
 		this.transport.attachHostWindow(
@@ -822,6 +822,7 @@ export class ConsumerComponent<
 					this.cleanup.register(cleanupFn);
 				},
 			}),
+			openedHostDomain,
 		);
 	}
 

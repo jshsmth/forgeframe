@@ -27,7 +27,7 @@ type DirectHandler = (data: unknown, source?: HandlerSource) => unknown;
 type ConsumerInternals = {
 	transport: {
 		hostWindow: Window | null;
-		attachHostWindow(hostWindow: Window | null): void;
+		attachHostWindow(hostWindow: Window | null, openedHostDomain: string): void;
 		openedHostDomain: string | null;
 		hostInitialized: boolean;
 		initPromise: {
@@ -99,17 +99,17 @@ function trackInstances<T extends object>(...instances: T[]): T[] {
 }
 
 /**
- * Attaches host content the way open() does: the opened origin is recorded
- * first. It reads the static URL directly, so no prop validation runs here.
+ * Attaches host content at the origin of the fixture's static URL, as open()
+ * does. It reads the URL directly, so no prop validation runs here.
  */
 function attachOpenedHost(
 	internal: ConsumerInternals,
 	hostWindow: Window | null,
 ): void {
-	internal.transport.openedHostDomain = internal.resolveUrlOrigin(
-		internal.options.url,
+	internal.transport.attachHostWindow(
+		hostWindow,
+		internal.resolveUrlOrigin(internal.options.url),
 	);
-	internal.transport.attachHostWindow(hostWindow);
 }
 
 /** Connects a host window to an instance so its host-control handlers accept messages. */

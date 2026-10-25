@@ -12,27 +12,24 @@ import { EventEmitter } from "@/events/emitter";
 import { prop } from "@/props/prop";
 import * as iframeRender from "@/render/iframe";
 import * as popupRender from "@/render/popup";
+import { callConsumerCallback } from "../consumer-bridge";
 import { requireValue } from "../require-value";
+
+/** Origin of the default component URL, recorded when host content opens. */
+const HOST_ORIGIN = "https://host.example.com";
 
 const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
 
 type ConsumerInternals = {
 	transport: {
 		hostWindow: Window | null;
-		attachHostWindow(hostWindow: Window | null): void;
+		attachHostWindow(hostWindow: Window | null, openedHostDomain: string): void;
 		openedHostDomain: string | null;
 		messenger: {
 			allowedOrigins: Set<string>;
 			allowedOriginPatterns: RegExp[];
 			addTrustedDomain: (domain: string) => void;
 			send: (...args: unknown[]) => Promise<unknown>;
-			handlers: Map<
-				string,
-				(
-					data: unknown,
-					source: { uid: string; domain: string; window: Window },
-				) => unknown
-			>;
 		};
 	};
 	renderer: {
@@ -95,29 +92,16 @@ function createConsumer(
 	return consumer;
 }
 
-/** Attaches host content the way open() does: the opened origin is recorded first. */
-function attachOpenedHost(
-	consumer: ConsumerComponent<Record<string, unknown>>,
-	hostWindow: Window,
-): void {
-	const { transport } = getInternals(consumer);
-	transport.openedHostDomain = "https://host.example.com";
-	transport.attachHostWindow(hostWindow);
-}
-
-/** Invokes a consumer callback the way the host does, through the bridge's CALL handler. */
-function callConsumerCallback(
+/** Calls a callback the consumer sent to the host, as the opened host window. */
+function callHostCallback(
 	consumer: ConsumerComponent<Record<string, unknown>>,
 	id: string,
 ): unknown {
-	const call = getInternals(consumer).transport.messenger.handlers.get(
-		MESSAGE_NAME.CALL,
-	);
-	if (!call) throw new Error("Missing bridge call handler");
-	return call(
-		{ id, args: [] },
-		{ uid: "host-uid", domain: "https://host.example.com", window },
-	);
+	return callConsumerCallback(getInternals(consumer).transport, id, {
+		uid: "host-uid",
+		domain: HOST_ORIGIN,
+		window,
+	});
 }
 
 /** Reads the callback ID from the props update at `index` sent to the host. */
@@ -262,7 +246,7 @@ describe("Consumer branch coverage and edge paths", () => {
 		expect(focusIframeSpy).toHaveBeenCalledWith(iframe);
 
 		internal.renderer.context = CONTEXT.POPUP;
-		internal.transport.attachHostWindow(popup);
+		internal.transport.attachHostWindow(popup, HOST_ORIGIN);
 
 		await consumer.focus();
 		expect(focusPopupSpy).toHaveBeenCalledWith(popup);
@@ -302,7 +286,7 @@ describe("Consumer branch coverage and edge paths", () => {
 		expect(hideIframeSpy).toHaveBeenCalledWith(iframe);
 
 		internal.renderer.context = CONTEXT.POPUP;
-		internal.transport.attachHostWindow(popup);
+		internal.transport.attachHostWindow(popup, HOST_ORIGIN);
 
 		await consumer.resize({ width: 480, height: 300 });
 		expect(resizePopupSpy).toHaveBeenCalledWith(popup, {
@@ -311,7 +295,7 @@ describe("Consumer branch coverage and edge paths", () => {
 		});
 
 		// A popup that is not open has nothing to resize and reports no resize.
-		internal.transport.attachHostWindow(null);
+		internal.transport.attachHostWindow(null, HOST_ORIGIN);
 		resizePopupSpy.mockClear();
 		const resized = vi.fn();
 		consumer.event.on(EVENT.RESIZE, resized);
@@ -421,7 +405,7 @@ describe("Consumer branch coverage and edge paths", () => {
 			},
 		);
 
-		attachOpenedHost(consumer, window);
+		getInternals(consumer).transport.attachHostWindow(window, HOST_ORIGIN);
 
 		const sendSpy = vi
 			.spyOn(getInternals(consumer).transport.messenger, "send")
@@ -431,10 +415,10 @@ describe("Consumer branch coverage and edge paths", () => {
 		await consumer.updateProps({ onSubmit: () => "second" });
 
 		await expect(
-			callConsumerCallback(consumer, sentCallbackId(sendSpy, 0)),
+			callHostCallback(consumer, sentCallbackId(sendSpy, 0)),
 		).rejects.toThrow("not found");
 		await expect(
-			callConsumerCallback(consumer, sentCallbackId(sendSpy, 1)),
+			callHostCallback(consumer, sentCallbackId(sendSpy, 1)),
 		).resolves.toBe("second");
 	});
 
@@ -450,7 +434,7 @@ describe("Consumer branch coverage and edge paths", () => {
 			},
 		);
 
-		attachOpenedHost(consumer, window);
+		getInternals(consumer).transport.attachHostWindow(window, HOST_ORIGIN);
 
 		const sendSpy = vi
 			.spyOn(getInternals(consumer).transport.messenger, "send")
@@ -461,7 +445,7 @@ describe("Consumer branch coverage and edge paths", () => {
 
 		sendSpy.mockImplementationOnce(async () => {
 			// The host may still call the previous callback until it acknowledges.
-			await expect(callConsumerCallback(consumer, previousRefId)).resolves.toBe(
+			await expect(callHostCallback(consumer, previousRefId)).resolves.toBe(
 				"previous",
 			);
 			return undefined;
@@ -470,11 +454,11 @@ describe("Consumer branch coverage and edge paths", () => {
 		await expect(
 			consumer.updateProps({ onSubmit: () => "next" }),
 		).resolves.toBeUndefined();
-		await expect(callConsumerCallback(consumer, previousRefId)).rejects.toThrow(
+		await expect(callHostCallback(consumer, previousRefId)).rejects.toThrow(
 			"not found",
 		);
 		await expect(
-			callConsumerCallback(consumer, sentCallbackId(sendSpy, 1)),
+			callHostCallback(consumer, sentCallbackId(sendSpy, 1)),
 		).resolves.toBe("next");
 	});
 
@@ -490,7 +474,7 @@ describe("Consumer branch coverage and edge paths", () => {
 			},
 		);
 
-		attachOpenedHost(consumer, window);
+		getInternals(consumer).transport.attachHostWindow(window, HOST_ORIGIN);
 
 		let resolveFirstSend!: () => void;
 		let resolveSecondSend!: () => void;
@@ -529,10 +513,10 @@ describe("Consumer branch coverage and edge paths", () => {
 
 		await expect(secondUpdate).resolves.toBeUndefined();
 		await expect(
-			callConsumerCallback(consumer, sentCallbackId(sendSpy, 0)),
+			callHostCallback(consumer, sentCallbackId(sendSpy, 0)),
 		).rejects.toThrow("not found");
 		await expect(
-			callConsumerCallback(consumer, sentCallbackId(sendSpy, 1)),
+			callHostCallback(consumer, sentCallbackId(sendSpy, 1)),
 		).resolves.toBe("second");
 	});
 
@@ -849,7 +833,7 @@ describe("Consumer branch coverage and edge paths", () => {
 			.mockImplementation(() => {});
 
 		internal.renderer.context = CONTEXT.POPUP;
-		internal.transport.attachHostWindow(popupWindow);
+		internal.transport.attachHostWindow(popupWindow, HOST_ORIGIN);
 		internal.renderer.prerenderElement = prerenderElement;
 
 		await (
