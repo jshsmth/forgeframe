@@ -140,7 +140,7 @@ test.beforeAll(async () => {
 		button.addEventListener('click',() => {
 			const instance = payment({invoiceId:'PV-1042',amountCents:17600,customer:'Demo customer',
 				outcome:new URL(location.href).searchParams.get('outcome') || 'success',onReady:()=>{},onResult:()=>{window.results++;return window.acknowledgement;}});
-			instance.event.on('destroy',()=>{window.paymentWindowClosed=true;});
+			instance.event.on('closed',()=>{window.paymentWindowClosed=true;});
 			void instance.render(document.querySelector('#mount'),new URL(location.href).searchParams.get('context'));
 		});
 		button.disabled = false;

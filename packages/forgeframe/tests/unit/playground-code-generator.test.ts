@@ -50,8 +50,11 @@ describe("playground generated examples", () => {
 					`return (async () => {${code.replace(/^import .*\n/, "")} })()`,
 				);
 				await run(create, prop);
-				expect(code).not.toContain('"onClose":');
+				// onClose is an ordinary prop now; lifecycle uses events.
+				expect(code).toContain('"onClose":');
 				expect(code).not.toContain('"onGreet":');
+				expect(code).toContain("myComponent.event.on('close'");
+				expect(code).toContain("myComponent.event.on('error'");
 				const Component = requireValue(getComponent(config.tag));
 				expect(Component.instances).toHaveLength(1);
 			}
@@ -128,8 +131,6 @@ describe("playground generated examples", () => {
 			const liveComponent = createComponent(config, "popup");
 			await liveComponent({
 				onGreet: () => undefined,
-				onClose: () => undefined,
-				onError: () => undefined,
 			}).render("#container", "popup");
 			const code = generateCode(config, "popup", "embedded");
 			const run = new Function(

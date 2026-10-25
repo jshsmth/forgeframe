@@ -53,7 +53,7 @@ describe("Host controls and routing integration", () => {
 				attributes: { loading: "lazy" },
 				style,
 			})();
-			instance.event.on(EVENT.PRERENDER, () => instance.show());
+			instance.event.on(EVENT.RENDER, () => instance.show());
 			const rendering = instance.render(container);
 			const { iframe } = await harness.bootstrapIframeHost(container);
 			await rendering;
@@ -84,7 +84,7 @@ describe("Host controls and routing integration", () => {
 					transition: "opacity 2s",
 				},
 			})();
-			instance.event.on(EVENT.PRERENDER, () => {
+			instance.event.on(EVENT.RENDER, () => {
 				for (const control of controls) void instance[control]();
 			});
 			const rendering = instance.render(container);
@@ -417,11 +417,11 @@ describe("Host controls and routing integration", () => {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 
-		const onClose = vi.fn();
+		const lifecycle: string[] = [];
 		const onFocus = vi.fn();
 		const onResize = vi.fn();
-		const onError = vi.fn();
 		const errorEvent = vi.fn();
+		const onExports = vi.fn();
 
 		const ControlsComponent = create<ControlProps>({
 			tag: "integration-host-controls-component",
@@ -429,15 +429,21 @@ describe("Host controls and routing integration", () => {
 			props: CONTROL_PROP_DEFINITIONS,
 		});
 
-		const initialProps = {
-			label: "Primary",
-			onClose,
-			onFocus,
-			onResize,
-			onError,
-		};
-		const instance = ControlsComponent(initialProps);
+		const instance = ControlsComponent({ label: "Primary" });
 		instance.event.on(EVENT.ERROR, errorEvent);
+		instance.event.on(EVENT.RESIZE, onResize);
+		instance.event.on(EVENT.FOCUS, onFocus);
+		instance.event.on(EVENT.EXPORTS, onExports);
+		for (const name of [
+			EVENT.RENDER,
+			EVENT.RENDERED,
+			EVENT.CLOSE,
+			EVENT.CLOSED,
+		] as const) {
+			instance.event.on(name, () => {
+				lifecycle.push(name);
+			});
+		}
 
 		const sibling = ControlsComponent({ label: "Sibling" });
 		sibling.exports = { peer: "sibling" };
@@ -471,12 +477,9 @@ describe("Host controls and routing integration", () => {
 		expect(onFocus).toHaveBeenCalledTimes(1);
 
 		await harness.withHostGlobalsAsync(() =>
-			hostProps.onError(new Error("host-side integration error")),
+			hostProps.reportError(new Error("host-side integration error")),
 		);
-		expect(onError).toHaveBeenCalledWith(
-			expect.objectContaining({ message: "host-side integration error" }),
-		);
-		expect(errorEvent).toHaveBeenCalledWith(
+		expect(errorEvent).toHaveBeenCalledExactlyOnceWith(
 			expect.objectContaining({
 				message: "host-side integration error",
 			}),
@@ -494,6 +497,7 @@ describe("Host controls and routing integration", () => {
 		};
 		expect(exported.ready).toBe(true);
 		await expect(exported.ping("live")).resolves.toBe("pong:live");
+		expect(onExports).toHaveBeenCalledExactlyOnceWith(instance.exports);
 
 		await expect(
 			harness.withHostGlobalsAsync(() => hostProps.getPeerInstances()),
@@ -507,7 +511,12 @@ describe("Host controls and routing integration", () => {
 
 		await harness.withHostGlobalsAsync(() => hostProps.close());
 
-		expect(onClose).toHaveBeenCalledTimes(1);
+		expect(lifecycle).toEqual([
+			EVENT.RENDER,
+			EVENT.RENDERED,
+			EVENT.CLOSE,
+			EVENT.CLOSED,
+		]);
 		expect(container.querySelector("iframe")).toBeNull();
 	});
 

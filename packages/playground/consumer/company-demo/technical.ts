@@ -290,7 +290,7 @@ export function recordWindowStep(step: "opened" | "closed"): void {
 					callbacks: ["onReady", "onResult"],
 				}
 			: {
-					event: "destroy",
+					event: "closed",
 					invoiceId: snapshot.props.invoiceId,
 					paymentRecorded: snapshot.paid,
 				};

@@ -144,9 +144,6 @@ export class ConsumerRenderer<
 
 		const dimensions = this.resolveDimensions();
 		assertActive();
-		const cspNonce = (props as Record<string, unknown>).cspNonce as
-			| string
-			| undefined;
 
 		if (this.context === CONTEXT.IFRAME) {
 			const windowName = buildWindowName();
@@ -162,7 +159,6 @@ export class ConsumerRenderer<
 			dimensions,
 			mountContainer,
 			null,
-			cspNonce,
 		);
 		this.prerenderElement = prerenderTemplateFn(prerenderContext);
 		assertActive();
@@ -171,7 +167,6 @@ export class ConsumerRenderer<
 			dimensions,
 			mountContainer,
 			this.prerenderElement,
-			cspNonce,
 		);
 
 		const containerEl = containerTemplateFn(templateContext);
@@ -232,8 +227,7 @@ export class ConsumerRenderer<
 		dimensions: Dimensions,
 		container: HTMLElement,
 		prerenderFrame: HTMLElement | null,
-		cspNonce?: string,
-	): TemplateContext<P> & { cspNonce?: string } {
+	): TemplateContext<P> {
 		return {
 			uid: this.uid,
 			tag: this.options.tag,
@@ -246,7 +240,7 @@ export class ConsumerRenderer<
 			prerenderFrame,
 			close: () => this.callbacks.close(),
 			focus: () => this.callbacks.focus(),
-			cspNonce,
+			cspNonce: this.options.cspNonce,
 		};
 	}
 
@@ -448,13 +442,19 @@ export class ConsumerRenderer<
 
 	/**
 	 * Focuses iframe/popup context.
+	 *
+	 * @returns `false` when no iframe is mounted and no popup is open.
 	 */
-	focus(hostWindow: Window | null): void {
+	focus(hostWindow: Window | null): boolean {
 		if (this.context === CONTEXT.IFRAME && this.iframe) {
 			focusIframe(this.iframe);
-		} else if (this.context === CONTEXT.POPUP && hostWindow) {
-			focusPopup(hostWindow);
+			return true;
 		}
+		if (this.context === CONTEXT.POPUP && hostWindow) {
+			focusPopup(hostWindow);
+			return true;
+		}
+		return false;
 	}
 
 	/**

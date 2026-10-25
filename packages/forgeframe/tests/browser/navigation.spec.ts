@@ -696,7 +696,7 @@ test("lazy iframe applies a show requested before frame creation", async ({
 				},
 				props: { count: prop.number(), allowed: prop.string() },
 			})({ count: 7, allowed: "early-show-value" });
-			instance.event.on(EVENT.PRERENDER, () => instance.show());
+			instance.event.on(EVENT.RENDER, () => instance.show());
 			return instance.render("#mount").then(
 				() => "ready",
 				(error: Error) => error.message,
@@ -2120,6 +2120,79 @@ for (const context of ["iframe", "popup"] as const) {
 }
 
 for (const context of ["iframe", "popup"] as const) {
+	test(`${context} emits exports and keeps cspNonce on the consumer`, async ({
+		page,
+	}) => {
+		await page.goto(consumerOrigin);
+		const opening =
+			context === "popup" ? page.waitForEvent("popup") : Promise.resolve(page);
+		const exported = page.evaluate(
+			async ({ hostOrigin, context }) => {
+				const libraryUrl = "/library.js";
+				const { create, prop }: typeof import("../../src/index") = await import(
+					libraryUrl
+				);
+				const instance = create({
+					tag: "exports-event-browser",
+					url: `${hostOrigin}/record-props`,
+					props: { record: prop.object() },
+					cspNonce: "consumer-nonce",
+				})({ record: { label: "sent" }, cspNonce: "prop-nonce" } as {
+					record: Record<string, unknown>;
+				});
+				const payload = new Promise((resolve) => {
+					instance.event.once("exports", (exports) => {
+						resolve({
+							payload: exports,
+							matches: exports === instance.exports,
+						});
+					});
+				});
+				await instance.render("#mount", context);
+				return {
+					exportsEvent: await payload,
+					// The loading spinner's keyframes stay in the consumer's head.
+					spinnerNonce: document.getElementById("forgeframe-spinner-style")
+						?.nonce,
+				};
+			},
+			{ hostOrigin, context },
+		);
+		const hostPage = await opening;
+		const result = await exported;
+		const host =
+			context === "popup"
+				? hostPage
+				: page
+						.frames()
+						.find((frame) => frame.url() === `${hostOrigin}/record-props`);
+		if (!host) throw new Error("Missing host");
+		expect(result).toEqual({
+			exportsEvent: { payload: { record: { label: "sent" } }, matches: true },
+			spinnerNonce: "consumer-nonce",
+		});
+		expect(
+			await host.evaluate(() => {
+				const received = (
+					window as unknown as {
+						received: { consumer: { props: object } } & object;
+					}
+				).received;
+				return {
+					hostProps: "cspNonce" in received,
+					consumerProps: received.consumer.props,
+					windowName: window.name.includes("nonce"),
+				};
+			}),
+		).toEqual({
+			hostProps: false,
+			consumerProps: { record: { label: "sent" } },
+			windowName: false,
+		});
+	});
+}
+
+for (const context of ["iframe", "popup"] as const) {
 	test(`${context} preserves arrays with altered prototypes or map methods`, async ({
 		page,
 	}) => {
@@ -2202,7 +2275,7 @@ for (const context of ["iframe", "popup"] as const) {
 					}
 				).instance;
 				let destroyed = false;
-				instance.event.on("destroy", () => {
+				instance.event.on("closed", () => {
 					destroyed = true;
 				});
 				const first = instance.close();

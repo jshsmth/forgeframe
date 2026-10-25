@@ -31,7 +31,6 @@ interface MyProps extends Record<string, unknown> {
 	name: string;
 	count: number;
 	onGreet: (message: string) => void;
-	onClose: () => void;
 	scenario?: string;
 	onCalculate?: (left: number, right: number) => number | Promise<number>;
 	onObservedProps?: (props: Record<string, unknown>) => void | Promise<void>;
@@ -67,7 +66,7 @@ function renderEmbedded(hostProps: HostProps<MyProps>) {
 		"show",
 		"hide",
 		"onProps",
-		"onError",
+		"reportError",
 		"getConsumer",
 		"getConsumerDomain",
 		"export",
@@ -232,7 +231,7 @@ function renderEmbedded(hostProps: HostProps<MyProps>) {
 
 		// Report error to consumer
 		document.getElementById("btn-error")?.addEventListener("click", () => {
-			hostProps.onError(new Error("Test error from host"));
+			hostProps.reportError(new Error("Test error from host"));
 			setStatus("Reported error to consumer");
 		});
 
@@ -438,7 +437,7 @@ function renderEmbedded(hostProps: HostProps<MyProps>) {
 					throw new Error("Expected host function failure");
 				},
 			});
-			await hostProps.onError(new Error("Expected host-reported error"));
+			await hostProps.reportError(new Error("Expected host-reported error"));
 			return;
 		}
 
@@ -448,7 +447,7 @@ function renderEmbedded(hostProps: HostProps<MyProps>) {
 	void exportInitialData().catch((error: unknown) => {
 		const hostError = error instanceof Error ? error : new Error(String(error));
 		console.error("[Host] Initial export failed:", hostError);
-		void hostProps.onError(hostError);
+		void hostProps.reportError(hostError);
 	});
 }
 

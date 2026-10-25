@@ -35,6 +35,11 @@ export interface TemplateContext<P = Record<string, unknown>> {
 	close: () => Promise<void>;
 	/** Focus the component */
 	focus: () => Promise<void>;
+	/**
+	 * The `cspNonce` component option, for `<style>` or `<script>` elements a
+	 * template injects. It is never sent to the host.
+	 */
+	cspNonce?: string;
 }
 
 /**

@@ -10,7 +10,7 @@
  */
 
 import { EVENT, PROTOCOL_VERSION } from "../../constants";
-import type { EventHandler } from "../../types/events";
+import { createEventSubscriber } from "../../events/emitter";
 import type {
 	ForgeFrameComponent,
 	Host,
@@ -226,22 +226,29 @@ function startHostRuntime(
 	return runtime;
 }
 
+const HOST_EVENT_NAMES: ReadonlySet<string> = new Set([EVENT.ERROR]);
+
+function describeUnknownHostEvent(event: string): string {
+	if (event === "props") {
+		return 'The host "props" event was removed in ForgeFrame 2; use hostProps.onProps(handler) instead';
+	}
+	return `Host events support "error", not "${event}"`;
+}
+
 /** Exposes only the documented `Host` members of one runtime. */
 function createHost(runtime: HostComponent<Record<string, unknown>>): Host {
-	const on = (event: string, handler: EventHandler<never>): (() => void) => {
-		if (event !== EVENT.PROPS && event !== EVENT.ERROR) {
-			throw new TypeError(
-				`Host.on() supports the "props" and "error" events, not "${event}"`,
-			);
-		}
-		return runtime.event.on(event, handler);
-	};
+	const events = createEventSubscriber(
+		runtime.event,
+		HOST_EVENT_NAMES,
+		describeUnknownHostEvent,
+	);
 	return Object.freeze({
 		ready: runtime.ready,
 		hostProps: runtime.hostProps,
 		init: () => runtime.init(),
 		destroy: () => runtime.destroy(),
-		on: on as Host["on"],
+		on: events.on,
+		once: events.once,
 	});
 }
 

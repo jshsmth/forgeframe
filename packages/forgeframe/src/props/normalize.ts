@@ -16,7 +16,6 @@ import type { DomainMatcher } from "../types/utility";
 import { isDate, isPlainObject } from "../utils/realm-values";
 import { assertDefinedArrayEntries } from "../utils/wire-value";
 import { matchDomain } from "../window/helpers";
-import { BUILTIN_PROP_DEFINITIONS } from "./definitions";
 import {
 	isAsyncSchemaResult,
 	isStandardSchema,
@@ -156,22 +155,16 @@ function getCompiledPropDefinitions<P extends Record<string, unknown>, I = P>(
 		return cached;
 	}
 
-	const suppliedDefinitions = Object.fromEntries(
-		Object.entries(definitions).filter(
-			([, definition]) => definition !== undefined,
-		),
-	);
-	const compiledDefinitions = Object.entries({
-		...BUILTIN_PROP_DEFINITIONS,
-		...suppliedDefinitions,
-	}).map(([key, def]) => {
-		const { isDirectSchema, definition } = resolvePropDefinition<P>(def);
-		return {
-			key,
-			isDirectSchema,
-			definition,
-		};
-	});
+	const compiledDefinitions = Object.entries(definitions)
+		.filter(([, definition]) => definition !== undefined)
+		.map(([key, def]) => {
+			const { isDirectSchema, definition } = resolvePropDefinition<P>(def);
+			return {
+				key,
+				isDirectSchema,
+				definition,
+			};
+		});
 
 	compiledPropDefinitionsCache.set(
 		cacheKey,

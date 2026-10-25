@@ -550,6 +550,7 @@ describe("Explicit host start-up", () => {
 				"hostProps",
 				"init",
 				"on",
+				"once",
 				"ready",
 			]);
 			for (const internal of [
@@ -566,7 +567,19 @@ describe("Explicit host start-up", () => {
 					"resize",
 					() => {},
 				),
-			).toThrow('Host.on() supports the "props" and "error" events');
+			).toThrow(new TypeError('Host events support "error", not "resize"'));
+			for (const method of ["on", "once"] as const) {
+				expect(() =>
+					(host[method] as (event: string, handler: () => void) => unknown)(
+						"props",
+						() => {},
+					),
+				).toThrow(
+					new TypeError(
+						'The host "props" event was removed in ForgeFrame 2; use hostProps.onProps(handler) instead',
+					),
+				);
+			}
 
 			await host.ready;
 			await rendering;
@@ -575,7 +588,7 @@ describe("Explicit host start-up", () => {
 			expect(Object.hasOwn(activeHarness.hostWindow, "hostProps")).toBe(false);
 		});
 
-		it("delivers committed props to on('props') until unsubscribed", async () => {
+		it("delivers committed props to hostProps.onProps() until unsubscribed", async () => {
 			harness = createIframeIntegrationHarness();
 			const activeHarness = harness;
 			const { Component, instance, rendering } = await renderConsumer(
@@ -586,7 +599,7 @@ describe("Explicit host start-up", () => {
 			const host = activeHarness.bootstrapHost(Component);
 			if (!host) throw new Error("Expected a host");
 			const received: unknown[] = [];
-			const unsubscribe = host.on("props", (props) => {
+			const unsubscribe = host.hostProps.onProps((props) => {
 				received.push(props);
 			});
 			await host.ready;
@@ -627,7 +640,11 @@ describe("Explicit host start-up", () => {
 					message: expect.stringContaining("Number must be >= 100"),
 				}),
 			]);
-			expect(errors[0]).not.toHaveProperty("type", "init_failed");
+			expect(errors[0]).toBeInstanceOf(Error);
+			expect(errors[0]).not.toHaveProperty(
+				"message",
+				expect.stringContaining("Failed to initialize host component"),
+			);
 			expect(consoleError).not.toHaveBeenCalledWith(
 				"Failed to send init message:",
 				expect.anything(),
@@ -662,9 +679,10 @@ describe("Explicit host start-up", () => {
 
 			host.init();
 			await vi.waitFor(() => expect(errors).toHaveLength(1));
+			expect(errors[0]).toBeInstanceOf(Error);
 			expect(errors[0]).toMatchObject({
-				type: "init_failed",
 				message: "Failed to initialize host component: consumer unavailable",
+				cause: expect.objectContaining({ message: "consumer unavailable" }),
 			});
 		});
 	});

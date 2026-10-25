@@ -319,7 +319,7 @@ describe("Consumer/host handshake integration", () => {
 		expect(typeof hostProps.show).toBe("function");
 		expect(typeof hostProps.hide).toBe("function");
 		expect(typeof hostProps.onProps).toBe("function");
-		expect(typeof hostProps.onError).toBe("function");
+		expect(typeof hostProps.reportError).toBe("function");
 		expect(typeof hostProps.export).toBe("function");
 		expect(Object.keys(hostProps.consumer)).toEqual(["props"]);
 		expect(typeof hostProps.getPeerInstances).toBe("function");

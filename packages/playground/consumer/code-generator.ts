@@ -49,7 +49,7 @@ export function generateCode(
 	iframeStyle: IframeStyle,
 ): string {
 	const customProps = Object.entries(config.props || {}).filter(
-		([key]) => key !== "onGreet" && key !== "onClose",
+		([key]) => key !== "onGreet",
 	);
 	const propsEntries = [
 		...customProps.map(([key, val]) => {
@@ -164,9 +164,9 @@ ${propsStr}
 const myComponent = MyComponent({
 ${instancePropsEntries ? `${instancePropsEntries},` : ""}
   onGreet: (msg) => console.log('Greeting:', msg),
-  onClose: () => myComponent.close(),
-  onError: (err) => console.error(err),
 });
+myComponent.event.on('close', () => console.log('Closing'));
+myComponent.event.on('error', (err) => console.error(err));
 
 await myComponent.render(document.body);`;
 	}
@@ -192,9 +192,9 @@ ${propsStr}
 const myComponent = MyComponent({
 ${instancePropsEntries ? `${instancePropsEntries},` : ""}
   onGreet: (msg) => console.log('Greeting:', msg),
-  onClose: () => myComponent.close(),
-  onError: (err) => console.error(err),
 });
+myComponent.event.on('close', () => console.log('Closing'));
+myComponent.event.on('error', (err) => console.error(err));
 
 await myComponent.render('#container'${context === "popup" ? `, '${context}'` : ""});`;
 }

@@ -132,7 +132,7 @@ describe("Props sync integration", () => {
 		activeHarness.attachHostToIframe(iframe);
 		const host = activeHarness.bootstrapHost(definitions);
 		if (!host) throw new Error("Missing initial host");
-		const unsubscribe = host.on("props", () => {
+		const unsubscribe = host.hostProps.onProps(() => {
 			unsubscribe();
 			activeHarness.withHostGlobals(() => host.destroy());
 		});
@@ -182,7 +182,7 @@ describe("Props sync integration", () => {
 			extra: "undeclared initial",
 		});
 		const rendering = instance.render(container);
-		const { host, hostProps } = await harness.bootstrapIframeHost(
+		const { hostProps } = await harness.bootstrapIframeHost(
 			container,
 			definitions,
 		);
@@ -195,12 +195,8 @@ describe("Props sync integration", () => {
 			expect(Object.hasOwn(hostProps, key)).toBe(false);
 		}
 		const snapshots: unknown[] = [];
-		const events: unknown[] = [];
 		hostProps.onProps((props) => {
 			snapshots.push(props);
-		});
-		host.on("props", (props) => {
-			events.push(props);
 		});
 		await instance.updateProps({
 			title: "updated",
@@ -216,7 +212,6 @@ describe("Props sync integration", () => {
 		expect(snapshots).toEqual([
 			{ title: "updated", extra: "undeclared update" },
 		]);
-		expect(events).toEqual(snapshots);
 		for (const key of ["local", "constructor"]) {
 			expect(Object.hasOwn(hostProps, key)).toBe(false);
 		}
@@ -281,10 +276,10 @@ describe("Props sync integration", () => {
 		});
 		await rendering;
 		const received: string[] = [];
-		let subscription: { cancel: () => void };
+		let subscription: () => void;
 		const rearm = ({ title }: { title: string }) => {
 			received.push(title);
-			subscription.cancel();
+			subscription();
 			// Bound the counterexample so live Set iteration cannot freeze the test.
 			if (received.length < 3) subscription = hostProps.onProps(rearm);
 		};
@@ -322,10 +317,10 @@ describe("Props sync integration", () => {
 			);
 			await rendering;
 			const later = vi.fn();
-			let laterSubscription: { cancel: () => void };
+			let laterSubscription: () => void;
 			const earlierSubscription = hostProps.onProps(() => {
-				earlierSubscription.cancel();
-				if (action === "replace") laterSubscription.cancel();
+				earlierSubscription();
+				if (action === "replace") laterSubscription();
 				laterSubscription = hostProps.onProps(later);
 			});
 			laterSubscription = hostProps.onProps(later);
@@ -358,11 +353,11 @@ describe("Props sync integration", () => {
 				definitions,
 			);
 			await rendering;
-			let laterSubscription: { cancel: () => void };
+			let laterSubscription: () => void;
 			hostProps.onProps(() => {
 				if (action === "destroy")
 					activeHarness.withHostGlobals(() => host.destroy());
-				else laterSubscription.cancel();
+				else laterSubscription();
 			});
 			const later = vi.fn();
 			laterSubscription = hostProps.onProps(later);
@@ -403,8 +398,8 @@ describe("Props sync integration", () => {
 		});
 		await instance.updateProps({ title: "first" });
 		expect(hostProps.title).toBe("first");
-		subscription.cancel();
-		subscription.cancel();
+		subscription();
+		subscription();
 		const failure = new Error("cancelled subscriber rejected");
 		const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
 		rejectSubscriber(failure);
@@ -644,13 +639,13 @@ describe("Props sync integration", () => {
 		};
 		const previous = hostProps.onProps(callback);
 		const duplicate = hostProps.onProps(callback);
-		previous.cancel();
+		previous();
 		const current = hostProps.onProps(callback);
-		previous.cancel();
-		duplicate.cancel();
+		previous();
+		duplicate();
 		await instance.updateProps({ title: "updated" });
 		expect(calls).toEqual(["updated"]);
-		current.cancel();
+		current();
 		await instance.updateProps({ title: "cancelled" });
 		expect(calls).toEqual(["updated"]);
 	});

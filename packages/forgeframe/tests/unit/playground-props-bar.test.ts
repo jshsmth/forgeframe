@@ -24,6 +24,7 @@ import {
 	setCurrentConfig,
 	setInstance,
 } from "../../../playground/consumer/state";
+import type { DynamicProps } from "../../../playground/consumer/types";
 import { checkRenderValidation } from "../render-validation";
 
 vi.mock("../../../playground/consumer/logger", () => ({
@@ -173,10 +174,10 @@ describe("playground prop editor", () => {
 				props: { count: { type: "number", default: 0 } },
 			};
 			setCurrentConfig(config);
-			const target = create<Record<string, unknown>>({
+			const target = create<DynamicProps>({
 				tag: config.tag,
 				url: config.url,
-			})({ count: 0 });
+			})({ count: 0, onGreet: () => {} });
 			setInstance(target);
 			recordRunningConfiguration("iframe", "embedded", { count: 0 });
 			const status = document.createElement("p");
@@ -225,10 +226,10 @@ describe("playground prop editor", () => {
 			props: { count: { type: "number", default: 0 } },
 		};
 		setCurrentConfig(config);
-		const target = create<Record<string, unknown>>({
+		const target = create<DynamicProps>({
 			tag: config.tag,
 			url: config.url,
-		})({ count: 0 });
+		})({ count: 0, onGreet: () => {} });
 		setInstance(target);
 		recordRunningConfiguration("iframe", "embedded", { count: 0 });
 		const status = document.createElement("p");
@@ -276,10 +277,10 @@ describe("playground prop editor", () => {
 			props: { count: { type: "number", default: 0 } },
 		};
 		setCurrentConfig(config);
-		const target = create<Record<string, unknown>>({
+		const target = create<DynamicProps>({
 			tag: config.tag,
 			url: config.url,
-		})({ count: 0 });
+		})({ count: 0, onGreet: () => {} });
 		setInstance(target);
 		recordRunningConfiguration("iframe", "embedded", { count: 0 });
 		const status = document.createElement("p");

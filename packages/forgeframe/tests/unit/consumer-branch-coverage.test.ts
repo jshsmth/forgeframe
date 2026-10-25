@@ -6,8 +6,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CONTEXT, EVENT } from "@/constants";
 import { ConsumerComponent } from "@/core/consumer";
-import { emitConsumerError } from "@/core/consumer/callbacks";
-import { EventEmitter } from "@/events/emitter";
 import { prop } from "@/props/prop";
 import * as iframeRender from "@/render/iframe";
 import * as popupRender from "@/render/popup";
@@ -749,28 +747,5 @@ describe("Consumer branch coverage and edge paths", () => {
 
 		expect(closePopupSpy).toHaveBeenCalledWith(popupWindow);
 		expect(removeSpy).toHaveBeenCalledTimes(1);
-	});
-
-	it("should emit error events before invoking the onError prop callback helper", () => {
-		const order: string[] = [];
-		const event = new EventEmitter();
-		const error = new Error("helper-error");
-
-		event.on(EVENT.ERROR, () => {
-			order.push("event");
-		});
-
-		emitConsumerError(
-			event,
-			{
-				onError: (received: Error) => {
-					order.push("callback");
-					expect(received).toBe(error);
-				},
-			},
-			error,
-		);
-
-		expect(order).toEqual(["event", "callback"]);
 	});
 });

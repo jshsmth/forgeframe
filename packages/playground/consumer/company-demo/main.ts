@@ -264,7 +264,7 @@ async function openPayment(): Promise<void> {
 	instance.event.on("close", () => {
 		if (!invoice.receipt) session.cancelled = true;
 	});
-	instance.event.on("destroy", () => {
+	instance.event.on("closed", () => {
 		if (active !== session) return;
 		active = null;
 		phase = session.failed ? "failed" : "closed";

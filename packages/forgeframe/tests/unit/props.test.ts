@@ -4,7 +4,6 @@
  * Covers defaults/computed values, schema validation, host filtering rules, and parameter conversion.
  */
 import { describe, expect, it, vi } from "vitest";
-import { BUILTIN_PROP_DEFINITIONS } from "@/props/definitions";
 import {
 	getPropsForHost,
 	normalizeConsumerProps,
@@ -14,11 +13,10 @@ import {
 	validateProps,
 } from "@/props/normalize";
 import { prop } from "@/props/prop";
-import { isStandardSchema } from "@/props/schema";
 import type { PropContext, PropDefinition, PropsDefinition } from "@/types";
 
 describe("Parameter callback compatibility", () => {
-	it("keeps builtin delivery rules when its optional definition is undefined", () => {
+	it("omits a prop whose definition is undefined from host delivery", () => {
 		const onClose = vi.fn();
 		const definitions: PropsDefinition<{ onClose: () => void }> = {
 			onClose: undefined,
@@ -74,16 +72,16 @@ describe("Props Normalization", () => {
 		container: null,
 	});
 
-	it("preserves builtin defaults when undefined definitions are omitted during deferred normalization", () => {
+	it("adds no built-in props when undefined definitions are omitted during deferred normalization", () => {
 		const definitions: PropsDefinition<{ timeout: number }> = {
 			timeout: undefined,
 		};
 		expect(
-			normalizeConsumerProps({}, definitions, createContext(), {
+			normalizeConsumerProps({ timeout: 1 }, definitions, createContext(), {
 				deferCustomNormalization: true,
 				schemaValidatedKeys: new Set(),
-			}).timeout,
-		).toBe(10000);
+			}),
+		).toEqual({});
 	});
 
 	it.each(["toString", "constructor", "hasOwnProperty"])(
@@ -271,12 +269,14 @@ describe("Props Normalization", () => {
 		expect(result.name).toBe("HELLO");
 	});
 
-	it("should include builtin props", () => {
-		const result = normalizeProps({}, {}, createContext());
+	it("should normalize only declared props", () => {
+		const result = normalizeProps(
+			{ dimensions: { width: 1, height: 1 }, onClose: vi.fn() },
+			{},
+			createContext(),
+		);
 
-		// Should have builtin props with defaults
-		expect(result.dimensions).toBeDefined();
-		expect(result.timeout).toBeDefined();
+		expect(result).toEqual({});
 	});
 });
 
@@ -778,60 +778,5 @@ describe("Props to Body Params", () => {
 
 		expect(params.get("callback")).toBeNull();
 		expect(params.get("optional")).toBeNull();
-	});
-});
-
-describe("BUILTIN_PROP_DEFINITIONS", () => {
-	it("should have uid prop with schema", () => {
-		expect(BUILTIN_PROP_DEFINITIONS.uid).toBeDefined();
-		expect(BUILTIN_PROP_DEFINITIONS.uid.schema).toBeDefined();
-		expect(isStandardSchema(BUILTIN_PROP_DEFINITIONS.uid.schema)).toBe(true);
-	});
-
-	it("should have tag prop with schema", () => {
-		expect(BUILTIN_PROP_DEFINITIONS.tag).toBeDefined();
-		expect(BUILTIN_PROP_DEFINITIONS.tag.schema).toBeDefined();
-		expect(isStandardSchema(BUILTIN_PROP_DEFINITIONS.tag.schema)).toBe(true);
-	});
-
-	it("should have dimensions prop with default", () => {
-		expect(BUILTIN_PROP_DEFINITIONS.dimensions).toBeDefined();
-		expect(BUILTIN_PROP_DEFINITIONS.dimensions.schema).toBeDefined();
-		expect(isStandardSchema(BUILTIN_PROP_DEFINITIONS.dimensions.schema)).toBe(
-			true,
-		);
-	});
-
-	it("should have timeout prop with default", () => {
-		expect(BUILTIN_PROP_DEFINITIONS.timeout).toBeDefined();
-		expect(BUILTIN_PROP_DEFINITIONS.timeout.schema).toBeDefined();
-		expect(isStandardSchema(BUILTIN_PROP_DEFINITIONS.timeout.schema)).toBe(
-			true,
-		);
-	});
-
-	it("should have lifecycle callbacks", () => {
-		const lifecycleProps = [
-			"onDisplay",
-			"onRendered",
-			"onRender",
-			"onPrerendered",
-			"onPrerender",
-			"onClose",
-			"onDestroy",
-			"onResize",
-			"onFocus",
-			"onError",
-			"onProps",
-		];
-
-		for (const propName of lifecycleProps) {
-			expect(BUILTIN_PROP_DEFINITIONS[propName]).toBeDefined();
-			expect(BUILTIN_PROP_DEFINITIONS[propName].schema).toBeDefined();
-			expect(isStandardSchema(BUILTIN_PROP_DEFINITIONS[propName].schema)).toBe(
-				true,
-			);
-			expect(BUILTIN_PROP_DEFINITIONS[propName].sendToHost).toBe(false);
-		}
 	});
 });
