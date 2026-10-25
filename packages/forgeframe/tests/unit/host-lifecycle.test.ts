@@ -208,8 +208,6 @@ describe("Host lifecycle behavior", () => {
 			host.hostProps.onProps((props) => {
 				notifications.push(props.amount);
 			});
-			const propsEvents = vi.fn();
-			host.event.on(EVENT.PROPS, propsEvents);
 			const propsHandler = requireValue(
 				(
 					host as unknown as {
@@ -226,7 +224,6 @@ describe("Host lifecycle behavior", () => {
 			await host.ready;
 
 			expect(notifications).toEqual([42]);
-			expect(propsEvents).toHaveBeenCalledExactlyOnceWith({ amount: 42 });
 			expect(host.hostProps).not.toHaveProperty("children");
 		} finally {
 			host.destroy();
@@ -515,9 +512,6 @@ describe("Host lifecycle behavior", () => {
 			host.hostProps.onProps(() => {
 				order.push("healthy");
 			});
-			host.event.on(EVENT.PROPS, () => {
-				order.push("event");
-			});
 			const propsHandler = (
 				host as unknown as {
 					messenger: { handlers: Map<string, DirectHandler> };
@@ -526,7 +520,7 @@ describe("Host lifecycle behavior", () => {
 			expect(
 				propsHandler?.({ amount: 77 }, createMessageSource(window)),
 			).toEqual({ success: true });
-			expect(order).toEqual(["failing", "healthy", "event"]);
+			expect(order).toEqual(["failing", "healthy"]);
 			expect(host.hostProps.amount).toBe(77);
 			await vi.waitFor(() =>
 				expect(consoleSpy).toHaveBeenCalledWith(
@@ -540,7 +534,7 @@ describe("Host lifecycle behavior", () => {
 	it("should cancel subscriptions and retain rejection handling after destruction", async () => {
 		const host = await createBootstrappedHost();
 		const cancelled = vi.fn();
-		host.hostProps.onProps(cancelled).cancel();
+		host.hostProps.onProps(cancelled)();
 		let rejectObserver: ((error: Error) => void) | undefined;
 		host.hostProps.onProps(
 			() =>

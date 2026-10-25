@@ -39,28 +39,24 @@ export type ContextType = (typeof CONTEXT)[keyof typeof CONTEXT];
  * @public
  */
 export const EVENT = {
-	/** Emitted when rendering starts */
+	/** Emitted when rendering starts, before any frame or placeholder exists */
 	RENDER: "render",
-	/** Emitted when component is fully rendered and initialized */
+	/** Emitted when the host initialized and the component is visible */
 	RENDERED: "rendered",
-	/** Emitted when prerender (loading) phase starts */
-	PRERENDER: "prerender",
-	/** Emitted when prerender phase completes */
-	PRERENDERED: "prerendered",
-	/** Emitted when component becomes visible */
-	DISPLAY: "display",
 	/** Emitted when an error occurs */
 	ERROR: "error",
-	/** Emitted when component is closing */
+	/** Emitted when closing starts */
 	CLOSE: "close",
-	/** Emitted when component is destroyed */
-	DESTROY: "destroy",
-	/** Emitted when props are updated */
+	/** Emitted after teardown finished; always the last event */
+	CLOSED: "closed",
+	/** Emitted when a props update is committed */
 	PROPS: "props",
-	/** Emitted when component is resized */
+	/** Emitted when a resize is applied */
 	RESIZE: "resize",
-	/** Emitted when component receives focus */
+	/** Emitted when a focus request is applied */
 	FOCUS: "focus",
+	/** Emitted when host exports arrive */
+	EXPORTS: "exports",
 } as const;
 
 /**

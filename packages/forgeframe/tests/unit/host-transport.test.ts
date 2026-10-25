@@ -6,10 +6,11 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CONTEXT, EVENT, MESSAGE_NAME } from "@/constants";
+import { CONTEXT, MESSAGE_NAME } from "@/constants";
 import { HostTransport } from "@/core/host/transport";
 import type { HostTransportOptions } from "@/core/host/types";
 import { EventEmitter } from "@/events/emitter";
+import type { HostEvents } from "@/types";
 import { createDeferred } from "@/utils/promise";
 import { requireValue } from "../require-value";
 
@@ -29,7 +30,7 @@ function createTransport({
 	beforeInit = () => Promise.resolve(),
 	consumerWindow = { postMessage: vi.fn() } as unknown as Window,
 }: Partial<HostTransportOptions> = {}) {
-	const event = new EventEmitter();
+	const event = new EventEmitter<HostEvents>();
 	const options: HostTransportOptions = {
 		uid,
 		context,
@@ -180,7 +181,8 @@ describe("HostTransport", () => {
 		const sendSpy = vi
 			.spyOn(transport.messenger, "send")
 			.mockReturnValue(pendingSend.promise);
-		const emitSpy = vi.spyOn(event, "emit");
+		const onError = vi.fn();
+		event.on("error", onError);
 		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
 		transport.sendInitOnce();
@@ -190,7 +192,7 @@ describe("HostTransport", () => {
 		await flushMicrotasks();
 
 		expect(consoleSpy).not.toHaveBeenCalled();
-		expect(emitSpy).not.toHaveBeenCalledWith(EVENT.ERROR, expect.anything());
+		expect(onError).not.toHaveBeenCalled();
 	});
 
 	it("resolves focus() once the window receives focus, or after a bounded wait", async () => {
@@ -242,23 +244,21 @@ describe("HostTransport", () => {
 		const sendSpy = vi
 			.spyOn(transport.messenger, "send")
 			.mockRejectedValue("init send failed");
-		const emitSpy = vi.spyOn(event, "emit");
+		const errors: Error[] = [];
+		event.on("error", (error) => {
+			errors.push(error);
+		});
 		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
 		transport.sendInitOnce();
-		await vi.waitFor(() =>
-			expect(emitSpy).toHaveBeenCalledWith(EVENT.ERROR, expect.anything()),
-		);
+		await vi.waitFor(() => expect(errors).toHaveLength(1));
 
 		expect(sendSpy).toHaveBeenCalledTimes(1);
-		expect(emitSpy).toHaveBeenCalledWith(
-			EVENT.ERROR,
-			expect.objectContaining({
-				type: "init_failed",
-				message: "Failed to initialize host component: init send failed",
-				error: expect.objectContaining({ message: "init send failed" }),
-			}),
-		);
+		expect(errors[0]).toBeInstanceOf(Error);
+		expect(errors[0]).toMatchObject({
+			message: "Failed to initialize host component: init send failed",
+			cause: expect.objectContaining({ message: "init send failed" }),
+		});
 		expect(consoleSpy).toHaveBeenCalledWith(
 			"Failed to send init message:",
 			"init send failed",

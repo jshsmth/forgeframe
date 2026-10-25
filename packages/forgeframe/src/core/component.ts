@@ -113,6 +113,13 @@ function assertComponentShape<P, I, SchemaInputs>(
 		);
 	}
 
+	if (
+		options.cspNonce !== undefined &&
+		(typeof options.cspNonce !== "string" || options.cspNonce === "")
+	) {
+		throw new Error("Component cspNonce must be a non-empty string");
+	}
+
 	assertNoRemovedComponentOptions(options);
 
 	for (const option of ["domain", "peerDomains"] as const) {
@@ -287,12 +294,9 @@ export function create<
 			return instance;
 		}
 
+		// The instance calls untrackInstance itself when its teardown finishes.
 		instances.push(instance);
 		indexComponentInstance(componentTag, instance);
-
-		instance.event.once("destroy", () => {
-			untrackInstance(instance);
-		});
 
 		return instance;
 	}

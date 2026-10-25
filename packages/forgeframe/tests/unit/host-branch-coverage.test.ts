@@ -150,12 +150,12 @@ describe("Host branch coverage and edge paths", () => {
 				failure === "a failed request"
 					? "Consumer did not respond"
 					: "Invalid consumer bootstrap response";
-			expect(errors).toEqual([
-				expect.objectContaining({
-					type: "init_failed",
-					message: `Failed to initialize host component: ${reason}`,
-				}),
-			]);
+			expect(errors).toHaveLength(1);
+			expect(errors[0]).toBeInstanceOf(Error);
+			expect(errors[0]).toMatchObject({
+				message: `Failed to initialize host component: ${reason}`,
+				cause: expect.objectContaining({ message: reason }),
+			});
 		},
 	);
 
@@ -188,27 +188,26 @@ describe("Host branch coverage and edge paths", () => {
 			undefined,
 			undefined,
 		);
-		expect(errors[0]).toEqual(
-			expect.objectContaining({
-				type: "init_failed",
-				error,
-			}),
-		);
+		expect(errors[0]).toBeInstanceOf(Error);
+		expect(errors[0]).toMatchObject({
+			message: "Failed to initialize host component: init send failed",
+			cause: error,
+		});
 		expect(consoleSpy).toHaveBeenCalledWith(
 			"Failed to send init message:",
 			error,
 		);
 	});
 
-	it("should unsubscribe onProps handlers when cancel is called", async () => {
+	it("should unsubscribe onProps handlers through the returned function", async () => {
 		const host = await createBootstrappedHost();
 		const propsHandler = (
 			host as unknown as { messenger: { handlers: Map<string, DirectHandler> } }
 		).messenger.handlers.get(MESSAGE_NAME.PROPS);
 		const onPropsSpy = vi.fn();
 
-		const subscription = host.hostProps.onProps(onPropsSpy);
-		subscription.cancel();
+		const unsubscribe = host.hostProps.onProps(onPropsSpy);
+		unsubscribe();
 		requireValue(propsHandler)({ amount: 50 }, createMessageSource(window));
 
 		expect(onPropsSpy).not.toHaveBeenCalled();

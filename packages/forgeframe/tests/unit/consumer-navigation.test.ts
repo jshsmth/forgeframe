@@ -85,14 +85,11 @@ describe("Consumer navigation admission", () => {
 						},
 					},
 				},
-				{
-					order: "order-123",
-					onRender: () => {
-						if (mutation === "lifecycle")
-							base.href = "https://untrusted.example/";
-					},
-				},
+				{ order: "order-123" },
 			);
+			consumer.event.once("render", () => {
+				if (mutation === "lifecycle") base.href = "https://untrusted.example/";
+			});
 			const { container, internals } = mount(consumer);
 			await consumer.render(container);
 			expect(internals.renderer.iframe.src).toBe(

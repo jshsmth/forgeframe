@@ -8,7 +8,7 @@ import type {
 	InferOutput,
 	StandardSchemaV1,
 } from "../props/schema";
-import type { EventEmitterInterface } from "./events";
+import type { ComponentEvents, EventSubscriber, HostEvents } from "./events";
 import type {
 	HostPropsDefinition,
 	InferPropsDefinition,
@@ -401,6 +401,16 @@ export interface ComponentOptions<
 	 * @defaultValue 10000
 	 */
 	timeout?: number;
+
+	/**
+	 * Content Security Policy nonce for the inline `<style>` of the default
+	 * loading spinner.
+	 *
+	 * @remarks
+	 * Custom templates read it from `TemplateContext.cspNonce`. It is never
+	 * sent to the host.
+	 */
+	cspNonce?: string;
 }
 
 /**
@@ -493,9 +503,12 @@ export interface ForgeFrameComponentInstance<
 	updateProps(props: ConsumerPropsUpdate<P, I, SchemaInputs>): Promise<void>;
 
 	/**
-	 * Event emitter for subscribing to lifecycle events.
+	 * Subscribes to lifecycle events with `on` and `once`.
+	 *
+	 * @remarks
+	 * Both return an unsubscribe function. Only ForgeFrame emits these events.
 	 */
-	event: EventEmitterInterface;
+	readonly event: EventSubscriber<ComponentEvents<P, X>>;
 
 	/**
 	 * Data exported from the host component via `hostProps.export()`.
@@ -658,17 +671,17 @@ export interface HostPropsBuiltins<P = Record<string, unknown>> {
 	 * awaited; synchronous throws and returned promise rejections are logged.
 	 *
 	 * @param handler - Function called when props change
-	 * @returns Object with cancel function to unsubscribe
+	 * @returns A function that removes this registration
 	 */
-	onProps: (handler: (props: RemoteValue<P>) => void) => { cancel: () => void };
+	onProps: (handler: (props: RemoteValue<P>) => void) => () => void;
 
 	/**
-	 * Report an error to the consumer.
+	 * Report an error to the consumer, which emits it on its `error` event.
 	 *
 	 * @param err - Error to report
-	 * @returns Promise that resolves when error is sent
+	 * @returns Promise that resolves when the consumer acknowledges the error
 	 */
-	onError: (err: Error) => Promise<void>;
+	reportError: (err: Error) => Promise<void>;
 
 	/**
 	 * Get a reference to the consumer window.
@@ -880,26 +893,18 @@ export interface Host<P = Record<string, unknown>> {
 	destroy(): void;
 
 	/**
-	 * Observes committed consumer props: the bootstrap snapshot, then every update.
-	 *
-	 * @returns A function that removes the handler
-	 */
-	on(event: "props", handler: (props: RemoteValue<P>) => void): () => void;
-
-	/**
-	 * Observes host errors.
+	 * Subscribes to host events with `on` and `once`, which return an
+	 * unsubscribe function.
 	 *
 	 * @remarks
-	 * Rejected props, including a rejected bootstrap snapshot, report an
-	 * `Error`. Any other failed start, and an INIT delivery failure, report an
-	 * `init_failed` record.
-	 *
-	 * @returns A function that removes the handler
+	 * The `error` event always carries an `Error`. Rejected props, including a
+	 * rejected bootstrap snapshot, report the validation error. Any other
+	 * failed start, and an INIT delivery failure, report an `Error` whose
+	 * `cause` is the original failure. Observe prop updates with
+	 * `hostProps.onProps()`.
 	 */
-	on(
-		event: "error",
-		handler: (
-			error: Error | { type: "init_failed"; message: string; error: Error },
-		) => void,
-	): () => void;
+	on: EventSubscriber<HostEvents>["on"];
+
+	/** Like {@link Host.on}, for the next emission only. */
+	once: EventSubscriber<HostEvents>["once"];
 }

@@ -219,10 +219,11 @@ afterEach(async () => {
 });
 
 describe("Consumer lifecycle behavior", () => {
-	it("should surface waitForHost timeout through onError callback", async () => {
+	it("should surface waitForHost timeout on the error event", async () => {
 		vi.useFakeTimers();
 		const onError = vi.fn();
-		const consumer = createConsumer({ timeout: 5 }, { onError });
+		const consumer = createConsumer({ timeout: 5 });
+		consumer.event.on("error", onError);
 		const waitForHost = (
 			consumer as unknown as {
 				waitForHost: () => Promise<void>;
@@ -236,7 +237,11 @@ describe("Consumer lifecycle behavior", () => {
 		await vi.advanceTimersByTimeAsync(6);
 
 		await timeoutExpectation;
-		expect(onError).toHaveBeenCalledWith(expect.any(Error));
+		expect(onError).toHaveBeenCalledExactlyOnceWith(
+			expect.objectContaining({
+				message: expect.stringContaining("did not initialize within 5ms"),
+			}),
+		);
 	});
 
 	it("should resolve waitForHost when INIT handler runs", async () => {
@@ -594,7 +599,8 @@ describe("Consumer lifecycle behavior", () => {
 
 	it("should ignore spoofed ERROR from a different trusted window and accept the opened host window", async () => {
 		const onError = vi.fn();
-		const consumer = createConsumer({}, { onError });
+		const consumer = createConsumer();
+		consumer.event.on("error", onError);
 		const internal = getInternals(consumer);
 		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
 		const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
@@ -950,21 +956,19 @@ describe("Consumer lifecycle behavior", () => {
 		expect(closeSpy).toHaveBeenCalledTimes(1);
 	});
 
-	it("should invoke onClose before onDestroy when closing", async () => {
+	it("should emit close before closed, once each, when closing", async () => {
 		const lifecycle: string[] = [];
-		const onClose = vi.fn(() => {
+		const consumer = createConsumer();
+		consumer.event.on("close", () => {
 			lifecycle.push("close");
 		});
-		const onDestroy = vi.fn(() => {
-			lifecycle.push("destroy");
+		consumer.event.on("closed", () => {
+			lifecycle.push("closed");
 		});
-		const consumer = createConsumer({}, { onClose, onDestroy });
 
-		await consumer.close();
+		await Promise.all([consumer.close(), consumer.close()]);
 
-		expect(onClose).toHaveBeenCalledTimes(1);
-		expect(onDestroy).toHaveBeenCalledTimes(1);
-		expect(lifecycle).toEqual(["close", "destroy"]);
+		expect(lifecycle).toEqual(["close", "closed"]);
 	});
 
 	it("should enforce render guards before opening", async () => {
@@ -1046,7 +1050,7 @@ describe("Consumer lifecycle behavior", () => {
 		const openSpy = vi.spyOn(internal, "open").mockResolvedValue(undefined);
 		vi.spyOn(internal, "waitForHost").mockResolvedValue(undefined);
 
-		consumer.event.once(EVENT.PRERENDER, () => {
+		consumer.event.once(EVENT.RENDER, () => {
 			reentrantRender = consumer.render(container);
 			propUpdateResult = consumer.updateProps({ value: "racing" }).then(
 				() => "resolved",
@@ -1076,15 +1080,13 @@ describe("Consumer lifecycle behavior", () => {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 		const onError = vi.fn();
-		const consumer = createConsumer({}, { onError });
+		const consumer = createConsumer();
 		const internal = getInternals(consumer);
 		const lifecycle = {
-			prerendered: vi.fn(),
 			render: vi.fn(),
 			rendered: vi.fn(),
-			display: vi.fn(),
 			close: vi.fn(),
-			destroy: vi.fn(),
+			closed: vi.fn(),
 		};
 		let releasePrerender: (() => void) | undefined;
 
@@ -1095,12 +1097,11 @@ describe("Consumer lifecycle behavior", () => {
 				}),
 		);
 		const openSpy = vi.spyOn(internal, "open").mockResolvedValue(undefined);
-		consumer.event.on(EVENT.PRERENDERED, lifecycle.prerendered);
 		consumer.event.on(EVENT.RENDER, lifecycle.render);
 		consumer.event.on(EVENT.RENDERED, lifecycle.rendered);
-		consumer.event.on(EVENT.DISPLAY, lifecycle.display);
 		consumer.event.on(EVENT.CLOSE, lifecycle.close);
-		consumer.event.on(EVENT.DESTROY, lifecycle.destroy);
+		consumer.event.on(EVENT.CLOSED, lifecycle.closed);
+		consumer.event.on(EVENT.ERROR, onError);
 
 		const firstRender = consumer.render(container);
 		const secondRender = consumer.render(container);
@@ -1121,12 +1122,10 @@ describe("Consumer lifecycle behavior", () => {
 		await consumer.close();
 
 		expect(openSpy).not.toHaveBeenCalled();
-		expect(lifecycle.prerendered).not.toHaveBeenCalled();
-		expect(lifecycle.render).not.toHaveBeenCalled();
+		expect(lifecycle.render).toHaveBeenCalledTimes(1);
 		expect(lifecycle.rendered).not.toHaveBeenCalled();
-		expect(lifecycle.display).not.toHaveBeenCalled();
 		expect(lifecycle.close).toHaveBeenCalledTimes(1);
-		expect(lifecycle.destroy).toHaveBeenCalledTimes(1);
+		expect(lifecycle.closed).toHaveBeenCalledTimes(1);
 		expect(onError).not.toHaveBeenCalled();
 
 		releasePrerender?.();
@@ -1138,7 +1137,8 @@ describe("Consumer lifecycle behavior", () => {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 		const onError = vi.fn();
-		const consumer = createConsumer({ timeout: 1000 }, { onError });
+		const consumer = createConsumer({ timeout: 1000 });
+		consumer.event.on("error", onError);
 		const internal = getInternals(consumer);
 
 		vi.spyOn(internal, "prerender").mockResolvedValue(undefined);
@@ -1159,7 +1159,7 @@ describe("Consumer lifecycle behavior", () => {
 		expect(onError).not.toHaveBeenCalled();
 	});
 
-	it("should stop before prerender when a lifecycle listener closes the instance", async () => {
+	it("should stop before any frame or placeholder when a render listener closes the instance", async () => {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 		const consumer = createConsumer();
@@ -1167,33 +1167,9 @@ describe("Consumer lifecycle behavior", () => {
 		const prerenderSpy = vi.spyOn(internal, "prerender");
 		const openSpy = vi.spyOn(internal, "open").mockResolvedValue(undefined);
 
-		consumer.event.once(EVENT.PRERENDER, () => {
+		consumer.event.once(EVENT.RENDER, () => {
 			void consumer.close();
 		});
-
-		await expect(consumer.render(container)).rejects.toThrow(
-			'Component "consumer-lifecycle-component" was closed before rendering completed',
-		);
-
-		expect(prerenderSpy).not.toHaveBeenCalled();
-		expect(openSpy).not.toHaveBeenCalled();
-		expect(container.querySelectorAll("iframe")).toHaveLength(0);
-	});
-
-	it("should stop before prerender when a lifecycle prop closes the instance", async () => {
-		const container = document.createElement("div");
-		document.body.appendChild(container);
-		const consumer = createConsumer(
-			{},
-			{
-				onPrerender: () => {
-					void consumer.close();
-				},
-			},
-		);
-		const internal = getInternals(consumer);
-		const prerenderSpy = vi.spyOn(internal, "prerender");
-		const openSpy = vi.spyOn(internal, "open").mockResolvedValue(undefined);
 
 		await expect(consumer.render(container)).rejects.toThrow(
 			'Component "consumer-lifecycle-component" was closed before rendering completed',
@@ -1311,40 +1287,6 @@ describe("Consumer lifecycle behavior", () => {
 		expect(openPopupSpy).not.toHaveBeenCalled();
 		expect(waitForHostSpy).not.toHaveBeenCalled();
 		expect(getInternals(consumer).transport.hostWindow).toBeNull();
-	});
-
-	it("should isolate callback failures in callPropCallback", async () => {
-		const consoleErrorSpy = vi
-			.spyOn(console, "error")
-			.mockImplementation(() => {});
-
-		const syncFailureConsumer = createConsumer(
-			{},
-			{
-				onFocus: () => {
-					throw new Error("sync callback failure");
-				},
-			},
-		);
-		await syncFailureConsumer.focus();
-
-		const asyncFailureConsumer = createConsumer(
-			{},
-			{
-				onFocus: () => Promise.reject(new Error("async callback failure")),
-			},
-		);
-		await asyncFailureConsumer.focus();
-		await Promise.resolve();
-
-		expect(consoleErrorSpy).toHaveBeenCalledWith(
-			"Error in onFocus callback:",
-			expect.any(Error),
-		);
-		expect(consoleErrorSpy).toHaveBeenCalledWith(
-			"Error in async onFocus callback:",
-			expect.any(Error),
-		);
 	});
 
 	it("should reject updateProps when a required prop becomes undefined", async () => {
@@ -1556,7 +1498,7 @@ describe("Factory instance close and teardown", () => {
 			});
 			const instance = Component();
 			const destroyed = vi.fn();
-			instance.event.on("destroy", destroyed);
+			instance.event.on("closed", destroyed);
 			let reentrant: Promise<void> | undefined;
 			if (mode === "reentrant")
 				instance.event.on("close", () => {
@@ -1587,7 +1529,7 @@ describe("Factory instance close and teardown", () => {
 		document.body.appendChild(mount);
 		const destroyed = vi.fn();
 		const closed = vi.fn();
-		instance.event.on("destroy", destroyed);
+		instance.event.on("closed", destroyed);
 		instance.event.on("close", closed);
 		let releaseCleanup = () => {};
 		let markCleanupStarted = () => {};
@@ -1630,63 +1572,54 @@ describe("Factory instance close and teardown", () => {
 		}
 	});
 
-	it.each(["off", "removeAllListeners"] as const)(
-		"should deregister instances after public %s cleanup",
-		async (method) => {
-			const tag = `listener-cleanup-${method.toLowerCase()}`;
-			const Component = create({
-				tag,
-				url: "https://example.com/tracked",
+	it("deregisters instances before closed without relying on public listeners", async () => {
+		const tag = "listener-free-deregistration";
+		const Component = create({
+			tag,
+			url: "https://example.com/tracked",
+		});
+		const first = Component();
+		const second = Component();
+		setVerifiedHostDomain(PEER_HOST_DOMAIN, first, second);
+		const events: string[] = [];
+		for (const [name, instance] of [
+			["first", first],
+			["second", second],
+		] as const) {
+			instance.event.on("close", () => {
+				events.push(`${name}:close:${Component.instances.includes(instance)}`);
 			});
-			const first = Component();
-			const second = Component();
-			setVerifiedHostDomain(PEER_HOST_DOMAIN, first, second);
-			const events: string[] = [];
-			for (const [name, instance] of [
-				["first", first],
-				["second", second],
-			] as const) {
-				if (method === "off") instance.event.off("destroy");
-				else instance.event.removeAllListeners();
-				instance.event.on("close", () => {
-					events.push(
-						`${name}:close:${Component.instances.includes(instance)}`,
-					);
-				});
-				instance.event.on("destroy", () => {
-					events.push(
-						`${name}:destroy:${Component.instances.includes(instance)}`,
-					);
-				});
-			}
+			instance.event.on("closed", () => {
+				events.push(`${name}:closed:${Component.instances.includes(instance)}`);
+			});
+		}
 
-			await first.close();
-			expect(Component.instances).toEqual([second]);
-			expect(
-				getSiblingInstances({
-					uid: second.uid,
-					tag,
-					hostDomain: PEER_HOST_DOMAIN,
-					anyConsumer: false,
-				}),
-			).toEqual([]);
-			await second.close();
-			await second.close();
-			expect(Component.instances).toEqual([]);
-			expect(
-				getSiblingInstances({
-					uid: "outside",
-					tag,
-					hostDomain: PEER_HOST_DOMAIN,
-					anyConsumer: false,
-				}),
-			).toEqual([]);
-			expect(events).toEqual([
-				"first:close:true",
-				"first:destroy:false",
-				"second:close:true",
-				"second:destroy:false",
-			]);
-		},
-	);
+		await first.close();
+		expect(Component.instances).toEqual([second]);
+		expect(
+			getSiblingInstances({
+				uid: second.uid,
+				tag,
+				hostDomain: PEER_HOST_DOMAIN,
+				anyConsumer: false,
+			}),
+		).toEqual([]);
+		await second.close();
+		await second.close();
+		expect(Component.instances).toEqual([]);
+		expect(
+			getSiblingInstances({
+				uid: "outside",
+				tag,
+				hostDomain: PEER_HOST_DOMAIN,
+				anyConsumer: false,
+			}),
+		).toEqual([]);
+		expect(events).toEqual([
+			"first:close:true",
+			"first:closed:false",
+			"second:close:true",
+			"second:closed:false",
+		]);
+	});
 });

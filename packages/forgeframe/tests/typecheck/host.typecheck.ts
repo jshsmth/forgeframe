@@ -47,16 +47,27 @@ if (host) {
 	// @ts-expect-error hostProps is a read-only, live object.
 	host.hostProps = replacement;
 
-	const stopProps: () => void = host.on("props", (props) => {
+	const stopProps: () => void = host.hostProps.onProps((props) => {
 		const nextAmount: number = props.amount;
 		void nextAmount;
 	});
 	stopProps();
-	host.on("error", (error) => {
+	const stopErrors: () => void = host.on("error", (error) => {
+		const cause: unknown = error.cause;
+		void cause;
+	});
+	stopErrors();
+	host.once("error", (error: Error) => {
 		void error;
 	});
-	// @ts-expect-error Host.on() observes only props and error events.
+	// @ts-expect-error Host events have only error; observe props with hostProps.onProps().
+	host.on("props", () => {});
+	// @ts-expect-error Host events have only error.
 	host.on("resize", () => {});
+	const reported: Promise<void> = host.hostProps.reportError(new Error("x"));
+	void reported;
+	// @ts-expect-error onError was renamed reportError.
+	void host.hostProps.onError;
 
 	host.init();
 	// @ts-expect-error init() returns nothing; failures go to on('error').

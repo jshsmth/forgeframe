@@ -99,9 +99,6 @@ export function createForgeFrameComponentMock() {
 
 			return vi.fn();
 		}),
-		off: vi.fn(),
-		emit: vi.fn(),
-		removeAllListeners: vi.fn(),
 	};
 
 	const instance = {

@@ -54,7 +54,7 @@ export class CleanupManager {
 	 * @example
 	 * ```typescript
 	 * cleanup.register(() => {
-	 *   eventEmitter.removeAllListeners();
+	 *   eventEmitter.dispose();
 	 * });
 	 *
 	 * cleanup.register(async () => {

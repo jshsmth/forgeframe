@@ -1,4 +1,11 @@
-import { CONTEXT, closeAll, create, prop } from "forgeframe";
+import {
+	CONTEXT,
+	type ComponentEvents,
+	closeAll,
+	create,
+	type EventSubscriber,
+	prop,
+} from "forgeframe";
 import { requireValue } from "../../require-value";
 import type { TestResult } from "./types";
 
@@ -92,7 +99,7 @@ export async function runConfigurationScenario(
 
 	try {
 		await instance.render(container);
-		await waitFor(() => instance.exports?.observed);
+		await waitForExports(instance, () => instance.exports?.observed);
 		const iframe = requireValue(
 			container.querySelector<HTMLIFrameElement>("iframe"),
 		);
@@ -212,9 +219,10 @@ export async function runInstancesScenario(
 			original.render(originalContainer),
 			second.render(secondContainer),
 		]);
-		await waitFor(
-			() => original.exports?.instanceLabel && second.exports?.instanceLabel,
-		);
+		await Promise.all([
+			waitForExports(original, () => original.exports?.instanceLabel),
+			waitForExports(second, () => second.exports?.instanceLabel),
+		]);
 		results.push(
 			assertResult(
 				"Each instance keeps its own prop snapshot",
@@ -264,13 +272,6 @@ export async function runInstancesScenario(
 
 interface HostControlProps extends Record<string, unknown> {
 	scenario: string;
-	onResize: (dimensions: {
-		width?: string | number;
-		height?: string | number;
-	}) => void;
-	onFocus: () => void;
-	onClose: () => void;
-	onDestroy: () => void;
 }
 
 interface HostControlExports {
@@ -286,34 +287,17 @@ export async function runHostControlsScenario(
 ): Promise<TestResult[]> {
 	const results: TestResult[] = [];
 	const container = createContainer(sandbox);
-	let resizeCallbacks = 0;
-	let focusCallbacks = 0;
-	let closeCallbacks = 0;
-	let destroyCallbacks = 0;
 	let resizeEvents = 0;
 	let focusEvents = 0;
 	let closeEvents = 0;
+	let closedEvents = 0;
 	const Component = create<HostControlProps, HostControlExports>({
 		tag: uniqueTag("host-controls"),
 		url: `${HOST_URL}?scenario=host-controls`,
 		dimensions: { width: "100%", height: 320 },
 		props: { scenario: prop.string() },
 	});
-	const instance = Component({
-		scenario: "host-controls",
-		onResize: () => {
-			resizeCallbacks += 1;
-		},
-		onFocus: () => {
-			focusCallbacks += 1;
-		},
-		onClose: () => {
-			closeCallbacks += 1;
-		},
-		onDestroy: () => {
-			destroyCallbacks += 1;
-		},
-	});
+	const instance = Component({ scenario: "host-controls" });
 	instance.event.on("resize", () => {
 		resizeEvents += 1;
 	});
@@ -323,10 +307,13 @@ export async function runHostControlsScenario(
 	instance.event.on("close", () => {
 		closeEvents += 1;
 	});
+	instance.event.on("closed", () => {
+		closedEvents += 1;
+	});
 
 	try {
 		await instance.render(container);
-		await waitFor(() => instance.exports?.runControls);
+		await waitForExports(instance, () => instance.exports?.runControls);
 		const iframe = requireValue(
 			container.querySelector<HTMLIFrameElement>("iframe"),
 		);
@@ -340,16 +327,15 @@ export async function runHostControlsScenario(
 				"Host resize crosses the control bridge",
 				iframe.style.width === "460px" &&
 					iframe.style.height === "350px" &&
-					resizeEvents === 1 &&
-					resizeCallbacks === 1,
-				`${iframe.style.width} × ${iframe.style.height}; events: ${resizeEvents}; callbacks: ${resizeCallbacks}`,
+					resizeEvents === 1,
+				`${iframe.style.width} × ${iframe.style.height}; events: ${resizeEvents}`,
 			),
 		);
 		results.push(
 			assertResult(
-				"Host focus reaches lifecycle events and callbacks",
-				focusEvents === 1 && focusCallbacks === 1,
-				`events: ${focusEvents}; callbacks: ${focusCallbacks}`,
+				"Host focus reaches the focus event",
+				focusEvents === 1,
+				`events: ${focusEvents}`,
 			),
 		);
 		results.push(
@@ -375,8 +361,8 @@ export async function runHostControlsScenario(
 		results.push(
 			assertResult(
 				"Host-requested close runs consumer teardown once",
-				closeEvents === 1 && closeCallbacks === 1 && destroyCallbacks === 1,
-				`events: ${closeEvents}; close callbacks: ${closeCallbacks}; destroy callbacks: ${destroyCallbacks}`,
+				closeEvents === 1 && closedEvents === 1,
+				`close events: ${closeEvents}; closed events: ${closedEvents}`,
 			),
 		);
 	} catch (error) {
@@ -431,7 +417,7 @@ export async function runTransportScenario(
 
 	try {
 		await trustInstance.render(trustContainer);
-		await waitFor(() => trustInstance.exports?.observed);
+		await waitForExports(trustInstance, () => trustInstance.exports?.observed);
 		results.push(
 			assertResult(
 				"Trusted-domain props reach an allowed host",
@@ -480,7 +466,7 @@ export async function runTransportScenario(
 
 	try {
 		await postInstance.render(postContainer);
-		await waitFor(() => postInstance.exports?.observed);
+		await waitForExports(postInstance, () => postInstance.exports?.observed);
 		const iframe = requireValue(
 			postContainer.querySelector<HTMLIFrameElement>("iframe"),
 		);
@@ -553,7 +539,7 @@ export async function runReliabilityScenario(
 		renderUrlCalls = 0;
 		await first.render(firstContainer);
 		countRenderUrlCalls = false;
-		await waitFor(() => first.exports?.ready);
+		await waitForExports(first, () => first.exports?.ready);
 		const firstFrame = requireValue(
 			firstContainer.querySelector<HTMLIFrameElement>("iframe"),
 		);
@@ -598,7 +584,10 @@ export async function runReliabilityScenario(
 				alpha.render(alphaContainer),
 				beta.render(betaContainer),
 			]);
-			await waitFor(() => alpha.exports?.ready && beta.exports?.ready);
+			await Promise.all([
+				waitForExports(alpha, () => alpha.exports?.ready),
+				waitForExports(beta, () => beta.exports?.ready),
+			]);
 			const [alphaInitial, betaInitial] = await Promise.all([
 				requireValue(alpha.exports).readState(),
 				requireValue(beta.exports).readState(),
@@ -718,7 +707,7 @@ export async function runCommonActionsScenario(
 
 	try {
 		await instance.render(container);
-		await waitFor(() => instance.exports?.ready);
+		await waitForExports(instance, () => instance.exports?.ready);
 		const iframe = requireValue(
 			container.querySelector<HTMLIFrameElement>("iframe"),
 		);
@@ -835,7 +824,7 @@ export async function runRedirectScenario(
 
 	try {
 		await instance.render(container);
-		await waitFor(() => instance.exports?.ready);
+		await waitForExports(instance, () => instance.exports?.ready);
 		results.push(
 			assertResult(
 				"The second allowed origin completes INIT after the redirect",
@@ -946,7 +935,7 @@ export async function runTimeoutRecoveryScenario(
 
 	try {
 		await recovered.render(recoveryContainer);
-		await waitFor(() => recovered.exports?.ready);
+		await waitForExports(recovered, () => recovered.exports?.ready);
 		const state = await requireValue(recovered.exports).readState();
 		results.push(
 			assertResult(
@@ -1005,7 +994,9 @@ export async function runStressScenario(
 				entries.map(({ container, instance }) => instance.render(container)),
 			);
 			await Promise.all(
-				entries.map(({ instance }) => waitFor(() => instance.exports?.ready)),
+				entries.map(({ instance }) =>
+					waitForExports(instance, () => instance.exports?.ready),
+				),
 			);
 			renderedCount += entries.length;
 
@@ -1119,7 +1110,7 @@ export async function runPopupScenario(
 
 	try {
 		await instance.render(container);
-		await waitFor(() => instance.exports?.popupReady, 6000);
+		await waitForExports(instance, () => instance.exports?.popupReady, 6000);
 		results.push(
 			assertResult(
 				"Popup opens without creating an iframe",
@@ -1231,15 +1222,15 @@ export async function runCheckoutE2EScenario(
 			approvedReceipt = receipt;
 		},
 	});
-	for (const event of ["prerender", "render", "rendered", "display"]) {
-		instance.event.on(event as "prerender", () => {
+	for (const event of ["render", "rendered"] as const) {
+		instance.event.on(event, () => {
 			lifecycle.push(event);
 		});
 	}
 
 	try {
 		await instance.render(container);
-		await waitFor(() => instance.exports?.checkoutReady);
+		await waitForExports(instance, () => instance.exports?.checkoutReady);
 		results.push(
 			assertResult(
 				"Checkout renders and reaches ready state",
@@ -1251,7 +1242,7 @@ export async function runCheckoutE2EScenario(
 		results.push(
 			assertResult(
 				"Customer journey emits lifecycle events in order",
-				lifecycle.join(",") === "prerender,render,rendered,display",
+				lifecycle.join(",") === "render,rendered",
 				lifecycle.join(" → "),
 			),
 		);
@@ -1348,6 +1339,37 @@ async function expectFailure(
 		const message = error instanceof Error ? error.message : String(error);
 		return assertResult(name, message.includes(expectedMessage), message);
 	}
+}
+
+/** The part of an instance that announces host exports. */
+interface ExportsSource {
+	event: Pick<EventSubscriber<Pick<ComponentEvents, "exports">>, "on">;
+}
+
+/**
+ * Resolves once `read()` is truthy, checking now and after each `exports`
+ * event, so scenarios never poll `instance.exports`.
+ */
+export function waitForExports<T>(
+	instance: ExportsSource,
+	read: () => T,
+	timeoutMs = 4000,
+): Promise<T> {
+	return new Promise((resolve, reject) => {
+		const timer = setTimeout(() => {
+			unsubscribe();
+			reject(new Error(`Timed out after ${timeoutMs}ms`));
+		}, timeoutMs);
+		const check = () => {
+			const value = read();
+			if (!value) return;
+			clearTimeout(timer);
+			unsubscribe();
+			resolve(value);
+		};
+		const unsubscribe = instance.event.on("exports", check);
+		check();
+	});
 }
 
 async function waitFor<T>(read: () => T, timeoutMs = 4000): Promise<T> {

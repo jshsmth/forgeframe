@@ -10,7 +10,7 @@
 
 import type { ContextType } from "../constants";
 import { CONTEXT, EVENT } from "../constants";
-import { EventEmitter } from "../events/emitter";
+import { createEventSubscriber, EventEmitter } from "../events/emitter";
 import {
 	getPropsForHost,
 	propsToBodyParams,
@@ -18,6 +18,7 @@ import {
 } from "../props";
 import { EMPTY_PROP_DEFINITIONS } from "../props/definitions";
 import { validatePropsForHostTransport } from "../props/normalize";
+import type { ComponentEvents, EventSubscriber } from "../types/events";
 import type { PropsDefinition } from "../types/props";
 import type {
 	ComponentOptions,
@@ -32,7 +33,10 @@ import { createDeferred, type Deferred } from "../utils/promise";
 import { generateUID } from "../utils/uid";
 import { appendComponentQuery, resolveComponentHostUrl } from "../utils/url";
 import { isSameDomain } from "../window/helpers";
-import { emitConsumerError, invokePropCallback } from "./consumer/callbacks";
+import {
+	CONSUMER_EVENT_NAMES,
+	describeUnknownConsumerEvent,
+} from "./consumer/events";
 import {
 	ConsumerPropsPipeline,
 	type ConsumerPropsUpdateHooks,
@@ -63,8 +67,11 @@ export class ConsumerComponent<
 	SchemaInputs extends Record<string, unknown> = I,
 > implements ForgeFrameComponentInstance<P, X, I, SchemaInputs>
 {
-	/** Event emitter for lifecycle events. */
-	public event: EventEmitter;
+	/** Subscribe-only view of this instance's lifecycle events. */
+	public readonly event: EventSubscriber<ComponentEvents<P, X>>;
+
+	/** Private emitter behind {@link ConsumerComponent.event}. @internal */
+	private emitter: EventEmitter<ComponentEvents<P, X>>;
 
 	/** Data exported by the host component. */
 	public exports?: RemoteValue<X>;
@@ -139,7 +146,12 @@ export class ConsumerComponent<
 		this._uid = generateUID();
 		this.options = this.normalizeOptions(options);
 
-		this.event = new EventEmitter();
+		this.emitter = new EventEmitter();
+		this.event = createEventSubscriber(
+			this.emitter,
+			CONSUMER_EVENT_NAMES,
+			describeUnknownConsumerEvent,
+		);
 		this.cleanup = new CleanupManager();
 
 		this.renderer = new ConsumerRenderer(
@@ -294,15 +306,10 @@ export class ConsumerComponent<
 		this.renderer.container = this.resolveContainer(container);
 
 		try {
-			this.emitRenderStage(EVENT.PRERENDER, "onPrerender");
-
-			await this.prerender();
+			this.emitter.emit(EVENT.RENDER, undefined);
 			this.assertRenderActive();
 
-			this.emitRenderStage(EVENT.PRERENDERED, "onPrerendered");
-
-			this.emitRenderStage(EVENT.RENDER, "onRender");
-
+			await this.prerender();
 			this.assertRenderActive();
 			await this.open(baseUrl);
 			this.assertRenderActive();
@@ -313,9 +320,7 @@ export class ConsumerComponent<
 
 			this.rendered = true;
 
-			this.emitRenderStage(EVENT.RENDERED, "onRendered");
-
-			this.emitRenderStage(EVENT.DISPLAY, "onDisplay");
+			this.emitter.emit(EVENT.RENDERED, undefined);
 		} catch (err) {
 			const renderWasCancelled = this.isRenderCancelled();
 			await this.destroy().catch(() => undefined);
@@ -325,17 +330,6 @@ export class ConsumerComponent<
 			}
 			throw err;
 		}
-	}
-
-	/** Every user callback is followed by a cancellation check before the next stage. */
-	private emitRenderStage(event: string, callback: string): void {
-		this.event.emit(event);
-		this.assertRenderActive();
-		invokePropCallback(
-			this.propsPipeline.props as Record<string, unknown>,
-			callback,
-		);
-		this.assertRenderActive();
 	}
 
 	private validateForRender(): void {
@@ -367,9 +361,7 @@ export class ConsumerComponent<
 	/** Completes the one admitted close operation before its shared promise settles. */
 	private async performClose(): Promise<void> {
 		try {
-			const callbackProps = this.propsPipeline.props;
-			this.event.emit(EVENT.CLOSE);
-			invokePropCallback(callbackProps as Record<string, unknown>, "onClose");
+			this.emitter.emit(EVENT.CLOSE, undefined);
 
 			await this.destroy();
 		} finally {
@@ -381,15 +373,13 @@ export class ConsumerComponent<
 	 * Focuses the component window.
 	 *
 	 * @remarks
-	 * For iframes, focuses the iframe element. For popups, brings the window to front.
+	 * For iframes, focuses the iframe element. For popups, brings the window to
+	 * front. Emits `focus` only when an iframe is mounted or a popup is open.
 	 */
 	async focus(): Promise<void> {
-		const callbackProps = this.propsPipeline.props;
-
-		this.renderer.focus(this.transport.hostWindow);
-
-		this.event.emit(EVENT.FOCUS);
-		invokePropCallback(callbackProps as Record<string, unknown>, "onFocus");
+		if (this.renderer.focus(this.transport.hostWindow)) {
+			this.emitter.emit(EVENT.FOCUS, undefined);
+		}
 	}
 
 	/**
@@ -427,15 +417,9 @@ export class ConsumerComponent<
 		this.emitResize(dimensions);
 	}
 
-	/** Notifies resize observers and the onResize prop. @internal */
+	/** Notifies resize observers. @internal */
 	private emitResize(dimensions: Dimensions): void {
-		const callbackProps = this.propsPipeline.props;
-		this.event.emit(EVENT.RESIZE, dimensions);
-		invokePropCallback(
-			callbackProps as Record<string, unknown>,
-			"onResize",
-			dimensions,
-		);
+		this.emitter.emit(EVENT.RESIZE, dimensions);
 	}
 
 	/**
@@ -506,12 +490,7 @@ export class ConsumerComponent<
 			sendPropsUpdateToHost: (nextProps) =>
 				this.sendPropsUpdateToHost(nextProps),
 			emitPropsUpdated: (nextProps) => {
-				this.event.emit(EVENT.PROPS, nextProps);
-				invokePropCallback(
-					nextProps as Record<string, unknown>,
-					"onProps",
-					nextProps,
-				);
+				this.emitter.emit(EVENT.PROPS, nextProps);
 			},
 		};
 
@@ -654,15 +633,13 @@ export class ConsumerComponent<
 				}
 				return this.focus();
 			},
-			onError: (err: Error) =>
-				emitConsumerError(
-					this.event,
-					(this.propsPipeline?.props ?? contextProps) as Record<
-						string,
-						unknown
-					>,
-					err,
-				),
+			onError: (err: Error) => {
+				// Nothing can subscribe during construction, so a report made then is
+				// delivered once the caller has had a chance to subscribe.
+				if (this.constructing)
+					queueMicrotask(() => this.emitter.emit(EVENT.ERROR, err));
+				else this.emitter.emit(EVENT.ERROR, err);
+			},
 			container: this.renderer.container,
 			uid: this.uid,
 			tag: this.options.tag,
@@ -791,11 +768,7 @@ export class ConsumerComponent<
 			this.options.tag,
 			(error) => {
 				if (!this.isRenderCancelled()) {
-					emitConsumerError(
-						this.event,
-						this.propsPipeline.props as Record<string, unknown>,
-						error,
-					);
+					this.emitter.emit(EVENT.ERROR, error);
 				}
 			},
 		);
@@ -853,14 +826,10 @@ export class ConsumerComponent<
 			onFocus: async () => this.focus(),
 			onShow: async () => this.show(),
 			onHide: async () => this.hide(),
-			onError: (error) =>
-				emitConsumerError(
-					this.event,
-					this.propsPipeline.props as Record<string, unknown>,
-					error,
-				),
+			onError: (error) => this.emitter.emit(EVENT.ERROR, error),
 			onExport: (exports) => {
 				this.exports = exports;
+				this.emitter.emit(EVENT.EXPORTS, exports);
 			},
 			onGetSiblings: (request) => getSiblingInstances(request),
 		});
@@ -900,8 +869,7 @@ export class ConsumerComponent<
 
 	/** Sequences teardown, deregistration and notifications for one destruction task. */
 	private async performDestroy(): Promise<void> {
-		const callbackProps = this.beginDestroy();
-		if (!callbackProps) return;
+		if (!this.beginDestroy()) return;
 
 		this.teardownRenderResources();
 		this.propsPipeline.pendingPropsUpdate = null;
@@ -909,16 +877,18 @@ export class ConsumerComponent<
 		await this.cleanup.cleanup();
 
 		this.untrackInstance?.(this);
-		this.event.emit(EVENT.DESTROY);
-		invokePropCallback(callbackProps as Record<string, unknown>, "onDestroy");
-		this.event.removeAllListeners();
+		this.emitter.emit(EVENT.CLOSED, undefined);
+		this.emitter.dispose();
 	}
-	/** Marks destruction and rejects an outstanding handshake before teardown starts. */
-	private beginDestroy(): Record<string, unknown> | null {
-		if (this.destroyed) return null;
+
+	/**
+	 * Marks destruction and rejects an outstanding handshake before teardown starts.
+	 * @returns `false` when destruction had already begun
+	 */
+	private beginDestroy(): boolean {
+		if (this.destroyed) return false;
 		this.destroyed = true;
 
-		const callbackProps = this.propsPipeline.props;
 		if (this.transport.initPromise) {
 			this.transport.initPromise.reject(
 				new Error(
@@ -928,6 +898,6 @@ export class ConsumerComponent<
 			this.transport.initPromise = null;
 		}
 		this.transport.hostInitialized = false;
-		return callbackProps;
+		return true;
 	}
 }

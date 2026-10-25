@@ -10,7 +10,7 @@ import {
 	createRequestMessage,
 	serializeMessage,
 } from "@/communication/protocol";
-import { CONTEXT, EVENT, MESSAGE_NAME, PROTOCOL_VERSION } from "@/constants";
+import { CONTEXT, MESSAGE_NAME, PROTOCOL_VERSION } from "@/constants";
 import {
 	clearHostInstance,
 	getHost,
@@ -240,7 +240,8 @@ describe("Host security", () => {
 		);
 
 		const onProps = vi.fn();
-		const emitSpy = vi.spyOn(host.event, "emit");
+		const onError = vi.fn();
+		host.event.on("error", onError);
 		host.hostProps.onProps(onProps);
 
 		dispatchConsumerMessage(MESSAGE_NAME.PROPS, spoofedWindow, {
@@ -253,7 +254,7 @@ describe("Host security", () => {
 		expect(host.hostProps.amount).toBe(10);
 		expect(host.hostProps.consumer.props).toEqual({ amount: 10 });
 		expect(onProps).not.toHaveBeenCalled();
-		expect(emitSpy).not.toHaveBeenCalled();
+		expect(onError).not.toHaveBeenCalled();
 
 		dispatchConsumerMessage(MESSAGE_NAME.PROPS, consumerWindow, {
 			data: { amount: 42 },
@@ -266,8 +267,7 @@ describe("Host security", () => {
 		expect(host.hostProps.consumer.props).toEqual({ amount: 42 });
 		expect(onProps).toHaveBeenCalledTimes(1);
 		expect(onProps).toHaveBeenCalledWith({ amount: 42 });
-		expect(emitSpy).toHaveBeenCalledTimes(1);
-		expect(emitSpy).toHaveBeenCalledWith(EVENT.PROPS, { amount: 42 });
+		expect(onError).not.toHaveBeenCalled();
 	});
 
 	it.each([

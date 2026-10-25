@@ -250,36 +250,45 @@ See [Instance Lifecycle](#instance-lifecycle) for URL resolution and for closing
 
 > **`Consumer`**
 
-Subscribe to lifecycle events through `instance.event`.
+Subscribe to lifecycle events through `instance.event`. `on()` and `once()` return an unsubscribe function, and each handler receives a typed payload.
 
 ```typescript
 const instance = LoginForm({ /* props */ });
 
 instance.event.on('rendered', () => console.log('Login form is ready'));
-instance.event.on('close', () => console.log('Login form closed'));
-instance.event.on('error', (err) => console.error('Error:', err));
-instance.event.on('resize', (dimensions) => console.log('New size:', dimensions));
+instance.event.on('close', () => console.log('Login form closing'));
+const stop = instance.event.on('error', (err) => console.error('Error:', err.message));
+instance.event.on('exports', (exports) => console.log('Host exports:', exports));
 
 await instance.render('#container');
+stop();
 ```
 
-Rendering emits `prerender`, `prerendered`, `render`, `rendered`, and `display`, in that order.
+A render emits `render`, then `rendered`. A close emits `close`, then `closed`.
 
-| Event | Emitted when |
-|-------|--------------|
-| `prerender` | The loading placeholder starts rendering |
-| `prerendered` | The loading placeholder is in place |
-| `render` | The iframe or popup starts opening |
-| `rendered` | The host has loaded and initialized |
-| `display` | The component is visible |
-| `close` | The component starts closing |
-| `destroy` | The component has been destroyed |
-| `error` | An error occurs |
-| `props` | Props are updated |
-| `resize` | The component is resized |
-| `focus` | The component receives focus |
+| Event | Payload | Emitted when |
+|-------|---------|--------------|
+| `render` | none | Rendering starts, after props are validated and the container is resolved, before any iframe, popup, or placeholder exists. Calling `close()` here stops the render |
+| `rendered` | none | The host initialized and the component is visible, before `render()` resolves |
+| `close` | none | Closing starts, from `close()`, the host's `close()`, or the user closing the popup |
+| `closed` | none | Teardown finished. Always the last event; it also follows a failed render, without `close` |
+| `error` | `Error` | The handshake timed out, the host called `hostProps.reportError()`, or a prop callback called its context's `onError()` |
+| `props` | props | A props update was committed and, when a host is connected, acknowledged |
+| `resize` | `Dimensions` | A resize from the consumer or the host was applied |
+| `focus` | none | A focus request was applied to a mounted iframe or an open popup |
+| `exports` | exports | The host called `hostProps.export()`; `instance.exports` already holds the value |
 
-Handlers run synchronously in registration order. A handler added during an emission first runs on the next emission, so a `once()` handler can rearm itself. A handler removed before its turn, individually or by bulk removal, is skipped; if it is re-registered during the same emission, it waits for the next one.
+Only ForgeFrame emits these events: `instance.event` has no `emit`, `off`, or `removeAllListeners`. Subscribing to any other name throws, and the removed v1 names (`prerender`, `prerendered`, `display`, `destroy`) name their replacement. After `closed`, ForgeFrame removes every listener; later subscriptions are accepted and never called.
+
+Handlers run synchronously in registration order, and a handler registered twice keeps its first registration. A handler added during an emission first runs on the next emission, so a `once()` handler can rearm itself. A handler removed before its turn is skipped; if it is re-registered during the same emission, it waits for the next one. An unsubscribe function removes only the registration it created. Thrown errors and rejected promises are caught and logged.
+
+To use exports as soon as they arrive:
+
+```typescript
+const exports = instance.exports ?? (await new Promise((resolve) => instance.event.once('exports', resolve)));
+```
+
+Declared props are never called by ForgeFrame, so a prop named `onClose` or `onError` is an ordinary callback for the host to call.
 
 ---
 
@@ -574,18 +583,19 @@ await instance.render('#container');
 await instance.updateProps({ name: 'Updated' });
 ```
 
-The host receives updates through `onProps`, or through `host.on('props', handler)`, which also receives the bootstrap snapshot:
+The host receives updates through `onProps`, which returns an unsubscribe function. A subscriber registered before `ready` resolves also receives the bootstrap snapshot:
 
 ```typescript
 const props = await host.ready;
-props.onProps((newProps) => {
+const stop = props.onProps((newProps) => {
   console.log('Props updated:', newProps);
 });
+stop();
 ```
 
 Subscribers run in registration order after props are committed. A subscriber added or re-registered during a notification waits for the next update, and a subscription cancelled before its turn is skipped. A stale cancellation handle cannot cancel a later registration of the same callback. Thrown errors and rejected promises are caught and logged. Async subscribers are not awaited, so they do not delay other subscribers or the update acknowledgement.
 
-Built-in `hostProps` names are reserved. A consumer prop named `uid`, `tag`, `close`, `focus`, `resize`, `show`, `hide`, `onProps`, `onError`, `getConsumer`, `getConsumerDomain`, `export`, `consumer`, `getPeerInstances`, or `children` is available only in `hostProps.consumer.props`; it does not replace the built-in on `hostProps`. `children` is no longer a built-in, but it stays reserved so React JSX children never reach a host.
+Built-in `hostProps` names are reserved. A consumer prop named `uid`, `tag`, `close`, `focus`, `resize`, `show`, `hide`, `onProps`, `reportError`, `getConsumer`, `getConsumerDomain`, `export`, `consumer`, `getPeerInstances`, or `children` is available only in `hostProps.consumer.props`; it does not replace the built-in on `hostProps`. `children` is no longer a built-in, but it stays reserved so React JSX children never reach a host.
 
 ### Cross-Window Callback Values
 
@@ -642,7 +652,7 @@ In iframe mode, ForgeFrame sets `sandbox="allow-scripts allow-same-origin allow-
 | `hostProps` | The same live object. It holds only the built-in controls until `ready` resolves, and later updates are applied to it |
 | `init()` | Sends INIT when `autoInit` is `false`; see [Deferring INIT](#deferring-init) |
 | `destroy()` | Tears down the host and tells the consumer the session ended |
-| `on('props' \| 'error', handler)` | Observes committed consumer props (the bootstrap snapshot, then every update) or host errors; returns an unsubscribe function |
+| `on('error', handler)`, `once('error', handler)` | Observes host errors; returns an unsubscribe function. Observe prop updates with `hostProps.onProps()` |
 
 `initHost()` returns `null` without browser globals, outside a ForgeFrame window, for malformed channel metadata, or when the page has no parent or opener to talk to, so the page can also render standalone. Arguments are checked first, in every environment: a missing `consumerOrigins`, an unknown option, a v1 call shape such as `initHost(definitions, origins)`, or a bare `initHost()` throws, even on a standalone page or the server. In a window opened by a consumer on another ForgeFrame major version, `initHost()` throws an error that names the consumer's version and sends that consumer nothing; upgrade consumer and host together. A window that only keeps such a name, with no parent or opener left, gets `null`.
 
@@ -654,9 +664,9 @@ Only one host can be active in a window. A second `initHost()` call throws while
 
 Only channel metadata stays in `window.name`, so reloads and later host documents can reconnect and receive the latest props. Browser policies that clear window names across sites can prevent reconnection.
 
-`host.on('error')` reports each failed start once. A schema rejection reports its validation `Error`. Any other failure, such as a failed BOOTSTRAP request or an invalid bootstrap response, reports an `init_failed` record, as INIT delivery failures do.
+`host.on('error')` reports each failed start once, always with an `Error`. A schema rejection reports its validation `Error`. Any other failure, such as a failed BOOTSTRAP request or an invalid bootstrap response, reports an `Error` whose message starts with `Failed to initialize host component:` and whose `cause` is the original failure, as INIT delivery failures do.
 
-If the host's schemas reject the consumer's props, `ready` rejects and the host tells the consumer why. The consumer keeps waiting, so a same-page `initHost()` retry can still connect without any error being reported; if none succeeds, `render()` rejects at its `timeout`, and its single `error` event and `onError` call include `Host initialization failed: ...`.
+If the host's schemas reject the consumer's props, `ready` rejects and the host tells the consumer why. The consumer keeps waiting, so a same-page `initHost()` retry can still connect without any error being reported; if none succeeds, `render()` rejects at its `timeout`, and its single `error` event includes `Host initialization failed: ...`.
 
 `host.destroy()` can be called more than once. Controls on the old `hostProps` reject afterwards, and destroying a stale host never affects a newer one.
 
@@ -711,8 +721,8 @@ await props.resize({ width: 500, height: 400 });
 await props.show();
 await props.hide();
 
-const { cancel } = props.onProps((newProps) => { /* handle updates */ });
-await props.onError(new Error('Something failed'));
+const stop = props.onProps((newProps) => { /* handle updates */ });
+await props.reportError(new Error('Something failed'));
 await props.export({ validate: () => true });
 
 props.getConsumer();
@@ -720,7 +730,7 @@ props.getConsumerDomain();
 props.consumer.props;
 
 const peers = await props.getPeerInstances();
-cancel();
+stop();
 ```
 
 Peers are other instances rendered by the same consumer whose hosts it verified at the requesting host's origin; `anyConsumer: true` adds other component tags at that origin. To let hosts on other origins, such as sibling subdomains, discover a component's instances, list those origins in its `peerDomains` option. Hosts with an opaque origin, such as sandboxed frames without `allow-same-origin`, neither discover peers nor are listed as peers, even when `peerDomains` match. A peer whose host is still loading is listed without exports; call `getPeerInstances()` again once it is ready. Peer exports keep data, `Date` values, and nested methods; methods return promises and are relayed through the consumer. Method references survive unrelated prop updates. After a peer replaces its exports or reconnects, its old methods reject, so call `getPeerInstances()` again. Discovery counts toward the relay limit in [Callback Capacity](#callback-capacity).
@@ -736,8 +746,8 @@ Peers are other instances rendered by the same consumer whose hosts it verified 
 | `focus()` | Request focus for iframe/popup; resolves once this window has focus, or after a short wait, so the host can then focus its own element. It resolves without waiting when the consumer page has no focus to pass on |
 | `resize()` | Resize the component |
 | `show()`, `hide()` | Toggle visibility |
-| `onProps()` | Listen for prop updates (returns `{ cancel() }`) |
-| `onError()` | Report errors to consumer |
+| `onProps()` | Listen for prop updates (returns an unsubscribe function) |
+| `reportError()` | Report an error to the consumer, which emits it on its `error` event |
 | `export()` | Export methods/data to consumer |
 | `getConsumer()` | Get consumer window reference |
 | `getConsumerDomain()` | Get consumer origin |
@@ -893,15 +903,15 @@ The React component accepts your component props alongside these wrapper props:
 
 | Prop | Type | Description |
 |------|------|-------------|
-| `onRendered` | `() => void` | Called when component is ready |
-| `onError` | `(err: Error) => void` | Called on error |
-| `onClose` | `() => void` | Called when closed |
+| `onRendered` | `() => void` | The instance's `rendered` event |
+| `onError` | `(err: Error) => void` | The instance's `error` event, plus construction, render, and prop-sync failures |
+| `onClose` | `() => void` | The instance's `close` event |
 | `context` | `'iframe' \| 'popup'` | Render mode |
 | `className` | `string` | Container CSS class |
 | `style` | `CSSProperties` | Container inline styles |
 | `ref` | `React.Ref<HTMLDivElement>` | Access the wrapper's container element. It is attached during React's commit, so a parent's `useLayoutEffect` can read it, and React 19 callback-ref cleanups run on unmount |
 
-The adapter reserves these names and does not forward them as component props. Give a callback the host must receive a different name, such as `onHostClose`, and do not make a reserved name a required custom prop.
+The adapter reserves these names and does not forward them as component props. The core API no longer reserves them, but through React give a callback the host must receive a different name, such as `onHostClose`, and do not make a reserved name a required custom prop.
 
 Construction and render failures go to `onError` and are shown inside the wrapper; sibling React content is unaffected, and the container ref stays attached. To recover, change `context` (which creates a fresh instance) or change the wrapper's React `key` to remount it.
 
@@ -1114,7 +1124,7 @@ host.init();
 
 **Reconfiguring with a second `initHost()`.** Before: the second call replaced the schema or allowlist. After: it throws while a host is active. Pass the final definitions to the single call; to restart, call `host.destroy()` and then `initHost(...)`.
 
-**Host internals.** Before: `host.event.on('props', fn)`, `host.getInitError()`, `host.flushInit()`. After: `host.on('props', fn)` and `host.on('error', fn)`, which return an unsubscribe function, and `host.init()`.
+**Host internals.** Before: `host.event.on('props', fn)`, `host.getInitError()`, `host.flushInit()`. After: `hostProps.onProps(fn)` and `host.on('error', fn)`, which return an unsubscribe function, and `host.init()`. See [Lifecycle events](#lifecycle-events).
 
 **Host detection.** Before: `isEmbedded()`, `Component.isHost()`, `Component.isEmbedded()`. After: `isHost()`.
 
@@ -1179,6 +1189,53 @@ initHost(CardField, { consumerOrigins: ['https://parent-host.example'] });
 
 **Removed types.** `ChildrenDefinition`, `ConsumerNamespace`, `EligibilityResult` and `ForgeFrameComponentReference` are gone; delete their imports. `HostProps<P>['consumer']` is `{ props }`.
 
+### Lifecycle events
+
+Lifecycle runs only through typed events. Instances no longer have hidden built-in props, and ForgeFrame never calls a declared prop. TypeScript reports removed event names; JavaScript callers get an error that names the replacement.
+
+**Render events.** Before: `instance.event.on('prerender', fn)` or `on('prerendered', fn)`, then `on('display', fn)`. After: `on('render', fn)`, which fires once before any frame or placeholder exists, and `on('rendered', fn)`, which fires once.
+
+**Teardown.** Before: `instance.event.on('destroy', fn)`. After: `instance.event.on('closed', fn)`.
+
+**Removing handlers.** Before: `instance.event.off('close', fn)` or `instance.event.removeAllListeners()`. After: keep the function `on()` or `once()` returns and call it; ForgeFrame removes every listener after `closed`.
+
+**Emitting.** Before: `instance.event.emit('close')`. After: removed; call `instance.close()`.
+
+**Hidden lifecycle props.** Before:
+
+```typescript
+const instance = Checkout({ amount, onRendered, onClose, onError });
+```
+
+After:
+
+```typescript
+const instance = Checkout({ amount });
+instance.event.on('rendered', onRendered);
+instance.event.on('close', onClose);
+instance.event.on('error', onError);
+```
+
+The same applies to `onDisplay`, `onRender`, `onPrerender`, `onPrerendered`, `onDestroy`, `onResize`, `onFocus`, and `onProps`. Undeclared inputs are ignored.
+
+**A host-facing callback named `onClose`.** Before: ForgeFrame also called it on every close. After: it is an ordinary prop, called only when the host calls it.
+
+**Waiting for exports.** Before: polling `instance.exports`. After: `instance.event.once('exports', fn)`; the payload equals `instance.exports`.
+
+**CSP nonce.** Before: `Checkout({ cspNonce })`, which also sent the nonce to the host. After: `create({ ..., cspNonce })`. It is never sent to the host, and custom templates read it from `TemplateContext.cspNonce`.
+
+**`timeout` and `dimensions` as props.** Before: `Checkout({ timeout, dimensions })`, which was ignored. After: set them as component options only.
+
+**Host prop subscription.** Before: `const { cancel } = hostProps.onProps(fn); cancel();`. After: `const stop = hostProps.onProps(fn); stop();`.
+
+**Reporting a host error.** Before: `await hostProps.onError(err)`. After: `await hostProps.reportError(err)`. `onError` is now an ordinary prop name.
+
+**Host props event.** Before: `host.on('props', fn)`. After: `hostProps.onProps(fn)`.
+
+**Host error payload.** Before: an `Error` or `{ type: 'init_failed', message, error }`. After: always an `Error`; a wrapped failure is on `error.cause`.
+
+**Event constants and types.** Before: `EVENT.PRERENDER`, `EVENT.PRERENDERED`, `EVENT.DISPLAY`, `EVENT.DESTROY`, and `EventEmitterInterface`. After: `EVENT.RENDER`, `EVENT.RENDERED`, `EVENT.CLOSED`, and `EVENT.EXPORTS`, with `EventSubscriber<ComponentEvents<Props, Exports>>` for `instance.event` and `HostEvents` for the host.
+
 ### Named exports only
 
 Before:
@@ -1223,7 +1280,7 @@ import {
 
 ### Component Options
 
-Each `props` entry is either a Standard Schema or a full `PropDefinition` object with transport, alias, and lifecycle options. An entry set to `undefined` is treated as omitted, so built-in defaults and delivery rules apply.
+Each `props` entry is either a Standard Schema or a full `PropDefinition` object with transport, alias, and lifecycle options. An entry set to `undefined` is treated as omitted, so the prop is neither normalized nor sent.
 
 ```typescript
 interface ComponentOptions<P, I = P, SchemaInputs = I> {
@@ -1240,6 +1297,7 @@ interface ComponentOptions<P, I = P, SchemaInputs = I> {
   attributes?: IframeAttributes | ((props: P) => IframeAttributes);
   style?: IframeStyles | ((props: P) => IframeStyles);
   timeout?: number;
+  cspNonce?: string;           // Nonce for the default spinner's <style>; never sent to the host
 }
 ```
 
@@ -1257,7 +1315,7 @@ await instance.hide()                        // Hide
 await instance.updateProps(newProps)         // Update props (normalized + validated)
 
 instance.uid                                 // Unique ID
-instance.event                               // Event emitter
+instance.event                               // Subscribe with on() and once()
 instance.exports                             // Host exports
 
 MyComponent.instances                        // Frozen snapshot of live instances, in creation order
@@ -1268,7 +1326,7 @@ await closeAll()                             // Close every live instance of eve
 
 - **URL resolution.** Relative component URLs resolve against `document.baseURI`, including any `<base href>`. `render()` validates and pins the absolute URL before loading callbacks run and uses it for navigation and prop delivery checks, so changing the document base during a callback cannot redirect the initial request.
 - **Closing during render.** Calling `close()` while `render()` is in flight cancels the render, removes its loading and host elements, and stops any iframe or popup that has not opened yet. The render promise rejects with `Component "<tag>" was closed before rendering completed`.
-- **Repeated close.** Repeated or reentrant `close()` calls wait for the same operation, including deregistration and destruction notifications; close events and cleanup run once. If a failed render already started destruction, `close()` waits for that teardown without emitting another close event.
+- **Repeated close.** Repeated or reentrant `close()` calls wait for the same operation, including deregistration and the `closed` event; `close`, `closed` and cleanup run once. If a failed render already started destruction, `close()` waits for that teardown without emitting `close`.
 
 ### Iframe Styles and Loading
 
@@ -1303,7 +1361,10 @@ import {
   type StandardSchemaV1,
   type TemplateContext,
   type Dimensions,
+  type ComponentEvents,
   type EventHandler,
+  type EventSubscriber,
+  type HostEvents,
   type GetPeerInstancesOptions,
 } from 'forgeframe';
 ```

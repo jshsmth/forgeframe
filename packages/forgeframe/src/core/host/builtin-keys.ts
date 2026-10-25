@@ -14,7 +14,7 @@ export const HOST_PROPS_BUILTIN_KEYS = new Set([
 	"show",
 	"hide",
 	"onProps",
-	"onError",
+	"reportError",
 	"getConsumer",
 	"getConsumerDomain",
 	"export",

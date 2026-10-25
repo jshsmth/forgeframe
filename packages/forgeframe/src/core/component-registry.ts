@@ -7,15 +7,6 @@ const componentRegistry = new Map<
 
 const INTERNAL_COMPONENT_OPTIONS = Symbol("forgeframe.component.options");
 
-/** Any factory returned by `create()`, whatever its props and exports. */
-type AnyForgeFrameComponent = ForgeFrameComponent<
-	never,
-	unknown,
-	never,
-	boolean,
-	never
->;
-
 type InternalForgeFrameComponent<
 	P extends Record<string, unknown> = Record<string, unknown>,
 	X = unknown,
@@ -64,7 +55,8 @@ export function getComponentOptions<
 	I = P,
 	SchemaInputs = I,
 >(
-	component: AnyForgeFrameComponent,
+	/** Any factory returned by `create()`, whatever its props and exports. */
+	component: object,
 ): ComponentOptions<P, I, SchemaInputs> | undefined {
 	return (
 		component as unknown as InternalForgeFrameComponent<P, X, I, SchemaInputs>

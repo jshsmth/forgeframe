@@ -34,7 +34,7 @@ host.nested.callbacks[0]("wrong");
 // @ts-expect-error Readonly tuples stay readonly across the boundary.
 host.nested.callbacks[0] = () => Promise.resolve(true);
 const localWindow: Window = host.getConsumer();
-const unsubscribe: { cancel(): void } = host.onProps(() => {});
+const unsubscribe: () => void = host.onProps(() => {});
 
 const Component = create<Props, { getCount: () => number; createdAt: Date }>({
 	tag: "remote-value-types",

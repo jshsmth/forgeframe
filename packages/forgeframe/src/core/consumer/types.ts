@@ -24,4 +24,5 @@ export interface NormalizedOptions<
 	validate?: ComponentOptions<P>["validate"];
 	attributes?: ComponentOptions<P>["attributes"];
 	style?: ComponentOptions<P>["style"];
+	cspNonce?: string;
 }

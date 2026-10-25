@@ -1,4 +1,4 @@
-import type { EventEmitterInterface, EventHandler } from "../types/events";
+import type { EventHandler, EventSubscriber } from "../types/events";
 
 /** One handler's subscription; its object identity is the registration token. */
 interface ListenerRegistration {
@@ -6,85 +6,68 @@ interface ListenerRegistration {
 }
 
 /**
- * A simple typed event emitter for component lifecycle events.
+ * A typed event emitter for component lifecycle events.
  *
  * @remarks
- * This class provides a lightweight publish-subscribe pattern implementation
- * with support for typed events, one-time subscriptions, and automatic cleanup.
- * It is used internally by ForgeFrame components for lifecycle event management.
+ * ForgeFrame keeps each emitter private to the runtime that owns it. Callers
+ * receive an {@link EventSubscriber} facade from {@link createEventSubscriber},
+ * so only the owning runtime can emit.
  *
  * @example
  * ```typescript
- * const emitter = new EventEmitter();
- *
- * // Subscribe to an event
- * const unsubscribe = emitter.on<string>('message', (data) => {
+ * const emitter = new EventEmitter<{ message: string }>();
+ * const unsubscribe = emitter.on('message', (data) => {
  *   console.log('Received:', data);
  * });
- *
- * // Emit an event
  * emitter.emit('message', 'Hello, World!');
- *
- * // Unsubscribe when done
  * unsubscribe();
  * ```
  *
  * @internal
  */
-export class EventEmitter implements EventEmitterInterface {
+export class EventEmitter<Events extends object> {
 	/**
 	 * Internal storage for event listeners mapped by event name. Each handler
 	 * has at most one registration per event, whose identity is its token.
 	 * @internal
 	 */
 	private listeners = new Map<
-		string,
+		keyof Events,
 		Map<EventHandler, ListenerRegistration>
 	>();
+
+	/** Set by {@link EventEmitter.dispose}; later registrations are inert. */
+	private disposed = false;
 
 	/**
 	 * Subscribes a handler to a specific event.
 	 *
-	 * @typeParam T - The type of data expected by the event handler
 	 * @param event - The name of the event to subscribe to
 	 * @param handler - The callback function to invoke when the event is emitted
 	 * @returns A function that, when called, unsubscribes the handler from the event
 	 *
-	 * @example
-	 * ```typescript
-	 * const unsubscribe = emitter.on<{ userId: string }>('login', (data) => {
-	 *   console.log('User logged in:', data.userId);
-	 * });
-	 * ```
-	 *
 	 * @internal
 	 */
-	on<T = unknown>(event: string, handler: EventHandler<T>): () => void {
+	on<K extends keyof Events>(
+		event: K,
+		handler: EventHandler<Events[K]>,
+	): () => void {
 		return this.register(event, handler as EventHandler, false);
 	}
 
 	/**
 	 * Subscribes a handler to an event that will automatically unsubscribe after the first invocation.
 	 *
-	 * @typeParam T - The type of data expected by the event handler
 	 * @param event - The name of the event to subscribe to
 	 * @param handler - The callback function to invoke once when the event is emitted
 	 * @returns A function that, when called, unsubscribes the handler before it fires
 	 *
-	 * @remarks
-	 * This is useful for one-time event handling, such as waiting for an initialization
-	 * event or a single response.
-	 *
-	 * @example
-	 * ```typescript
-	 * emitter.once('ready', () => {
-	 *   console.log('Component is ready!');
-	 * });
-	 * ```
-	 *
 	 * @internal
 	 */
-	once<T = unknown>(event: string, handler: EventHandler<T>): () => void {
+	once<K extends keyof Events>(
+		event: K,
+		handler: EventHandler<Events[K]>,
+	): () => void {
 		return this.register(event, handler as EventHandler, true);
 	}
 
@@ -93,10 +76,11 @@ export class EventEmitter implements EventEmitterInterface {
 	 * The returned function removes only the registration it was created for.
 	 */
 	private register(
-		event: string,
+		event: keyof Events,
 		handler: EventHandler,
 		once: boolean,
 	): () => void {
+		if (this.disposed) return () => {};
 		let handlers = this.listeners.get(event);
 		if (!handlers) {
 			handlers = new Map();
@@ -115,7 +99,7 @@ export class EventEmitter implements EventEmitterInterface {
 
 	/** Removes one handler's registration and drops the event when it has none. */
 	private removeRegistration(
-		event: string,
+		event: keyof Events,
 		handlers: Map<EventHandler, ListenerRegistration>,
 		handler: EventHandler,
 	): void {
@@ -128,9 +112,9 @@ export class EventEmitter implements EventEmitterInterface {
 	/**
 	 * Emits an event, invoking all registered handlers with the provided data.
 	 *
-	 * @typeParam T - The type of data to pass to event handlers
 	 * @param event - The name of the event to emit
-	 * @param data - Optional data to pass to all registered handlers
+	 * @param data - Data to pass to all registered handlers; `undefined` for
+	 * events without a payload, so every payload-carrying event must supply one
 	 *
 	 * @remarks
 	 * Handlers are invoked synchronously in the order they were registered.
@@ -139,14 +123,9 @@ export class EventEmitter implements EventEmitterInterface {
 	 * If a handler throws an error, it is caught and logged to the console,
 	 * allowing subsequent handlers to still execute.
 	 *
-	 * @example
-	 * ```typescript
-	 * emitter.emit('userAction', { action: 'click', target: 'button' });
-	 * ```
-	 *
 	 * @internal
 	 */
-	emit<T = unknown>(event: string, data?: T): void {
+	emit<K extends keyof Events>(event: K, data: Events[K]): void {
 		const handlers = this.listeners.get(event);
 		if (!handlers) return;
 
@@ -157,15 +136,15 @@ export class EventEmitter implements EventEmitterInterface {
 			)
 				continue;
 			if (registration.once) this.removeRegistration(event, handlers, handler);
-			this.invokeHandler(event, handler, data);
+			this.invokeHandler(String(event), handler, data);
 		}
 	}
 
 	/** Executes one observer while isolating both synchronous and asynchronous failures. */
-	private invokeHandler<T>(
+	private invokeHandler(
 		event: string,
 		handler: EventHandler,
-		data?: T,
+		data: unknown,
 	): void {
 		try {
 			const result = handler(data);
@@ -186,72 +165,51 @@ export class EventEmitter implements EventEmitterInterface {
 	}
 
 	/**
-	 * Unsubscribes a handler from an event, or removes all handlers for the event.
-	 *
-	 * @typeParam T - The event data expected by the handler
-	 * @param event - The name of the event to unsubscribe from
-	 * @param handler - The specific handler to remove. If not provided, all handlers for the event are removed.
+	 * Removes all event listeners for good.
 	 *
 	 * @remarks
-	 * Removing a specific handler also cancels its pending `once` registration.
-	 * When it was the last handler for that event, the event entry is cleaned up
-	 * from the internal map.
-	 *
-	 * @example
-	 * ```typescript
-	 * // Remove a specific handler
-	 * emitter.off('message', myHandler);
-	 *
-	 * // Remove all handlers for an event
-	 * emitter.off('message');
-	 * ```
+	 * The owning runtime calls this at the end of teardown. Later
+	 * subscriptions are accepted and never called.
 	 *
 	 * @internal
 	 */
-	off<T = unknown>(event: string, handler?: EventHandler<T>): void {
-		if (!handler) {
-			this.listeners.delete(event);
-			return;
-		}
-
-		const handlers = this.listeners.get(event);
-		if (handlers) {
-			this.removeRegistration(event, handlers, handler as EventHandler);
-		}
-	}
-
-	/**
-	 * Removes all event listeners from the emitter.
-	 *
-	 * @remarks
-	 * This method is typically called during component cleanup or disposal
-	 * to ensure no memory leaks from lingering event subscriptions.
-	 *
-	 * @example
-	 * ```typescript
-	 * // Clean up all listeners when component is destroyed
-	 * emitter.removeAllListeners();
-	 * ```
-	 *
-	 * @internal
-	 */
-	removeAllListeners(): void {
+	dispose(): void {
+		this.disposed = true;
 		this.listeners.clear();
 	}
+}
 
-	/**
-	 * Returns the number of listeners registered for a specific event.
-	 *
-	 * @param event - The name of the event to check
-	 * @returns The number of handlers currently subscribed to the event
-	 *
-	 * @remarks
-	 * ForgeFrame does not call this. It stays because consumer instances expose
-	 * this class at runtime through `instance.event`.
-	 *
-	 * @internal
-	 */
-	listenerCount(event: string): number {
-		return this.listeners.get(event)?.size ?? 0;
-	}
+/**
+ * Creates the frozen `on`/`once` facade that callers receive for an emitter.
+ *
+ * @param emitter - The private emitter the facade subscribes to
+ * @param events - Event names callers may subscribe to
+ * @param describeUnknown - Builds the error message for any other name
+ * @returns A facade that cannot emit or remove other code's listeners
+ *
+ * @internal
+ */
+export function createEventSubscriber<Events extends object>(
+	emitter: EventEmitter<Events>,
+	events: ReadonlySet<string>,
+	describeUnknown: (event: string) => string,
+): EventSubscriber<Events> {
+	const assertKnown = (event: unknown, handler: unknown): void => {
+		if (typeof event !== "string" || !events.has(event)) {
+			throw new TypeError(describeUnknown(String(event)));
+		}
+		if (typeof handler !== "function") {
+			throw new TypeError(`The "${event}" event handler must be a function`);
+		}
+	};
+	return Object.freeze({
+		on: (event, handler) => {
+			assertKnown(event, handler);
+			return emitter.on(event, handler);
+		},
+		once: (event, handler) => {
+			assertKnown(event, handler);
+			return emitter.once(event, handler);
+		},
+	} satisfies EventSubscriber<Events>);
 }

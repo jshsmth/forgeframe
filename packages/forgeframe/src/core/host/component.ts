@@ -10,6 +10,7 @@
 
 import { EventEmitter } from "../../events/emitter";
 import { EMPTY_PROP_DEFINITIONS } from "../../props/definitions";
+import type { HostEvents } from "../../types/events";
 import type { HostPropsDefinition } from "../../types/props";
 import type { HostProps } from "../../types/runtime";
 import type { DomainMatcher } from "../../types/utility";
@@ -28,7 +29,7 @@ export class HostComponent<
 	P extends Record<string, unknown>,
 	SchemaInputs = P,
 > {
-	public event: EventEmitter;
+	public event: EventEmitter<HostEvents>;
 
 	/** Resolves to `hostProps` once initial props have passed the host schemas. */
 	public readonly ready: Promise<HostProps<P>>;
@@ -100,7 +101,7 @@ export class HostComponent<
 						resize: (dimensions) => this.transport.resize(dimensions),
 						show: () => this.transport.show(),
 						hide: () => this.transport.hide(),
-						onError: (error) => this.transport.onError(error),
+						reportError: (error) => this.transport.reportError(error),
 						exportData: <T>(exports: T) => this.transport.exportData(exports),
 						getPeerInstances: (options) =>
 							this.transport.getPeerInstances(options),
@@ -140,7 +141,7 @@ export class HostComponent<
 		} catch (error) {
 			propsRuntime?.destroy();
 			transport?.destroy();
-			this.event.removeAllListeners();
+			this.event.dispose();
 			throw error;
 		}
 	}
@@ -212,7 +213,7 @@ export class HostComponent<
 		// Release this runtime first, so teardown never clears a replacement.
 		this.onDestroy?.();
 		this.transport.destroy();
-		this.event.removeAllListeners();
+		this.event.dispose();
 		this.propsRuntime.destroy();
 	}
 }

@@ -196,7 +196,7 @@ describe("React commits across the host boundary", () => {
 		expect(container.querySelector("iframe")).toBe(iframe);
 		await React.act(async () => {
 			await harness.withHostGlobalsAsync(() =>
-				hostProps.onError(new Error("host operation failed")),
+				hostProps.reportError(new Error("host operation failed")),
 			);
 		});
 		expect(onError).toHaveBeenCalledExactlyOnceWith(

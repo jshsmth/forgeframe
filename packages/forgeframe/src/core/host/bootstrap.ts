@@ -9,8 +9,8 @@
  * narrow `Host` object.
  */
 
-import { EVENT, PROTOCOL_VERSION } from "../../constants";
-import type { EventHandler } from "../../types/events";
+import { PROTOCOL_VERSION } from "../../constants";
+import { createEventSubscriber } from "../../events/emitter";
 import type {
 	ForgeFrameComponent,
 	Host,
@@ -23,6 +23,7 @@ import {
 } from "../../window/name-payload";
 import type { WindowNamePayload } from "../../window/types";
 import { HostComponent } from "./component";
+import { describeUnknownHostEvent, HOST_EVENT_NAMES } from "./events";
 import {
 	type HostStartOptions,
 	readInitHostArguments,
@@ -228,20 +229,18 @@ function startHostRuntime(
 
 /** Exposes only the documented `Host` members of one runtime. */
 function createHost(runtime: HostComponent<Record<string, unknown>>): Host {
-	const on = (event: string, handler: EventHandler<never>): (() => void) => {
-		if (event !== EVENT.PROPS && event !== EVENT.ERROR) {
-			throw new TypeError(
-				`Host.on() supports the "props" and "error" events, not "${event}"`,
-			);
-		}
-		return runtime.event.on(event, handler);
-	};
+	const events = createEventSubscriber(
+		runtime.event,
+		HOST_EVENT_NAMES,
+		describeUnknownHostEvent,
+	);
 	return Object.freeze({
 		ready: runtime.ready,
 		hostProps: runtime.hostProps,
 		init: () => runtime.init(),
 		destroy: () => runtime.destroy(),
-		on: on as Host["on"],
+		on: events.on,
+		once: events.once,
 	});
 }
 

@@ -75,7 +75,7 @@ export class HostPropsRuntime<
 			hide: () => this.options.controls.hide(),
 			onProps: (handler: (props: RemoteValue<P>) => void) =>
 				this.onProps(handler),
-			onError: (error: Error) => this.options.controls.onError(error),
+			reportError: (error: Error) => this.options.controls.reportError(error),
 			getConsumer: () => this.options.getConsumerWindow(),
 			getConsumerDomain: () => this.options.getConsumerDomain(),
 			export: <T>(exports: T) => this.options.controls.exportData(exports),
@@ -100,18 +100,18 @@ export class HostPropsRuntime<
 		);
 		this.initialized = true;
 		this.pendingBootstrapProps = null;
-		this.publishProps(nextProps);
+		this.notifyPropsHandlers(nextProps);
 	}
 
 	/**
-	 * Validates and commits a wire snapshot before notifying subscribers and emitting props.
+	 * Validates and commits a wire snapshot before notifying subscribers.
 	 * Stale custom keys are removed while built-in controls keep their identity.
 	 * Validation failure preserves the current prop snapshot and emits an error.
 	 * An update acknowledged before bootstrap completes is published by bootstrap.
 	 */
 	applySerializedProps(serializedProps: SerializedProps): { success: true } {
 		const nextProps = this.commitSerializedProps(serializedProps);
-		if (this.initialized) this.publishProps(nextProps);
+		if (this.initialized) this.notifyPropsHandlers(nextProps);
 		return { success: true };
 	}
 
@@ -142,12 +142,6 @@ export class HostPropsRuntime<
 			this.options.event.emit(EVENT.ERROR, propsError);
 			throw propsError;
 		}
-	}
-
-	/** Notifies subscribers, then emits the props event, for one committed snapshot. */
-	private publishProps(nextProps: RemoteValue<P>): void {
-		this.notifyPropsHandlers(nextProps);
-		this.options.event.emit(EVENT.PROPS, nextProps);
 	}
 
 	private commitHostProps(
@@ -197,19 +191,15 @@ export class HostPropsRuntime<
 		this.pendingBootstrapProps = null;
 	}
 
-	private onProps(handler: (props: RemoteValue<P>) => void): {
-		cancel: () => void;
-	} {
+	private onProps(handler: (props: RemoteValue<P>) => void): () => void {
 		if (!this.propsHandlers.has(handler))
 			this.propsHandlerRegistrations.set(handler, {});
 		this.propsHandlers.add(handler);
 		const registration = this.propsHandlerRegistrations.get(handler);
 
-		return {
-			cancel: () => {
-				if (this.propsHandlerRegistrations.get(handler) === registration)
-					this.propsHandlers.delete(handler);
-			},
+		return () => {
+			if (this.propsHandlerRegistrations.get(handler) === registration)
+				this.propsHandlers.delete(handler);
 		};
 	}
 

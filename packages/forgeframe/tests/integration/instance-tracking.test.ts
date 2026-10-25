@@ -59,8 +59,8 @@ describe("closeAll()", () => {
 			instance.event.on(EVENT.CLOSE, () => {
 				events.push(`${name}:close`);
 			});
-			instance.event.on(EVENT.DESTROY, () => {
-				events.push(`${name}:destroy`);
+			instance.event.on(EVENT.CLOSED, () => {
+				events.push(`${name}:closed`);
 			});
 		}
 		let late: ReturnType<typeof Checkout> | undefined;
@@ -76,9 +76,9 @@ describe("closeAll()", () => {
 		expect(Checkout.instances).toEqual([late]);
 		expect([...events].sort()).toEqual([
 			"card:close",
-			"card:destroy",
+			"card:closed",
 			"checkout:close",
-			"checkout:destroy",
+			"checkout:closed",
 		]);
 		await expect(cardRendering).rejects.toThrow(
 			'Component "close-all-card-field" was closed before rendering completed',

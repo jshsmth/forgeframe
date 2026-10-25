@@ -116,7 +116,7 @@ export function defaultContainerTemplate<P>(
  * @internal
  */
 export function defaultPrerenderTemplate<P>(
-	ctx: TemplateContext<P> & { cspNonce?: string },
+	ctx: TemplateContext<P>,
 ): HTMLElement {
 	const { doc, dimensions, cspNonce } = ctx;
 	ensureSpinnerKeyframes(doc, cspNonce);

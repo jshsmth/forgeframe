@@ -85,9 +85,8 @@ function buildPropsSchema(config: PlaygroundConfig) {
 		});
 	}
 
-	// Always add callback props (optional functions)
+	// Always add the host-facing callback prop
 	schema.onGreet = prop.function().optional();
-	schema.onClose = prop.function().optional();
 
 	return schema;
 }
@@ -266,13 +265,6 @@ export async function renderComponent() {
 			onGreet: (message: string) => {
 				log(`Host says: ${message}`, "success");
 			},
-			onClose: () => {
-				log("Host requested close", "info");
-				instance?.close();
-			},
-			onError: (error: Error) => {
-				log(`Host error: ${error.message}`, "error");
-			},
 		};
 
 		const newInstance = Component(props);
@@ -282,6 +274,10 @@ export async function renderComponent() {
 		newInstance.event.on("rendered", () => {
 			log("Event: rendered", "success");
 		});
+		newInstance.event.on("closed", () => {
+			log("Event: closed", "info");
+		});
+		// Reset when closing starts, so Render works again without waiting for teardown.
 		newInstance.event.on("close", () => {
 			log("Event: close", "info");
 			setInstance(null);
@@ -311,16 +307,13 @@ export async function renderComponent() {
 			}
 		});
 		newInstance.event.on("error", (err) => {
-			log(`Event: error - ${err}`, "error");
+			log(`Event: error - ${err.message}`, "error");
 		});
 		newInstance.event.on("resize", (dims) => {
 			log(`Event: resize - ${JSON.stringify(dims)}`, "info");
 			// Also resize the modal body container if in modal mode
-			if (useModal && modalBody && dims) {
-				const { width, height } = dims as {
-					width?: number | string;
-					height?: number | string;
-				};
+			if (useModal && modalBody) {
+				const { width, height } = dims;
 				if (width !== undefined) {
 					modalBody.style.width =
 						typeof width === "number" ? `${width}px` : width;

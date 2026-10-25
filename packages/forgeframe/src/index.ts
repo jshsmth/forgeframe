@@ -70,6 +70,7 @@ export { isStandardSchema } from "./props/schema";
 export { PopupOpenError } from "./render/popup";
 // Type exports
 export type {
+	ComponentEvents,
 	// Component types
 	ComponentOptions,
 	ConsumerPropsInput,
@@ -78,13 +79,14 @@ export type {
 	// Utility types
 	Dimensions,
 	DomainMatcher,
-	EventEmitterInterface,
 	// Event types
 	EventHandler,
+	EventSubscriber,
 	ForgeFrameComponent,
 	ForgeFrameComponentInstance,
 	GetPeerInstancesOptions,
 	Host,
+	HostEvents,
 	HostProps,
 	HostPropsBuiltins,
 	HostPropsDefinition,

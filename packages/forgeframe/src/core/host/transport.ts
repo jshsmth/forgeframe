@@ -136,7 +136,7 @@ export class HostTransport {
 		await this.sendMessage(MESSAGE_NAME.HIDE, {});
 	}
 
-	async onError(error: Error): Promise<void> {
+	async reportError(error: Error): Promise<void> {
 		await this.sendMessage(MESSAGE_NAME.ERROR, {
 			message: error.message,
 		});
@@ -144,11 +144,12 @@ export class HostTransport {
 
 	/** Reports a failed start or INIT delivery on the host `error` event. */
 	emitInitFailure(error: Error): void {
-		this.options.event.emit(EVENT.ERROR, {
-			type: "init_failed",
-			message: `Failed to initialize host component: ${error.message}`,
-			error,
-		});
+		this.options.event.emit(
+			EVENT.ERROR,
+			new Error(`Failed to initialize host component: ${error.message}`, {
+				cause: error,
+			}),
+		);
 	}
 
 	/**

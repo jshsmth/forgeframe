@@ -13,6 +13,7 @@ import type { MessageHandler } from "../../communication/messenger";
 import type { ContextType } from "../../constants";
 import type { EventEmitter } from "../../events/emitter";
 import type { SerializedProps } from "../../props/types";
+import type { HostEvents } from "../../types/events";
 import type { HostPropsDefinition } from "../../types/props";
 import type { GetPeerInstancesOptions, SiblingInfo } from "../../types/runtime";
 import type { Dimensions, DomainMatcher } from "../../types/utility";
@@ -36,7 +37,7 @@ export interface HostPropsRuntimeControls {
 	resize(dimensions: Dimensions): Promise<void>;
 	show(): Promise<void>;
 	hide(): Promise<void>;
-	onError(error: Error): Promise<void>;
+	reportError(error: Error): Promise<void>;
 	exportData<T>(exports: T): Promise<void>;
 	getPeerInstances(options?: GetPeerInstancesOptions): Promise<SiblingInfo[]>;
 }
@@ -44,7 +45,7 @@ export interface HostPropsRuntimeControls {
 export interface HostPropsRuntimeOptions {
 	uid: string;
 	tag: string;
-	event: EventEmitter;
+	event: EventEmitter<HostEvents>;
 	controls: HostPropsRuntimeControls;
 	getConsumerWindow(): Window;
 	getConsumerDomain(): string;
@@ -55,7 +56,7 @@ export interface HostTransportOptions {
 	uid: string;
 	/** Popup hosts resize their own window; consumers cannot across origins. */
 	context: ContextType;
-	event: EventEmitter;
+	event: EventEmitter<HostEvents>;
 	consumerWindow: Window;
 	consumerDomain: string;
 	getConsumerDomain(): string;

@@ -204,10 +204,8 @@ describe("Component Creation", () => {
 		internal.transport.hostWindow = null;
 		await expect(instance.updateProps({})).resolves.toBeUndefined();
 
-		expect(internal.propsPipeline.props).toMatchObject({
-			dimensions: { width: "100%", height: "100%" },
-			timeout: 10000,
-		});
+		// Only declared props are normalized; there are no hidden built-ins.
+		expect(internal.propsPipeline.props).toEqual({});
 
 		await instance.close();
 		container.remove();
@@ -392,18 +390,30 @@ describe("Component Creation", () => {
 		);
 	});
 
-	it("should still allow built-in lifecycle callback values without custom definitions", () => {
-		const onClose = vi.fn();
+	it("should ignore undeclared inputs named like removed lifecycle callbacks", async () => {
+		const callbacks = {
+			onClose: vi.fn(),
+			onDestroy: vi.fn(),
+			onResize: vi.fn(),
+			onFocus: vi.fn(),
+			onError: vi.fn(),
+			cspNonce: "nonce-value",
+			timeout: 1,
+		};
 		const MyComponent = create({
 			tag: "lifecycle-callback-values",
 			url: "https://example.com/component",
 		});
 
-		const instance = MyComponent({ onClose });
+		const instance = MyComponent(callbacks as Record<string, unknown>);
+		await instance.resize({ width: 1, height: 1 });
+		await instance.close();
 
-		expect(getConsumerInternals(instance).propsPipeline.props.onClose).toBe(
-			onClose,
-		);
+		expect(getConsumerInternals(instance).propsPipeline.props).toEqual({});
+		for (const callback of Object.values(callbacks)) {
+			if (typeof callback === "function")
+				expect(callback).not.toHaveBeenCalled();
+		}
 	});
 
 	it("should throw error for duplicate tag", () => {
@@ -512,8 +522,7 @@ describe("Component Creation", () => {
 		});
 	});
 
-	it("should allow construction-time PropContext.onError from value and default resolvers", () => {
-		const onError = vi.fn();
+	it("should deliver construction-time PropContext.onError reports after the factory returns", async () => {
 		const valueResolverError = new Error("value resolver error");
 		const defaultResolverError = new Error("default resolver error");
 		const ResolverComponent = create<Record<string, unknown>>({
@@ -537,11 +546,15 @@ describe("Component Creation", () => {
 			},
 		});
 
-		const instance = ResolverComponent({ onError });
+		const instance = ResolverComponent({});
+		const errors: Error[] = [];
+		instance.event.on("error", (error) => {
+			errors.push(error);
+		});
 		const internal = getConsumerInternals(instance);
+		await Promise.resolve();
 
-		expect(onError).toHaveBeenNthCalledWith(1, valueResolverError);
-		expect(onError).toHaveBeenNthCalledWith(2, defaultResolverError);
+		expect(errors).toEqual([valueResolverError, defaultResolverError]);
 		expect(internal.propsPipeline.props.computed).toBe("computed-value");
 		expect(internal.propsPipeline.props.fallback).toBe("default-value");
 	});
@@ -643,7 +656,8 @@ describe("Component Creation", () => {
 			},
 		});
 
-		const instance = CloseResolverComponent({ onResize });
+		const instance = CloseResolverComponent({});
+		instance.event.on("resize", onResize);
 		const internal = getConsumerInternals(instance);
 		const resizeSpy = vi.spyOn(internal.renderer, "resize");
 		const dimensions = { width: 320, height: 200 };
@@ -653,7 +667,8 @@ describe("Component Creation", () => {
 
 		await expect(instance.resize(dimensions)).resolves.toBeUndefined();
 		expect(resizeSpy).toHaveBeenCalledWith(dimensions, null);
-		expect(onResize).toHaveBeenCalledWith(dimensions);
+		// The instance closed during construction, so later listeners never run.
+		expect(onResize).not.toHaveBeenCalled();
 	});
 
 	it("should not register instances destroyed during construction", async () => {
@@ -1598,7 +1613,7 @@ describe("Component Instance", () => {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 
-		instance.event.once(EVENT.PRERENDER, () => {
+		instance.event.once(EVENT.RENDER, () => {
 			if (decoratedTarget) {
 				decoratedTarget.href = "https://attacker.example.com/render";
 			}
@@ -1925,21 +1940,6 @@ describe("Component Destruction", () => {
 			await instance.close();
 
 			expect(closeHandler).toHaveBeenCalled();
-		});
-
-		it("should remove instance from instances array on destroy event", () => {
-			const MyComponent = create({
-				tag: "destroy-removal-test",
-				url: "https://example.com",
-			});
-
-			const instance = MyComponent({});
-			expect(MyComponent.instances.length).toBe(1);
-
-			// Manually emit destroy event to test the listener
-			instance.event.emit("destroy");
-
-			expect(MyComponent.instances.length).toBe(0);
 		});
 
 		it("should remove instance from instances array when close is called", async () => {

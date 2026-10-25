@@ -1,16 +1,9 @@
 /**
  * @packageDocumentation
- * Built-in prop definitions for ForgeFrame components.
- *
- * @remarks
- * This module defines the standard props that are automatically available
- * to all ForgeFrame components, including identifiers, dimensions, and
- * lifecycle callbacks.
+ * Shared prop-definition constants.
  */
 
-import type { PropDefinition, PropsDefinition } from "../types/props";
-import type { Dimensions } from "../types/utility";
-import { prop } from "./prop";
+import type { PropsDefinition } from "../types/props";
 
 /**
  * Shared empty prop-definition map for components without custom props.
@@ -19,104 +12,3 @@ import { prop } from "./prop";
 export const EMPTY_PROP_DEFINITIONS = /* @__PURE__ */ Object.freeze(
 	{},
 ) as PropsDefinition<Record<string, unknown>>;
-
-/**
- * Default prop definitions for all built-in props.
- *
- * @remarks
- * These definitions specify the type, required status, and default values
- * for built-in props.
- *
- * @public
- */
-export const BUILTIN_PROP_DEFINITIONS: Record<string, PropDefinition> =
-	/* @__PURE__ */ createBuiltinPropDefinitions();
-
-// Keep schema initialization in a named pure call so consumer bundlers can drop
-// it when only importing helpers such as isHost from the built ESM entrypoint.
-function createBuiltinPropDefinitions(): Record<string, PropDefinition> {
-	return {
-		uid: {
-			schema: prop.string().optional(),
-			sendToHost: true,
-		},
-
-		tag: {
-			schema: prop.string().optional(),
-			sendToHost: true,
-		},
-
-		dimensions: {
-			schema: prop
-				.object<Dimensions>()
-				.default(() => ({ width: "100%", height: "100%" })),
-			sendToHost: false,
-		},
-
-		timeout: {
-			schema: prop.number().default(10000),
-			sendToHost: false,
-		},
-
-		cspNonce: {
-			schema: prop.string().optional(),
-			sendToHost: true,
-		},
-
-		// Lifecycle callbacks - not sent to host (consumer-only)
-		onDisplay: {
-			schema: prop.function().optional(),
-			sendToHost: false,
-		},
-
-		onRendered: {
-			schema: prop.function().optional(),
-			sendToHost: false,
-		},
-
-		onRender: {
-			schema: prop.function().optional(),
-			sendToHost: false,
-		},
-
-		onPrerendered: {
-			schema: prop.function().optional(),
-			sendToHost: false,
-		},
-
-		onPrerender: {
-			schema: prop.function().optional(),
-			sendToHost: false,
-		},
-
-		onClose: {
-			schema: prop.function().optional(),
-			sendToHost: false,
-		},
-
-		onDestroy: {
-			schema: prop.function().optional(),
-			sendToHost: false,
-		},
-
-		onResize: {
-			schema: prop.function().optional(),
-			sendToHost: false,
-		},
-
-		onFocus: {
-			schema: prop.function().optional(),
-			sendToHost: false,
-		},
-
-		onError: {
-			schema: prop.function().optional(),
-			sendToHost: false,
-		},
-
-		onProps: {
-			schema: prop.function().optional(),
-			sendToHost: false,
-		},
-	};
-}

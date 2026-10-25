@@ -12,6 +12,7 @@ import {
 	runStressScenario,
 	runTimeoutRecoveryScenario,
 	runTransportScenario,
+	waitForExports,
 } from "./extended-scenarios";
 import type { ScenarioId, TestResult } from "./types";
 
@@ -76,12 +77,12 @@ async function runLifecycleScenario(
 		props: { value: prop.string().optional() },
 	});
 	const instance = Component({ value: "before-render" });
-	let prerenderCount = 0;
+	let renderEventCount = 0;
 	let reentrantRender: Promise<void> | undefined;
 	let propUpdateError = "";
 
-	instance.event.once("prerender", () => {
-		prerenderCount += 1;
+	instance.event.once("render", () => {
+		renderEventCount += 1;
 		reentrantRender = instance.render(container);
 		void instance
 			.updateProps({ value: "during-render" })
@@ -101,9 +102,9 @@ async function runLifecycleScenario(
 		results.push(
 			assertResult(
 				"Lifecycle callback shares the in-flight render",
-				prerenderCount === 1 &&
+				renderEventCount === 1 &&
 					container.querySelectorAll("iframe").length === 1,
-				`prerender events: ${prerenderCount}; iframes: ${container.querySelectorAll("iframe").length}`,
+				`render events: ${renderEventCount}; iframes: ${container.querySelectorAll("iframe").length}`,
 			),
 		);
 		results.push(
@@ -268,7 +269,10 @@ async function runBridgeScenario(sandbox: HTMLElement): Promise<TestResult[]> {
 
 	try {
 		await instance.render(container);
-		await waitFor(() => typeof instance.exports?.multiply === "function");
+		await waitForExports(
+			instance,
+			() => typeof instance.exports?.multiply === "function",
+		);
 		const product = await requireValue(instance.exports).multiply(6, 7);
 
 		results.push(
@@ -477,7 +481,11 @@ async function runNestedScenario(sandbox: HTMLElement): Promise<TestResult[]> {
 
 	try {
 		await instance.render(container);
-		await waitFor(() => instance.exports?.nestedReady === true, 6000);
+		await waitForExports(
+			instance,
+			() => instance.exports?.nestedReady === true,
+			6000,
+		);
 		results.push(
 			assertResult(
 				"Host renders its own imported child component",
@@ -530,7 +538,10 @@ async function runErrorsScenario(sandbox: HTMLElement): Promise<TestResult[]> {
 	try {
 		await instance.render(container);
 		await waitFor(() => reportedError);
-		await waitFor(() => typeof instance.exports?.explode === "function");
+		await waitForExports(
+			instance,
+			() => typeof instance.exports?.explode === "function",
+		);
 		results.push(
 			assertResult(
 				"Host-reported errors reach the consumer",
