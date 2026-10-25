@@ -4,7 +4,7 @@
  * Covers domain trust variants, render helper delegation, prop update edge paths, and guarded branches around URL/origin handling.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CONTEXT, EVENT } from "@/constants";
+import { CONTEXT, EVENT, MESSAGE_NAME } from "@/constants";
 import { ConsumerComponent } from "@/core/consumer";
 import { emitConsumerError } from "@/core/consumer/callbacks";
 import { buildNestedHostRefs } from "@/core/consumer/child-refs";
@@ -12,6 +12,7 @@ import { EventEmitter } from "@/events/emitter";
 import { prop } from "@/props/prop";
 import * as iframeRender from "@/render/iframe";
 import * as popupRender from "@/render/popup";
+import { requireValue } from "../require-value";
 
 const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
 
@@ -25,10 +26,13 @@ type ConsumerInternals = {
 			allowedOriginPatterns: RegExp[];
 			addTrustedDomain: (domain: string) => void;
 			send: (...args: unknown[]) => Promise<unknown>;
-		};
-		bridge: {
-			localFunctionCount: number;
-			localFunctions: Map<string, unknown>;
+			handlers: Map<
+				string,
+				(
+					data: unknown,
+					source: { uid: string; domain: string; window: Window },
+				) => unknown
+			>;
 		};
 	};
 	renderer: {
@@ -55,7 +59,7 @@ type ConsumerInternals = {
 	checkEligibility: () => void;
 	prerender: () => Promise<void>;
 	createIframeElement: (windowName: string) => HTMLIFrameElement;
-	open: () => Promise<void>;
+	open: (baseUrl: string) => Promise<void>;
 	submitBodyForm: (
 		target: string,
 		actionUrl: string,
@@ -89,6 +93,43 @@ function createConsumer(
 	);
 	createdConsumers.push(consumer);
 	return consumer;
+}
+
+/** Attaches host content the way open() does: the opened origin is recorded first. */
+function attachOpenedHost(
+	consumer: ConsumerComponent<Record<string, unknown>>,
+	hostWindow: Window,
+): void {
+	const { transport } = getInternals(consumer);
+	transport.openedHostDomain = "https://host.example.com";
+	transport.attachHostWindow(hostWindow);
+}
+
+/** Invokes a consumer callback the way the host does, through the bridge's CALL handler. */
+function callConsumerCallback(
+	consumer: ConsumerComponent<Record<string, unknown>>,
+	id: string,
+): unknown {
+	const call = getInternals(consumer).transport.messenger.handlers.get(
+		MESSAGE_NAME.CALL,
+	);
+	if (!call) throw new Error("Missing bridge call handler");
+	return call(
+		{ id, args: [] },
+		{ uid: "host-uid", domain: "https://host.example.com", window },
+	);
+}
+
+/** Reads the callback ID from the props update at `index` sent to the host. */
+function sentCallbackId(
+	sendSpy: { mock: { calls: unknown[][] } },
+	index: number,
+) {
+	const updates = sendSpy.mock.calls.filter(
+		(args) => args[2] === MESSAGE_NAME.PROPS,
+	);
+	return (requireValue(updates[index])[3] as { onSubmit: { __id__: string } })
+		.onSubmit.__id__;
 }
 
 afterEach(async () => {
@@ -380,23 +421,21 @@ describe("Consumer branch coverage and edge paths", () => {
 			},
 		);
 
-		getInternals(consumer).transport.attachHostWindow(window);
+		attachOpenedHost(consumer, window);
 
-		vi.spyOn(
-			getInternals(consumer).transport.messenger,
-			"send",
-		).mockResolvedValue(undefined);
+		const sendSpy = vi
+			.spyOn(getInternals(consumer).transport.messenger, "send")
+			.mockResolvedValue(undefined);
 
-		await consumer.updateProps({ onSubmit: vi.fn() });
-		const firstBatchCount =
-			getInternals(consumer).transport.bridge.localFunctionCount;
+		await consumer.updateProps({ onSubmit: () => "first" });
+		await consumer.updateProps({ onSubmit: () => "second" });
 
-		await consumer.updateProps({ onSubmit: vi.fn() });
-		const secondBatchCount =
-			getInternals(consumer).transport.bridge.localFunctionCount;
-
-		expect(firstBatchCount).toBe(1);
-		expect(secondBatchCount).toBe(1);
+		await expect(
+			callConsumerCallback(consumer, sentCallbackId(sendSpy, 0)),
+		).rejects.toThrow("not found");
+		await expect(
+			callConsumerCallback(consumer, sentCallbackId(sendSpy, 1)),
+		).resolves.toBe("second");
 	});
 
 	it("should keep previous function refs until host props update is sent", async () => {
@@ -411,35 +450,32 @@ describe("Consumer branch coverage and edge paths", () => {
 			},
 		);
 
-		getInternals(consumer).transport.attachHostWindow(window);
-
-		const bridge = getInternals(consumer).transport.bridge;
+		attachOpenedHost(consumer, window);
 
 		const sendSpy = vi
 			.spyOn(getInternals(consumer).transport.messenger, "send")
 			.mockResolvedValue(undefined);
 
-		await consumer.updateProps({ onSubmit: vi.fn() });
-		const previousRefId = Array.from(bridge.localFunctions.keys())[0];
-		expect(previousRefId).toBeDefined();
-		if (!previousRefId) {
-			throw new Error("Expected previous function ref ID");
-		}
+		await consumer.updateProps({ onSubmit: () => "previous" });
+		const previousRefId = sentCallbackId(sendSpy, 0);
 
 		sendSpy.mockImplementationOnce(async () => {
-			if (!bridge.localFunctions.has(previousRefId)) {
-				throw new Error(
-					"Previous function ref was pruned before host acknowledged prop update",
-				);
-			}
+			// The host may still call the previous callback until it acknowledges.
+			await expect(callConsumerCallback(consumer, previousRefId)).resolves.toBe(
+				"previous",
+			);
 			return undefined;
 		});
 
 		await expect(
-			consumer.updateProps({ onSubmit: vi.fn() }),
+			consumer.updateProps({ onSubmit: () => "next" }),
 		).resolves.toBeUndefined();
-		expect(bridge.localFunctions.has(previousRefId)).toBe(false);
-		expect(bridge.localFunctionCount).toBe(1);
+		await expect(callConsumerCallback(consumer, previousRefId)).rejects.toThrow(
+			"not found",
+		);
+		await expect(
+			callConsumerCallback(consumer, sentCallbackId(sendSpy, 1)),
+		).resolves.toBe("next");
 	});
 
 	it("should serialize concurrent prop updates to avoid batch ref races", async () => {
@@ -454,9 +490,7 @@ describe("Consumer branch coverage and edge paths", () => {
 			},
 		);
 
-		getInternals(consumer).transport.attachHostWindow(window);
-
-		const bridge = getInternals(consumer).transport.bridge;
+		attachOpenedHost(consumer, window);
 
 		let resolveFirstSend!: () => void;
 		let resolveSecondSend!: () => void;
@@ -473,8 +507,8 @@ describe("Consumer branch coverage and edge paths", () => {
 				return sendSpy.mock.calls.length === 1 ? firstSend : secondSend;
 			});
 
-		const firstUpdate = consumer.updateProps({ onSubmit: vi.fn() });
-		const secondUpdate = consumer.updateProps({ onSubmit: vi.fn() });
+		const firstUpdate = consumer.updateProps({ onSubmit: () => "first" });
+		const secondUpdate = consumer.updateProps({ onSubmit: () => "second" });
 
 		await Promise.resolve();
 		expect(sendSpy).toHaveBeenCalledTimes(1);
@@ -494,7 +528,12 @@ describe("Consumer branch coverage and edge paths", () => {
 		resolveSecondSend();
 
 		await expect(secondUpdate).resolves.toBeUndefined();
-		expect(bridge.localFunctionCount).toBe(1);
+		await expect(
+			callConsumerCallback(consumer, sentCallbackId(sendSpy, 0)),
+		).rejects.toThrow("not found");
+		await expect(
+			callConsumerCallback(consumer, sentCallbackId(sendSpy, 1)),
+		).resolves.toBe("second");
 	});
 
 	it("should resolve existing selector containers to HTMLElement", () => {
@@ -655,9 +694,9 @@ describe("Consumer branch coverage and edge paths", () => {
 
 		await (
 			consumer as unknown as {
-				open: () => Promise<void>;
+				open: (baseUrl: string) => Promise<void>;
 			}
-		).open();
+		).open("https://host.example.com/widget");
 
 		expect(openPopupSpy).toHaveBeenCalledTimes(1);
 		expect(watchSpy).toHaveBeenCalledWith(popupWindow, expect.any(Function));
@@ -698,9 +737,9 @@ describe("Consumer branch coverage and edge paths", () => {
 
 		await (
 			consumer as unknown as {
-				open: () => Promise<void>;
+				open: (baseUrl: string) => Promise<void>;
 			}
-		).open();
+		).open("https://host.example.com/widget");
 
 		expect(submitBodyFormSpy).toHaveBeenCalledTimes(1);
 		expect(submitBodyFormSpy).toHaveBeenCalledWith(
@@ -745,9 +784,9 @@ describe("Consumer branch coverage and edge paths", () => {
 
 		await (
 			consumer as unknown as {
-				open: () => Promise<void>;
+				open: (baseUrl: string) => Promise<void>;
 			}
-		).open();
+		).open("https://host.example.com/widget");
 
 		expect(openPopupSpy).toHaveBeenCalledWith(
 			expect.objectContaining({

@@ -53,12 +53,6 @@ export function getRegisteredComponent<
 		| undefined;
 }
 
-export function getRegisteredComponentEntries(): Array<
-	[string, ForgeFrameComponent<Record<string, unknown>>]
-> {
-	return Array.from(componentRegistry.entries());
-}
-
 export function getComponentOptions<
 	P extends Record<string, unknown> = Record<string, unknown>,
 	X = unknown,

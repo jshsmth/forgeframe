@@ -30,7 +30,7 @@ const MAX_PAYLOAD_SIZE = 32 * 1024;
 /**
  * Builds a window name string with an encoded payload.
  *
- * @typeParam P - The type of the props included in the payload.
+ * @typeParam P - The component props type carried by the payload type.
  * @param payload - The payload to encode into the window name.
  * @returns A window name string with the ForgeFrame prefix and base64-encoded payload.
  *
@@ -41,21 +41,21 @@ const MAX_PAYLOAD_SIZE = 32 * 1024;
  *
  * @example
  * ```typescript
- * const payload: WindowNamePayload<MyProps> = {
- *   uid: 'host-123',
- *   tag: 'my-component',
- *   version: '1.0.0',
- *   context: 'iframe',
- *   consumerDomain: 'https://consumer.com',
- *   props: { message: 'Hello' },
- *   exports: {}
- * };
- *
- * const windowName = buildWindowName(payload);
- * // Use when creating iframe: iframe.name = windowName;
+ * iframe.name = buildWindowName(
+ *   createWindowPayload({
+ *     uid: 'host-123',
+ *     tag: 'my-component',
+ *     context: 'iframe',
+ *     consumerDomain: window.location.origin,
+ *     // Props travel in the verified bootstrap, never in window.name.
+ *     props: {},
+ *     // Message names, which 1.x hosts still validate.
+ *     exports: { init: MESSAGE_NAME.INIT, close: MESSAGE_NAME.CLOSE, ... },
+ *   }),
+ * );
  * ```
  *
- * @public
+ * @internal
  */
 export function buildWindowName<P>(payload: WindowNamePayload<P>): string {
 	const encoded = encodePayload(payload);
@@ -74,19 +74,9 @@ export function buildWindowName<P>(payload: WindowNamePayload<P>): string {
  * then decodes the base64-encoded payload. Returns `null` if the name doesn't
  * have the expected format or if decoding fails.
  *
- * @example
- * ```typescript
- * // In a host window
- * const payload = parseWindowName<MyProps>(window.name);
- * if (payload) {
- *   console.log('Received props:', payload.props);
- *   console.log('Consumer domain:', payload.consumerDomain);
- * }
- * ```
- *
- * @public
+ * @internal
  */
-export function parseWindowName<P>(name: string): WindowNamePayload<P> | null {
+function parseWindowName<P>(name: string): WindowNamePayload<P> | null {
 	// biome-ignore lint/complexity/useOptionalChain: Keep rejecting all falsy runtime inputs before invoking string methods.
 	if (!name || !name.startsWith(WINDOW_NAME_PREFIX)) {
 		return null;
@@ -239,7 +229,7 @@ function isValidWindowNamePayload<P>(
  * }
  * ```
  *
- * @public
+ * @internal
  */
 export function isForgeFrameWindow(win: Window = window): boolean {
 	try {
@@ -343,36 +333,38 @@ function decodePayload<P>(encoded: string): WindowNamePayload<P> | null {
 /**
  * Creates a window payload object for encoding into a window name.
  *
- * @typeParam P - The type of the props (used for type inference in the returned payload).
+ * @typeParam P - The component props type carried by the payload type.
  * @param options - The options for creating the payload.
  * @param options.uid - Unique identifier for the host window.
  * @param options.tag - Component tag name.
  * @param options.context - The context type (e.g., 'iframe' or 'popup').
  * @param options.consumerDomain - The origin of the consumer window.
- * @param options.props - Serialized props to pass to the host.
- * @param options.exports - Functions exported by the consumer for the host to call.
- * @param options.children - Optional map of nested component references.
+ * @param options.props - Legacy props field. The consumer always writes `{}`;
+ * protocol 2 delivers props through the verified bootstrap.
+ * @param options.exports - Consumer message names, which 1.x hosts validate.
+ * @param options.children - Legacy nested component references. The consumer
+ * never writes them; protocol 2 delivers children through the bootstrap.
  * @returns A WindowNamePayload object ready for encoding.
  *
  * @remarks
  * This is a factory function that creates a properly structured payload with
- * the current ForgeFrame version automatically included.
+ * the current ForgeFrame version and protocol version automatically included.
  *
  * @example
  * ```typescript
- * const payload = createWindowPayload<MyProps>({
+ * const payload = createWindowPayload({
  *   uid: generateUID(),
  *   tag: 'checkout-form',
  *   context: 'iframe',
  *   consumerDomain: window.location.origin,
- *   props: { amount: 100 },
- *   exports: { onSuccess: true, onError: true }
+ *   props: {},
+ *   exports: { init: MESSAGE_NAME.INIT, close: MESSAGE_NAME.CLOSE, ... },
  * });
  *
  * const windowName = buildWindowName(payload);
  * ```
  *
- * @public
+ * @internal
  */
 export function createWindowPayload<P>(options: {
 	uid: string;
@@ -394,37 +386,6 @@ export function createWindowPayload<P>(options: {
 		exports: options.exports,
 		children: options.children,
 	};
-}
-
-/**
- * Updates a window's name with a new encoded payload.
- *
- * @typeParam P - The type of the props in the payload.
- * @param win - The window whose name should be updated.
- * @param payload - The new payload to encode into the window name.
- *
- * @remarks
- * This function is used when the consumer needs to update the host's reference
- * or pass updated data. It safely handles cross-origin errors by silently failing.
- *
- * @example
- * ```typescript
- * // Update host window with new props
- * const updatedPayload = { ...existingPayload, props: { newValue: 42 } };
- * updateWindowName(hostWindow, updatedPayload);
- * ```
- *
- * @public
- */
-export function updateWindowName<P>(
-	win: Window,
-	payload: WindowNamePayload<P>,
-): void {
-	try {
-		win.name = buildWindowName(payload);
-	} catch {
-		// Cross-origin errors are silently ignored
-	}
 }
 
 /**
@@ -466,7 +427,7 @@ export function getInitialPayload<P>(
  * The input and its other metadata are preserved; no window-name write occurs here.
  * @internal
  */
-export function retainChannelMetadata<P>(
+function retainChannelMetadata<P>(
 	payload: WindowNamePayload<P>,
 ): WindowNamePayload<P> {
 	return { ...payload, props: {}, children: undefined };

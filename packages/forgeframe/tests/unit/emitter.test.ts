@@ -68,7 +68,6 @@ describe("EventEmitter", () => {
 		emitter.emit("test", "data");
 
 		expect(handler).not.toHaveBeenCalled();
-		expect(emitter.listenerCount("test")).toBe(0);
 	});
 
 	it.each(["on", "once"] as const)(
@@ -85,7 +84,7 @@ describe("EventEmitter", () => {
 			emitter.emit("test", "after stale unsubscribe");
 
 			expect(handler).toHaveBeenLastCalledWith("after stale unsubscribe");
-			expect(emitter.listenerCount("test")).toBe(1);
+			expect(handler).toHaveBeenCalledTimes(method === "on" ? 1 : 2);
 		},
 	);
 
@@ -204,23 +203,30 @@ describe("EventEmitter", () => {
 		consoleSpy.mockRestore();
 	});
 
-	it("should report listener counts as handlers are added and removed", () => {
+	it("should stop invoking handlers as they are removed", () => {
 		const emitter = new EventEmitter();
 		const handler1 = vi.fn();
 		const handler2 = vi.fn();
+		const otherHandler = vi.fn();
 
 		const unsubscribe = emitter.on("count-test", handler1);
 		emitter.on("count-test", handler2);
-		expect(emitter.listenerCount("count-test")).toBe(2);
+		emitter.emit("count-test", "both");
+		expect(handler1).toHaveBeenCalledOnce();
+		expect(handler2).toHaveBeenCalledOnce();
 
 		unsubscribe();
-		expect(emitter.listenerCount("count-test")).toBe(1);
+		emitter.emit("count-test", "second only");
+		expect(handler1).toHaveBeenCalledOnce();
+		expect(handler2).toHaveBeenLastCalledWith("second only");
 
 		emitter.off("count-test", handler2);
-		expect(emitter.listenerCount("count-test")).toBe(0);
+		emitter.emit("count-test", "none");
+		expect(handler2).toHaveBeenCalledTimes(2);
 
-		emitter.on("other-event", vi.fn());
+		emitter.on("other-event", otherHandler);
 		emitter.removeAllListeners();
-		expect(emitter.listenerCount("other-event")).toBe(0);
+		emitter.emit("other-event", "after clear");
+		expect(otherHandler).not.toHaveBeenCalled();
 	});
 });

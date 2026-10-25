@@ -1,12 +1,11 @@
 /**
  * Unit tests for `@/render/iframe`.
  *
- * Covers iframe creation/destruction, visibility and sizing helpers, and attribute handling.
+ * Covers iframe element configuration and destruction, visibility and sizing helpers, and attribute handling.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-	createIframe,
-	createPrerenderIframe,
+	createIframeElement,
 	destroyIframe,
 	focusIframe,
 	hideIframe,
@@ -14,75 +13,52 @@ import {
 	showIframe,
 } from "@/render/iframe";
 
-describe("createIframe", () => {
-	let container: HTMLDivElement;
-
-	beforeEach(() => {
-		container = document.createElement("div");
-		document.body.appendChild(container);
-	});
-
-	afterEach(() => {
-		container.remove();
-	});
-
-	it("should create iframe with correct attributes", () => {
-		const iframe = createIframe({
-			url: "https://example.com/widget",
+describe("createIframeElement", () => {
+	it("should create an unattached iframe with its name and dimensions", () => {
+		const iframe = createIframeElement({
 			name: "test-iframe",
-			container,
 			dimensions: { width: 400, height: 300 },
 		});
 
 		expect(iframe.tagName).toBe("IFRAME");
 		expect(iframe.name).toBe("test-iframe");
-		expect(iframe.src).toBe("https://example.com/widget");
+		expect(iframe.hasAttribute("src")).toBe(false);
+		expect(iframe.isConnected).toBe(false);
 		expect(iframe.style.width).toBe("400px");
 		expect(iframe.style.height).toBe("300px");
 	});
 
-	it("should set default security attributes", () => {
-		const iframe = createIframe({
-			url: "https://example.com",
+	it("should set default frame attributes", () => {
+		const iframe = createIframeElement({
 			name: "test-iframe",
-			container,
 			dimensions: { width: 100, height: 100 },
 		});
 
 		expect(iframe.getAttribute("frameborder")).toBe("0");
 		expect(iframe.getAttribute("allowtransparency")).toBe("true");
 		expect(iframe.getAttribute("scrolling")).toBe("auto");
-		expect(iframe.getAttribute("sandbox")).toBe(
-			"allow-scripts allow-same-origin allow-forms allow-popups",
-		);
 	});
 
 	it("should apply custom attributes", () => {
-		const iframe = createIframe({
-			url: "https://example.com",
+		const iframe = createIframeElement({
 			name: "test-iframe",
-			container,
 			dimensions: { width: 100, height: 100 },
 			attributes: {
 				allow: "payment",
 				title: "Payment Widget",
-				sandbox: "allow-scripts allow-forms",
 			},
 		});
 
 		expect(iframe.getAttribute("allow")).toBe("payment");
 		expect(iframe.getAttribute("title")).toBe("Payment Widget");
-		expect(iframe.getAttribute("sandbox")).toBe("allow-scripts allow-forms");
 	});
 
 	it.each(["name", "src", "srcdoc"])(
 		"should reject the reserved %s bootstrap attribute",
 		(attribute) => {
 			expect(() =>
-				createIframe({
-					url: "https://example.com",
+				createIframeElement({
 					name: "trusted-bootstrap",
-					container,
 					dimensions: { width: 100, height: 100 },
 					attributes: { [attribute]: "attacker-controlled" },
 				}),
@@ -93,10 +69,8 @@ describe("createIframe", () => {
 	it.each(["Sandbox", "SANDBOX"])(
 		"keeps a %s attribute instead of widening it to the default sandbox",
 		(attribute) => {
-			const iframe = createIframe({
-				url: "https://example.com",
+			const iframe = createIframeElement({
 				name: "test-iframe",
-				container,
 				dimensions: { width: 100, height: 100 },
 				attributes: { [attribute]: "allow-scripts" },
 			});
@@ -108,10 +82,8 @@ describe("createIframe", () => {
 	it.each(["sandbox", "Sandbox"])(
 		"applies the default sandbox when %s is false, which writes no attribute",
 		(attribute) => {
-			const iframe = createIframe({
-				url: "https://example.com",
+			const iframe = createIframeElement({
 				name: "test-iframe",
-				container,
 				dimensions: { width: 100, height: 100 },
 				attributes: { [attribute]: false },
 			});
@@ -122,41 +94,21 @@ describe("createIframe", () => {
 		},
 	);
 
-	it("should preserve an explicit empty sandbox attribute", () => {
-		const iframe = createIframe({
-			url: "https://example.com",
-			name: "test-iframe",
-			container,
-			dimensions: { width: 100, height: 100 },
-			attributes: {
-				sandbox: "",
-			},
-		});
-
-		expect(iframe.getAttribute("sandbox")).toBe("");
-	});
-
 	it("should apply custom styles", () => {
-		const iframe = createIframe({
-			url: "https://example.com",
+		const iframe = createIframeElement({
 			name: "test-iframe",
-			container,
 			dimensions: { width: 100, height: 100 },
 			style: {
-				marginTop: 8,
 				borderRadius: "12px",
 			},
 		});
 
-		expect(iframe.style.getPropertyValue("margin-top")).toBe("8px");
 		expect(iframe.style.getPropertyValue("border-radius")).toBe("12px");
 	});
 
 	it("should preserve unitless numeric styles and case-sensitive CSS variables", () => {
-		const iframe = createIframe({
-			url: "https://example.com",
+		const iframe = createIframeElement({
 			name: "styled-frame",
-			container,
 			dimensions: { width: 100, height: 100 },
 			style: {
 				zIndex: 10,
@@ -174,25 +126,9 @@ describe("createIframe", () => {
 		expect(iframe.style.borderColor).toBe("var(--brandColor)");
 	});
 
-	it("should handle boolean attributes", () => {
-		const iframe = createIframe({
-			url: "https://example.com",
-			name: "test-iframe",
-			container,
-			dimensions: { width: 100, height: 100 },
-			attributes: {
-				allowfullscreen: true,
-			},
-		});
-
-		expect(iframe.hasAttribute("allowfullscreen")).toBe(true);
-	});
-
 	it("should skip undefined attributes", () => {
-		const iframe = createIframe({
-			url: "https://example.com",
+		const iframe = createIframeElement({
 			name: "test-iframe",
-			container,
 			dimensions: { width: 100, height: 100 },
 			attributes: {
 				title: undefined as unknown as string,
@@ -203,71 +139,13 @@ describe("createIframe", () => {
 	});
 
 	it("should handle string dimensions", () => {
-		const iframe = createIframe({
-			url: "https://example.com",
+		const iframe = createIframeElement({
 			name: "test-iframe",
-			container,
 			dimensions: { width: "100%", height: "auto" },
 		});
 
 		expect(iframe.style.width).toBe("100%");
 		expect(iframe.style.height).toBe("auto");
-	});
-
-	it("should append iframe to container", () => {
-		const iframe = createIframe({
-			url: "https://example.com",
-			name: "test-iframe",
-			container,
-			dimensions: { width: 100, height: 100 },
-		});
-
-		expect(container.contains(iframe)).toBe(true);
-	});
-});
-
-describe("createPrerenderIframe", () => {
-	let container: HTMLDivElement;
-
-	beforeEach(() => {
-		container = document.createElement("div");
-		document.body.appendChild(container);
-	});
-
-	afterEach(() => {
-		container.remove();
-	});
-
-	it("should create prerender iframe with srcdoc", () => {
-		const iframe = createPrerenderIframe(container, {
-			width: 200,
-			height: 150,
-		});
-
-		expect(iframe.tagName).toBe("IFRAME");
-		expect(iframe.name).toBe("__forgeframe_prerender__");
-		expect(iframe.srcdoc).toContain("<!DOCTYPE html>");
-	});
-
-	it("should apply dimensions", () => {
-		const iframe = createPrerenderIframe(container, {
-			width: 200,
-			height: 150,
-		});
-
-		expect(iframe.style.width).toBe("200px");
-		expect(iframe.style.height).toBe("150px");
-	});
-
-	it("should set default attributes", () => {
-		const iframe = createPrerenderIframe(container, {
-			width: 100,
-			height: 100,
-		});
-
-		expect(iframe.getAttribute("frameborder")).toBe("0");
-		expect(iframe.getAttribute("allowtransparency")).toBe("true");
-		expect(iframe.getAttribute("scrolling")).toBe("no");
 	});
 });
 
@@ -283,13 +161,18 @@ describe("destroyIframe", () => {
 		container.remove();
 	});
 
-	it("should remove iframe from DOM", () => {
-		const iframe = createIframe({
-			url: "about:blank",
+	function appendIframe(url: string): HTMLIFrameElement {
+		const iframe = createIframeElement({
 			name: "test",
-			container,
 			dimensions: { width: 100, height: 100 },
 		});
+		container.appendChild(iframe);
+		iframe.src = url;
+		return iframe;
+	}
+
+	it("should remove iframe from DOM", () => {
+		const iframe = appendIframe("about:blank");
 
 		expect(container.contains(iframe)).toBe(true);
 
@@ -299,12 +182,7 @@ describe("destroyIframe", () => {
 	});
 
 	it("should set src to about:blank", () => {
-		const iframe = createIframe({
-			url: "https://example.com",
-			name: "test",
-			container,
-			dimensions: { width: 100, height: 100 },
-		});
+		const iframe = appendIframe("https://example.com");
 
 		destroyIframe(iframe);
 

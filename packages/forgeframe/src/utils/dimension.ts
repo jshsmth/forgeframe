@@ -9,10 +9,9 @@
  * @remarks
  * Numeric values are converted to pixel strings (e.g., `400` becomes `'400px'`).
  * String values are returned as-is, allowing for units like `'100%'` or `'auto'`.
- * Undefined values return the fallback (defaults to `'100%'`).
+ * Undefined values fill the container (`'100%'`).
  *
  * @param value - The dimension value (number for pixels, string with units, or undefined)
- * @param fallback - The value to use if value is undefined (default: '100%')
  * @returns A CSS-compatible dimension string
  *
  * @example
@@ -20,16 +19,14 @@
  * normalizeDimensionToCSS(400);        // '400px'
  * normalizeDimensionToCSS('100%');     // '100%'
  * normalizeDimensionToCSS(undefined);  // '100%'
- * normalizeDimensionToCSS(undefined, 'auto'); // 'auto'
  * ```
  *
- * @public
+ * @internal
  */
 export function normalizeDimensionToCSS(
 	value: string | number | undefined,
-	fallback: string = "100%",
 ): string {
-	if (value === undefined) return fallback;
+	if (value === undefined) return "100%";
 	if (typeof value === "number") return `${value}px`;
 	return value;
 }
@@ -54,7 +51,7 @@ export function normalizeDimensionToCSS(
  * normalizeDimensionToNumber(undefined, 500); // 500
  * ```
  *
- * @public
+ * @internal
  */
 export function normalizeDimensionToNumber(
 	value: string | number | undefined,

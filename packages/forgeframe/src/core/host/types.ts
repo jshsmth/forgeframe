@@ -9,17 +9,16 @@
  */
 
 import type { FunctionBridge } from "../../communication/bridge";
-import type { MessageHandler, Messenger } from "../../communication/messenger";
+import type { MessageHandler } from "../../communication/messenger";
 import type { ContextType } from "../../constants";
 import type { EventEmitter } from "../../events/emitter";
 import type { SerializedProps } from "../../props/types";
-import type { HostPropsDefinition } from "../../types/props";
 import type {
 	GetPeerInstancesOptions,
 	HostProps,
 	SiblingInfo,
 } from "../../types/runtime";
-import type { Dimensions, DomainMatcher } from "../../types/utility";
+import type { Dimensions } from "../../types/utility";
 
 export type VerifiedMessageSource = Parameters<MessageHandler>[1];
 
@@ -48,7 +47,6 @@ export interface HostPropsRuntimeOptions {
 	getConsumerWindow(): Window;
 	getConsumerDomain(): string;
 	isConsumerDomainVerified(): boolean;
-	getMessenger(): Messenger;
 	getBridge(): FunctionBridge;
 	onFirstHostPropsAccess(): void;
 }
@@ -69,14 +67,6 @@ export interface HostTransportOptions {
 export interface HostTransportPropsHandler {
 	isConsumerSource(source: VerifiedMessageSource): boolean;
 	applySerializedProps(serializedProps: SerializedProps): { success: true };
-}
-
-export interface HostHostConfiguration<
-	P extends Record<string, unknown>,
-	SchemaInputs = P,
-> {
-	propDefinitions?: HostPropsDefinition<P, SchemaInputs>;
-	allowedConsumerDomains?: DomainMatcher;
 }
 
 export type WindowWithHostProps<P extends Record<string, unknown>> = Omit<

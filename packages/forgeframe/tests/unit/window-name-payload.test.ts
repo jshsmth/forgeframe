@@ -1,7 +1,7 @@
 /**
  * Unit tests for window name payload helpers in `@/window/name-payload`.
  *
- * Covers payload encoding/parsing, ForgeFrame window detection, payload mutation helpers, and size/error guardrails.
+ * Covers payload encoding/parsing, ForgeFrame window detection, reconnection metadata, and size/error guardrails.
  */
 import { describe, expect, it, vi } from "vitest";
 import type { ConsumerExports } from "@/communication/types";
@@ -19,8 +19,6 @@ import {
 	getInitialPayload,
 	isForgeFrameWindow,
 	isHostOfComponent,
-	parseWindowName,
-	updateWindowName,
 } from "@/window/name-payload";
 import type { WindowNamePayload } from "@/window/types";
 
@@ -131,7 +129,12 @@ describe("buildWindowName", () => {
 	});
 });
 
-describe("parseWindowName", () => {
+/** Parses a window name through the host's initial-payload reader. */
+function readWindowName<P>(name: string): WindowNamePayload<P> | null {
+	return getInitialPayload<P>({ name } as Window);
+}
+
+describe("window name parsing", () => {
 	it("should parse valid window name", () => {
 		const payload: WindowNamePayload<{ value: number }> = {
 			uid: "test-uid",
@@ -144,7 +147,7 @@ describe("parseWindowName", () => {
 		};
 
 		const name = buildWindowName(payload);
-		const parsed = parseWindowName<{ value: number }>(name);
+		const parsed = readWindowName<{ value: number }>(name);
 
 		expect(parsed).toEqual(payload);
 	});
@@ -174,7 +177,7 @@ describe("parseWindowName", () => {
 			},
 		};
 
-		const parsed = parseWindowName<Record<string, never>>(
+		const parsed = readWindowName<Record<string, never>>(
 			buildWindowName(payload),
 		);
 
@@ -202,7 +205,7 @@ describe("parseWindowName", () => {
 			},
 		};
 
-		const parsed = parseWindowName<Record<string, never>>(
+		const parsed = readWindowName<Record<string, never>>(
 			buildWindowName(payload),
 		);
 
@@ -210,18 +213,18 @@ describe("parseWindowName", () => {
 	});
 
 	it("should return null for non-ForgeFrame name", () => {
-		expect(parseWindowName("some-other-name")).toBeNull();
-		expect(parseWindowName("")).toBeNull();
+		expect(readWindowName("some-other-name")).toBeNull();
+		expect(readWindowName("")).toBeNull();
 	});
 
 	it("should return null for invalid base64", () => {
 		const invalidName = `${WINDOW_NAME_PREFIX}not-valid-base64!!!`;
-		expect(parseWindowName(invalidName)).toBeNull();
+		expect(readWindowName(invalidName)).toBeNull();
 	});
 
 	it("should return null for invalid JSON", () => {
 		const invalidJson = `${WINDOW_NAME_PREFIX}${btoa("not json")}`;
-		expect(parseWindowName(invalidJson)).toBeNull();
+		expect(readWindowName(invalidJson)).toBeNull();
 	});
 
 	it("should return null for payloads with an invalid structure", () => {
@@ -239,7 +242,7 @@ describe("parseWindowName", () => {
 			encodeURIComponent(JSON.stringify(malformedPayload)),
 		)}`;
 
-		expect(parseWindowName(malformedName)).toBeNull();
+		expect(readWindowName(malformedName)).toBeNull();
 	});
 
 	it("should parse payloads from a different package version when the protocol is supported", () => {
@@ -258,7 +261,7 @@ describe("parseWindowName", () => {
 			encodeURIComponent(JSON.stringify(compatiblePayload)),
 		)}`;
 
-		expect(parseWindowName(compatibleName)).toEqual(compatiblePayload);
+		expect(readWindowName(compatibleName)).toEqual(compatiblePayload);
 	});
 
 	it("should return null for payloads with an unsupported protocol version", () => {
@@ -277,7 +280,7 @@ describe("parseWindowName", () => {
 			encodeURIComponent(JSON.stringify(malformedPayload)),
 		)}`;
 
-		expect(parseWindowName(malformedName)).toBeNull();
+		expect(readWindowName(malformedName)).toBeNull();
 	});
 
 	it("should parse legacy payloads without an explicit protocol version", () => {
@@ -295,7 +298,7 @@ describe("parseWindowName", () => {
 			encodeURIComponent(JSON.stringify(legacyPayload)),
 		)}`;
 
-		expect(parseWindowName(legacyName)).toEqual(legacyPayload);
+		expect(readWindowName(legacyName)).toEqual(legacyPayload);
 	});
 
 	it("should return null for payloads with invalid exports metadata", () => {
@@ -313,7 +316,7 @@ describe("parseWindowName", () => {
 			encodeURIComponent(JSON.stringify(malformedPayload)),
 		)}`;
 
-		expect(parseWindowName(malformedName)).toBeNull();
+		expect(readWindowName(malformedName)).toBeNull();
 	});
 
 	it("should round-trip real non-ASCII payload values", () => {
@@ -328,7 +331,7 @@ describe("parseWindowName", () => {
 		};
 
 		const name = buildWindowName(payload);
-		const parsed = parseWindowName<{ message: string }>(name);
+		const parsed = readWindowName<{ message: string }>(name);
 
 		expect(parsed).toEqual(payload);
 		expect(parsed?.props.message).toBe("Héllo 世界 👋 café");
@@ -541,7 +544,7 @@ describe("parseWindowName", () => {
 			encodeURIComponent(JSON.stringify(malformedPayload)),
 		)}`;
 
-		expect(parseWindowName(malformedName)).toBeNull();
+		expect(readWindowName(malformedName)).toBeNull();
 	});
 });
 
@@ -700,46 +703,6 @@ describe("createWindowPayload", () => {
 	});
 });
 
-describe("updateWindowName", () => {
-	it("should update window name with new payload", () => {
-		const win = { name: "" } as Window;
-		const payload: WindowNamePayload<Record<string, never>> = {
-			uid: "new-uid",
-			tag: "test-tag",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://consumer.com",
-			props: {},
-			exports: VALID_EXPORTS,
-		};
-
-		updateWindowName(win, payload);
-
-		expect(win.name.startsWith(WINDOW_NAME_PREFIX)).toBe(true);
-		expect(parseWindowName(win.name)?.uid).toBe("new-uid");
-	});
-
-	it("should not throw on cross-origin error", () => {
-		const win = {
-			set name(_: string) {
-				throw new Error("Cross-origin");
-			},
-		} as unknown as Window;
-
-		const payload: WindowNamePayload<Record<string, never>> = {
-			uid: "test-uid",
-			tag: "test-tag",
-			version: VERSION,
-			context: CONTEXT.IFRAME,
-			consumerDomain: "https://consumer.com",
-			props: {},
-			exports: VALID_EXPORTS,
-		};
-
-		expect(() => updateWindowName(win, payload)).not.toThrow();
-	});
-});
-
 describe("getInitialPayload", () => {
 	it("should return payload from window name", () => {
 		const originalPayload: WindowNamePayload<{ value: number }> = {
@@ -786,7 +749,7 @@ describe("consumeInitialPayload", () => {
 		});
 		const win = { name: buildWindowName(original) } as Window;
 		expect(consumeInitialPayload(win)).toEqual(original);
-		const retained = parseWindowName(win.name);
+		const retained = getInitialPayload(win);
 		expect(retained).toMatchObject({
 			uid: "reconnect-uid",
 			protocolVersion: PROTOCOL_VERSION,

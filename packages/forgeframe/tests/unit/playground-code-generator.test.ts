@@ -1,10 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-	clearComponents,
-	destroyAll,
-	getComponent,
-	getComponentOptions,
-} from "@/core/component";
+import { clearComponents, destroyAll, getComponent } from "@/core/component";
+import { getComponentOptions } from "@/core/component-registry";
 import { ConsumerComponent } from "@/core/consumer";
 import ForgeFrame, { prop } from "@/index";
 import { generateCode } from "../../../playground/consumer/code-generator";

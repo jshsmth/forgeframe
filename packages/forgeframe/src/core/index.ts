@@ -9,20 +9,14 @@
  */
 
 export {
-	clearComponents,
 	create,
 	destroy,
 	destroyAll,
 	destroyByTag,
-	getComponent,
-	unregisterComponent,
 } from "./component";
 
-export { ConsumerComponent } from "./consumer";
 export {
-	getHost,
 	getHostProps,
-	HostComponent,
 	initHost,
 	isEmbedded,
 	isHost,

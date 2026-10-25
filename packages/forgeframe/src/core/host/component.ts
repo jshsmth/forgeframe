@@ -124,7 +124,6 @@ export class HostComponent<
 				getConsumerWindow: () => this.consumerWindow,
 				getConsumerDomain: () => this.consumerDomain,
 				isConsumerDomainVerified: () => this.consumerDomainVerified,
-				getMessenger: () => this.transport.messenger,
 				getBridge: () => this.transport.bridge,
 				onFirstHostPropsAccess: () => this.transport.handleHostPropsAccess(),
 			});
@@ -137,14 +136,6 @@ export class HostComponent<
 				bridge: {
 					configurable: true,
 					get: () => this.transport.bridge,
-				},
-				consumerProps: {
-					configurable: true,
-					get: () => this.propsRuntime.consumerProps,
-				},
-				propsHandlers: {
-					configurable: true,
-					get: () => this.propsRuntime.propsHandlers,
 				},
 			});
 

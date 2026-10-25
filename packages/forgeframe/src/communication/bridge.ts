@@ -91,7 +91,7 @@ function isSafeObjectKey(key: string): boolean {
  * await remoteFn(); // Calls the original function cross-domain
  * ```
  *
- * @public
+ * @internal
  */
 export class FunctionBridge {
 	/** @internal */
@@ -143,13 +143,12 @@ export class FunctionBridge {
 	 * it. Serialization also records that identity in the current batch.
 	 *
 	 * @param fn - The function to serialize
-	 * @param name - Optional name for debugging
 	 * @returns A function reference that can be sent across domains
 	 */
-	serialize(fn: CallableFunction, name?: string): FunctionRef {
+	serialize(fn: CallableFunction): FunctionRef {
 		return createFunctionRef(
 			this.retainLocalFunction(fn),
-			name || fn.name || "anonymous",
+			fn.name || "anonymous",
 		);
 	}
 
@@ -510,22 +509,6 @@ export class FunctionBridge {
 	}
 
 	/**
-	 * Returns the current number of registered local functions.
-	 * Useful for debugging and monitoring.
-	 */
-	get localFunctionCount(): number {
-		return this.localFunctions.size;
-	}
-
-	/**
-	 * Returns the current number of cached remote functions.
-	 * Useful for debugging and monitoring.
-	 */
-	get remoteFunctionCount(): number {
-		return this.remoteFunctions.size;
-	}
-
-	/**
 	 * Cleans up all function references.
 	 */
 	destroy(): void {
@@ -550,7 +533,7 @@ export class FunctionBridge {
  * @param key - Property name passed to `toJSON()`; the root uses `""`
  * @returns A new object with all functions replaced by references
  *
- * @public
+ * @internal
  */
 export function serializeFunctions(
 	obj: unknown,
@@ -668,21 +651,23 @@ function serializeRecord(
 /**
  * Recursively deserializes all function references in an object.
  *
+ * @remarks
+ * Input always comes from parsed JSON (message data or a decoded prop
+ * wrapper), so it cannot contain cycles.
+ *
  * @param obj - The object to process
  * @param bridge - The function bridge to use for deserialization
  * @param targetWin - The window containing the original functions
  * @param targetDomain - The origin of the target window
- * @param seen - Internal set for cycle detection (do not pass manually)
  * @returns A new object with all references replaced by callable wrappers
  *
- * @public
+ * @internal
  */
 export function deserializeFunctions(
 	obj: unknown,
 	bridge: FunctionBridge,
 	targetWin: Window,
 	targetDomain: string,
-	stack: WeakSet<object> = new WeakSet(),
 ): unknown {
 	if (FunctionBridge.isFunctionRef(obj)) {
 		return bridge.deserialize(obj, targetWin, targetDomain);
@@ -693,43 +678,24 @@ export function deserializeFunctions(
 	}
 
 	if (Array.isArray(obj)) {
-		if (stack.has(obj)) {
-			throw new Error("Circular reference detected in serialized props");
-		}
-		stack.add(obj);
-		try {
-			return obj.map((item) =>
-				deserializeFunctions(item, bridge, targetWin, targetDomain, stack),
-			);
-		} finally {
-			stack.delete(obj);
-		}
+		return obj.map((item) =>
+			deserializeFunctions(item, bridge, targetWin, targetDomain),
+		);
 	}
 
 	if (typeof obj === "object" && obj !== null) {
-		if (stack.has(obj)) {
-			throw new Error("Circular reference detected in serialized props");
+		const result: Record<string, unknown> = {};
+		const record = isRecordWireValue(obj) ? obj.__forgeframe_wire_value__ : obj;
+		for (const [key, value] of Object.entries(record)) {
+			if (!isSafeObjectKey(key)) continue;
+			result[key] = deserializeFunctions(
+				value,
+				bridge,
+				targetWin,
+				targetDomain,
+			);
 		}
-		stack.add(obj);
-		try {
-			const result: Record<string, unknown> = {};
-			const record = isRecordWireValue(obj)
-				? obj.__forgeframe_wire_value__
-				: obj;
-			for (const [key, value] of Object.entries(record)) {
-				if (!isSafeObjectKey(key)) continue;
-				result[key] = deserializeFunctions(
-					value,
-					bridge,
-					targetWin,
-					targetDomain,
-					stack,
-				);
-			}
-			return result;
-		} finally {
-			stack.delete(obj);
-		}
+		return result;
 	}
 
 	return obj;

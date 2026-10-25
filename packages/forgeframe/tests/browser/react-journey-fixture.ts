@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { create, createReactComponent, prop } from "../../src/index";
 
 /** Browser-owned observations exposed to the Playwright consumer. */
-export interface ReactJourneySnapshot {
+interface ReactJourneySnapshot {
 	instances: number;
 	rendered: number;
 	errors: string[];

@@ -1,13 +1,12 @@
 /**
  * Unit tests for `@/render/popup`.
  *
- * Covers popup open/focus/close/resize utilities, popup-block detection, and close watcher polling behavior.
+ * Covers popup open/focus/close/resize utilities, popup-block detection through `openPopup`, and close watcher polling behavior.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	closePopup,
 	focusPopup,
-	isPopupBlocked,
 	openPopup,
 	PopupOpenError,
 	resizePopup,
@@ -94,6 +93,29 @@ describe("openPopup", () => {
 
 	it("should throw PopupOpenError when popup is blocked", () => {
 		window.open = vi.fn().mockReturnValue(null);
+
+		expect(() =>
+			openPopup({
+				url: "https://example.com",
+				name: "test-popup",
+				dimensions: { width: 500, height: 600 },
+			}),
+		).toThrow(PopupOpenError);
+	});
+
+	it.each([
+		["closed", { closed: true }],
+		["zero-dimension", { closed: false, innerWidth: 0, innerHeight: 0 }],
+		[
+			"inaccessible",
+			{
+				get closed(): boolean {
+					throw new Error("Access denied");
+				},
+			},
+		],
+	])("should throw PopupOpenError for a %s popup window", (_label, mockWin) => {
+		window.open = vi.fn().mockReturnValue(mockWin);
 
 		expect(() =>
 			openPopup({
@@ -217,47 +239,6 @@ describe("focusPopup", () => {
 		} as unknown as Window;
 
 		expect(() => focusPopup(mockWin)).not.toThrow();
-	});
-});
-
-describe("isPopupBlocked", () => {
-	it("should return true for null window", () => {
-		expect(isPopupBlocked(null)).toBe(true);
-	});
-
-	it("should return true for closed window", () => {
-		const mockWin = { closed: true } as Window;
-		expect(isPopupBlocked(mockWin)).toBe(true);
-	});
-
-	it("should return true for zero-dimension window", () => {
-		const mockWin = {
-			closed: false,
-			innerWidth: 0,
-			innerHeight: 0,
-		} as Window;
-
-		expect(isPopupBlocked(mockWin)).toBe(true);
-	});
-
-	it("should return false for valid popup", () => {
-		const mockWin = {
-			closed: false,
-			innerWidth: 500,
-			innerHeight: 600,
-		} as Window;
-
-		expect(isPopupBlocked(mockWin)).toBe(false);
-	});
-
-	it("should return true when property access throws", () => {
-		const mockWin = {
-			get closed() {
-				throw new Error("Access denied");
-			},
-		} as unknown as Window;
-
-		expect(isPopupBlocked(mockWin)).toBe(true);
 	});
 });
 

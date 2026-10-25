@@ -3,48 +3,11 @@ import type {
 	IframeAttributes,
 	IframeStyles,
 } from "../types/utility";
-import { normalizeDimensionToCSS } from "../utils/dimension";
 import {
 	encodeIframeAttribute,
 	encodeIframeStyle,
 } from "./iframe-configuration";
-
-/**
- * Configuration options for creating an iframe.
- *
- * @public
- */
-export interface IframeOptions {
-	/**
-	 * The URL to load in the iframe.
-	 */
-	url: string;
-
-	/**
-	 * The name attribute for the iframe, used for targeting.
-	 */
-	name: string;
-
-	/**
-	 * The parent HTML element that will contain the iframe.
-	 */
-	container: HTMLElement;
-
-	/**
-	 * The width and height dimensions for the iframe.
-	 */
-	dimensions: Dimensions;
-
-	/**
-	 * Optional additional HTML attributes to set on the iframe element.
-	 */
-	attributes?: IframeAttributes;
-
-	/**
-	 * Optional CSS styles to apply to the iframe element.
-	 */
-	style?: IframeStyles;
-}
+import { applyDimensions } from "./templates";
 
 /**
  * Configuration for creating an iframe element before navigation.
@@ -109,100 +72,6 @@ export function createIframeElement(
 }
 
 /**
- * Creates an iframe element with the specified options and appends it to a container.
- *
- * @remarks
- * This function creates a fully configured iframe with sensible defaults for
- * security and appearance. It sets up sandbox restrictions, removes borders,
- * and ensures cross-browser compatibility.
- *
- * The iframe is appended to the container before setting the `src` attribute,
- * as some browsers require the iframe to be in the DOM before loading content.
- *
- * If no sandbox attribute is provided, a default secure sandbox policy is applied:
- * `allow-scripts allow-same-origin allow-forms allow-popups`
- *
- * @param options - Configuration options for the iframe
- * @returns The created HTMLIFrameElement, already appended to the container
- *
- * @example
- * ```typescript
- * const iframe = createIframe({
- *   url: 'https://example.com/widget',
- *   name: 'my-widget',
- *   container: document.getElementById('widget-container')!,
- *   dimensions: { width: 400, height: 300 },
- *   attributes: { allow: 'payment' }
- * });
- * ```
- *
- * @public
- */
-export function createIframe(options: IframeOptions): HTMLIFrameElement {
-	const {
-		url,
-		name,
-		container,
-		dimensions,
-		attributes = {},
-		style = {},
-	} = options;
-	const iframe = createIframeElement({ name, dimensions, attributes, style });
-
-	// Add to container first (some browsers need this before setting src)
-	container.appendChild(iframe);
-	iframe.src = url;
-
-	return iframe;
-}
-
-/**
- * Creates an iframe for displaying a prerender/loading state.
- *
- * @remarks
- * This function creates a lightweight iframe intended to show a loading
- * placeholder while the actual content iframe is being prepared. The iframe
- * uses `srcdoc` with an empty HTML document, avoiding any external network requests.
- *
- * The prerender iframe uses a special reserved name `__forgeframe_prerender__`
- * to distinguish it from content iframes.
- *
- * @param container - The parent HTML element to append the iframe to
- * @param dimensions - The width and height for the prerender iframe
- * @returns The created prerender HTMLIFrameElement
- *
- * @example
- * ```typescript
- * const prerenderIframe = createPrerenderIframe(
- *   document.getElementById('container')!,
- *   { width: 400, height: 300 }
- * );
- * ```
- *
- * @public
- */
-export function createPrerenderIframe(
-	container: HTMLElement,
-	dimensions: Dimensions,
-): HTMLIFrameElement {
-	const iframe = document.createElement("iframe");
-
-	iframe.name = "__forgeframe_prerender__";
-	iframe.setAttribute("frameborder", "0");
-	iframe.setAttribute("allowtransparency", "true");
-	iframe.setAttribute("scrolling", "no");
-
-	applyDimensions(iframe, dimensions);
-
-	// Prerender iframe doesn't need to load external content
-	iframe.srcdoc = "<!DOCTYPE html><html><head></head><body></body></html>";
-
-	container.appendChild(iframe);
-
-	return iframe;
-}
-
-/**
  * Destroys an iframe by clearing its source and removing it from the DOM.
  *
  * @remarks
@@ -215,12 +84,12 @@ export function createPrerenderIframe(
  *
  * @example
  * ```typescript
- * const iframe = createIframe({ ... });
+ * const iframe = createIframeElement({ name, dimensions });
  * // Later, when done with the iframe:
  * destroyIframe(iframe);
  * ```
  *
- * @public
+ * @internal
  */
 export function destroyIframe(iframe: HTMLIFrameElement): void {
 	try {
@@ -243,7 +112,7 @@ export function destroyIframe(iframe: HTMLIFrameElement): void {
  * resizeIframe(iframe, { width: '100%', height: 'auto' });
  * ```
  *
- * @public
+ * @internal
  */
 export function resizeIframe(
 	iframe: HTMLIFrameElement,
@@ -269,7 +138,7 @@ export function resizeIframe(
  * showIframe(iframe);
  * ```
  *
- * @public
+ * @internal
  */
 export function showIframe(iframe: HTMLIFrameElement): void {
 	iframe.style.display = "";
@@ -293,7 +162,7 @@ export function showIframe(iframe: HTMLIFrameElement): void {
  * hideIframe(iframe);
  * ```
  *
- * @public
+ * @internal
  */
 export function hideIframe(iframe: HTMLIFrameElement): void {
 	iframe.style.display = "none";
@@ -318,7 +187,7 @@ export function hideIframe(iframe: HTMLIFrameElement): void {
  * });
  * ```
  *
- * @public
+ * @internal
  */
 export function focusIframe(iframe: HTMLIFrameElement): void {
 	try {
@@ -326,30 +195,6 @@ export function focusIframe(iframe: HTMLIFrameElement): void {
 		iframe.contentWindow?.focus();
 	} catch {
 		// Cross-origin focus might fail
-	}
-}
-
-/**
- * Applies width and height dimensions to an iframe element.
- *
- * @remarks
- * Only dimensions that are defined will be applied. Numeric values are
- * automatically converted to pixel strings via {@link normalizeDimension}.
- *
- * @param iframe - The iframe element to apply dimensions to
- * @param dimensions - The dimensions object containing width and/or height
- *
- * @internal
- */
-function applyDimensions(
-	iframe: HTMLIFrameElement,
-	dimensions: Dimensions,
-): void {
-	if (dimensions.width !== undefined) {
-		iframe.style.width = normalizeDimensionToCSS(dimensions.width);
-	}
-	if (dimensions.height !== undefined) {
-		iframe.style.height = normalizeDimensionToCSS(dimensions.height);
 	}
 }
 

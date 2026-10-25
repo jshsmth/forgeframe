@@ -428,7 +428,7 @@ export interface ComponentOptions<
 	validate?: (opts: { props: P }) => void;
 
 	/**
-	 * Additional HTML attributes for the iframe/popup.
+	 * Additional HTML attributes for the iframe. Popups ignore them.
 	 */
 	attributes?: IframeAttributes | ((props: P) => IframeAttributes);
 

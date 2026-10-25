@@ -15,8 +15,6 @@ import {
 } from "./prop-update";
 import type { NormalizedOptions } from "./types";
 
-export { PROP_RESET } from "./prop-update";
-
 /** Marks a user callback failure so construction does not defer it as schema validation. */
 class UserNormalizationCallbackFailure {
 	constructor(public readonly thrownValue: unknown) {}
@@ -64,9 +62,9 @@ function buildPropsSnapshot<P>(
 export interface ConsumerPropsUpdateHooks<P extends Record<string, unknown>> {
 	assertActive: () => void;
 	resolveUrl: (props: P) => string;
-	resolveUrlOrigin: (url: string) => string | null;
-	assertStableRenderedOrigin: (nextHostOrigin: string | null) => void;
-	validateTransportProps: (props: P, hostOrigin: string | null) => void;
+	resolveUrlOrigin: (url: string) => string;
+	assertStableRenderedOrigin: (nextHostOrigin: string) => void;
+	validateTransportProps: (props: P, hostOrigin: string) => void;
 	isRendered: () => boolean;
 	syncTrustedDomainForUrl: (url: string) => void;
 	shouldSendPropsToHost: () => boolean;

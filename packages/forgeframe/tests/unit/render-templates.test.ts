@@ -1,16 +1,13 @@
 /**
  * Unit tests for render template helpers in `@/render/templates`.
  *
- * Covers DOM template creation, dimension/style application, spinner style injection, and fade/swap transition helpers.
+ * Covers DOM template creation, dimension/style application, spinner style injection, and the prerender swap transition.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	applyDimensions,
-	createStyleElement,
 	defaultContainerTemplate,
 	defaultPrerenderTemplate,
-	fadeIn,
-	fadeOut,
 	swapPrerenderContent,
 } from "@/render/templates";
 import type { Dimensions, TemplateContext } from "@/types";
@@ -332,184 +329,43 @@ describe("render template helpers", () => {
 		});
 	});
 
-	describe("createStyleElement", () => {
-		it("should create a style element with CSS content", () => {
-			const css = ".my-class { color: red; }";
-			const style = createStyleElement(document, css);
-
-			expect(style.tagName).toBe("STYLE");
-			expect(style.textContent).toBe(css);
-		});
-
-		it("should apply nonce when provided", () => {
-			const css = ".my-class { color: blue; }";
-			const nonce = "security-nonce";
-			const style = createStyleElement(document, css, nonce);
-
-			expect(style.getAttribute("nonce")).toBe(nonce);
-		});
-
-		it("should not set nonce attribute when not provided", () => {
-			const css = ".my-class { color: green; }";
-			const style = createStyleElement(document, css);
-
-			expect(style.hasAttribute("nonce")).toBe(false);
-		});
-	});
-
-	describe("fadeIn", () => {
-		it("should transition opacity from 0 to 1", async () => {
-			const element = document.createElement("div");
-			element.style.opacity = "1";
-
-			const fadePromise = fadeIn(element, 100);
-
-			// After fadeIn is called, opacity should be set to 1 (after reflow trigger)
-			// The function sets opacity to 0, forces reflow, then sets to 1
-			expect(element.style.opacity).toBe("1");
-
-			vi.advanceTimersByTime(100);
-			await fadePromise;
-		});
-
-		it("should have final opacity of 1", async () => {
-			const element = document.createElement("div");
-
-			const fadePromise = fadeIn(element, 100);
-
-			// After reflow trigger, opacity should be 1
-			expect(element.style.opacity).toBe("1");
-
-			vi.advanceTimersByTime(100);
-			await fadePromise;
-
-			expect(element.style.opacity).toBe("1");
-		});
-
-		it("should set an opacity transition with the provided fadeIn duration", async () => {
-			const element = document.createElement("div");
-
-			const fadePromise = fadeIn(element, 200);
-
-			expect(element.style.transition).toContain("opacity");
-			expect(element.style.transition).toContain("200ms");
-
-			vi.advanceTimersByTime(200);
-			await fadePromise;
-		});
-
-		it("should resolve fadeIn after the provided duration elapses", async () => {
-			const element = document.createElement("div");
-			let resolved = false;
-
-			fadeIn(element, 150).then(() => {
-				resolved = true;
-			});
-
-			expect(resolved).toBe(false);
-
-			vi.advanceTimersByTime(100);
-			await Promise.resolve();
-			expect(resolved).toBe(false);
-
-			vi.advanceTimersByTime(50);
-			await Promise.resolve();
-			expect(resolved).toBe(true);
-		});
-
-		it("should use default duration of 200ms", async () => {
-			const element = document.createElement("div");
-
-			const fadePromise = fadeIn(element);
-
-			expect(element.style.transition).toContain("200ms");
-
-			vi.advanceTimersByTime(200);
-			await fadePromise;
-		});
-	});
-
-	describe("fadeOut", () => {
-		it("should set opacity to 0", async () => {
-			const element = document.createElement("div");
-			element.style.opacity = "1";
-
-			const fadePromise = fadeOut(element, 100);
-
-			expect(element.style.opacity).toBe("0");
-
-			vi.advanceTimersByTime(100);
-			await fadePromise;
-		});
-
-		it("should set an opacity transition with the provided fadeOut duration", async () => {
-			const element = document.createElement("div");
-
-			const fadePromise = fadeOut(element, 300);
-
-			expect(element.style.transition).toContain("opacity");
-			expect(element.style.transition).toContain("300ms");
-
-			vi.advanceTimersByTime(300);
-			await fadePromise;
-		});
-
-		it("should resolve fadeOut after the provided duration elapses", async () => {
-			const element = document.createElement("div");
-			let resolved = false;
-
-			fadeOut(element, 100).then(() => {
-				resolved = true;
-			});
-
-			expect(resolved).toBe(false);
-
-			vi.advanceTimersByTime(100);
-			await Promise.resolve();
-			expect(resolved).toBe(true);
-		});
-
-		it("should use default duration of 200ms", async () => {
-			const element = document.createElement("div");
-
-			const fadePromise = fadeOut(element);
-
-			expect(element.style.transition).toContain("200ms");
-
-			vi.advanceTimersByTime(200);
-			await fadePromise;
-		});
-	});
-
 	describe("swapPrerenderContent", () => {
-		it("should fade out and remove prerender element", async () => {
+		it("should fade out and remove prerender element before revealing content", async () => {
 			const container = document.createElement("div");
 			const prerender = document.createElement("div");
 			const actual = document.createElement("div");
+			prerender.style.opacity = "1";
+			actual.style.display = "none";
 
-			container.appendChild(prerender);
+			container.append(prerender, actual);
 
-			const swapPromise = swapPrerenderContent(container, prerender, actual);
+			const swapPromise = swapPrerenderContent(prerender, actual, () => true);
 
-			// Advance through fadeOut (150ms)
-			vi.advanceTimersByTime(150);
+			expect(prerender.style.opacity).toBe("0");
+			expect(prerender.style.transition).toBe("opacity 150ms ease-out");
+			expect(actual.style.display).toBe("none");
+
+			vi.advanceTimersByTime(149);
+			await Promise.resolve();
+			expect(container.contains(prerender)).toBe(true);
+
+			vi.advanceTimersByTime(1);
+			await Promise.resolve();
 			await Promise.resolve();
 
-			// Prerender should be removed
 			expect(container.contains(prerender)).toBe(false);
+			expect(actual.style.display).toBe("");
 
-			// Advance through fadeIn (150ms)
 			vi.advanceTimersByTime(150);
 			await swapPromise;
 		});
 
 		it("should set actual element to visible", async () => {
-			const container = document.createElement("div");
 			const actual = document.createElement("div");
 			actual.style.display = "none";
 			actual.style.visibility = "hidden";
 
-			const swapPromise = swapPrerenderContent(container, null, actual);
+			const swapPromise = swapPrerenderContent(null, actual, () => true);
 
 			// Should reset display and visibility
 			expect(actual.style.display).toBe("");
@@ -519,30 +375,43 @@ describe("render template helpers", () => {
 			await swapPromise;
 		});
 
-		it("should fade in actual element", async () => {
-			const container = document.createElement("div");
+		it("should fade in actual element and resolve after the fade duration", async () => {
 			const actual = document.createElement("div");
+			let resolved = false;
 
-			const swapPromise = swapPrerenderContent(container, null, actual);
-
-			vi.advanceTimersByTime(150);
-			await swapPromise;
-
-			// After fade in completes, opacity should be 1
-			expect(actual.style.opacity).toBe("1");
-		});
-
-		it("should work without prerender element", async () => {
-			const container = document.createElement("div");
-			const actual = document.createElement("div");
-
-			const swapPromise = swapPrerenderContent(container, null, actual);
+			void swapPrerenderContent(null, actual, () => true).then(() => {
+				resolved = true;
+			});
 
 			// Should only need fadeIn time (no fadeOut)
+			expect(actual.style.opacity).toBe("1");
+			expect(actual.style.transition).toBe("opacity 150ms ease-in");
+
+			vi.advanceTimersByTime(149);
+			await Promise.resolve();
+			expect(resolved).toBe(false);
+
+			vi.advanceTimersByTime(1);
+			await Promise.resolve();
+			await Promise.resolve();
+			expect(resolved).toBe(true);
+		});
+
+		it("should leave the content hidden when shouldShow declines after the fade out", async () => {
+			const prerender = document.createElement("div");
+			const actual = document.createElement("div");
+			actual.style.display = "none";
+			let show = true;
+
+			const swapPromise = swapPrerenderContent(prerender, actual, () => show);
+			show = false;
+
 			vi.advanceTimersByTime(150);
 			await swapPromise;
 
-			expect(actual.style.opacity).toBe("1");
+			expect(prerender.isConnected).toBe(false);
+			expect(actual.style.display).toBe("none");
+			expect(actual.style.opacity).toBe("");
 		});
 	});
 });

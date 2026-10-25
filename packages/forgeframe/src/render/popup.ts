@@ -5,7 +5,7 @@ import { buildPopupFeatures, nextPopupPollInterval } from "./popup-layout";
 /**
  * Configuration options for opening a popup window.
  *
- * @public
+ * @internal
  */
 export interface PopupOptions {
 	/**
@@ -99,7 +99,7 @@ export class PopupOpenError extends Error {
  * }
  * ```
  *
- * @public
+ * @internal
  */
 export function openPopup(options: PopupOptions): Window {
 	const { url, name, dimensions } = options;
@@ -135,7 +135,7 @@ export function openPopup(options: PopupOptions): Window {
  * closePopup(popup);
  * ```
  *
- * @public
+ * @internal
  */
 export function closePopup(win: Window): void {
 	try {
@@ -165,7 +165,7 @@ export function closePopup(win: Window): void {
  * });
  * ```
  *
- * @public
+ * @internal
  */
 export function focusPopup(win: Window): void {
 	try {
@@ -178,30 +178,20 @@ export function focusPopup(win: Window): void {
 }
 
 /**
- * Checks if a popup window was blocked by the browser.
+ * Checks if a window returned by `window.open()` was blocked by the browser.
  *
  * @remarks
- * This function uses multiple heuristics to detect blocked popups:
- * - `null` window reference indicates the popup was blocked
+ * A `null` reference is checked by the caller. For a returned window, this
+ * function uses two heuristics:
  * - Attempting to access properties on a blocked popup throws an error
  * - Some browsers return a window with zero dimensions when blocked
  *
- * @param win - The Window object to check, or `null` if the popup failed to open
+ * @param win - The Window object returned by `window.open()`
  * @returns `true` if the popup appears to be blocked, `false` otherwise
  *
- * @example
- * ```typescript
- * const win = window.open(url, name, features);
- * if (isPopupBlocked(win)) {
- *   console.error('Popup was blocked by the browser');
- * }
- * ```
- *
- * @public
+ * @internal
  */
-export function isPopupBlocked(win: Window | null): boolean {
-	if (!win) return true;
-
+function isPopupBlocked(win: Window): boolean {
 	try {
 		// Try to access a property - blocked popups throw errors
 		if (win.closed) return true;
@@ -244,7 +234,7 @@ export function isPopupBlocked(win: Window | null): boolean {
  * stopWatching();
  * ```
  *
- * @public
+ * @internal
  */
 export function watchPopupClose(
 	win: Window,
@@ -324,7 +314,7 @@ export function watchPopupClose(
  * resizePopup(popup, { width: 800, height: 600 });
  * ```
  *
- * @public
+ * @internal
  */
 export function resizePopup(win: Window, dimensions: Dimensions): boolean {
 	try {

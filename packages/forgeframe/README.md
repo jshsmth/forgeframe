@@ -484,7 +484,7 @@ const SecureWidget = ForgeFrame.create({
 | Option | Description |
 |--------|-------------|
 | `sendToHost` | Skip sending the prop to the host when set to `false` |
-| `sameDomain` | Only deliver the prop after the loaded host is verified to be same-origin. It is not included in the initial bootstrap payload |
+| `sameDomain` | Only deliver the prop after the loaded host is verified to be same-origin. It is never in `window.name` or the initial query/POST request; a verified same-origin host receives it in the bootstrap snapshot |
 | `trustedDomains` | Only send the prop to matching host domains |
 | `serialization` | Choose how object props are transferred: `JSON` (default), `BASE64`, or `DOTIFY`; all three bridge nested callbacks and preserve `Date` values |
 | `queryParam` / `bodyParam` | Include the prop in the host page's initial HTTP request |

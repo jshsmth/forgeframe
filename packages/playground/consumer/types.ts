@@ -5,7 +5,7 @@
 export type RenderContext = "iframe" | "popup";
 export type IframeStyle = "embedded" | "modal";
 
-export interface ModalStyle {
+interface ModalStyle {
 	overlayBackground?: string;
 	boxBackground?: string;
 	borderRadius?: string;

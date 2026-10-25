@@ -7,7 +7,7 @@
  * This interface is useful when you need to create a promise that will be
  * resolved or rejected from outside the promise executor function.
  *
- * @public
+ * @internal
  */
 export interface Deferred<T> {
 	/** The underlying promise that can be awaited */
@@ -39,7 +39,7 @@ export interface Deferred<T> {
  * deferred.resolve('Success!');
  * ```
  *
- * @public
+ * @internal
  */
 export function createDeferred<T>(): Deferred<T> {
 	let resolve!: (value: T) => void;
@@ -82,7 +82,7 @@ export function createDeferred<T>(): Deferred<T> {
  * }
  * ```
  *
- * @public
+ * @internal
  */
 export function promiseTimeout<T>(
 	promise: Promise<T>,

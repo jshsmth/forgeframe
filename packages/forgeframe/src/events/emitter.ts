@@ -29,7 +29,7 @@ interface ListenerRegistration {
  * unsubscribe();
  * ```
  *
- * @public
+ * @internal
  */
 export class EventEmitter implements EventEmitterInterface {
 	/**
@@ -57,7 +57,7 @@ export class EventEmitter implements EventEmitterInterface {
 	 * });
 	 * ```
 	 *
-	 * @public
+	 * @internal
 	 */
 	on<T = unknown>(event: string, handler: EventHandler<T>): () => void {
 		return this.register(event, handler as EventHandler, false);
@@ -82,7 +82,7 @@ export class EventEmitter implements EventEmitterInterface {
 	 * });
 	 * ```
 	 *
-	 * @public
+	 * @internal
 	 */
 	once<T = unknown>(event: string, handler: EventHandler<T>): () => void {
 		return this.register(event, handler as EventHandler, true);
@@ -144,7 +144,7 @@ export class EventEmitter implements EventEmitterInterface {
 	 * emitter.emit('userAction', { action: 'click', target: 'button' });
 	 * ```
 	 *
-	 * @public
+	 * @internal
 	 */
 	emit<T = unknown>(event: string, data?: T): void {
 		const handlers = this.listeners.get(event);
@@ -206,7 +206,7 @@ export class EventEmitter implements EventEmitterInterface {
 	 * emitter.off('message');
 	 * ```
 	 *
-	 * @public
+	 * @internal
 	 */
 	off<T = unknown>(event: string, handler?: EventHandler<T>): void {
 		if (!handler) {
@@ -233,30 +233,9 @@ export class EventEmitter implements EventEmitterInterface {
 	 * emitter.removeAllListeners();
 	 * ```
 	 *
-	 * @public
+	 * @internal
 	 */
 	removeAllListeners(): void {
 		this.listeners.clear();
-	}
-
-	/**
-	 * Returns the number of listeners registered for a specific event.
-	 *
-	 * @param event - The name of the event to check
-	 * @returns The number of handlers currently subscribed to the event
-	 *
-	 * @remarks
-	 * This method is primarily useful for debugging and testing purposes
-	 * to verify that subscriptions are being properly managed.
-	 *
-	 * @example
-	 * ```typescript
-	 * console.log(`Active listeners: ${emitter.listenerCount('message')}`);
-	 * ```
-	 *
-	 * @public
-	 */
-	listenerCount(event: string): number {
-		return this.listeners.get(event)?.size ?? 0;
 	}
 }

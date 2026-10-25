@@ -65,7 +65,7 @@ function escapeHtml(value: string): string {
 	});
 }
 
-export function parsePropInput(
+function parsePropInput(
 	input: HTMLInputElement,
 	type: string,
 	previous: unknown,
@@ -96,10 +96,7 @@ export function parsePropInput(
 	return input.value;
 }
 
-export function setPropInputError(
-	input: HTMLInputElement,
-	message: string,
-): void {
+function setPropInputError(input: HTMLInputElement, message: string): void {
 	input.setAttribute("aria-invalid", String(Boolean(message)));
 	const error = input
 		.closest(".prop-item, .add-prop-form")

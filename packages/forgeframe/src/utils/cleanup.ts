@@ -25,7 +25,7 @@ type CleanupTask = () => void | Promise<void>;
  * await cleanup.cleanup();
  * ```
  *
- * @public
+ * @internal
  */
 export class CleanupManager {
 	/**
@@ -62,7 +62,7 @@ export class CleanupManager {
 	 * });
 	 * ```
 	 *
-	 * @public
+	 * @internal
 	 */
 	register(task: CleanupTask): void {
 		if (this.cleaned) {
@@ -95,7 +95,7 @@ export class CleanupManager {
 	 * }
 	 * ```
 	 *
-	 * @public
+	 * @internal
 	 */
 	async cleanup(): Promise<void> {
 		const tasks = this.takeCleanupTasks();

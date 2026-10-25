@@ -1159,12 +1159,35 @@ describe("Messenger", () => {
 			expect(mockWindow.removeEventListener).toHaveBeenCalledTimes(1);
 		});
 
-		it("should set isDestroyed flag", () => {
-			expect(messenger.isDestroyed()).toBe(false);
+		it("should stop handling requests and refuse new messages", async () => {
+			const handler = vi.fn(() => ({ ok: true }));
+			const source = { postMessage: vi.fn() } as unknown as Window;
+			const targetWindow = { postMessage: vi.fn() } as unknown as Window;
+			messenger.on("test", handler);
 
 			messenger.destroy();
 
-			expect(messenger.isDestroyed()).toBe(true);
+			dispatchMessage(
+				serializeMessage(
+					createRequestMessage(
+						"after-destroy",
+						"test",
+						{},
+						{ uid: "host-uid", domain: "https://host.com" },
+					),
+				),
+				source,
+			);
+			await Promise.resolve();
+
+			expect(handler).not.toHaveBeenCalled();
+			expect(source.postMessage).not.toHaveBeenCalled();
+			await expect(
+				messenger.send(targetWindow, "https://target.com", "test"),
+			).rejects.toThrow("Messenger has been destroyed");
+			expect(() =>
+				messenger.post(targetWindow, "https://target.com", "test"),
+			).toThrow("Messenger has been destroyed");
 		});
 	});
 });

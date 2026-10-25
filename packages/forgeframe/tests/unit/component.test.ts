@@ -15,9 +15,9 @@ import {
 	destroyAll,
 	destroyByTag,
 	getComponent,
-	getComponentOptions,
 	unregisterComponent,
 } from "@/core/component";
+import { getComponentOptions } from "@/core/component-registry";
 import { buildNestedHostRefs } from "@/core/consumer/child-refs";
 import { getSiblingInstances } from "@/core/consumer/siblings";
 import { clearHostInstance, getHostProps, initHost, isHost } from "@/core/host";

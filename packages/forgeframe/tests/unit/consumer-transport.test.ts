@@ -1,9 +1,9 @@
 /**
  * Unit tests for `@/core/consumer/transport`.
  *
- * Covers consumer-side trust rotation, host-domain fallback, function-bridge
- * cleanup across failed updates, wait-for-host races, and async init error
- * forwarding from the INIT handshake.
+ * Covers consumer-side trust rotation, host-domain selection, function-bridge
+ * cleanup across failed updates, wait-for-host races, and the bootstrap/INIT
+ * handshake.
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -58,7 +58,7 @@ function createTransport({
 }: {
 	options?: NormalizedOptions<TestProps>;
 	resolveUrl?: () => string;
-	resolveUrlOrigin?: (url: string) => string | null;
+	resolveUrlOrigin?: (url: string) => string;
 } = {}) {
 	const transport = new ConsumerTransport<TestProps, { ready: boolean }>(
 		"consumer-transport-uid",
@@ -81,9 +81,43 @@ function getHandler(
 	).handlers.get(name);
 }
 
+/** Attaches host content the way open() does: the opened origin is recorded first. */
+function attachOpenedHost(
+	transport: ConsumerTransport<TestProps, { ready: boolean }>,
+	hostWindow: Window,
+	origin = "https://host.example.com",
+): void {
+	transport.openedHostDomain = origin;
+	transport.attachHostWindow(hostWindow);
+}
+
+/** Invokes a consumer callback the way the host does, through the bridge's CALL handler. */
+function callConsumerCallback(
+	transport: ConsumerTransport<TestProps, { ready: boolean }>,
+	id: string,
+	source: HandlerSource,
+): unknown {
+	return requireValue(getHandler(transport, MESSAGE_NAME.CALL))(
+		{ id, args: [] },
+		source,
+	);
+}
+
+/** A replace batch that cannot admit a new callback means the recovery pool is full. */
+function expectRecoveryPoolFull(
+	transport: ConsumerTransport<TestProps, { ready: boolean }>,
+): void {
+	transport.bridge.startBatch();
+	expect(() => transport.bridge.serialize(() => "probe")).toThrow(
+		"recovery pool is full",
+	);
+	transport.bridge.abortBatch();
+}
+
 function createHandlers() {
 	return {
-		onInit: vi.fn(async () => {}),
+		onBootstrap: vi.fn(async () => ({ props: {} })),
+		onReconnect: vi.fn(),
 		onClose: vi.fn(async () => {}),
 		onResize: vi.fn(async (_dimensions: Dimensions) => {}),
 		onFocus: vi.fn(async () => {}),
@@ -94,11 +128,6 @@ function createHandlers() {
 		onConsumerExport: vi.fn((_data: unknown) => {}),
 		onGetSiblings: vi.fn(async (_request): Promise<SiblingInfo[]> => []),
 	} satisfies ConsumerTransportHandlers<{ ready: boolean }>;
-}
-
-async function flushMicrotasks(): Promise<void> {
-	await Promise.resolve();
-	await Promise.resolve();
 }
 
 afterEach(() => {
@@ -113,7 +142,7 @@ describe("ConsumerTransport", () => {
 	it("withholds bootstrap from other windows and origins, including the consumer's own origin", async () => {
 		const transport = createTransport();
 		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
-		transport.attachHostWindow(hostWindow);
+		attachOpenedHost(transport, hostWindow);
 		const onBootstrap = vi.fn(async () => ({ props: { secret: "private" } }));
 		transport.setupMessageHandlers({ ...createHandlers(), onBootstrap });
 		const handler = getHandler(transport, MESSAGE_NAME.BOOTSTRAP);
@@ -146,7 +175,7 @@ describe("ConsumerTransport", () => {
 	it("releases a full recovery pool only for a verified new bootstrap session", async () => {
 		const transport = createTransport();
 		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
-		transport.attachHostWindow(hostWindow);
+		attachOpenedHost(transport, hostWindow);
 		let rejectBootstrap = false;
 		const onBootstrap = async (
 			_source: HandlerSource,
@@ -178,31 +207,38 @@ describe("ConsumerTransport", () => {
 		};
 		await bootstrap({ sessionId: "first" }, source);
 		transport.bridge.startBatch();
-		for (let index = 0; index < 500; index++)
-			transport.bridge.serialize(() => index);
+		const retained = Array.from({ length: 500 }, (_, index) =>
+			transport.bridge.serialize(() => index),
+		);
 		transport.bridge.finishBatch(true);
-		expect(transport.bridge.localFunctionCount).toBe(1000);
+		expectRecoveryPoolFull(transport);
 		await bootstrap({ sessionId: "spoofed" }, { ...source, window });
-		expect(transport.bridge.localFunctionCount).toBe(1000);
+		expectRecoveryPoolFull(transport);
 		rejectBootstrap = true;
 		await expect(bootstrap({ sessionId: "second" }, source)).rejects.toThrow(
 			"bootstrap normalization failed",
 		);
-		expect(transport.bridge.localFunctionCount).toBe(1000);
+		expectRecoveryPoolFull(transport);
+		await expect(
+			callConsumerCallback(transport, requireValue(retained[0]).__id__, source),
+		).resolves.toBe(0);
 		rejectBootstrap = false;
 		await bootstrap({ sessionId: "second" }, source);
-		expect(transport.bridge.localFunctionCount).toBe(500);
+		await expect(
+			callConsumerCallback(transport, requireValue(retained[0]).__id__, source),
+		).rejects.toThrow("not found");
+		transport.bridge.startBatch();
+		expect(() => transport.bridge.serialize(() => "admitted")).not.toThrow();
+		transport.bridge.abortBatch();
 	});
 
 	it("requires INIT to match the latest verified bootstrap session", async () => {
 		const transport = createTransport();
 		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
-		transport.attachHostWindow(hostWindow);
+		attachOpenedHost(transport, hostWindow);
 		transport.buildWindowName({
 			tag: "host",
 			context: CONTEXT.IFRAME,
-			props: {},
-			propDefinitions: {},
 			exports: {
 				init: MESSAGE_NAME.INIT,
 				close: MESSAGE_NAME.CLOSE,
@@ -237,17 +273,6 @@ describe("ConsumerTransport", () => {
 			success: true,
 		});
 		expect(transport.hostInitialized).toBe(true);
-	});
-
-	it('should fall back to "*" when the resolved host URL has no origin', () => {
-		const transport = createTransport({
-			options: createOptions({ domain: undefined }),
-			resolveUrl: () => "/relative-widget",
-			resolveUrlOrigin: () => null,
-		});
-
-		expect(transport.dynamicUrlTrustedOrigin).toBeNull();
-		expect(transport.getHostDomain()).toBe("*");
 	});
 
 	it("should prefer the verified active origin after host initialization", () => {
@@ -300,17 +325,26 @@ describe("ConsumerTransport", () => {
 
 	it("should retain both callback snapshots after a props delivery attempt fails", async () => {
 		const transport = createTransport();
-		transport.attachHostWindow(window);
+		attachOpenedHost(transport, window);
 
 		const sendSpy = vi.spyOn(transport.messenger, "send");
 		sendSpy.mockResolvedValueOnce(undefined);
+		const source = {
+			uid: "consumer-transport-uid",
+			domain: "https://host.example.com",
+			window,
+		};
+		const sentCallbackId = (call: number) =>
+			(
+				requireValue(sendSpy.mock.calls[call])[3] as {
+					onReady: { __id__: string };
+				}
+			).onReady.__id__;
 
 		await transport.sendPropsUpdateToHost(
-			{ onReady: () => {} },
+			{ onReady: () => "first" },
 			createOptions().props,
 		);
-
-		expect(transport.bridge.localFunctionCount).toBe(1);
 
 		sendSpy.mockImplementationOnce(async (...args) => {
 			args[5]?.();
@@ -319,25 +353,35 @@ describe("ConsumerTransport", () => {
 
 		await expect(
 			transport.sendPropsUpdateToHost(
-				{ onReady: () => {} },
+				{ onReady: () => "second" },
 				createOptions().props,
 			),
 		).rejects.toThrow("props sync failed");
 
-		expect(transport.bridge.localFunctionCount).toBe(2);
+		await expect(
+			callConsumerCallback(transport, sentCallbackId(0), source),
+		).resolves.toBe("first");
+		await expect(
+			callConsumerCallback(transport, sentCallbackId(1), source),
+		).resolves.toBe("second");
 	});
 
-	it("should keep existing callback references when serialization fails mid-batch", () => {
+	it("should keep existing callback references when serialization fails mid-batch", async () => {
 		const transport = createTransport();
+		attachOpenedHost(transport, window);
+		const source = {
+			uid: "consumer-transport-uid",
+			domain: "https://host.example.com",
+			window,
+		};
 		const circular: unknown[] = [];
 		circular.push(circular);
+		const serializeSpy = vi.spyOn(transport.bridge, "serialize");
 
-		transport.serializePropsForHost(
-			{ onReady: () => {} },
+		const serialized = transport.serializePropsForHost(
+			{ onReady: () => "retained" },
 			createOptions().props,
-		);
-
-		expect(transport.bridge.localFunctionCount).toBe(1);
+		) as { onReady: { __id__: string } };
 
 		expect(() =>
 			transport.serializePropsForHost(
@@ -351,7 +395,15 @@ describe("ConsumerTransport", () => {
 			"Circular reference detected in props - arrays cannot contain circular references",
 		);
 
-		expect(transport.bridge.localFunctionCount).toBe(1);
+		const rolledBack = requireValue(serializeSpy.mock.results[1]).value as {
+			__id__: string;
+		};
+		await expect(
+			callConsumerCallback(transport, serialized.onReady.__id__, source),
+		).resolves.toBe("retained");
+		await expect(
+			callConsumerCallback(transport, rolledBack.__id__, source),
+		).rejects.toThrow("not found");
 	});
 
 	it("should short-circuit waitForHost when initialization already completed", async () => {
@@ -418,36 +470,6 @@ describe("ConsumerTransport", () => {
 		await secondRejection;
 	});
 
-	it("should forward async onInit failures to onError after a trusted INIT message", async () => {
-		const transport = createTransport();
-		const handlers = createHandlers();
-		const initFailure = new Error("async init failed");
-
-		transport.attachHostWindow(window);
-		transport.initPromise = createDeferred<void>();
-		handlers.onInit.mockRejectedValueOnce(initFailure);
-
-		transport.setupMessageHandlers(handlers);
-
-		const initHandler = getHandler(transport, MESSAGE_NAME.INIT);
-		const result = initHandler?.(
-			{},
-			{
-				uid: "host-window",
-				domain: "https://host.example.com",
-				window,
-			},
-		);
-
-		expect(result).toEqual({ success: true });
-		expect(transport.hostInitialized).toBe(true);
-		await expect(transport.initPromise?.promise).resolves.toBeUndefined();
-
-		await flushMicrotasks();
-
-		expect(handlers.onError).toHaveBeenCalledWith(initFailure);
-	});
-
 	it("should rebind cached host export callbacks to the verified origin after a redirect", async () => {
 		const configuredOrigin = "https://host.example.com";
 		const redirectedOrigin = "https://redirected-host.example.com";
@@ -462,7 +484,7 @@ describe("ConsumerTransport", () => {
 			.spyOn(transport.messenger, "send")
 			.mockResolvedValue("callback-result");
 
-		transport.attachHostWindow(hostWindow);
+		attachOpenedHost(transport, hostWindow);
 		transport.openedHostDomain = configuredOrigin;
 		transport.setupMessageHandlers(handlers);
 

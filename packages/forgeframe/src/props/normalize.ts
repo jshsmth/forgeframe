@@ -273,7 +273,7 @@ export function materializePropAliases<
  * @param context - Context for computed props
  * @returns Normalized props object
  *
- * @public
+ * @internal
  */
 export function normalizeProps<P extends Record<string, unknown>, I = P>(
 	userProps: Partial<P>,
@@ -595,7 +595,7 @@ function normalizePropsInternal<P extends Record<string, unknown>, I = P>(
  * @param definitions - Prop definitions to validate against
  * @throws Error if a required prop is missing or type is invalid
  *
- * @public
+ * @internal
  */
 export function validateProps<P extends Record<string, unknown>, I = P>(
 	props: P,
@@ -747,7 +747,7 @@ function validateCustomProps<P extends Record<string, unknown>>(
  * @param isSameDomain - Whether host is same domain as consumer
  * @returns Filtered props for the host
  *
- * @public
+ * @internal
  */
 export function getPropsForHost<P extends Record<string, unknown>, I = P>(
 	props: P,
@@ -855,16 +855,14 @@ function shouldSendPropToHost<P extends Record<string, unknown>>(
  * @param props - Props to convert
  * @param definitions - Prop definitions
  * @param hostDomain - Host origin used to enforce prop delivery policy.
- * @param isSameDomain - Whether same-domain props may be included; defaults to `false`.
  * @returns URLSearchParams with query parameters
  *
- * @public
+ * @internal
  */
 export function propsToQueryParams<P extends Record<string, unknown>, I = P>(
 	props: P,
 	definitions: PropsDefinition<P, I>,
 	hostDomain: string,
-	isSameDomain = false,
 ): URLSearchParams {
 	const params = new URLSearchParams();
 
@@ -875,7 +873,9 @@ export function propsToQueryParams<P extends Record<string, unknown>, I = P>(
 		if (value === undefined) continue;
 		if (typeof value === "function") continue;
 		if (!definition.queryParam) continue;
-		if (!shouldSendPropToHost(definition, hostDomain, isSameDomain)) continue;
+		// The host is not loaded yet, so it cannot be verified as same-origin:
+		// `sameDomain` props are never sent in the initial request.
+		if (!shouldSendPropToHost(definition, hostDomain, false)) continue;
 
 		const paramName =
 			typeof definition.queryParam === "string" ? definition.queryParam : key;
@@ -905,16 +905,14 @@ export function propsToQueryParams<P extends Record<string, unknown>, I = P>(
  * @param props - Props to convert
  * @param definitions - Prop definitions
  * @param hostDomain - Host origin used to enforce prop delivery policy.
- * @param isSameDomain - Whether same-domain props may be included; defaults to `false`.
  * @returns URLSearchParams with body parameters
  *
- * @public
+ * @internal
  */
 export function propsToBodyParams<P extends Record<string, unknown>, I = P>(
 	props: P,
 	definitions: PropsDefinition<P, I>,
 	hostDomain: string,
-	isSameDomain = false,
 ): URLSearchParams {
 	const params = new URLSearchParams();
 
@@ -925,7 +923,9 @@ export function propsToBodyParams<P extends Record<string, unknown>, I = P>(
 		if (value === undefined) continue;
 		if (typeof value === "function") continue;
 		if (!definition.bodyParam) continue;
-		if (!shouldSendPropToHost(definition, hostDomain, isSameDomain)) continue;
+		// The host is not loaded yet, so it cannot be verified as same-origin:
+		// `sameDomain` props are never sent in the initial request.
+		if (!shouldSendPropToHost(definition, hostDomain, false)) continue;
 
 		const paramName =
 			typeof definition.bodyParam === "string" ? definition.bodyParam : key;

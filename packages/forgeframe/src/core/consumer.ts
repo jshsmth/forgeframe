@@ -323,7 +323,7 @@ export class ConsumerComponent<
 		try {
 			this.emitRenderStage(EVENT.PRERENDER, "onPrerender");
 
-			await this.prerender(baseUrl);
+			await this.prerender();
 			this.assertRenderActive();
 
 			this.emitRenderStage(EVENT.PRERENDERED, "onPrerendered");
@@ -421,9 +421,7 @@ export class ConsumerComponent<
 	/** Completes the one admitted close operation before its shared promise settles. */
 	private async performClose(): Promise<void> {
 		try {
-			const callbackProps = this.propsPipeline
-				? this.propsPipeline.props
-				: ({} as P);
+			const callbackProps = this.propsPipeline.props;
 			this.event.emit(EVENT.CLOSE);
 			invokePropCallback(callbackProps as Record<string, unknown>, "onClose");
 
@@ -440,12 +438,9 @@ export class ConsumerComponent<
 	 * For iframes, focuses the iframe element. For popups, brings the window to front.
 	 */
 	async focus(): Promise<void> {
-		const hostWindow = this.transport ? this.transport.hostWindow : null;
-		const callbackProps = this.propsPipeline
-			? this.propsPipeline.props
-			: ({} as P);
+		const callbackProps = this.propsPipeline.props;
 
-		this.renderer.focus(hostWindow);
+		this.renderer.focus(this.transport.hostWindow);
 
 		this.event.emit(EVENT.FOCUS);
 		invokePropCallback(callbackProps as Record<string, unknown>, "onFocus");
@@ -465,7 +460,7 @@ export class ConsumerComponent<
 	 * @throws Error if the browser denies resizing the popup window
 	 */
 	async resize(dimensions: Dimensions): Promise<void> {
-		const hostWindow = this.transport ? this.transport.hostWindow : null;
+		const hostWindow = this.transport.hostWindow;
 		if (this.renderer.context === CONTEXT.POPUP && !hostWindow) return;
 		if (!this.renderer.resize(dimensions, hostWindow)) {
 			throw new Error(
@@ -488,9 +483,7 @@ export class ConsumerComponent<
 
 	/** Notifies resize observers and the onResize prop. @internal */
 	private emitResize(dimensions: Dimensions): void {
-		const callbackProps = this.propsPipeline
-			? this.propsPipeline.props
-			: ({} as P);
+		const callbackProps = this.propsPipeline.props;
 		this.event.emit(EVENT.RESIZE, dimensions);
 		invokePropCallback(
 			callbackProps as Record<string, unknown>,
@@ -553,7 +546,7 @@ export class ConsumerComponent<
 			validateTransportProps: (props, hostOrigin) => {
 				const deliveryOrigin = this.rendered
 					? this.transport.getHostDomain()
-					: (hostOrigin ?? "");
+					: hostOrigin;
 				validatePropsForHostTransport(
 					props,
 					this.options.props,
@@ -563,8 +556,7 @@ export class ConsumerComponent<
 			},
 			isRendered: () => this.rendered,
 			syncTrustedDomainForUrl: (url) => this.syncTrustedDomainForUrl(url),
-			shouldSendPropsToHost: () =>
-				this.transport ? this.transport.isHostConnected() : false,
+			shouldSendPropsToHost: () => this.transport.isHostConnected(),
 			sendPropsUpdateToHost: (nextProps) =>
 				this.sendPropsUpdateToHost(nextProps),
 			emitPropsUpdated: (nextProps) => {
@@ -591,13 +583,12 @@ export class ConsumerComponent<
 	 * Prevents origin changes after render for security and routing consistency.
 	 * @internal
 	 */
-	private assertStableRenderedOrigin(nextHostOrigin: string | null): void {
-		const openedHostDomain = this.transport?.openedHostDomain;
+	private assertStableRenderedOrigin(nextHostOrigin: string): void {
+		const openedHostDomain = this.transport.openedHostDomain;
 
 		if (
 			(this.rendered || this.renderPromise !== null) &&
 			openedHostDomain &&
-			nextHostOrigin &&
 			nextHostOrigin !== openedHostDomain
 		) {
 			throw new Error(
@@ -611,10 +602,6 @@ export class ConsumerComponent<
 	 * @internal
 	 */
 	private async sendPropsUpdateToHost(nextProps: P): Promise<void> {
-		if (!this.transport) {
-			return;
-		}
-
 		await this.transport.sendPropsUpdateToHost(nextProps, this.options.props);
 	}
 
@@ -682,7 +669,6 @@ export class ConsumerComponent<
 			defaultContext: options.defaultContext ?? CONTEXT.IFRAME,
 			dimensions: options.dimensions ?? { width: "100%", height: "100%" },
 			timeout: options.timeout ?? 10000,
-			children: options.children,
 		};
 	}
 
@@ -715,7 +701,7 @@ export class ConsumerComponent<
 	 * Resolves a URL to an origin, supporting relative URLs.
 	 * @internal
 	 */
-	private resolveUrlOrigin(url: string): string | null {
+	private resolveUrlOrigin(url: string): string {
 		return resolveComponentHostUrl(url, document.baseURI, this.options.domain)
 			.origin;
 	}
@@ -725,11 +711,6 @@ export class ConsumerComponent<
 	 * @internal
 	 */
 	private syncTrustedDomainForUrl(url: string): void {
-		if (!this.transport) {
-			this.resolveUrlOrigin(url);
-			return;
-		}
-
 		this.transport.syncTrustedDomainForUrl(url);
 	}
 
@@ -799,10 +780,10 @@ export class ConsumerComponent<
 	 * Creates and displays the prerender (loading) content.
 	 * @internal
 	 */
-	private async prerender(baseUrl: string = this.resolveUrl()): Promise<void> {
+	private async prerender(): Promise<void> {
 		await this.renderer.prerender(
 			(windowName) => this.createIframeElement(windowName),
-			() => this.buildWindowName(baseUrl),
+			() => this.buildWindowName(),
 			() => this.assertRenderActive(),
 		);
 	}
@@ -820,7 +801,7 @@ export class ConsumerComponent<
 	 * Opens the host window (iframe or popup).
 	 * @internal
 	 */
-	private async open(baseUrl: string = this.resolveUrl()): Promise<void> {
+	private async open(baseUrl: string): Promise<void> {
 		this.syncTrustedDomainForUrl(baseUrl);
 		this.transport.openedHostDomain = this.resolveUrlOrigin(baseUrl);
 		this.transport.activeHostDomain = null;
@@ -831,7 +812,7 @@ export class ConsumerComponent<
 				assertActive: () => this.assertRenderActive(),
 				buildUrl: (resolvedBaseUrl) => this.buildUrl(resolvedBaseUrl),
 				buildBodyParams: () => this.buildBodyParams(baseUrl),
-				buildWindowName: () => this.buildWindowName(baseUrl),
+				buildWindowName: () => this.buildWindowName(),
 				submitBodyForm: (target, actionUrl, params) =>
 					this.submitBodyForm(target, actionUrl, params),
 				onPopupClose: () => {
@@ -848,13 +829,12 @@ export class ConsumerComponent<
 	 * Builds the URL for the host window including query parameters.
 	 * @internal
 	 */
-	private buildUrl(baseUrl: string = this.resolveUrl()): string {
+	private buildUrl(baseUrl: string): string {
 		this.propsPipeline.revalidateSchemaValues();
-		const hostDomain = this.resolveUrlOrigin(baseUrl);
 		const queryParams = propsToQueryParams(
 			this.propsPipeline.props,
 			this.options.props,
-			hostDomain ?? "",
+			this.resolveUrlOrigin(baseUrl),
 		);
 		return appendComponentQuery(baseUrl, queryParams.toString());
 	}
@@ -863,15 +843,12 @@ export class ConsumerComponent<
 	 * Builds POST body parameters from props marked with bodyParam.
 	 * @internal
 	 */
-	private buildBodyParams(
-		baseUrl: string = this.resolveUrl(),
-	): URLSearchParams {
+	private buildBodyParams(baseUrl: string): URLSearchParams {
 		this.propsPipeline.revalidateSchemaValues();
-		const hostDomain = this.resolveUrlOrigin(baseUrl);
 		return propsToBodyParams(
 			this.propsPipeline.props,
 			this.options.props,
-			hostDomain ?? "",
+			this.resolveUrlOrigin(baseUrl),
 		);
 	}
 
@@ -891,14 +868,14 @@ export class ConsumerComponent<
 	 * Builds the window.name payload for the host window.
 	 * @internal
 	 */
-	private buildWindowName(baseUrl: string = this.resolveUrl()): string {
+	private buildWindowName(): string {
+		// Dimension functions and parameter encoders run user code after the
+		// previous check and can mutate prop values, so recheck them before the
+		// host window is created.
 		this.propsPipeline.revalidateSchemaValues();
 		return this.transport.buildWindowName({
 			tag: this.options.tag,
 			context: this.renderer.context,
-			props: this.propsPipeline.props,
-			propDefinitions: this.options.props,
-			hostDomain: this.resolveUrlOrigin(baseUrl) ?? "*",
 			exports: this.createConsumerExports(),
 		});
 	}
@@ -1024,13 +1001,8 @@ export class ConsumerComponent<
 	 * @internal
 	 */
 	private teardownRenderResources(): void {
-		const hostWindow = this.transport ? this.transport.hostWindow : null;
-
-		if (this.renderer) {
-			this.renderer.destroy(hostWindow);
-		}
-
-		if (this.transport) this.transport.resetHostWindow();
+		this.renderer.destroy(this.transport.hostWindow);
+		this.transport.resetHostWindow();
 	}
 
 	/**
@@ -1051,9 +1023,7 @@ export class ConsumerComponent<
 		if (!callbackProps) return;
 
 		this.teardownRenderResources();
-		if (this.propsPipeline) {
-			this.propsPipeline.pendingPropsUpdate = null;
-		}
+		this.propsPipeline.pendingPropsUpdate = null;
 
 		await this.cleanup.cleanup();
 
@@ -1067,10 +1037,8 @@ export class ConsumerComponent<
 		if (this.destroyed) return null;
 		this.destroyed = true;
 
-		const callbackProps = this.propsPipeline
-			? this.propsPipeline.props
-			: ({} as P);
-		if (this.transport?.initPromise) {
+		const callbackProps = this.propsPipeline.props;
+		if (this.transport.initPromise) {
 			this.transport.initPromise.reject(
 				new Error(
 					`Component "${this.options.tag}" was destroyed before initialization completed`,
@@ -1078,9 +1046,7 @@ export class ConsumerComponent<
 			);
 			this.transport.initPromise = null;
 		}
-		if (this.transport) {
-			this.transport.hostInitialized = false;
-		}
+		this.transport.hostInitialized = false;
 		return callbackProps;
 	}
 }

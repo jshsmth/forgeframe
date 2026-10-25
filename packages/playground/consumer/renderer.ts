@@ -71,7 +71,7 @@ function createPropSchema(
 	return schema;
 }
 
-export function buildPropsSchema(config: PlaygroundConfig) {
+function buildPropsSchema(config: PlaygroundConfig) {
 	const schema: Record<string, PropSchema<unknown>> = {};
 
 	// Add user-defined props from config

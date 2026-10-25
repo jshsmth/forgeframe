@@ -12,7 +12,7 @@ import type { Message } from "./types";
 
 /**
  * Protocol prefix to identify ForgeFrame messages.
- * @public
+ * @internal
  */
 export const PROTOCOL_PREFIX = "forgeframe:";
 
@@ -22,7 +22,7 @@ export const PROTOCOL_PREFIX = "forgeframe:";
  * @param message - The message to serialize
  * @returns JSON string prefixed with the protocol identifier
  *
- * @public
+ * @internal
  */
 export function serializeMessage(message: Message): string {
 	return PROTOCOL_PREFIX + JSON.stringify(message);
@@ -34,7 +34,7 @@ export function serializeMessage(message: Message): string {
  * @param data - The raw data received from postMessage
  * @returns The parsed message, or null if not a valid ForgeFrame message
  *
- * @public
+ * @internal
  */
 export function deserializeMessage(data: unknown): Message | null {
 	if (typeof data !== "string") return null;
@@ -85,7 +85,7 @@ export function deserializeMessage(data: unknown): Message | null {
  * @param source - Source metadata containing the shared component channel UID and sender domain
  * @returns A formatted request message
  *
- * @public
+ * @internal
  */
 export function createRequestMessage(
 	id: string,
@@ -111,7 +111,7 @@ export function createRequestMessage(
  * @param error - Optional error if the request failed
  * @returns A formatted response message
  *
- * @public
+ * @internal
  */
 export function createResponseMessage(
 	requestId: string,
