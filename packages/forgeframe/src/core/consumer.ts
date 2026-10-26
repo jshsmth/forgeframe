@@ -225,15 +225,7 @@ export class ConsumerComponent<
 		this.assertRenderAllowed();
 
 		if (this.renderPromise) {
-			if (
-				this.renderArguments?.container !== container ||
-				this.renderArguments.context !== context
-			) {
-				throw new ForgeFrameError(
-					"VALIDATION",
-					"render() is already in progress with a different container or context; await it, or close the instance first",
-				);
-			}
+			this.assertSameRenderArguments(container, context);
 			return this.renderPromise;
 		}
 
@@ -256,6 +248,22 @@ export class ConsumerComponent<
 			// Held updates are released first, so bookkeeping can never strand them.
 			propsHold.release();
 			this.finishRenderTask(renderTask, operation);
+		}
+	}
+
+	/** A render in progress can be joined only with the arguments it started with. */
+	private assertSameRenderArguments(
+		container: string | HTMLElement,
+		context: ContextType | undefined,
+	): void {
+		if (
+			this.renderArguments?.container !== container ||
+			this.renderArguments.context !== context
+		) {
+			throw new ForgeFrameError(
+				"VALIDATION",
+				"render() is already in progress with a different container or context; await it, or close the instance first",
+			);
 		}
 	}
 
