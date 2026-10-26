@@ -22,7 +22,7 @@ function candidate(overrides: Partial<PeerCandidate>): PeerCandidate {
 		tag: "peer-tag",
 		verifiedHostOrigin: REQUESTER_ORIGIN,
 		openedHostOrigin: REQUESTER_ORIGIN,
-		peers: true,
+		peers: "same-origin",
 		exports: { id: overrides.uid ?? "peer" },
 		...overrides,
 	};
@@ -39,11 +39,11 @@ describe("assertPeersEnabled", () => {
 		expect(() =>
 			assertPeersEnabled({ tag: "private-widget", peers: undefined }),
 		).toThrow(
-			'Peer discovery is not enabled for component "private-widget". Set peers: true, or an origin matcher, in its create() options.',
+			'Peer discovery is not enabled for component "private-widget". Set peers: "same-origin", or an origin matcher, in its create() options.',
 		);
 	});
 
-	it.each([true, "https://partner.example.com"] as const)(
+	it.each(["same-origin", "https://partner.example.com"] as const)(
 		"admits a requester with peers: %s",
 		(peers) => {
 			expect(() =>
@@ -64,7 +64,7 @@ describe("selectPeerInstances", () => {
 		).toEqual(["listed"]);
 	});
 
-	it("lists peers: true only at the requester's own origin", () => {
+	it("lists peers: 'same-origin' only at the requester's own origin", () => {
 		expect(
 			selectUids([
 				candidate({ uid: "same-origin" }),
@@ -87,7 +87,7 @@ describe("selectPeerInstances", () => {
 		expect(selectUids([partner], "https://evil.test")).toEqual([]);
 		expect(
 			selectPeerInstances(
-				[candidate({ uid: "local", peers: true })],
+				[candidate({ uid: "local", peers: "same-origin" })],
 				"partner",
 				"https://partner.example.com",
 			),
@@ -134,12 +134,12 @@ describe("getPeerInstances", () => {
 		const Shared = create({
 			tag: "peers-unit-shared",
 			url: "https://widgets.example.com/shared",
-			peers: true,
+			peers: "same-origin",
 		});
 		const Other = create({
 			tag: "peers-unit-other",
 			url: "https://widgets.example.com/other",
-			peers: true,
+			peers: "same-origin",
 		});
 		const Private = create({
 			tag: "peers-unit-private",
@@ -160,7 +160,7 @@ describe("getPeerInstances", () => {
 			getPeerInstances({
 				uid: requester.uid,
 				tag: "peers-unit-shared",
-				peers: true,
+				peers: "same-origin",
 				hostOrigin: REQUESTER_ORIGIN,
 				allTags,
 			}).map((peer) => peer.uid);

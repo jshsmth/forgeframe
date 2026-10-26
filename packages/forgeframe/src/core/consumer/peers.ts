@@ -84,7 +84,7 @@ export function assertPeersEnabled(
 	if (request.peers === undefined) {
 		throw new ForgeFrameError(
 			"VALIDATION",
-			`Peer discovery is not enabled for component "${request.tag}". Set peers: true, or an origin matcher, in its create() options.`,
+			`Peer discovery is not enabled for component "${request.tag}". Set peers: "same-origin", or an origin matcher, in its create() options.`,
 		);
 	}
 }
@@ -134,7 +134,7 @@ export function selectPeerInstances(
 		if (
 			peerHostOrigin !== requestingHostOrigin &&
 			!(
-				candidate.peers !== true &&
+				candidate.peers !== "same-origin" &&
 				matchOrigin(candidate.peers, requestingHostOrigin)
 			)
 		)

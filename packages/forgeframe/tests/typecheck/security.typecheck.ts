@@ -55,7 +55,11 @@ create({
 	hostOrigins: "*",
 });
 
-create({ tag: "typed-peers-true", url: "https://a.example.com", peers: true });
+create({
+	tag: "typed-peers-same-origin",
+	url: "https://a.example.com",
+	peers: "same-origin",
+});
 create({
 	tag: "typed-peers-matcher",
 	url: "https://a.example.com",
@@ -64,8 +68,15 @@ create({
 create({
 	tag: "typed-peers-false",
 	url: "https://a.example.com",
-	// @ts-expect-error peers is true or an origin matcher; omit it to stay off.
+	// @ts-expect-error peers is "same-origin" or an origin matcher; omit it to stay off.
 	peers: false,
+});
+
+create({
+	tag: "typed-peers-renamed-true",
+	url: "https://a.example.com",
+	// @ts-expect-error peers: true was renamed peers: "same-origin".
+	peers: true,
 });
 create({
 	tag: "typed-peer-domains",

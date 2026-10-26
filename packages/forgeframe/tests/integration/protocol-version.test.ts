@@ -52,7 +52,7 @@ describe("Bootstrap protocol version", () => {
 		const definitions = { amount: prop.number() };
 		const Component = create({
 			tag: "protocol-version-metadata",
-			peers: true,
+			peers: "same-origin",
 			url: "https://host.example.com/widget",
 			props: definitions,
 		});

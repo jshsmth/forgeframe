@@ -147,14 +147,17 @@ function assertComponentFields<P>(options: ComponentOptions<P>): void {
 function assertComponentMatchers<P>(options: ComponentOptions<P>): void {
 	if (options.hostOrigins !== undefined)
 		assertOriginMatcher(options.hostOrigins, "Component hostOrigins");
-	if ((options.peers as unknown) === false) {
+	const peers: unknown = options.peers;
+	if (typeof peers === "boolean") {
 		throw new ForgeFrameError(
 			"VALIDATION",
-			"Component peers must be true or an origin matcher; omit it to keep peer discovery off",
+			peers
+				? 'Component peers: true was renamed. Use peers: "same-origin", as deliverTo spells it.'
+				: 'Component peers must be "same-origin" or an origin matcher; omit it to keep peer discovery off',
 		);
 	}
-	if (options.peers !== undefined && options.peers !== true)
-		assertOriginMatcher(options.peers, "Component peers");
+	if (peers !== undefined && peers !== "same-origin")
+		assertOriginMatcher(peers, "Component peers");
 }
 
 /**
@@ -171,7 +174,7 @@ const REMOVED_COMPONENT_OPTIONS: Readonly<Record<string, string>> = {
 	children:
 		'Component option "children" was removed. Import child components in the host page and render them there; each child host calls initHost(Child, { consumerOrigins }).',
 	peerDomains:
-		'Component option "peerDomains" was removed. Peer discovery is opt-in: set peers: true for same-origin peers, or peers: <origin matcher> to also admit those host origins.',
+		'Component option "peerDomains" was removed. Peer discovery is opt-in: set peers: "same-origin" for same-origin peers, or peers: <origin matcher> to also admit those host origins.',
 	domain:
 		'Component option "domain" was renamed. Use hostOrigins, which lists host origins such as "https://pay.example.com".',
 	timeout:

@@ -100,7 +100,7 @@ test("peer exports retain callable methods and dates across independent prop upd
 			const { create, prop } = library;
 			const Component = create({
 				tag: "browser-peer-exports",
-				peers: true,
+				peers: "same-origin",
 				url: `${hostOrigin}/host`,
 				props: {
 					label: prop.string(),
@@ -122,7 +122,7 @@ test("peer exports retain callable methods and dates across independent prop upd
 			});
 			const Other = create({
 				tag: "browser-other-peer",
-				peers: true,
+				peers: "same-origin",
 				url: `${hostOrigin}/host`,
 				props: {
 					label: prop.string(),
@@ -317,13 +317,13 @@ test("peer discovery does not expose exports across host origins", async ({
 			};
 			const Local = create({
 				tag: "browser-origin-local",
-				peers: true,
+				peers: "same-origin",
 				url: `${hostOrigin}/host`,
 				props,
 			});
 			const Foreign = create({
 				tag: "browser-origin-foreign",
-				peers: true,
+				peers: "same-origin",
 				url: `${foreignHostOrigin}/host`,
 				props,
 			});
@@ -371,7 +371,7 @@ test("a peers matcher admits a named host origin to discover a component's peers
 			};
 			const Local = create({
 				tag: "browser-peer-domains-local",
-				peers: true,
+				peers: "same-origin",
 				url: `${hostOrigin}/host`,
 				props,
 			});
@@ -383,7 +383,7 @@ test("a peers matcher admits a named host origin to discover a component's peers
 			});
 			const Private = create({
 				tag: "browser-peer-domains-private",
-				peers: true,
+				peers: "same-origin",
 				url: `${foreignHostOrigin}/host`,
 				props,
 			});
@@ -435,7 +435,7 @@ test("components without peers neither discover nor appear to others", async ({
 			};
 			const Shared = create({
 				tag: "browser-peers-opted-in",
-				peers: true,
+				peers: "same-origin",
 				url: `${hostOrigin}/host`,
 				props,
 			});
@@ -482,7 +482,7 @@ test("components without peers neither discover nor appear to others", async ({
 			return "unexpected success";
 		}),
 	).toBe(
-		'Peer discovery is not enabled for component "browser-peers-opted-out". Set peers: true, or an origin matcher, in its create() options.',
+		'Peer discovery is not enabled for component "browser-peers-opted-out". Set peers: "same-origin", or an origin matcher, in its create() options.',
 	);
 });
 

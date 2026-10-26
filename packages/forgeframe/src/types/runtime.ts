@@ -286,12 +286,12 @@ export interface ComponentBaseOptions<P = Record<string, unknown>> {
 	 *
 	 * @remarks
 	 * Omitted, this component's instances are never listed to other hosts, and
-	 * its hosts cannot discover peers. `true` lists its instances to hosts
+	 * its hosts cannot discover peers. `"same-origin"` lists its instances to hosts
 	 * verified at the same origin as their own host. A matcher also admits
 	 * requesting hosts verified at a matching origin. Hosts with an opaque
 	 * (`"null"`) origin never discover peers and are never listed.
 	 */
-	peers?: true | OriginMatcher;
+	peers?: "same-origin" | OriginMatcher;
 
 	/**
 	 * The iframe's sandbox attribute.

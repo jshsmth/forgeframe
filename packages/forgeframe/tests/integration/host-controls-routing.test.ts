@@ -206,7 +206,7 @@ describe("Host controls and routing integration", () => {
 		document.body.append(container);
 		const Component = create({
 			tag: "integration-peer-message-encoding",
-			peers: true,
+			peers: "same-origin",
 			url: "https://host.example.com/widget",
 		});
 		const requester = Component();
@@ -242,12 +242,12 @@ describe("Host controls and routing integration", () => {
 		document.body.append(container);
 		const Component = create({
 			tag: "integration-peer-origin-scope",
-			peers: true,
+			peers: "same-origin",
 			url: "https://host.example.com/widget",
 		});
 		const Other = create({
 			tag: "integration-peer-origin-scope-other",
-			peers: true,
+			peers: "same-origin",
 			url: "https://other.example.com/widget",
 		});
 		const requester = Component();
@@ -288,7 +288,7 @@ describe("Host controls and routing integration", () => {
 		document.body.append(container);
 		const Requester = create({
 			tag: "integration-peer-domains-requester",
-			peers: true,
+			peers: "same-origin",
 			url: "https://host.example.com/widget",
 		});
 		const Shared = create({
@@ -298,7 +298,7 @@ describe("Host controls and routing integration", () => {
 		});
 		const Private = create({
 			tag: "integration-peer-domains-private",
-			peers: true,
+			peers: "same-origin",
 			url: "https://partner.example.com/private",
 		});
 		const requester = Requester();
@@ -342,7 +342,7 @@ describe("Host controls and routing integration", () => {
 		await expect(
 			harness.withHostGlobalsAsync(() => host.getPeerInstances()),
 		).rejects.toThrow(
-			'Peer discovery is not enabled for component "integration-peers-disabled". Set peers: true, or an origin matcher, in its create() options.',
+			'Peer discovery is not enabled for component "integration-peers-disabled". Set peers: "same-origin", or an origin matcher, in its create() options.',
 		);
 	});
 
@@ -352,7 +352,7 @@ describe("Host controls and routing integration", () => {
 		document.body.append(container);
 		const Requester = create({
 			tag: "integration-peers-opted-in",
-			peers: true,
+			peers: "same-origin",
 			url: "https://host.example.com/widget",
 		});
 		const Private = create({
@@ -388,7 +388,7 @@ describe("Host controls and routing integration", () => {
 		document.body.append(container);
 		const Component = create({
 			tag: "integration-peers-any-consumer",
-			peers: true,
+			peers: "same-origin",
 			url: "https://host.example.com/widget",
 		});
 		const requester = Component();
@@ -451,7 +451,7 @@ describe("Host controls and routing integration", () => {
 		const definitions = { label: prop.string() };
 		const Component = create({
 			tag: "integration-peer-capacity",
-			peers: true,
+			peers: "same-origin",
 			url: "https://host.example.com/widget",
 			props: definitions,
 		});
@@ -507,7 +507,7 @@ describe("Host controls and routing integration", () => {
 
 		const ControlsComponent = create({
 			tag: "integration-host-controls-component",
-			peers: true,
+			peers: "same-origin",
 			url: "https://host.example.com/widget",
 			props: CONTROL_PROP_DEFINITIONS,
 		});

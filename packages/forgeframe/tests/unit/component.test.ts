@@ -323,7 +323,19 @@ describe("Component Creation", () => {
 				...({ peers: false } as object),
 			}),
 		).toThrow(
-			"Component peers must be true or an origin matcher; omit it to keep peer discovery off",
+			'Component peers must be "same-origin" or an origin matcher; omit it to keep peer discovery off',
+		);
+	});
+
+	it("rejects peers: true with the renamed same-origin value", () => {
+		expect(() =>
+			create({
+				tag: "true-peers-component",
+				url: "https://host.example.com/widget",
+				...({ peers: true } as object),
+			}),
+		).toThrow(
+			'Component peers: true was renamed. Use peers: "same-origin", as deliverTo spells it.',
 		);
 	});
 
@@ -335,7 +347,7 @@ describe("Component Creation", () => {
 				...({ peerDomains: "https://partner.example.com" } as object),
 			}),
 		).toThrow(
-			'Component option "peerDomains" was removed. Peer discovery is opt-in: set peers: true for same-origin peers, or peers: <origin matcher> to also admit those host origins.',
+			'Component option "peerDomains" was removed. Peer discovery is opt-in: set peers: "same-origin" for same-origin peers, or peers: <origin matcher> to also admit those host origins.',
 		);
 	});
 
@@ -1402,12 +1414,12 @@ describe("Host Context Detection", () => {
 		it("should include all registered component tags when allTags is true", async () => {
 			const AlphaComponent = create({
 				tag: "peer-alpha",
-				peers: true,
+				peers: "same-origin",
 				url: "https://example.com/alpha",
 			});
 			const BetaComponent = create({
 				tag: "peer-beta",
-				peers: true,
+				peers: "same-origin",
 				url: "https://example.com/beta",
 			});
 
@@ -1424,14 +1436,14 @@ describe("Host Context Detection", () => {
 			const sameTagSiblings = getPeerInstances({
 				uid: alphaPrimary.uid,
 				tag: "peer-alpha",
-				peers: true,
+				peers: "same-origin",
 				hostOrigin: PEER_HOST_ORIGIN,
 				allTags: false,
 			});
 			const allTagsSiblings = getPeerInstances({
 				uid: alphaPrimary.uid,
 				tag: "peer-alpha",
-				peers: true,
+				peers: "same-origin",
 				hostOrigin: PEER_HOST_ORIGIN,
 				allTags: true,
 			});
@@ -1468,12 +1480,12 @@ describe("Host Context Detection", () => {
 		it("should exclude peers whose verified host origin differs or is unavailable", async () => {
 			const AlphaComponent = create({
 				tag: "peer-origin-alpha",
-				peers: true,
+				peers: "same-origin",
 				url: "https://example.com/alpha",
 			});
 			const BetaComponent = create({
 				tag: "peer-origin-beta",
-				peers: true,
+				peers: "same-origin",
 				url: "https://example.com/beta",
 			});
 
@@ -1501,7 +1513,7 @@ describe("Host Context Detection", () => {
 				const uids = getPeerInstances({
 					uid: requester.uid,
 					tag: "peer-origin-alpha",
-					peers: true,
+					peers: "same-origin",
 					hostOrigin: PEER_HOST_ORIGIN,
 					allTags,
 				}).map((sibling) => sibling.uid);
@@ -1534,7 +1546,7 @@ describe("Host Context Detection", () => {
 			});
 			const PrivateComponent = create({
 				tag: "peer-domains-private",
-				peers: true,
+				peers: "same-origin",
 				url: "https://widgets-a.myapp.example/private",
 				hostOrigins: "https://*.myapp.example",
 			});
@@ -1552,7 +1564,7 @@ describe("Host Context Detection", () => {
 				getPeerInstances({
 					uid: requester.uid,
 					tag: "peer-domains-shared",
-					peers: true,
+					peers: "same-origin",
 					hostOrigin,
 					allTags: true,
 				}).map((sibling) => sibling.uid);
@@ -1588,7 +1600,7 @@ describe("Host Context Detection", () => {
 				getPeerInstances({
 					uid: requester.uid,
 					tag: "peer-domains-opaque-peer",
-					peers: true,
+					peers: "same-origin",
 					hostOrigin: "https://widgets.myapp.example",
 					allTags: false,
 				}).map((sibling) => sibling.uid),
@@ -1602,7 +1614,7 @@ describe("Host Context Detection", () => {
 		it("should list same-origin peers whose hosts are still loading without exports", async () => {
 			const LoadingComponent = create({
 				tag: "peer-loading",
-				peers: true,
+				peers: "same-origin",
 				url: "https://example.com/loading",
 			});
 
@@ -1621,7 +1633,7 @@ describe("Host Context Detection", () => {
 				getPeerInstances({
 					uid: requester.uid,
 					tag: "peer-loading",
-					peers: true,
+					peers: "same-origin",
 					hostOrigin: PEER_HOST_ORIGIN,
 					allTags: false,
 				}),
@@ -1634,7 +1646,7 @@ describe("Host Context Detection", () => {
 				getPeerInstances({
 					uid: requester.uid,
 					tag: "peer-loading",
-					peers: true,
+					peers: "same-origin",
 					hostOrigin: PEER_HOST_ORIGIN,
 					allTags: false,
 				}),
@@ -1656,7 +1668,7 @@ describe("Host Context Detection", () => {
 		it("should update indexed peers when sibling instances are destroyed", async () => {
 			const IndexedComponent = create({
 				tag: "peer-index-cleanup",
-				peers: true,
+				peers: "same-origin",
 				url: "https://example.com/peer-index-cleanup",
 			});
 
@@ -1668,7 +1680,7 @@ describe("Host Context Detection", () => {
 				getPeerInstances({
 					uid: primary.uid,
 					tag: "peer-index-cleanup",
-					peers: true,
+					peers: "same-origin",
 					hostOrigin: PEER_HOST_ORIGIN,
 					allTags: false,
 				}),
@@ -1685,7 +1697,7 @@ describe("Host Context Detection", () => {
 				getPeerInstances({
 					uid: primary.uid,
 					tag: "peer-index-cleanup",
-					peers: true,
+					peers: "same-origin",
 					hostOrigin: PEER_HOST_ORIGIN,
 					allTags: false,
 				}),
@@ -1697,12 +1709,12 @@ describe("Host Context Detection", () => {
 		it("should exclude unregistered tags from allTags sibling lookup", async () => {
 			const AlphaComponent = create({
 				tag: "peer-index-unregister-alpha",
-				peers: true,
+				peers: "same-origin",
 				url: "https://example.com/peer-index-unregister-alpha",
 			});
 			const BetaComponent = create({
 				tag: "peer-index-unregister-beta",
-				peers: true,
+				peers: "same-origin",
 				url: "https://example.com/peer-index-unregister-beta",
 			});
 
@@ -1713,7 +1725,7 @@ describe("Host Context Detection", () => {
 			const siblingsBeforeUnregister = getPeerInstances({
 				uid: alphaPrimary.uid,
 				tag: "peer-index-unregister-alpha",
-				peers: true,
+				peers: "same-origin",
 				hostOrigin: PEER_HOST_ORIGIN,
 				allTags: true,
 			});
@@ -1728,7 +1740,7 @@ describe("Host Context Detection", () => {
 			const siblingsAfterUnregister = getPeerInstances({
 				uid: alphaPrimary.uid,
 				tag: "peer-index-unregister-alpha",
-				peers: true,
+				peers: "same-origin",
 				hostOrigin: PEER_HOST_ORIGIN,
 				allTags: true,
 			});
