@@ -70,6 +70,7 @@ For example, a payment provider lets merchants embed its checkout form:
 - [Templates (Advanced)](#templates-advanced)
 - [React Integration (Optional)](#react-integration-optional)
 - [Advanced Features](#advanced-features)
+- [Errors](#errors)
 - [Versioning](#versioning)
 - [Migrating from v1 to v2](#migrating-from-v1-to-v2)
 - [API Reference](#api-reference)
@@ -273,7 +274,7 @@ A render emits `render`, then `rendered`. A close emits `close`, then `closed`.
 | `rendered` | none | The host initialized and the component is visible, before `render()` resolves |
 | `close` | none | Closing starts, from `close()`, the host's `close()`, or the user closing the popup |
 | `closed` | none | Teardown finished. Always the last event; it also follows a failed render, without `close` |
-| `error` | `Error` | The handshake timed out, the host called `hostProps.reportError()`, or a prop callback called its context's `onError()` |
+| `error` | `Error` | The handshake timed out (`INIT_TIMEOUT`), an export failed the `exports` schema (`VALIDATION`), the host called `hostProps.reportError()` (a plain `Error` with the host's message), or a prop callback called its context's `onError()`. Failures ForgeFrame detects are [`ForgeFrameError`](#errors)s |
 | `props` | props | A props update was committed and, when a host is connected, acknowledged |
 | `resize` | `Dimensions` | A resize from the consumer or the host was applied |
 | `focus` | none | A focus request was applied to a mounted iframe or an open popup |
@@ -563,8 +564,8 @@ A patch is shallow, and `undefined` means "not supplied", the same as in the fac
 Updates run in call order across the whole lifecycle, including updates requested from a schema transform, the component's `validate`, a `url` function or a lifecycle listener:
 
 - **Before `render()`:** `render()` waits for them, so the initial query/body parameters and bootstrap props use their result.
-- **While `render()` is pending:** they wait for the render to settle. The host starts with the snapshot the render began with, then receives each update as its own `onProps` notification, and each update's `props` event fires after `rendered`. An invalid update rejects on its own; the render and later updates continue. If the render fails before anything opened (invalid props, a missing container), the updates apply locally and the next `render()` includes them. If it fails after that, or `close()` cancels it, they reject with "Cannot update props after the component has closed".
-- **After `close()` starts:** new and queued updates reject with the same error, without running validation or prop callbacks.
+- **While `render()` is pending:** they wait for the render to settle. The host starts with the snapshot the render began with, then receives each update as its own `onProps` notification, and each update's `props` event fires after `rendered`. An invalid update rejects on its own; the render and later updates continue. If the render fails before anything opened, the updates apply locally and the next `render()` includes them. That covers invalid props or options, a component `validate` rejection, a URL that is invalid or outside `hostOrigins`, and a missing or detached container. If it fails after that, or `close()` cancels it, they reject with a `CLOSED` [`ForgeFrameError`](#errors).
+- **After `close()` starts:** new and queued updates reject with `CLOSED`, without running validation or prop callbacks.
 
 ```typescript
 const instance = MyComponent({ name: 'Initial', theme: 'dark' });
@@ -586,7 +587,7 @@ stop();
 
 Subscribers run in registration order after props are committed. A subscriber added or re-registered during a notification waits for the next update, and a subscription cancelled before its turn is skipped. A stale cancellation handle cannot cancel a later registration of the same callback. Thrown errors and rejected promises are caught and logged. Async subscribers are not awaited, so they do not delay other subscribers or the update acknowledgement.
 
-Built-in `hostProps` names are reserved: `create()` and `initHost()` reject a definition named `uid`, `tag`, `close`, `focus`, `resize`, `show`, `hide`, `onProps`, `reportError`, `getConsumer`, `getConsumerDomain`, `export`, `consumer`, `getPeerInstances`, or `children`. A field with one of these names never replaces the built-in on `hostProps`; only a host without `props` sees it, in `hostProps.consumer.props`. `children` is no longer a built-in, but it stays reserved so React JSX children never reach a host.
+Built-in `hostProps` names are reserved: `create()` and `initHost()` reject a definition named `uid`, `tag`, `close`, `focus`, `resize`, `show`, `hide`, `onProps`, `reportError`, `getConsumer`, `consumerOrigin`, `export`, `consumer`, `getPeerInstances`, or `children`. A field with one of these names never replaces the built-in on `hostProps`; only a host without `props` sees it, in `hostProps.consumer.props`. `children` is no longer a built-in, but it stays reserved so React JSX children never reach a host.
 
 ### Cross-Window Callback Values
 
@@ -655,9 +656,9 @@ Only one host can be active in a window. A second `initHost()` call throws while
 
 Only channel metadata stays in `window.name`, so reloads and later host documents can reconnect and receive the latest props. Browser policies that clear window names across sites can prevent reconnection.
 
-`host.on('error')` reports each failed start once, always with an `Error`. A schema rejection reports its validation `Error`. Any other failure, such as a failed BOOTSTRAP request or an invalid bootstrap response, reports an `Error` whose message starts with `Failed to initialize host component:` and whose `cause` is the original failure, as INIT delivery failures do.
+`host.on('error')` reports each failed start once, always with a [`ForgeFrameError`](#errors). A schema rejection reports its `VALIDATION` error. Any other failure, such as a failed BOOTSTRAP request or an invalid bootstrap response, reports an error whose message starts with `Failed to initialize host component:`, whose `cause` is the original failure, and whose code is the cause's, as INIT delivery failures do. A BOOTSTRAP or INIT request the consumer never answers is `INIT_TIMEOUT`. `host.ready` rejects with the same codes, or with `CLOSED` when the host is destroyed before bootstrap completes.
 
-If the host's schemas reject the consumer's props, `ready` rejects and the host tells the consumer why. The consumer keeps waiting, so a same-page `initHost()` retry can still connect without any error being reported; if none succeeds, `render()` rejects at its `timeout`, and its single `error` event includes `Host initialization failed: ...`.
+If the host's schemas reject the consumer's props, `ready` rejects and the host tells the consumer why. The consumer keeps waiting, so a same-page `initHost()` retry can still connect without any error being reported; if none succeeds, `render()` rejects at its `initTimeout` with `INIT_TIMEOUT`, whose message includes `Host initialization failed: ...` and whose `cause` is the host's error with its code, such as `VALIDATION`. The consumer's single `error` event carries the same error.
 
 `host.destroy()` can be called more than once. Controls on the old `hostProps` reject afterwards, and destroying a stale host never affects a newer one.
 
@@ -731,7 +732,7 @@ Peer discovery is opt-in. A component that sets `peers: true` in `create()` lets
 | `reportError()` | Report an error to the consumer, which emits it on its `error` event |
 | `export()` | Export methods/data to consumer |
 | `getConsumer()` | Get consumer window reference |
-| `getConsumerDomain()` | Get consumer origin |
+| `consumerOrigin` | The verified consumer origin (a read-only string) |
 | `consumer.props` | The consumer's full prop snapshot, replaced on every update |
 | `getPeerInstances()` | Get peer component instances from the same consumer and host origin; requires `peers` on this host's component |
 
@@ -775,7 +776,7 @@ const data = await instance.exports?.getFormData();
 
 `export()` is the one way to send data to the consumer; it bridges functions and `Date` values, and exported methods always return promises on the consumer. To push events instead, call a callback prop the consumer passed in.
 
-The consumer validates each export against `exports` before it replaces `instance.exports` and emits `exports`. An invalid export keeps the previous exports, rejects the host's `export()` with the schema's message, and emits `error` on the consumer. A host started with `initHost(MyComponent, ...)` checks its exports before sending them, so the rejection happens at the host's call site; the tag-agnostic `initHost({ consumerOrigins })` has no exports schema and leaves the check to the consumer. The schema validates only: like a prop schema, it must return a valid value unchanged, so transforms are rejected. Describe methods with `prop.function()`, because Zod's `z.function()` returns a wrapper rather than the exported function, and keep unknown keys (Zod objects strip them unless declared loose). Without `exports`, exports are `unknown` and not validated.
+The consumer validates each export against `exports` before it replaces `instance.exports` and emits `exports`. An invalid export keeps the previous exports, rejects the host's `export()` with a `VALIDATION` error carrying the schema's message, and emits that error on the consumer. The host releases the callbacks of the rejected export. A host started with `initHost(MyComponent, ...)` checks its exports before sending them, so the rejection happens at the host's call site; the tag-agnostic `initHost({ consumerOrigins })` has no exports schema and leaves the check to the consumer. The schema validates only: like a prop schema, it must return a valid value unchanged, so transforms are rejected. Describe methods with `prop.function()`, because Zod's `z.function()` returns a wrapper rather than the exported function, and keep unknown keys (Zod objects strip them unless declared loose). Without `exports`, exports are `unknown` and not validated.
 
 ---
 
@@ -933,7 +934,7 @@ const ProfileReact = createComponent(ProfileComponent);
 
 ### Popup Windows
 
-Pass `'popup'` to `render()`, or set `defaultContext: 'popup'` on the component.
+Pass `'popup'` to `render()`, or set `context: 'popup'` on the component.
 
 ```typescript
 await instance.render('#container', 'popup');
@@ -941,24 +942,26 @@ await instance.render('#container', 'popup');
 const PopupComponent = create({
   tag: 'popup-component',
   url: 'https://widgets.example.com/popup',
-  defaultContext: 'popup',
+  context: 'popup',
 });
 ```
 
 After the popup initializes, ForgeFrame removes the loading content, including custom prerender content, and the default loading wrapper from the consumer mount. Caller-owned elements and custom container-template shells stay.
 
-Browsers do not let one origin resize another origin's window. For a popup that is not open, `instance.resize()` does nothing. For a cross-origin popup, `instance.resize()` rejects without emitting `resize`; call `hostProps.resize()` from the host instead, which resizes the popup's own window and then notifies the consumer. Browsers can still ignore resize requests, for example for a popup opened as a tab.
+Browsers do not let one origin resize another origin's window. For a popup that is not open, `instance.resize()` does nothing. For a cross-origin popup, `instance.resize()` throws a `VALIDATION` error at the call, without emitting `resize`; call `hostProps.resize()` from the host instead, which resizes the popup's own window and then notifies the consumer. Browsers can still ignore resize requests, for example for a popup opened as a tab.
 
-### Domain Security
+### Origin Security
 
 Every trust decision is explicit, and `'*'` is the visible opt-in for "any origin".
 
-- `domain` is consumer-side trust: the host origins the consumer will render and message. A static `url` trusts its own origin when `domain` is omitted. A function `url` requires `domain`, and every URL it returns must match; `create()` throws without it, so a URL built from props, a query string or tenant data can never point the consumer at an unlisted origin. `domain: '*'` with a function `url` trusts any http(s) origin the function returns.
-- `consumerOrigins`, passed to `initHost()`, is host-side trust: the consumer origins that may embed and initialize the host. It is required; `'*'` admits any http(s) consumer, and the host still binds the exact origin the browser verified, so `getConsumerDomain()` and outbound messages use that origin.
-- `peers` decides whether, and to which host origins, a component's instances are listed for peer discovery.
-- Use `domain` and `consumerOrigins` together for payment, auth, account, and other sensitive workflows.
+Each option takes origins: a scheme, host and port, such as `https://app.example.com`. A bare host such as `example.com` never matches an origin, so it is rejected.
 
-Each accepts a string, a `RegExp`, or an array mixing them. Strings support `*` wildcards, such as `'https://*.example.com'`, and `'*'` alone matches any origin. Empty or blank strings, `null`, and other values throw, so a missing setting such as `process.env.CONSUMER_ORIGIN || ''` cannot silently trust every origin. An empty array throws for `domain`, `peers`, and `deliverTo`, where it could never match; for `consumerOrigins` it is valid and admits no consumer, so configuration that resolves to nothing fails closed.
+- `hostOrigins` is consumer-side trust: the host origins the consumer will render and message. A static `url` trusts its own origin when `hostOrigins` is omitted. A function `url` requires `hostOrigins`, and every URL it returns must match; `create()` throws without it, so a URL built from props, a query string or tenant data can never point the consumer at an unlisted origin. `hostOrigins: '*'` with a function `url` trusts any http(s) origin the function returns.
+- `consumerOrigins`, passed to `initHost()`, is host-side trust: the consumer origins that may embed and initialize the host. It is required; `'*'` admits any http(s) consumer, and the host still binds the exact origin the browser verified, so `hostProps.consumerOrigin` and outbound messages use that origin.
+- `peers` decides whether, and to which host origins, a component's instances are listed for peer discovery.
+- Use `hostOrigins` and `consumerOrigins` together for payment, auth, account, and other sensitive workflows.
+
+Each accepts a string, a `RegExp`, or an array mixing them. Strings support `*` wildcards, such as `'https://*.example.com'`, and `'*'` alone matches any origin. Empty or blank strings, `null`, and other values throw, so a missing setting such as `process.env.CONSUMER_ORIGIN || ''` cannot silently trust every origin. An empty array throws for `hostOrigins`, `peers`, and `deliverTo`, where it could never match; for `consumerOrigins` it is valid and admits no consumer, so configuration that resolves to nothing fails closed.
 
 No matcher, including `'*'` or a match-all `RegExp`, ever admits an opaque (`"null"`) origin, such as a document sandboxed without `allow-same-origin`. Every opaque document serializes the same way, so the origin cannot identify a peer.
 
@@ -971,14 +974,14 @@ export const SecureComponent = create({
     accountId: prop.string(),
     onComplete: prop.function<(result: { ok: true }) => void>(),
   },
-  domain: 'https://secure.example.com',
+  hostOrigins: 'https://secure.example.com',
 });
 
 // A URL computed from props needs the host origins it may return
 export const TenantWidget = create({
   tag: 'tenant-widget',
   url: (props) => `https://${props.tenant}.widgets.example.com/embed`,
-  domain: 'https://*.widgets.example.com',
+  hostOrigins: 'https://*.widgets.example.com',
   props: { tenant: prop.string().regex(/^[a-z0-9-]+$/) },
 });
 ```
@@ -1066,6 +1069,38 @@ const host = initHost(CardField, { consumerOrigins: ['https://checkout.example.c
 ```
 
 The child keeps its real types and schemas, and like any component it may use a function `url`.
+
+## Errors
+
+Every error ForgeFrame raises is a `ForgeFrameError` with a `code`. Branch on the code: the message is for people and may change in any release. The standard `cause` holds the underlying failure, when there is one. Errors thrown by your own code, such as remote callbacks, templates, URL and dimension functions, and lifecycle listeners, reach you unchanged. The exception is the component's `validate` option, whose rejection becomes `VALIDATION` with the thrown value as `cause`.
+
+```typescript
+import { ForgeFrameError } from 'forgeframe';
+
+try {
+  await instance.render('#container', 'popup');
+} catch (error) {
+  if (!(error instanceof ForgeFrameError)) throw error;
+  switch (error.code) {
+    case 'POPUP_BLOCKED': showAllowPopupsHint(); break;
+    case 'INIT_TIMEOUT': showRetry(); break;
+    case 'CANCELLED': break; // your own close() interrupted the render
+    default: report(error);
+  }
+}
+```
+
+| Code | Meaning | Raised by |
+|---|---|---|
+| `POPUP_BLOCKED` | The browser refused to open the popup | `render()` |
+| `INIT_TIMEOUT` | The initial handshake did not complete in time. On the consumer this is the `initTimeout` wait; when the host reported why it failed, the message includes the reason and `cause` holds it. On the host, the consumer never answered BOOTSTRAP or INIT | `render()`, the consumer and host `error` events, `host.ready` |
+| `VALIDATION` | Invalid options, props, arguments or calls; values that cannot cross windows; payloads from another ForgeFrame major version | `create()`, `initHost()`, `render()`, `updateProps()`, `resize()` of a cross-origin popup, the host's `export()`, `host.ready` |
+| `ORIGIN_REJECTED` | A trust policy refused an origin or a window: a URL outside `hostOrigins`, a consumer outside `consumerOrigins`, a host origin change after render, a call from an unexpected window | `render()`, `updateProps()`, `initHost()` |
+| `CANCELLED` | Your own `close()`, or an unmount by the React wrapper, interrupted `render()` | `render()` |
+| `CLOSED` | The instance, the host or the other window is gone or no longer answering, including a retired callback reference and an acknowledgement that timed out after initialization | `render()` and `updateProps()` after close, remote calls, host controls, `host.ready` |
+| `CAPACITY` | A size limit was reached: 500 distinct callbacks per snapshot, the 1,000-reference recovery pool, the 500-reference peer relay, or the `window.name` payload size | `render()`, `updateProps()`, remote calls, `getPeerInstances()` |
+
+Codes cross windows: a prop update the host rejects arrives as `VALIDATION`, as a local rejection does. A remote callback that throws reaches the caller as a plain `Error` with its message and no code, because the failure is the application's. An error the host reports with `hostProps.reportError()` is also a plain `Error`.
 
 ---
 
@@ -1323,16 +1358,16 @@ A host that shares definitions with a `deliverTo` prop no longer requires that p
 | Area | v1 | v2 | What to do |
 |---|---|---|---|
 | Host allowlist | `initHost` accepted any http(s) consumer when no allowlist was passed | `consumerOrigins` is required in every `initHost` form; `'*'` admits any http(s) consumer | Pass your consumer origins; pass `'*'` only for hosts meant to be embedded anywhere |
-| Function URLs | `url: (props) => ...` without `domain` trusted any http(s) origin it returned | `create()` throws unless `domain` is set when `url` is a function | Add the host origins the function may return, or `'*'` to keep the v1 behaviour |
+| Function URLs | `url: (props) => ...` without `domain` trusted any http(s) origin it returned | `create()` throws unless `hostOrigins` (v1 `domain`) is set when `url` is a function | Add the host origins the function may return, or `'*'` to keep the v1 behaviour |
 | Peer discovery | On for every component at the same verified origin; `peerDomains` admitted other origins | Off unless the component sets `peers: true` or `peers: <matcher>`; `peerDomains` throws; a host whose component lacks `peers` gets a rejection from `getPeerInstances()` | Add `peers` to every component whose hosts call `getPeerInstances()` and to every component they should find; move `peerDomains` values into `peers` |
 | Cross-tag discovery | `getPeerInstances({ anyConsumer: true })` | `getPeerInstances({ allTags: true })`; `anyConsumer` rejects | Rename the option |
 | Peer type | `SiblingInfo` | `PeerInfo` | Rename the import |
 | Sandbox | `attributes.sandbox`; `false` kept the default | Top-level `sandbox: string \| false`; a string must include `allow-scripts` and `allow-same-origin`; `false` writes no sandbox attribute; `attributes.sandbox` throws | Move a string value from `attributes.sandbox` to `sandbox`. Delete `attributes.sandbox: false`, which kept the default in 1.1; `sandbox: false` now removes the sandbox, so use it only to opt out |
 | Opaque origins | A `'*'` or match-all `domain` matched a sandboxed host's `"null"` origin before the handshake failed | No matcher admits an opaque origin | Keep `allow-same-origin` in any custom sandbox |
 | Undeclared host fields | A host kept fields it did not declare, and fields of `undefined` definition entries, unvalidated | A host with `props` keeps only the props it declares; only a tag-agnostic host without `props` keeps every field | Declare every prop the host reads, with `prop.any()` for a deliberately unchecked one |
-| Empty matchers | `domain: []`, `peerDomains: []` and `deliverTo: []` were accepted and matched nothing | They throw; `consumerOrigins: []` still admits no consumer | Remove the option, or list the origins |
+| Empty matchers | `domain: []`, `peerDomains: []` and `deliverTo: []` were accepted and matched nothing | `hostOrigins: []`, `peers: []` and `deliverTo: []` throw; `consumerOrigins: []` still admits no consumer | Remove the option, or list the origins |
 | Static iframe attributes | `name`, `src` and `srcdoc` in a static `attributes` object rejected `render()` | `create()` throws for them, and for `sandbox`; a computed `attributes` function is still checked at render | Remove the attribute |
-| `ComponentOptions` type | An interface | A type alias over `ComponentBaseOptions` and the `url`/`domain` union `ComponentUrlOptions`, so it can no longer be augmented by declaration merging; `Partial<ComponentOptions>` spreads over the union | Use `ComponentBaseOptions` for options other than `url` and `domain` |
+| `ComponentOptions` type | An interface | A type alias over `ComponentBaseOptions` and the `url`/`hostOrigins` union `ComponentUrlOptions`, so it can no longer be augmented by declaration merging; `Partial<ComponentOptions>` spreads over the union | Use `ComponentBaseOptions` for options other than `url` and `hostOrigins` |
 
 ### Types and inference
 
@@ -1363,6 +1398,25 @@ A host that shares definitions with a `deliverTo` prop no longer requires that p
 ### Props are always JSON
 
 ForgeFrame 2 sends every prop as JSON through the function bridge. The `serialization` prop option and its `BASE64` and `DOTIFY` formats, `PROP_SERIALIZATION` and `SerializationType` are gone, and `create()` or `initHost()` throws if a definition still sets `serialization`. Remove the option: values that were base64- or dot-encoded now arrive as the same JSON values, callbacks at any depth are still bridged, and `Date` values still arrive as `Date`s. A host that read an encoded query parameter should read the plain value, or the consumer can pass its own encoded string as a separate prop with `queryParam: 'name'`.
+
+### Naming and errors
+
+| Area | v1 | v2 | What to do |
+|---|---|---|---|
+| Consumer host allowlist | `domain` | `hostOrigins` | Rename the option; values are origins such as `https://pay.example.com`, and a bare host such as `pay.example.com` now throws |
+| Host consumer allowlist | `initHost(defs, allowedConsumerDomains)` or `ComponentOptions.allowedConsumerDomains` | `initHost(Component, { consumerOrigins })` (required) | Move the allowlist to `initHost` and rename it |
+| Matcher type | `DomainMatcher` | `OriginMatcher` | Rename the type import |
+| Consumer origin in the host | `hostProps.getConsumerDomain()` | `hostProps.consumerOrigin`, a read-only property | Drop the call parentheses |
+| Handshake timeout | `timeout` | `initTimeout` | Rename; remote callbacks still have no timeout |
+| Default context | `defaultContext` | `context` | Rename |
+| Removed names | Ignored or accepted | `domain`, `timeout` and `defaultContext` throw a `VALIDATION` error naming the replacement | Rename the option |
+| Popup blocked | `err instanceof PopupOpenError` | `err instanceof ForgeFrameError && err.code === 'POPUP_BLOCKED'` | Replace the check |
+| Matching messages | `err.message.includes('timed out')`, `'not allowed'`, `'closed before rendering completed'`, `'callback limit'` | `err.code === 'INIT_TIMEOUT'`, `'ORIGIN_REJECTED'`, `'CANCELLED'`, `'CAPACITY'` | Switch on `code`; message text is not a contract and now says "origin" where it said "domain" |
+| Host `error` event | Sometimes `{ type: 'init_failed', message, error }` | Always an `Error`; start-up failures are `ForgeFrameError`s with the underlying failure in `cause` | Read `err.code` and `err.cause` |
+| Component `validate` | Its error reached `render()` unchanged | `VALIDATION`, with your error as `cause` | Read `err.cause` for your own error |
+| DOM methods | `await instance.show()`, and the same for `hide`, `focus` and `resize`, returned promises | They return `void` and finish before they return | `await` still works; replace `.then()` and `.catch()` chains, and catch `resize()` errors with `try`/`catch` |
+| `resize` with nothing mounted | Emitted `resize` | Emits nothing, as `focus` does | Listen for `resize` only once rendered |
+| Invalid URL at render | Closed the instance | Rejects `render()` and leaves the instance open | Fix the props with `updateProps()` and render again |
 
 ### Named exports only
 
@@ -1396,7 +1450,7 @@ import {
   initHost,             // Start the host runtime; await host.ready before reading props
   isHost,               // Whether a host is active or this window holds a ForgeFrame payload
   prop,                 // Prop schema builders
-  PopupOpenError,       // Popup blocker/open failures
+  ForgeFrameError,      // The error ForgeFrame raises; branch on error.code
   VERSION,              // Library version
   createReactComponent, // React adapter
   withReactComponent,   // React adapter factory
@@ -1414,16 +1468,16 @@ interface ComponentOptions<P> {
   dimensions?: { width?: number | string; height?: number | string } | ((props: P) => { width?: number | string; height?: number | string });
   props?: PropsDefinition<P>;
   exports?: StandardSchemaV1;  // What the host exports; types instance.exports and is validated
-  defaultContext?: 'iframe' | 'popup';
+  context?: 'iframe' | 'popup'; // Default context; render(container, context) overrides it
   containerTemplate?: (ctx: TemplateContext<P>) => HTMLElement | null;
   prerenderTemplate?: (ctx: TemplateContext<P>) => HTMLElement | null;
-  domain?: DomainMatcher;      // Consumer-side trusted host origins; required when url is a function
-  peers?: true | DomainMatcher; // Opt in to peer discovery; a matcher also admits those host origins
+  hostOrigins?: OriginMatcher; // Consumer-side trusted host origins; required when url is a function
+  peers?: true | OriginMatcher; // Opt in to peer discovery; a matcher also admits those host origins
   sandbox?: string | false;    // Iframe sandbox; omitted keeps the default, false writes none
   validate?: (opts: { props: P }) => void;
   attributes?: IframeAttributes | ((props: P) => IframeAttributes); // never sandbox
   style?: IframeStyles | ((props: P) => IframeStyles);
-  timeout?: number;
+  initTimeout?: number;        // Handshake bound in ms (default 10000); remote callbacks have no timeout
   cspNonce?: string;           // Nonce for the default spinner's <style>; never sent to the host
 }
 ```
@@ -1435,10 +1489,10 @@ const instance = MyComponent(props);
 
 await instance.render(container, context?)   // Render into a container (container is required)
 await instance.close()                       // Close and destroy
-await instance.focus()                       // Focus
-await instance.resize({ width, height })     // Resize
-await instance.show()                        // Show
-await instance.hide()                        // Hide
+instance.focus()                             // Focus; synchronous
+instance.resize({ width, height })           // Resize; synchronous, throws VALIDATION for a cross-origin popup
+instance.show()                              // Show; synchronous
+instance.hide()                              // Hide; synchronous
 await instance.updateProps(newProps)         // Merge a patch; undefined resets a prop; queued while rendering
 
 instance.uid                                 // Unique ID
@@ -1452,7 +1506,7 @@ await closeAll()                             // Close every live instance of eve
 ### Instance Lifecycle
 
 - **URL resolution.** Relative component URLs resolve against `document.baseURI`, including any `<base href>`. `render()` validates and pins the absolute URL before loading callbacks run and uses it for navigation and prop delivery checks, so changing the document base during a callback cannot redirect the initial request.
-- **Closing during render.** Calling `close()` while `render()` is in flight cancels the render, removes its loading and host elements, and stops any iframe or popup that has not opened yet. The render promise rejects with `Component "<tag>" was closed before rendering completed`.
+- **Closing during render.** Calling `close()` while `render()` is in flight cancels the render, removes its loading and host elements, and stops any iframe or popup that has not opened yet. The render promise rejects with a `CANCELLED` [`ForgeFrameError`](#errors).
 - **Repeated close.** Repeated or reentrant `close()` calls wait for the same operation, including deregistration and the `closed` event; `close`, `closed` and cleanup run once. If a failed render already started destruction, `close()` waits for that teardown without emitting `close`.
 
 ### Iframe Styles and Loading
@@ -1488,6 +1542,9 @@ import {
   type Host,
   type HostProps,
   type InitHostOptions,
+  ForgeFrameError,
+  type ForgeFrameErrorCode, // 'POPUP_BLOCKED' | 'INIT_TIMEOUT' | ... | 'CAPACITY'
+  type OriginMatcher,
   type RemoteValue,
   type StandardSchemaV1,
   type StringSchema,      // Schema classes are types; build schemas with prop.*

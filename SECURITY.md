@@ -21,6 +21,6 @@ open the repository's **Security** tab and choose **Report a vulnerability**
 public issue or pull request for a suspected vulnerability.
 
 Include the affected version, the consumer and host setup (origins, iframe or
-popup, the `domain`, `peers` and `sandbox` settings, and the host's
+popup, the `hostOrigins`, `peers` and `sandbox` settings, and the host's
 `consumerOrigins`), and the steps or a minimal reproduction. You can expect an initial
 response within 7 days. Please keep the report private until a fix is released.

@@ -383,7 +383,8 @@ async function mount(
 				.render("#mount", context)
 				.then(
 					() => "ready",
-					(error: Error) => error.message,
+					(error: Error) =>
+						`${(error as { code?: string }).code}: ${error.message}`,
 				);
 		},
 		{ hostOrigin, attackerOrigin, path, context, allowRedirect },
@@ -1388,13 +1389,13 @@ for (const context of ["iframe", "popup"] as const) {
 					await instance.render("#mount", context);
 					return "unexpected success";
 				} catch (error) {
-					return (error as Error).message;
+					return `${(error as { code?: string }).code}: ${(error as Error).message}`;
 				}
 			},
 			{ consumerOrigin, attackerOrigin, context },
 		);
 		expect(outcome).toContain(
-			`Component URL origin "${attackerOrigin}" is not allowed`,
+			`ORIGIN_REJECTED: Component URL origin "${attackerOrigin}" is not allowed`,
 		);
 		expect(deliveryRequests).toEqual([]);
 		expect(page.context().pages()).toHaveLength(1);
@@ -1518,7 +1519,7 @@ test("redirected pages cannot read restricted props or complete initialization",
 		await page.evaluate(
 			() => (window as unknown as { outcome: Promise<string> }).outcome,
 		),
-	).toContain("did not initialize");
+	).toMatch(/^INIT_TIMEOUT: .*did not initialize/);
 });
 
 test("filters initial props against the verified redirect destination", async ({
@@ -1798,7 +1799,8 @@ test("calls queued behind host teardown reject instead of waiting forever", asyn
 		const settled = (promise: Promise<unknown>) =>
 			promise.then(
 				(value) => `resolved ${String(value)}`,
-				(error: Error) => error.message,
+				(error: Error) =>
+					`${(error as { code?: string }).code}: ${error.message}`,
 			);
 		const control = await settled(exports.value());
 		// Posted in one task: the host destroys itself before dispatching the second call.
@@ -1807,7 +1809,7 @@ test("calls queued behind host teardown reject instead of waiting forever", asyn
 		const outcomes = await Promise.all([destroying, queued]);
 		return { control, outcomes, later: await settled(exports.value()) };
 	});
-	const destroyed = "Host was destroyed before the call completed";
+	const destroyed = "CLOSED: Host was destroyed before the call completed";
 	expect(results).toEqual({
 		control: "resolved 1",
 		outcomes: [destroyed, destroyed],
