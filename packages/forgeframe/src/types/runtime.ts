@@ -14,9 +14,9 @@ import type {
 import type { ContainerTemplate, PrerenderTemplate } from "./templates";
 import type {
 	Dimensions,
-	DomainMatcher,
 	IframeAttributes,
 	IframeStyles,
+	OriginMatcher,
 } from "./utility";
 
 /**
@@ -198,8 +198,8 @@ export type ComponentOptions<P = Record<string, unknown>> =
  * @typeParam P - The normalized props type for the component
  *
  * @remarks
- * A static `url` may omit `domain`; its own origin is then trusted. A
- * function `url` requires `domain`, so a URL computed from props or
+ * A static `url` may omit `hostOrigins`; its own origin is then trusted. A
+ * function `url` requires `hostOrigins`, so a URL computed from props or
  * configuration never makes an unlisted origin trusted.
  *
  * @public
@@ -212,7 +212,7 @@ export type ComponentUrlOptions<P = Record<string, unknown>> =
 			 * Host origins this component trusts and may open. Defaults to the
 			 * origin of `url`. An empty array is rejected.
 			 */
-			domain?: DomainMatcher;
+			hostOrigins?: OriginMatcher;
 	  }
 	| {
 			/** Function that returns the host URL from the props. */
@@ -222,11 +222,11 @@ export type ComponentUrlOptions<P = Record<string, unknown>> =
 			 * function returns must match; `'*'` trusts any http(s) origin. An
 			 * empty array is rejected.
 			 */
-			domain: DomainMatcher;
+			hostOrigins: OriginMatcher;
 	  };
 
 /**
- * Component options other than `url` and `domain`.
+ * Component options other than `url` and `hostOrigins`.
  *
  * @typeParam P - The normalized props type for the component
  *
@@ -275,10 +275,11 @@ export interface ComponentBaseOptions<P = Record<string, unknown>> {
 	dimensions?: Dimensions | ((props: P) => Dimensions);
 
 	/**
-	 * Default rendering context (iframe or popup).
+	 * Default rendering context (iframe or popup); `render(container, context)`
+	 * overrides it per call.
 	 * @defaultValue 'iframe'
 	 */
-	defaultContext?: ContextType;
+	context?: ContextType;
 
 	/**
 	 * Opts this component in to peer discovery through `getPeerInstances()`.
@@ -290,7 +291,7 @@ export interface ComponentBaseOptions<P = Record<string, unknown>> {
 	 * requesting hosts verified at a matching origin. Hosts with an opaque
 	 * (`"null"`) origin never discover peers and are never listed.
 	 */
-	peers?: true | DomainMatcher;
+	peers?: true | OriginMatcher;
 
 	/**
 	 * The iframe's sandbox attribute.
@@ -343,10 +344,14 @@ export interface ComponentBaseOptions<P = Record<string, unknown>> {
 	style?: IframeStyles | ((props: P) => IframeStyles);
 
 	/**
-	 * Timeout in milliseconds for host initialization.
+	 * Milliseconds the initial handshake may take before `render()` rejects
+	 * with `INIT_TIMEOUT`.
+	 *
+	 * @remarks
+	 * It bounds only the handshake. Remote callbacks have no timeout.
 	 * @defaultValue 10000
 	 */
-	timeout?: number;
+	initTimeout?: number;
 
 	/**
 	 * Content Security Policy nonce for the inline `<style>` of the default
@@ -416,33 +421,29 @@ export interface ComponentInstance<
 	close(): Promise<void>;
 
 	/**
-	 * Focus the component window.
-	 *
-	 * @returns Promise that resolves when focused
+	 * Focus the component window. It changes only this page, so the focus
+	 * and the `focus` event happen before it returns.
 	 */
-	focus(): Promise<void>;
+	focus(): void;
 
 	/**
-	 * Resize the component to new dimensions.
+	 * Resize the component to new dimensions, before it returns.
+	 *
+	 * @remarks
+	 * With nothing mounted it does nothing and emits no `resize`.
 	 *
 	 * @param dimensions - New dimensions
-	 * @returns Promise that resolves when resized
+	 * @throws ForgeFrameError `VALIDATION` for a cross-origin popup, which the
+	 * browser does not let the consumer resize; call `hostProps.resize()` from
+	 * the host instead
 	 */
-	resize(dimensions: Dimensions): Promise<void>;
+	resize(dimensions: Dimensions): void;
 
-	/**
-	 * Show the component (if hidden).
-	 *
-	 * @returns Promise that resolves when shown
-	 */
-	show(): Promise<void>;
+	/** Show the component (if hidden), before it returns. */
+	show(): void;
 
-	/**
-	 * Hide the component.
-	 *
-	 * @returns Promise that resolves when hidden
-	 */
-	hide(): Promise<void>;
+	/** Hide the component, before it returns. */
+	hide(): void;
 
 	/**
 	 * Update the component's props.
@@ -704,11 +705,10 @@ export interface HostPropsBuiltins<
 	getConsumer: () => Window;
 
 	/**
-	 * Get the consumer window's domain.
-	 *
-	 * @returns Consumer domain string
+	 * The consumer window's origin, verified by the bootstrap exchange and
+	 * matched against `consumerOrigins`.
 	 */
-	getConsumerDomain: () => string;
+	readonly consumerOrigin: string;
 
 	/**
 	 * Export data/methods to the consumer.
@@ -746,7 +746,7 @@ export interface HostPropsBuiltins<
 	 * origin are returned, unless a peer's `peers` matcher admits this origin.
 	 * Peers whose hosts are still loading are listed without exports until rediscovery.
 	 * Exported methods are relayed through the consumer and return promises.
-	 * Rediscover peers after a sibling replaces its exports or reconnects; retired
+	 * Rediscover peers after a peer replaces its exports or reconnects; retired
 	 * methods reject. Unrelated prop updates do not retire cached peer methods.
 	 *
 	 * @param options - Options for peer discovery
@@ -821,7 +821,7 @@ export interface InitHostOptions<P = Record<string, unknown>> {
 	 * before it requests any props. An empty array admits no consumer, and
 	 * `'*'` admits any consumer.
 	 */
-	consumerOrigins: DomainMatcher;
+	consumerOrigins: OriginMatcher;
 
 	/**
 	 * Sends INIT as soon as `ready` resolves.

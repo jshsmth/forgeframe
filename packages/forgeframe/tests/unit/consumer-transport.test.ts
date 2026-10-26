@@ -11,6 +11,7 @@ import { CONTEXT, MESSAGE_NAME } from "@/constants";
 import type { ConsumerTransportHandlers } from "@/core/consumer/transport";
 import { ConsumerTransport } from "@/core/consumer/transport";
 import type { NormalizedOptions } from "@/core/consumer/types";
+import { ForgeFrameError } from "@/errors";
 import { prop } from "@/props/prop";
 import type { Dimensions, PeerInfo } from "@/types";
 import { createDeferred } from "@/utils/promise";
@@ -49,27 +50,24 @@ function createOptions(
 			onReady: { schema: prop.function().optional() },
 			payload: { schema: prop.any<Record<string, unknown>>().optional() },
 		},
-		defaultContext: CONTEXT.IFRAME,
+		context: CONTEXT.IFRAME,
 		dimensions: { width: 320, height: 240 },
-		timeout: 50,
+		initTimeout: 50,
 		...overrides,
 	};
 }
 
 function createTransport({
 	options = createOptions(),
-	resolveUrl = () => "https://host.example.com/widget",
 	resolveUrlOrigin = (url: string) =>
 		new URL(url, window.location.origin).origin,
 }: {
 	options?: NormalizedOptions<TestProps>;
-	resolveUrl?: () => string;
 	resolveUrlOrigin?: (url: string) => string;
 } = {}) {
 	const transport = new ConsumerTransport<TestProps, { ready: boolean }>(
 		"consumer-transport-uid",
 		options,
-		resolveUrl,
 		resolveUrlOrigin,
 	);
 	createdTransports.push(transport);
@@ -245,28 +243,43 @@ describe("ConsumerTransport", () => {
 
 	it("should prefer the verified active origin after host initialization", () => {
 		const transport = createTransport();
-		transport.openedHostDomain = "https://host.example.com";
-		transport.activeHostDomain = "https://redirected-host.example.com";
+		transport.openedHostOrigin = "https://host.example.com";
+		transport.activeHostOrigin = "https://redirected-host.example.com";
 
-		expect(transport.getHostDomain()).toBe(
+		expect(transport.getHostOrigin()).toBe(
 			"https://redirected-host.example.com",
 		);
 
-		transport.activeHostDomain = null;
-		expect(transport.getHostDomain()).toBe("https://host.example.com");
+		transport.activeHostOrigin = null;
+		expect(transport.getHostOrigin()).toBe("https://host.example.com");
 	});
 
-	it("should rely exclusively on an explicit domain policy when configured", () => {
+	it("should track the trusted static URL origin only without hostOrigins, across teardown", () => {
+		expect(
+			createTransport({
+				options: createOptions({ hostOrigins: "https://host.example.com" }),
+			}).staticUrlTrustedOrigin,
+		).toBeNull();
+
+		const transport = createTransport();
+		expect(transport.staticUrlTrustedOrigin).toBe("https://host.example.com");
+		transport.resetHostWindow();
+		const removeSpy = vi.spyOn(transport.messenger, "removeTrustedOrigin");
+		transport.syncTrustedOriginForUrl("https://moved.example.com/widget");
+		expect(removeSpy).toHaveBeenCalledWith("https://host.example.com");
+		expect(transport.staticUrlTrustedOrigin).toBe("https://moved.example.com");
+	});
+
+	it("should rely exclusively on an explicit hostOrigins policy when configured", () => {
 		const transport = createTransport({
 			options: createOptions({
-				domain: ["https://explicit.example.com"],
+				hostOrigins: ["https://explicit.example.com"],
 			}),
-			resolveUrl: () => "https://dynamic-old.example.com/widget",
 		});
-		const removeSpy = vi.spyOn(transport.messenger, "removeTrustedDomain");
-		const addSpy = vi.spyOn(transport.messenger, "addTrustedDomain");
+		const removeSpy = vi.spyOn(transport.messenger, "removeTrustedOrigin");
+		const addSpy = vi.spyOn(transport.messenger, "addTrustedOrigin");
 
-		transport.syncTrustedDomainForUrl(
+		transport.syncTrustedOriginForUrl(
 			"https://dynamic-next.example.com/widget",
 		);
 
@@ -391,11 +404,20 @@ describe("ConsumerTransport", () => {
 			"consumer-transport-component",
 			vi.fn(),
 		);
-		(transport as unknown as { hostInitFailure: Error }).hostInitFailure =
-			new Error("Host initialization failed: bad props");
-		const firstRejection = expect(first).rejects.toThrow(
-			/within 25ms\. Host initialization failed: bad props \(25ms\)$/,
+		const hostFailure = new ForgeFrameError(
+			"VALIDATION",
+			"Host initialization failed: bad props",
 		);
+		(transport as unknown as { hostInitFailure: Error }).hostInitFailure =
+			hostFailure;
+		const firstRejection = expect(first).rejects.toMatchObject({
+			name: "ForgeFrameError",
+			code: "INIT_TIMEOUT",
+			message: expect.stringMatching(
+				/within 25ms\. Host initialization failed: bad props$/,
+			),
+			cause: hostFailure,
+		});
 		await vi.advanceTimersByTimeAsync(25);
 		await firstRejection;
 
@@ -417,7 +439,7 @@ describe("ConsumerTransport", () => {
 		const redirectedOrigin = "https://redirected-host.example.com";
 		const transport = createTransport({
 			options: createOptions({
-				domain: [configuredOrigin, redirectedOrigin],
+				hostOrigins: [configuredOrigin, redirectedOrigin],
 			}),
 		});
 		const handlers = createHandlers();
@@ -427,7 +449,7 @@ describe("ConsumerTransport", () => {
 			.mockResolvedValue("callback-result");
 
 		transport.attachHostWindow(hostWindow, HOST_ORIGIN);
-		transport.openedHostDomain = configuredOrigin;
+		transport.openedHostOrigin = configuredOrigin;
 		transport.setupMessageHandlers(handlers);
 
 		const exportHandler = getHandler(transport, MESSAGE_NAME.EXPORT);

@@ -1,3 +1,4 @@
+import { ForgeFrameError } from "../../errors";
 import type { StandardSchemaV1Issue, StandardSchemaV1Result } from "../schema";
 import type {
 	InferSchemaInput,
@@ -158,9 +159,12 @@ export class TupleSchema<
 /**
  * Infers the output type from an object shape definition.
  *
+ * @remarks
+ * Exported so declaration files can name the type `prop.object()` returns.
+ *
  * @typeParam S - Object shape definition.
  *
- * @internal
+ * @public
  */
 export type InferObjectShape<
 	S extends Record<string, PropSchema<unknown, unknown>>,
@@ -196,8 +200,11 @@ type RequiredObjectInputKeys<
 /**
  * Infers the accepted input object from an object shape definition.
  *
+ * @remarks
+ * Exported so declaration files can name the type `prop.object()` returns.
+ *
  * @typeParam S - Object shape definition.
- * @internal
+ * @public
  */
 export type InferObjectInputShape<
 	S extends Record<string, PropSchema<unknown, unknown>>,
@@ -233,7 +240,8 @@ export class ObjectSchema<
 	constructor(shape: Record<string, PropSchema<unknown, unknown>>) {
 		super();
 		if (typeof shape !== "object" || shape === null || Array.isArray(shape)) {
-			throw new TypeError(
+			throw new ForgeFrameError(
+				"VALIDATION",
 				"prop.object(shape) requires a shape. Use prop.record(value) for dictionaries, or prop.any<T>() for an object that is deliberately unchecked.",
 			);
 		}

@@ -227,7 +227,7 @@ export function createComponent(
 		dimensions,
 		style: config.style as Record<string, string>,
 		attributes: config.attributes,
-		timeout: config.timeout,
+		initTimeout: config.timeout,
 		props: buildPropsSchema(config),
 	});
 

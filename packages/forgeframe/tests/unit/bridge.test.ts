@@ -338,9 +338,13 @@ describe("FunctionBridge", () => {
 
 			bridge.removeLocal(ref.__id__);
 
-			await expect(messenger.simulateCall(ref.__id__, [])).rejects.toThrow(
-				`Function with id "${ref.__id__}" not found`,
-			);
+			// A retired reference is CLOSED: the callback it named is gone.
+			await expect(
+				messenger.simulateCall(ref.__id__, []),
+			).rejects.toMatchObject({
+				code: "CLOSED",
+				message: `Function with id "${ref.__id__}" not found`,
+			});
 		});
 	});
 
@@ -729,7 +733,7 @@ describe("deserializeFunctions", () => {
 	let messenger: ReturnType<typeof createMockMessenger>;
 	let bridge: FunctionBridge;
 	const targetWin = {} as Window;
-	const targetDomain = "https://target.com";
+	const targetOrigin = "https://target.com";
 
 	beforeEach(() => {
 		messenger = createMockMessenger();
@@ -750,7 +754,7 @@ describe("deserializeFunctions", () => {
 			__name__: "test",
 		};
 
-		const result = deserializeFunctions(ref, bridge, targetWin, targetDomain);
+		const result = deserializeFunctions(ref, bridge, targetWin, targetOrigin);
 
 		expect(typeof result).toBe("function");
 	});
@@ -769,7 +773,7 @@ describe("deserializeFunctions", () => {
 			obj,
 			bridge,
 			targetWin,
-			targetDomain,
+			targetOrigin,
 		) as Record<string, unknown>;
 
 		expect(typeof result.callback).toBe("function");
@@ -791,7 +795,7 @@ describe("deserializeFunctions", () => {
 			obj,
 			bridge,
 			targetWin,
-			targetDomain,
+			targetOrigin,
 		) as { nested: { fn: unknown } };
 
 		expect(typeof result.nested.fn).toBe("function");
@@ -807,7 +811,7 @@ describe("deserializeFunctions", () => {
 			arr,
 			bridge,
 			targetWin,
-			targetDomain,
+			targetOrigin,
 		) as unknown[];
 
 		expect(typeof result[0]).toBe("function");
@@ -816,13 +820,13 @@ describe("deserializeFunctions", () => {
 
 	it("should preserve primitives", () => {
 		expect(
-			deserializeFunctions("string", bridge, targetWin, targetDomain),
+			deserializeFunctions("string", bridge, targetWin, targetOrigin),
 		).toBe("string");
-		expect(deserializeFunctions(42, bridge, targetWin, targetDomain)).toBe(42);
-		expect(deserializeFunctions(true, bridge, targetWin, targetDomain)).toBe(
+		expect(deserializeFunctions(42, bridge, targetWin, targetOrigin)).toBe(42);
+		expect(deserializeFunctions(true, bridge, targetWin, targetOrigin)).toBe(
 			true,
 		);
-		expect(deserializeFunctions(null, bridge, targetWin, targetDomain)).toBe(
+		expect(deserializeFunctions(null, bridge, targetWin, targetOrigin)).toBe(
 			null,
 		);
 	});
@@ -839,7 +843,7 @@ describe("deserializeFunctions", () => {
 			value,
 			bridge,
 			targetWin,
-			targetDomain,
+			targetOrigin,
 		) as {
 			first: unknown;
 			second: unknown;
@@ -869,7 +873,7 @@ describe("deserializeFunctions", () => {
 			value,
 			bridge,
 			targetWin,
-			targetDomain,
+			targetOrigin,
 		) as Record<string, unknown>;
 
 		expect(result.safe).toBe(42);
@@ -900,7 +904,7 @@ describe("round-trip serialization", () => {
 		);
 
 		const targetWin = {} as Window;
-		const targetDomain = "https://host.com";
+		const targetOrigin = "https://host.com";
 
 		// Consumer serializes a function
 		const originalFn = vi.fn().mockReturnValue("success");
@@ -910,7 +914,7 @@ describe("round-trip serialization", () => {
 		const deserialized = hostBridge.deserialize(
 			serialized,
 			targetWin,
-			targetDomain,
+			targetOrigin,
 		) as (...args: unknown[]) => Promise<unknown>;
 
 		// Host calls the function
@@ -919,7 +923,7 @@ describe("round-trip serialization", () => {
 		// Verify the call was sent to consumer
 		expect(hostMessenger.send).toHaveBeenCalledWith(
 			targetWin,
-			targetDomain,
+			targetOrigin,
 			MESSAGE_NAME.CALL,
 			{ id: serialized.__id__, args: ["arg1"] },
 			null,

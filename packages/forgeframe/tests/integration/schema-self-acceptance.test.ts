@@ -205,7 +205,7 @@ describe("One schema per prop", () => {
 			tag: "host-strips-unknown-fields",
 			url: "https://host.example.com/widget",
 			props: { profile: z.looseObject({ name: z.string() }) },
-			timeout: 300,
+			initTimeout: 300,
 		});
 		const instance = Component({ profile: { name: "Ada", role: "admin" } });
 		const errors: string[] = [];

@@ -12,7 +12,7 @@ import {
 	type PeerCandidate,
 	selectPeerInstances,
 } from "@/core/consumer/peers";
-import { setVerifiedHostDomain } from "../peer-host-domain";
+import { setVerifiedHostOrigin } from "../peer-host-origin";
 
 const REQUESTER_ORIGIN = "https://widgets.example.com";
 
@@ -20,8 +20,8 @@ function candidate(overrides: Partial<PeerCandidate>): PeerCandidate {
 	return {
 		uid: "peer",
 		tag: "peer-tag",
-		verifiedHostDomain: REQUESTER_ORIGIN,
-		openedHostDomain: REQUESTER_ORIGIN,
+		verifiedHostOrigin: REQUESTER_ORIGIN,
+		openedHostOrigin: REQUESTER_ORIGIN,
 		peers: true,
 		exports: { id: overrides.uid ?? "peer" },
 		...overrides,
@@ -70,7 +70,7 @@ describe("selectPeerInstances", () => {
 				candidate({ uid: "same-origin" }),
 				candidate({
 					uid: "other-origin",
-					verifiedHostDomain: "https://partner.example.com",
+					verifiedHostOrigin: "https://partner.example.com",
 				}),
 			]),
 		).toEqual(["same-origin"]);
@@ -79,7 +79,7 @@ describe("selectPeerInstances", () => {
 	it("lets a matcher on the listed peer admit another requester origin, one way", () => {
 		const partner = candidate({
 			uid: "partner",
-			verifiedHostDomain: "https://partner.example.com",
+			verifiedHostOrigin: "https://partner.example.com",
 			peers: "https://*.example.com",
 		});
 
@@ -97,7 +97,7 @@ describe("selectPeerInstances", () => {
 	it("never involves opaque origins, even when a matcher would match", () => {
 		const opaquePeer = candidate({
 			uid: "opaque",
-			verifiedHostDomain: "null",
+			verifiedHostOrigin: "null",
 			peers: "*",
 		});
 
@@ -111,11 +111,11 @@ describe("selectPeerInstances", () => {
 		expect(
 			selectPeerInstances(
 				[
-					candidate({ uid: "loading", verifiedHostDomain: null }),
+					candidate({ uid: "loading", verifiedHostOrigin: null }),
 					candidate({
 						uid: "unopened",
-						verifiedHostDomain: null,
-						openedHostDomain: null,
+						verifiedHostOrigin: null,
+						openedHostOrigin: null,
 					}),
 				],
 				"requester",
@@ -149,7 +149,7 @@ describe("getPeerInstances", () => {
 		const sameTag = Shared();
 		const otherTag = Other();
 		const privateTag = Private();
-		setVerifiedHostDomain(
+		setVerifiedHostOrigin(
 			REQUESTER_ORIGIN,
 			requester,
 			sameTag,
@@ -161,7 +161,7 @@ describe("getPeerInstances", () => {
 				uid: requester.uid,
 				tag: "peers-unit-shared",
 				peers: true,
-				hostDomain: REQUESTER_ORIGIN,
+				hostOrigin: REQUESTER_ORIGIN,
 				allTags,
 			}).map((peer) => peer.uid);
 

@@ -312,7 +312,7 @@ test.beforeAll(async () => {
 				import {initHost,prop} from "/library.js";
 				const consumerOrigins = ${JSON.stringify(req.url === "/any-consumer" ? "*" : ["https://excluded.example"])};
 				const host = initHost({props:{label:prop.string()}, consumerOrigins});
-				host.ready.then(props => { window.consumerDomain = props.getConsumerDomain(); window.label = props.label; window.ready = true; },
+				host.ready.then(props => { window.consumerOrigin = props.consumerOrigin; window.label = props.label; window.ready = true; },
 					error => { window.failure = error.message; });
 				</script>`,
 				);
@@ -366,8 +366,8 @@ async function mount(
 			reviewWindow.instance = create({
 				tag: "browser-navigation-review",
 				url: hostOrigin + path,
-				domain: allowRedirect ? [hostOrigin, attackerOrigin] : hostOrigin,
-				timeout: 1500,
+				hostOrigins: allowRedirect ? [hostOrigin, attackerOrigin] : hostOrigin,
+				initTimeout: 1500,
 				dimensions: { width: 300, height: 200 },
 				props: {
 					count: prop.number(),
@@ -383,7 +383,8 @@ async function mount(
 				.render("#mount", context)
 				.then(
 					() => "ready",
-					(error: Error) => error.message,
+					(error: Error) =>
+						`${(error as { code?: string }).code}: ${error.message}`,
 				);
 		},
 		{ hostOrigin, attackerOrigin, path, context, allowRedirect },
@@ -424,8 +425,8 @@ async function prepareDelivery(
 				reviewWindow.instance = create({
 					tag: "browser-delivery-regression",
 					url: "delivery?existing=a%20b#checkout?step=2",
-					domain: [hostOrigin, attackerOrigin],
-					timeout: 3000,
+					hostOrigins: [hostOrigin, attackerOrigin],
+					initTimeout: 3000,
 					validate: ({ props }: { props: { count: number } }) => {
 						if (scenario === "queued" && props.count === 2 && !queuedFollowUp) {
 							queuedFollowUp = true;
@@ -567,7 +568,7 @@ for (const loading of [undefined, "eager"] as const) {
 				const instance = create({
 					tag: "eager-loading-layout",
 					url: `${hostOrigin}/delivery`,
-					timeout: 5000,
+					initTimeout: 5000,
 					dimensions: { width: 320, height: 180 },
 					attributes: { loading },
 					style: { display: "block" },
@@ -634,7 +635,7 @@ for (const method of ["GET", "POST"] as const) {
 					const instance = create({
 						tag: "lazy-iframe-styles",
 						url: `${hostOrigin}/delivery`,
-						timeout: 3000,
+						initTimeout: 3000,
 						dimensions: { width: 320, height: 180 },
 						attributes: {
 							loading: "lazy",
@@ -716,7 +717,7 @@ test("lazy iframe applies a show requested before frame creation", async ({
 			const instance = create({
 				tag: "lazy-iframe-early-show",
 				url: `${hostOrigin}/delivery`,
-				timeout: 3000,
+				initTimeout: 3000,
 				attributes: { loading: "lazy" },
 				style: {
 					display: "none",
@@ -755,7 +756,7 @@ for (const control of ["hide", "show"] as const) {
 				const instance = create({
 					tag: "lazy-loading-control",
 					url: `${hostOrigin}/delivery`,
-					timeout: 3000,
+					initTimeout: 3000,
 					dimensions: { width: 320, height: 180 },
 					attributes: { loading: "lazy" },
 					style: {
@@ -855,7 +856,7 @@ test("initial rendering preserves a host hide and configured CSS values", async 
 			display: iframe.style.display,
 			visibility: iframe.style.visibility,
 		};
-		await instance.show();
+		instance.show();
 		return {
 			hidden,
 			shown: {
@@ -1055,8 +1056,8 @@ for (const context of ["iframe", "popup"] as const) {
 				const instance = create({
 					tag: "browser-named-form-controls",
 					url: `${hostOrigin}/delivery`,
-					domain: hostOrigin,
-					timeout: 3000,
+					hostOrigins: hostOrigin,
+					initTimeout: 3000,
 					props: {
 						count: { schema: prop.number(), bodyParam: "submit" },
 						allowed: { schema: prop.string(), bodyParam: "appendChild" },
@@ -1142,8 +1143,8 @@ for (const context of ["iframe", "popup"] as const) {
 				const instance = create({
 					tag: "browser-nested-functions",
 					url: `${hostOrigin}/encoded-props`,
-					domain: hostOrigin,
-					timeout: 3000,
+					hostOrigins: hostOrigin,
+					initTimeout: 3000,
 					props: {
 						config: prop.any(),
 						label: prop.string().optional(),
@@ -1371,7 +1372,7 @@ for (const context of ["iframe", "popup"] as const) {
 				const component = create({
 					tag: "browser-base-rejection",
 					url: "/delivery",
-					domain: consumerOrigin,
+					hostOrigins: consumerOrigin,
 					props: {
 						order: {
 							schema: prop.string(),
@@ -1388,13 +1389,13 @@ for (const context of ["iframe", "popup"] as const) {
 					await instance.render("#mount", context);
 					return "unexpected success";
 				} catch (error) {
-					return (error as Error).message;
+					return `${(error as { code?: string }).code}: ${(error as Error).message}`;
 				}
 			},
 			{ consumerOrigin, attackerOrigin, context },
 		);
 		expect(outcome).toContain(
-			`Component URL origin "${attackerOrigin}" is not allowed`,
+			`ORIGIN_REJECTED: Component URL origin "${attackerOrigin}" is not allowed`,
 		);
 		expect(deliveryRequests).toEqual([]);
 		expect(page.context().pages()).toHaveLength(1);
@@ -1518,7 +1519,7 @@ test("redirected pages cannot read restricted props or complete initialization",
 		await page.evaluate(
 			() => (window as unknown as { outcome: Promise<string> }).outcome,
 		),
-	).toContain("did not initialize");
+	).toMatch(/^INIT_TIMEOUT: .*did not initialize/);
 });
 
 test("filters initial props against the verified redirect destination", async ({
@@ -1684,7 +1685,7 @@ test("growing a widget also grows its clipping container", async ({ page }) => {
 		(
 			window as unknown as {
 				instance: {
-					resize(dimensions: { width: number; height: number }): Promise<void>;
+					resize(dimensions: { width: number; height: number }): void;
 				};
 			}
 		).instance.resize({ width: 600, height: 500 }),
@@ -1719,22 +1720,25 @@ test("a cross-origin popup host resizes itself and consumer resizing reports the
 		resizes: unknown[];
 		instance: {
 			event: { on(event: string, handler: (data: unknown) => void): void };
-			resize(dimensions: { width: number; height: number }): Promise<void>;
+			resize(dimensions: { width: number; height: number }): void;
 		};
 	};
-	const consumerResult = await page.evaluate(async () => {
+	const consumerResult = await page.evaluate(() => {
 		const state = window as unknown as ResizeWindow;
 		state.resizes = [];
 		state.instance.event.on("resize", (dimensions) => {
 			state.resizes.push(dimensions);
 		});
-		return state.instance.resize({ width: 600, height: 500 }).then(
-			() => "resolved",
-			(error: Error) => error.message,
-		);
+		// The refusal throws synchronously, at the call.
+		try {
+			state.instance.resize({ width: 600, height: 500 });
+			return "returned";
+		} catch (error) {
+			return `${(error as { code?: string }).code}: ${(error as Error).message}`;
+		}
 	});
 	expect(consumerResult).toContain(
-		'Cannot resize the popup for component "browser-navigation-review"',
+		'VALIDATION: Cannot resize the popup for component "browser-navigation-review"',
 	);
 	expect(
 		await page.evaluate(() => (window as unknown as ResizeWindow).resizes),
@@ -1795,7 +1799,8 @@ test("calls queued behind host teardown reject instead of waiting forever", asyn
 		const settled = (promise: Promise<unknown>) =>
 			promise.then(
 				(value) => `resolved ${String(value)}`,
-				(error: Error) => error.message,
+				(error: Error) =>
+					`${(error as { code?: string }).code}: ${error.message}`,
 			);
 		const control = await settled(exports.value());
 		// Posted in one task: the host destroys itself before dispatching the second call.
@@ -1804,7 +1809,7 @@ test("calls queued behind host teardown reject instead of waiting forever", asyn
 		const outcomes = await Promise.all([destroying, queued]);
 		return { control, outcomes, later: await settled(exports.value()) };
 	});
-	const destroyed = "Host was destroyed before the call completed";
+	const destroyed = "CLOSED: Host was destroyed before the call completed";
 	expect(results).toEqual({
 		control: "resolved 1",
 		outcomes: [destroyed, destroyed],
@@ -2009,7 +2014,7 @@ for (const context of ["iframe", "popup"] as const) {
 				reviewWindow.instance = create({
 					tag: "reconnect-queued-update",
 					url: `${hostOrigin}/host`,
-					domain: hostOrigin,
+					hostOrigins: hostOrigin,
 					props: {
 						count: prop.number(),
 						// Its toJSON() runs when a snapshot is delivered, so it can queue
@@ -2523,10 +2528,10 @@ test("a host with '*' admits a real cross-origin consumer and binds its exact or
 	await frame.waitForFunction(() => (window as { ready?: boolean }).ready);
 	expect(
 		await frame.evaluate(() => ({
-			consumerDomain: (window as { consumerDomain?: string }).consumerDomain,
+			consumerOrigin: (window as { consumerOrigin?: string }).consumerOrigin,
 			label: (window as { label?: string }).label,
 		})),
-	).toEqual({ consumerDomain: consumerOrigin, label: "public" });
+	).toEqual({ consumerOrigin, label: "public" });
 });
 
 test("a host whose allowlist excludes the consumer refuses it and the render times out", async ({
@@ -2540,7 +2545,7 @@ test("a host whose allowlist excludes the consumer refuses it and the render tim
 			tag: "browser-excluded-consumer",
 			url: `${hostOrigin}/excluded-consumer`,
 			props: { label: prop.string() },
-			timeout: 1500,
+			initTimeout: 1500,
 		})({ label: "blocked" })
 			.render("#mount")
 			.then(
@@ -2607,9 +2612,9 @@ test("'*' on the consumer never admits a host with an opaque origin", async ({
 		return create({
 			tag: "browser-opaque-host",
 			url: () => `${hostOrigin}/opaque-host`,
-			domain: "*",
+			hostOrigins: "*",
 			props: { label: prop.string() },
-			timeout: 1500,
+			initTimeout: 1500,
 		})({ label: "opaque" })
 			.render("#mount")
 			.then(

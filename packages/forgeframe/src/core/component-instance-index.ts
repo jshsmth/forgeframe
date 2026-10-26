@@ -12,9 +12,9 @@ import type { ComponentInstance, PeersOption } from "../types/runtime";
 /** Internal accessors the index requires in addition to the public instance API. @internal */
 export interface IndexedInstanceAccess {
 	/** Browser-verified origin of the connected host window, if any. */
-	getVerifiedHostDomain(): string | null;
+	getVerifiedHostOrigin(): string | null;
 	/** Origin the instance opened its host at, before verification. */
-	getOpenedHostDomain(): string | null;
+	getOpenedHostOrigin(): string | null;
 	/** The component's `peers` option: whether, and to whom, this instance is listed. */
 	getPeers(): PeersOption;
 }

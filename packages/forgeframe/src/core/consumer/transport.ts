@@ -15,6 +15,7 @@ import {
 import { type MessageHandler, Messenger } from "../../communication/messenger";
 import type { ContextType } from "../../constants";
 import { MESSAGE_NAME } from "../../constants";
+import { errorFromWire, ForgeFrameError } from "../../errors";
 import { getPropsForHost, serializeProps } from "../../props";
 import { createDeliveryTarget } from "../../props/normalize";
 import type { SerializedProps } from "../../props/types";
@@ -24,9 +25,9 @@ import type {
 	PeerInfo,
 	RemoteValue,
 } from "../../types/runtime";
-import type { Dimensions, DomainMatcher } from "../../types/utility";
+import type { Dimensions, OriginMatcher } from "../../types/utility";
 import { createDeferred, promiseTimeout } from "../../utils/promise";
-import { getDomain, isWindowClosed, matchDomain } from "../../window/helpers";
+import { getOrigin, isWindowClosed, matchOrigin } from "../../window/helpers";
 import {
 	buildWindowName,
 	createWindowPayload,
@@ -48,10 +49,10 @@ export interface ConsumerTransportHandlers<X> {
 	) => Promise<HostBootstrapData>;
 	onReconnect: () => void;
 	onClose: () => Promise<void>;
-	onResize: (dimensions: Dimensions) => Promise<void>;
-	onFocus: () => Promise<void>;
-	onShow: () => Promise<void>;
-	onHide: () => Promise<void>;
+	onResize: (dimensions: Dimensions) => void;
+	onFocus: () => void;
+	onShow: () => void;
+	onHide: () => void;
 	onError: (error: Error) => void;
 	onExport: (exports: RemoteValue<X>) => void;
 	onGetPeers: (
@@ -77,12 +78,15 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 	public hostWindow: Window | null = null;
 
 	/** Origin of currently opened host content. */
-	public openedHostDomain: string | null = null;
+	public openedHostOrigin: string | null = null;
 
 	/** Browser-verified origin of the initialized host window. */
-	public activeHostDomain: string | null = null;
+	public activeHostOrigin: string | null = null;
 
-	/** Static URL origin currently trusted when no `domain` is configured. */
+	/**
+	 * The static URL origin the messenger trusts when `hostOrigins` is not
+	 * configured; `null` while `hostOrigins` is the whole trust policy.
+	 */
 	public staticUrlTrustedOrigin: string | null = null;
 
 	/** Deferred host initialization handshake promise. */
@@ -101,17 +105,16 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 	constructor(
 		private uid: string,
 		private options: NormalizedOptions<P>,
-		private resolveUrl: () => string,
 		private resolveUrlOrigin: (url: string) => string,
 	) {
-		const trustedDomains = this.buildTrustedDomains();
+		const trustedOrigins = this.buildTrustedOrigins();
 		// Unrendered instances never receive host messages, so listening waits
 		// until host content opens.
 		this.messenger = new Messenger(
 			this.uid,
 			window,
-			getDomain(),
-			trustedDomains,
+			getOrigin(),
+			trustedOrigins,
 			false,
 		);
 		this.bridge = new FunctionBridge(this.messenger, (source) =>
@@ -125,50 +128,46 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 	}
 
 	/**
-	 * Builds trusted domains used to initialize messenger security checks.
+	 * Builds the origins the messenger trusts first: `hostOrigins`, or else
+	 * the static URL's origin, which {@link syncTrustedOriginForUrl} tracks.
 	 */
-	private buildTrustedDomains(): DomainMatcher | undefined {
+	private buildTrustedOrigins(): OriginMatcher | undefined {
+		if (this.options.hostOrigins !== undefined) return this.options.hostOrigins;
 		const hostOrigin =
 			typeof this.options.url === "string"
 				? this.resolveUrlOrigin(this.options.url)
 				: null;
-		if (hostOrigin) this.staticUrlTrustedOrigin = hostOrigin;
-		return collectTrustedDomains(this.options.domain, hostOrigin);
+		this.staticUrlTrustedOrigin = hostOrigin;
+		return hostOrigin ?? undefined;
 	}
 
 	/**
 	 * Ensures the messenger trusts the origin for a resolved host URL.
 	 *
 	 * @remarks
-	 * A configured `domain` is the whole trust policy, and every resolved URL
-	 * was checked against it. Without one the URL is static (`create()`
-	 * requires `domain` for a function URL), and a relative URL's origin
+	 * A configured `hostOrigins` is the whole trust policy, and every resolved
+	 * URL was checked against it. Without one the URL is static (`create()`
+	 * requires `hostOrigins` for a function URL), and a relative URL's origin
 	 * follows the document base, so the trusted origin moves with it.
 	 */
-	syncTrustedDomainForUrl(url: string): void {
-		if (this.options.domain !== undefined) return;
+	syncTrustedOriginForUrl(url: string): void {
+		if (this.options.hostOrigins !== undefined) return;
 		const origin = this.resolveUrlOrigin(url);
 		const previousOrigin = this.staticUrlTrustedOrigin;
 		if (previousOrigin && previousOrigin !== origin) {
-			this.messenger.removeTrustedDomain(previousOrigin);
+			this.messenger.removeTrustedOrigin(previousOrigin);
 		}
 
-		this.messenger.addTrustedDomain(origin);
+		this.messenger.addTrustedOrigin(origin);
 		this.staticUrlTrustedOrigin = origin;
 	}
 
 	/**
-	 * Returns the current host domain target used for messaging.
+	 * Returns the verified host origin, else the opened one, else `null`
+	 * once teardown has cleared both.
 	 */
-	getHostDomain(): string {
-		// Without a host origin, as after teardown cleared both, fall back to
-		// the committed props' URL origin.
-		return this.getHostOrigin() ?? this.resolveUrlOrigin(this.resolveUrl());
-	}
-
-	/** Returns the verified host origin, else the opened one, else `null`. */
 	getHostOrigin(): string | null {
-		return this.activeHostDomain ?? this.openedHostDomain;
+		return this.activeHostOrigin ?? this.openedHostOrigin;
 	}
 
 	/**
@@ -207,15 +206,17 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 		nextProps: P,
 		propDefinitions: PropsDefinition<P>,
 	): Promise<void> {
-		if (!this.hostWindow || isWindowClosed(this.hostWindow)) {
+		// attachHostWindow() records the opened origin with the window, so a
+		// connected window always has one.
+		const hostOrigin = this.getHostOrigin();
+		if (!this.hostWindow || isWindowClosed(this.hostWindow) || !hostOrigin) {
 			return;
 		}
 
-		const hostDomain = this.getHostDomain();
 		const propsForHost = getPropsForHost(
 			nextProps,
 			propDefinitions,
-			createDeliveryTarget(hostDomain, window.location.origin),
+			createDeliveryTarget(hostOrigin, window.location.origin),
 		);
 		const serialized = this.serializePropsForHost(
 			propsForHost as Record<string, unknown>,
@@ -226,7 +227,7 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 		try {
 			await this.messenger.send(
 				this.hostWindow,
-				hostDomain,
+				hostOrigin,
 				MESSAGE_NAME.PROPS,
 				serialized,
 				undefined,
@@ -254,7 +255,7 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 			uid: this.uid,
 			tag: options.tag,
 			context: options.context,
-			consumerDomain: getDomain(),
+			consumerDomain: getOrigin(),
 		});
 
 		return buildWindowName(payload);
@@ -280,10 +281,14 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 				initPromise.promise,
 				timeout,
 				() =>
-					`Host component "${tag}" (uid: ${this.uid}) did not initialize within ${timeout}ms. ` +
-					(this.hostInitFailure?.message ??
-						"Check that the host page loads correctly and calls the initialization code, " +
-							"and that consumer and host run the same ForgeFrame major version."),
+					new ForgeFrameError(
+						"INIT_TIMEOUT",
+						`Host component "${tag}" (uid: ${this.uid}) did not initialize within ${timeout}ms. ` +
+							(this.hostInitFailure?.message ??
+								"Check that the host page loads correctly and calls the initialization code, " +
+									"and that consumer and host run the same ForgeFrame major version."),
+						{ cause: this.hostInitFailure ?? undefined },
+					),
 			);
 		} catch (err) {
 			onError(err as Error);
@@ -305,7 +310,10 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 			MESSAGE_NAME.BOOTSTRAP,
 			async (data, source) => {
 				if (!data || typeof data.sessionId !== "string" || !data.sessionId) {
-					throw new Error("Invalid host bootstrap request");
+					throw new ForgeFrameError(
+						"VALIDATION",
+						"Invalid host bootstrap request",
+					);
 				}
 				const resetLocalReferences =
 					this.localReferenceSessionId !== null &&
@@ -317,14 +325,17 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 					// Calls into the replaced host session can never be answered.
 					this.bridge.rejectRemoteCalls(
 						source.window,
-						new Error("Host reconnected before the call completed"),
+						new ForgeFrameError(
+							"CLOSED",
+							"Host reconnected before the call completed",
+						),
 					);
 				}
 				const snapshot = await handlers.onBootstrap(
 					source,
 					resetLocalReferences,
 				);
-				this.activeHostDomain = source.domain;
+				this.activeHostOrigin = source.domain;
 				this.bootstrapSessionId = data.sessionId;
 				this.localReferenceSessionId = data.sessionId;
 				this.bridge.clearRemote();
@@ -345,7 +356,7 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 				) {
 					return { success: false };
 				}
-				this.activeHostDomain = source.domain;
+				this.activeHostOrigin = source.domain;
 				this.hostInitialized = true;
 				this.hostInitFailure = null;
 				this.bridge.resumeRemoteSession(source.window);
@@ -372,41 +383,42 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 		});
 
 		this.onHostControl<Dimensions>(MESSAGE_NAME.RESIZE, async (dimensions) => {
-			await handlers.onResize(dimensions);
+			handlers.onResize(dimensions);
 			return { success: true };
 		});
 
 		this.onHostControl(MESSAGE_NAME.FOCUS, async () => {
-			await handlers.onFocus();
+			handlers.onFocus();
 			// An unfocused page cannot pass focus on, so the host need not wait for it.
 			return { success: true, focused: document.hasFocus() };
 		});
 
 		this.onHostControl(MESSAGE_NAME.SHOW, async () => {
-			await handlers.onShow();
+			handlers.onShow();
 			return { success: true };
 		});
 
 		this.onHostControl(MESSAGE_NAME.HIDE, async () => {
-			await handlers.onHide();
+			handlers.onHide();
 			return { success: true };
 		});
 
-		this.onHostControl<{ message: string; initFailed?: boolean }>(
-			MESSAGE_NAME.ERROR,
-			async (errorData) => {
-				const error = new Error(errorData.message);
-				// The host can still retry initialization on the same page, so a
-				// pending handshake keeps waiting and reports this reason once, at
-				// its timeout. Outside a handshake the failure is reported now.
-				if (errorData.initFailed === true && this.initPromise) {
-					this.hostInitFailure = error;
-				} else {
-					handlers.onError(error);
-				}
-				return { success: true };
-			},
-		);
+		this.onHostControl<{
+			message: string;
+			initFailed?: boolean;
+			code?: string;
+		}>(MESSAGE_NAME.ERROR, async (errorData) => {
+			const error = readHostError(errorData);
+			// The host can still retry initialization on the same page, so a
+			// pending handshake keeps waiting and reports this reason once, at
+			// its timeout. Outside a handshake the failure is reported now.
+			if (errorData.initFailed === true && this.initPromise) {
+				this.hostInitFailure = error;
+			} else {
+				handlers.onError(error);
+			}
+			return { success: true };
+		});
 
 		this.onHostControl<unknown>(
 			MESSAGE_NAME.EXPORT,
@@ -425,7 +437,7 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 		);
 
 		this.onHostControl<{ options?: GetPeerInstancesOptions } | undefined>(
-			MESSAGE_NAME.GET_SIBLINGS,
+			MESSAGE_NAME.GET_PEERS,
 			async (request, source) => {
 				// Scope discovery to this instance, its own peers setting and the
 				// browser-verified host origin; claimed uid/tag fields could
@@ -434,7 +446,7 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 					uid: this.uid,
 					tag: this.options.tag,
 					peers: this.options.peers,
-					hostDomain: source.domain,
+					hostOrigin: source.domain,
 					allTags: request?.options?.allTags === true,
 				});
 				this.peerBridge.startBatch("append");
@@ -477,10 +489,10 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 		// resetHostWindow() clears both.
 		return Boolean(
 			this.hostWindow &&
-				this.openedHostDomain &&
+				this.openedHostOrigin &&
 				source.window === this.hostWindow &&
-				matchDomain(
-					this.options.domain ?? this.openedHostDomain,
+				matchOrigin(
+					this.options.hostOrigins ?? this.openedHostOrigin,
 					source.domain,
 				),
 		);
@@ -490,8 +502,8 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 	 * Records opened host content and the origin it was opened at, then starts
 	 * listening for its messages. Unrendered instances never listen.
 	 */
-	attachHostWindow(hostWindow: Window | null, openedHostDomain: string): void {
-		this.openedHostDomain = openedHostDomain;
+	attachHostWindow(hostWindow: Window | null, openedHostOrigin: string): void {
+		this.openedHostOrigin = openedHostOrigin;
 		this.hostWindow = hostWindow;
 		if (hostWindow) this.messenger.listen();
 	}
@@ -502,9 +514,10 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 	 */
 	resetHostWindow(): void {
 		this.hostWindow = null;
-		this.openedHostDomain = null;
-		this.activeHostDomain = null;
-		this.staticUrlTrustedOrigin = null;
+		this.openedHostOrigin = null;
+		this.activeHostOrigin = null;
+		// staticUrlTrustedOrigin stays: it mirrors the messenger's trust, which
+		// the next render's syncTrustedOriginForUrl() replaces.
 	}
 
 	/**
@@ -527,27 +540,16 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 	}
 }
 
-/** Selects configured matchers or the static URL origin from supplied data. */
-function collectTrustedDomains(
-	configuredDomain: DomainMatcher | undefined,
-	hostOrigin: string | null,
-): DomainMatcher | undefined {
-	const domains: Array<string | RegExp> = [];
-	if (hostOrigin && !configuredDomain) domains.push(hostOrigin);
-
-	if (configuredDomain) {
-		if (typeof configuredDomain === "string") {
-			domains.push(configuredDomain);
-		} else if (Array.isArray(configuredDomain)) {
-			domains.push(...configuredDomain);
-		} else if (configuredDomain instanceof RegExp) {
-			domains.push(configuredDomain);
-		}
-	}
-
-	if (domains.length === 0) {
-		return undefined;
-	}
-
-	return domains.length === 1 ? domains[0] : domains;
+/**
+ * Rebuilds an ERROR notice. An initialization failure keeps its code; an error
+ * the host application reports with `reportError()` is a plain `Error`.
+ */
+function readHostError(data: {
+	message: string;
+	initFailed?: boolean;
+	code?: string;
+}): Error {
+	return data.initFailed === true
+		? errorFromWire(data.message, data.code)
+		: new Error(data.message);
 }

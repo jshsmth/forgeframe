@@ -3,11 +3,12 @@
  * Function bridge for cross-domain function calls.
  *
  * @remarks
- * This module enables passing functions as props across domain boundaries
+ * This module enables passing functions as props across window boundaries
  * by converting them to references that can be called via postMessage.
  */
 
 import { MESSAGE_NAME } from "../constants";
+import { ForgeFrameError } from "../errors";
 import { isDate } from "../utils/realm-values";
 import { generateShortUID } from "../utils/uid";
 import {
@@ -49,7 +50,7 @@ interface CallWatch {
 interface RemoteFunctionEntry {
 	wrapper: CallableFunction;
 	targetWin: Window;
-	targetDomain: string;
+	targetOrigin: string;
 }
 
 /**
@@ -88,7 +89,7 @@ export function isSafeObjectKey(key: string): boolean {
  * const ref = bridge.serialize(() => console.log('Hello'));
  *
  * // Deserialize a remote reference
- * const remoteFn = bridge.deserialize(ref, targetWin, targetDomain);
+ * const remoteFn = bridge.deserialize(ref, targetWin, targetOrigin);
  * await remoteFn(); // Calls the original function cross-domain
  * ```
  *
@@ -177,7 +178,8 @@ export class FunctionBridge {
 			!this.currentBatchIds.has(existingId ?? "") &&
 			this.currentBatchIds.size >= MAX_FUNCTIONS
 		) {
-			throw new Error(
+			throw new ForgeFrameError(
+				"CAPACITY",
 				"Function snapshot exceeds the 500 distinct callback limit",
 			);
 		}
@@ -185,7 +187,8 @@ export class FunctionBridge {
 		const limit =
 			this.batchMode === "replace" ? MAX_RETAINED_FUNCTIONS : MAX_FUNCTIONS;
 		if (this.localFunctions.size >= limit) {
-			throw new Error(
+			throw new ForgeFrameError(
+				"CAPACITY",
 				limit === MAX_RETAINED_FUNCTIONS
 					? "Function recovery pool is full (1000 callbacks); retry retained callbacks or reconnect"
 					: "Function registry exceeds the 500 distinct callback limit",
@@ -203,20 +206,20 @@ export class FunctionBridge {
 	 *
 	 * @param ref - The function reference to deserialize
 	 * @param targetWin - The window containing the original function
-	 * @param targetDomain - The origin of the target window
+	 * @param targetOrigin - The origin of the target window
 	 * @returns A callable wrapper function
 	 */
 	deserialize(
 		ref: FunctionRef,
 		targetWin: Window,
-		targetDomain: string,
+		targetOrigin: string,
 	): CallableFunction {
 		const cacheKey = `${ref.__id__}`;
-		const cached = this.findRemoteWrapper(cacheKey, targetWin, targetDomain);
+		const cached = this.findRemoteWrapper(cacheKey, targetWin, targetOrigin);
 		if (cached) return cached;
 		this.evictOldestRemote(cacheKey);
-		const wrapper = this.createRemoteWrapper(ref, targetWin, targetDomain);
-		this.remoteFunctions.set(cacheKey, { wrapper, targetWin, targetDomain });
+		const wrapper = this.createRemoteWrapper(ref, targetWin, targetOrigin);
+		this.remoteFunctions.set(cacheKey, { wrapper, targetWin, targetOrigin });
 		return wrapper;
 	}
 
@@ -224,12 +227,12 @@ export class FunctionBridge {
 	private findRemoteWrapper(
 		cacheKey: string,
 		targetWin: Window,
-		targetDomain: string,
+		targetOrigin: string,
 	): CallableFunction | undefined {
 		const cached = this.remoteFunctions.get(cacheKey);
 		return cached &&
 			cached.targetWin === targetWin &&
-			cached.targetDomain === targetDomain
+			cached.targetOrigin === targetOrigin
 			? cached.wrapper
 			: undefined;
 	}
@@ -252,16 +255,17 @@ export class FunctionBridge {
 	private createRemoteWrapper(
 		ref: FunctionRef,
 		targetWin: Window,
-		targetDomain: string,
+		targetOrigin: string,
 	): CallableFunction {
 		const wrapper = async (...args: unknown[]): Promise<unknown> => {
 			const endedMessage = this.endedSessions.get(targetWin);
-			if (endedMessage !== undefined) throw new Error(endedMessage);
-			const unwatch = this.watchRemoteCall(targetWin, targetDomain);
+			if (endedMessage !== undefined)
+				throw new ForgeFrameError("CLOSED", endedMessage);
+			const unwatch = this.watchRemoteCall(targetWin, targetOrigin);
 			try {
 				return await this.messenger.send(
 					targetWin,
-					targetDomain,
+					targetOrigin,
 					this.callMessageName,
 					{ id: ref.__id__, args },
 					null,
@@ -281,12 +285,12 @@ export class FunctionBridge {
 	 * Counts a pending call to a window and checks the window while any are
 	 * pending. The returned function releases the call.
 	 */
-	private watchRemoteCall(targetWin: Window, targetDomain: string): () => void {
+	private watchRemoteCall(targetWin: Window, targetOrigin: string): () => void {
 		let watch = this.callWatches.get(targetWin);
 		if (!watch) {
 			watch = { calls: 0, timer: undefined };
 			this.callWatches.set(targetWin, watch);
-			this.scheduleLivenessCheck(targetWin, targetDomain, watch);
+			this.scheduleLivenessCheck(targetWin, targetOrigin, watch);
 		}
 		const active = watch;
 		active.calls++;
@@ -301,14 +305,14 @@ export class FunctionBridge {
 	/** Rejects pending calls to a window that no longer answers a liveness check. */
 	private scheduleLivenessCheck(
 		targetWin: Window,
-		targetDomain: string,
+		targetOrigin: string,
 		watch: CallWatch,
 	): void {
 		watch.timer = setTimeout(() => {
 			this.messenger
 				.send(
 					targetWin,
-					targetDomain,
+					targetOrigin,
 					this.livenessMessageName,
 					undefined,
 					CALL_LIVENESS_MS,
@@ -316,14 +320,14 @@ export class FunctionBridge {
 				.then(
 					() => {
 						if (this.callWatches.get(targetWin) === watch)
-							this.scheduleLivenessCheck(targetWin, targetDomain, watch);
+							this.scheduleLivenessCheck(targetWin, targetOrigin, watch);
 					},
 					() => {
 						// Calls that started after this watch ended have checks of their own.
 						if (this.callWatches.get(targetWin) === watch)
 							this.rejectRemoteCalls(
 								targetWin,
-								new Error(UNRESPONSIVE_WINDOW_ERROR),
+								new ForgeFrameError("CLOSED", UNRESPONSIVE_WINDOW_ERROR),
 							);
 					},
 				);
@@ -364,18 +368,35 @@ export class FunctionBridge {
 			this.callMessageName,
 			async ({ id, args }, source) => {
 				if (!this.isExpectedSource(source)) {
-					throw new Error("Function call rejected from unexpected window");
+					throw new ForgeFrameError(
+						"ORIGIN_REJECTED",
+						"Function call rejected from unexpected window",
+					);
 				}
 				const fn = this.localFunctions.get(id);
 				if (!fn) {
-					throw new Error(`Function with id "${id}" not found`);
+					throw new ForgeFrameError(
+						"CLOSED",
+						`Function with id "${id}" not found`,
+					);
 				}
-				return fn(...args);
+				try {
+					return await fn(...args);
+				} catch (error) {
+					// An application callback's failure is its own, so it never
+					// carries a ForgeFrame code to the caller.
+					throw error instanceof ForgeFrameError
+						? new Error(error.message)
+						: error;
+				}
 			},
 		);
 		this.messenger.on(this.livenessMessageName, (_data, source) => {
 			if (!this.isExpectedSource(source)) {
-				throw new Error("Liveness check rejected from unexpected window");
+				throw new ForgeFrameError(
+					"ORIGIN_REJECTED",
+					"Liveness check rejected from unexpected window",
+				);
 			}
 			return true;
 		});
@@ -412,7 +433,10 @@ export class FunctionBridge {
 	 */
 	startBatch(mode: "replace" | "append" = "replace"): void {
 		if (this.batchMode)
-			throw new Error("Function serialization batch already active");
+			throw new ForgeFrameError(
+				"VALIDATION",
+				"Function serialization batch already active",
+			);
 		this.currentBatchIds.clear();
 		this.newBatchIds.clear();
 		this.batchMode = mode;
@@ -486,7 +510,7 @@ export class FunctionBridge {
 	 */
 	endRemoteSession(targetWin: Window, message: string): void {
 		this.endedSessions.set(targetWin, message);
-		this.rejectRemoteCalls(targetWin, new Error(message));
+		this.rejectRemoteCalls(targetWin, new ForgeFrameError("CLOSED", message));
 	}
 
 	/**
@@ -575,7 +599,7 @@ function enterStack(
 	stack: WeakSet<object>,
 	error: string,
 ): void {
-	if (stack.has(value)) throw new Error(error);
+	if (stack.has(value)) throw new ForgeFrameError("VALIDATION", error);
 	stack.add(value);
 }
 
@@ -664,7 +688,7 @@ function serializeRecord(
  * @param obj - The object to process
  * @param bridge - The function bridge to use for deserialization
  * @param targetWin - The window containing the original functions
- * @param targetDomain - The origin of the target window
+ * @param targetOrigin - The origin of the target window
  * @returns A new object with all references replaced by callable wrappers
  *
  * @internal
@@ -673,10 +697,10 @@ export function deserializeFunctions(
 	obj: unknown,
 	bridge: FunctionBridge,
 	targetWin: Window,
-	targetDomain: string,
+	targetOrigin: string,
 ): unknown {
 	if (FunctionBridge.isFunctionRef(obj)) {
-		return bridge.deserialize(obj, targetWin, targetDomain);
+		return bridge.deserialize(obj, targetWin, targetOrigin);
 	}
 
 	if (isDateWireValue(obj)) {
@@ -685,7 +709,7 @@ export function deserializeFunctions(
 
 	if (Array.isArray(obj)) {
 		return obj.map((item) =>
-			deserializeFunctions(item, bridge, targetWin, targetDomain),
+			deserializeFunctions(item, bridge, targetWin, targetOrigin),
 		);
 	}
 
@@ -698,7 +722,7 @@ export function deserializeFunctions(
 				value,
 				bridge,
 				targetWin,
-				targetDomain,
+				targetOrigin,
 			);
 		}
 		return result;

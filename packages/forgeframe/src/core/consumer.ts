@@ -10,6 +10,7 @@
 
 import type { ContextType } from "../constants";
 import { CONTEXT, EVENT } from "../constants";
+import { ForgeFrameError } from "../errors";
 import { createEventSubscriber, EventEmitter } from "../events/emitter";
 import {
 	getPropsForHost,
@@ -48,6 +49,7 @@ import {
 import { ConsumerRenderer } from "./consumer/renderer";
 import { ConsumerTransport } from "./consumer/transport";
 import type { NormalizedOptions } from "./consumer/types";
+import { resolveRenderContext } from "./render-context";
 
 /**
  * Consumer-side component implementation.
@@ -121,6 +123,9 @@ export class ConsumerComponent<
 	/** @internal */
 	private closing = false;
 
+	/** Whether the host or the user closed the other window, not this page. @internal */
+	private closedFromOutside = false;
+
 	/** Completion shared by direct and reentrant close requests. @internal */
 	private closePromise: Promise<void> | null = null;
 
@@ -165,11 +170,8 @@ export class ConsumerComponent<
 
 		this.propsPipeline = new ConsumerPropsPipeline(this.options, { ...props });
 
-		this.transport = new ConsumerTransport(
-			this.uid,
-			this.options,
-			() => this.resolveUrl(),
-			(url) => this.resolveUrlOrigin(url),
+		this.transport = new ConsumerTransport(this.uid, this.options, (url) =>
+			this.resolveUrlOrigin(url),
 		);
 
 		this.setupMessageHandlers();
@@ -217,18 +219,22 @@ export class ConsumerComponent<
 		try {
 			await operation;
 		} finally {
-			this.finishRenderTask(renderTask, operation);
+			// Held updates are released first, so bookkeeping can never strand them.
 			propsHold.release();
+			this.finishRenderTask(renderTask, operation);
 		}
 	}
 
 	private assertRenderAllowed(): void {
 		if (this.destroyed) {
-			throw new Error("Component has been destroyed");
+			throw new ForgeFrameError("CLOSED", "Component has been destroyed");
 		}
 
 		if (this.rendered) {
-			throw new Error("Component has already been rendered");
+			throw new ForgeFrameError(
+				"VALIDATION",
+				"Component has already been rendered",
+			);
 		}
 	}
 
@@ -254,14 +260,11 @@ export class ConsumerComponent<
 		context: ContextType | undefined,
 		earlierPropsWork: Promise<void> | null,
 	): Promise<void> {
-		const resolvedContext = context ?? this.options.defaultContext;
-		if (
-			resolvedContext !== CONTEXT.IFRAME &&
-			resolvedContext !== CONTEXT.POPUP
-		) {
-			throw new Error('Render context must be "iframe" or "popup"');
-		}
-		this.renderer.context = resolvedContext;
+		this.renderer.context = resolveRenderContext(
+			context,
+			this.options.context,
+			"Render context",
+		);
 		if (earlierPropsWork) {
 			await earlierPropsWork;
 			this.assertRenderActive();
@@ -272,21 +275,15 @@ export class ConsumerComponent<
 		const rawUrl = this.resolveUrl();
 		this.assertRenderActive();
 
-		let baseUrl: string;
-		try {
-			baseUrl = resolveComponentHostUrl(
-				rawUrl,
-				document.baseURI,
-				this.options.domain,
-			).href;
-			this.transport.syncTrustedDomainForUrl(baseUrl);
-		} catch (error) {
-			await this.destroy().catch(() => undefined);
-			throw error;
-		}
+		// URL, configuration and container failures happen before anything opens,
+		// so they reject without closing the instance and a later render can retry.
+		const baseUrl = resolveComponentHostUrl(
+			rawUrl,
+			document.baseURI,
+			this.options.hostOrigins,
+		).href;
+		this.transport.syncTrustedOriginForUrl(baseUrl);
 
-		// Configuration/container guard failures remain retryable until rendering
-		// has begun and resources may need lifecycle cleanup.
 		validatePropsForHostTransport(
 			this.propsPipeline.props,
 			this.options.props,
@@ -326,7 +323,7 @@ export class ConsumerComponent<
 	private validateForRender(): void {
 		this.propsPipeline.revalidateSchemaValues();
 		this.assertRenderActive();
-		this.options.validate?.({ props: this.propsPipeline.props });
+		this.propsPipeline.validateComponent(this.propsPipeline.props);
 		this.assertRenderActive();
 	}
 
@@ -349,6 +346,16 @@ export class ConsumerComponent<
 		return closeTask.promise;
 	}
 
+	/**
+	 * Closes for the host's `close()` or a popup the user closed, so an
+	 * in-flight render rejects with `CLOSED` rather than `CANCELLED`.
+	 * @internal
+	 */
+	private closeFromOutside(): Promise<void> {
+		if (!this.closePromise && !this.destroyed) this.closedFromOutside = true;
+		return this.close();
+	}
+
 	/** Completes the one admitted close operation before its shared promise settles. */
 	private async performClose(): Promise<void> {
 		try {
@@ -366,8 +373,9 @@ export class ConsumerComponent<
 	 * @remarks
 	 * For iframes, focuses the iframe element. For popups, brings the window to
 	 * front. Emits `focus` only when an iframe is mounted or a popup is open.
+	 * It changes only this page, so it finishes before it returns.
 	 */
-	async focus(): Promise<void> {
+	focus(): void {
 		if (this.renderer.focus(this.transport.hostWindow)) {
 			this.#emitter.emit(EVENT.FOCUS, undefined);
 		}
@@ -378,23 +386,26 @@ export class ConsumerComponent<
 	 *
 	 * @remarks
 	 * Browsers do not let the consumer resize a cross-origin popup. That call
-	 * rejects without emitting `resize`; the host can resize its own popup with
+	 * throws without emitting `resize`; the host can resize its own popup with
 	 * `hostProps.resize()`.
 	 *
-	 * A popup that is not open has nothing to resize, so the call does nothing.
+	 * With no iframe mounted and no popup open there is nothing to resize, so
+	 * the call does nothing and emits no `resize`, as `focus()` does. The
+	 * resize and its event happen before the call returns.
 	 *
 	 * @param dimensions - New width and height for the component
-	 * @throws Error if the browser denies resizing the popup window
+	 * @throws ForgeFrameError `VALIDATION` if the browser denies resizing the
+	 * popup window
 	 */
-	async resize(dimensions: Dimensions): Promise<void> {
-		const hostWindow = this.transport.hostWindow;
-		if (this.renderer.context === CONTEXT.POPUP && !hostWindow) return;
-		if (!this.renderer.resize(dimensions, hostWindow)) {
-			throw new Error(
+	resize(dimensions: Dimensions): void {
+		const outcome = this.renderer.resize(dimensions, this.transport.hostWindow);
+		if (outcome === "denied") {
+			throw new ForgeFrameError(
+				"VALIDATION",
 				`Cannot resize the popup for component "${this.options.tag}": the browser blocks resizing a cross-origin window. Call hostProps.resize() from the host instead.`,
 			);
 		}
-		this.emitResize(dimensions);
+		if (outcome === "resized") this.emitResize(dimensions);
 	}
 
 	/**
@@ -417,9 +428,10 @@ export class ConsumerComponent<
 	 * Shows the component if hidden.
 	 *
 	 * @remarks
-	 * Only applicable to iframe context.
+	 * Only applicable to iframe context. Before the frame exists, the request
+	 * applies once it is created.
 	 */
-	async show(): Promise<void> {
+	show(): void {
 		this.renderer.show();
 	}
 
@@ -427,9 +439,10 @@ export class ConsumerComponent<
 	 * Hides the component.
 	 *
 	 * @remarks
-	 * Only applicable to iframe context.
+	 * Only applicable to iframe context. Before the frame exists, the request
+	 * applies once it is created.
 	 */
-	async hide(): Promise<void> {
+	hide(): void {
 		this.renderer.hide();
 	}
 
@@ -469,6 +482,9 @@ export class ConsumerComponent<
 			assertStableRenderedOrigin: (nextHostOrigin) =>
 				this.assertStableRenderedOrigin(nextHostOrigin),
 			validateTransportProps: (props, hostOrigin) => {
+				// Teardown clears the host origins, so a closed instance reports
+				// itself closed before an origin is chosen.
+				this.assertPropsUpdateActive();
 				validatePropsForHostTransport(
 					props,
 					this.options.props,
@@ -496,7 +512,10 @@ export class ConsumerComponent<
 	/** Queued updates must recheck lifecycle state before running user code. @internal */
 	private assertPropsUpdateActive(): void {
 		if (this.destroyed || this.closing) {
-			throw new Error("Cannot update props after the component has closed");
+			throw new ForgeFrameError(
+				"CLOSED",
+				"Cannot update props after the component has closed",
+			);
 		}
 	}
 
@@ -505,15 +524,16 @@ export class ConsumerComponent<
 	 * @internal
 	 */
 	private assertStableRenderedOrigin(nextHostOrigin: string): void {
-		const openedHostDomain = this.transport.openedHostDomain;
+		const openedHostOrigin = this.transport.openedHostOrigin;
 
 		if (
 			(this.rendered || this.renderPromise !== null) &&
-			openedHostDomain &&
-			nextHostOrigin !== openedHostDomain
+			openedHostOrigin &&
+			nextHostOrigin !== openedHostOrigin
 		) {
-			throw new Error(
-				`Cannot change component URL origin after render (from "${openedHostDomain}" to "${nextHostOrigin}")`,
+			throw new ForgeFrameError(
+				"ORIGIN_REJECTED",
+				`Cannot change component URL origin after render (from "${openedHostOrigin}" to "${nextHostOrigin}")`,
 			);
 		}
 	}
@@ -532,13 +552,13 @@ export class ConsumerComponent<
 	}
 
 	/** Returns the browser-verified origin of the connected host window, if any. @internal */
-	getVerifiedHostDomain(): string | null {
-		return this.transport.activeHostDomain;
+	getVerifiedHostOrigin(): string | null {
+		return this.transport.activeHostOrigin;
 	}
 
 	/** Returns the origin this instance opened its host at, before verification. @internal */
-	getOpenedHostDomain(): string | null {
-		return this.transport.openedHostDomain;
+	getOpenedHostOrigin(): string | null {
+		return this.transport.openedHostOrigin;
 	}
 
 	/** Returns the component's `peers` option. @internal */
@@ -551,12 +571,14 @@ export class ConsumerComponent<
 	 * @internal
 	 */
 	private normalizeOptions(options: ComponentOptions<P>): NormalizedOptions<P> {
+		const { exports: exportsSchema, ...rest } = options;
 		return {
-			...options,
+			...rest,
 			props: options.props ?? (EMPTY_PROP_DEFINITIONS as PropsDefinition<P>),
-			defaultContext: options.defaultContext ?? CONTEXT.IFRAME,
+			context: options.context ?? CONTEXT.IFRAME,
 			dimensions: options.dimensions ?? { width: "100%", height: "100%" },
-			timeout: options.timeout ?? 10000,
+			initTimeout: options.initTimeout ?? 10000,
+			exportsSchema,
 		};
 	}
 
@@ -590,16 +612,11 @@ export class ConsumerComponent<
 	 * @internal
 	 */
 	private resolveUrlOrigin(url: string): string {
-		return resolveComponentHostUrl(url, document.baseURI, this.options.domain)
-			.origin;
-	}
-
-	/**
-	 * Ensures the messenger trusts the origin for a resolved host URL.
-	 * @internal
-	 */
-	private syncTrustedDomainForUrl(url: string): void {
-		this.transport.syncTrustedDomainForUrl(url);
+		return resolveComponentHostUrl(
+			url,
+			document.baseURI,
+			this.options.hostOrigins,
+		).origin;
 	}
 
 	/**
@@ -636,9 +653,9 @@ export class ConsumerComponent<
 	 * @internal
 	 */
 	private async open(baseUrl: string): Promise<void> {
-		this.syncTrustedDomainForUrl(baseUrl);
-		const openedHostDomain = this.resolveUrlOrigin(baseUrl);
-		this.transport.activeHostDomain = null;
+		this.transport.syncTrustedOriginForUrl(baseUrl);
+		const openedHostOrigin = this.resolveUrlOrigin(baseUrl);
+		this.transport.activeHostOrigin = null;
 
 		this.transport.attachHostWindow(
 			this.renderer.open({
@@ -650,13 +667,13 @@ export class ConsumerComponent<
 				submitBodyForm: (target, actionUrl, params) =>
 					this.submitBodyForm(target, actionUrl, params),
 				onPopupClose: () => {
-					void this.close();
+					void this.closeFromOutside();
 				},
 				registerCleanup: (cleanupFn) => {
 					this.cleanup.register(cleanupFn);
 				},
 			}),
-			openedHostDomain,
+			openedHostOrigin,
 		);
 	}
 
@@ -720,7 +737,7 @@ export class ConsumerComponent<
 	 */
 	private async waitForHost(): Promise<void> {
 		await this.transport.waitForHost(
-			this.options.timeout,
+			this.options.initTimeout,
 			this.options.tag,
 			(error) => {
 				if (!this.isRenderCancelled()) {
@@ -732,9 +749,17 @@ export class ConsumerComponent<
 
 	/** Returns an error describing intentional cancellation of an in-flight render. @internal */
 	private createRenderCancellationError(): Error {
-		return new Error(
-			`Component "${this.options.tag}" was closed before rendering completed`,
-		);
+		// Only this page's own close() cancels; a host or user close means the
+		// other window is gone.
+		return this.closedFromOutside
+			? new ForgeFrameError(
+					"CLOSED",
+					`Component "${this.options.tag}" was closed by its host or the user before rendering completed`,
+				)
+			: new ForgeFrameError(
+					"CANCELLED",
+					`Component "${this.options.tag}" was closed before rendering completed`,
+				);
 	}
 
 	/** Returns whether close/destroy has cancelled the active render operation. @internal */
@@ -776,11 +801,11 @@ export class ConsumerComponent<
 			onReconnect: () => {
 				this.exports = undefined;
 			},
-			onClose: async () => this.close(),
-			onResize: async (dimensions) => this.resizeForHost(dimensions),
-			onFocus: async () => this.focus(),
-			onShow: async () => this.show(),
-			onHide: async () => this.hide(),
+			onClose: async () => this.closeFromOutside(),
+			onResize: (dimensions) => this.resizeForHost(dimensions),
+			onFocus: () => this.focus(),
+			onShow: () => this.show(),
+			onHide: () => this.hide(),
 			onError: (error) => this.#emitter.emit(EVENT.ERROR, error),
 			onExport: (exports) => this.acceptExports(exports),
 			onGetPeers: (request) => getPeerInstances(request),
@@ -795,7 +820,7 @@ export class ConsumerComponent<
 	 */
 	private acceptExports(exports: RemoteValue<X>): void {
 		try {
-			validateExports(this.options.exports, exports);
+			validateExports(this.options.exportsSchema, exports);
 		} catch (error) {
 			this.#emitter.emit(EVENT.ERROR, error as Error);
 			throw error;
@@ -859,7 +884,8 @@ export class ConsumerComponent<
 		this.destroyed = true;
 
 		this.transport.rejectPendingInit(
-			new Error(
+			new ForgeFrameError(
+				"CLOSED",
 				`Component "${this.options.tag}" was destroyed before initialization completed`,
 			),
 		);

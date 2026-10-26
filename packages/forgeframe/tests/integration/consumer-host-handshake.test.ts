@@ -144,7 +144,7 @@ describe("Consumer/host handshake integration", () => {
 			tag: "host-bootstrap-validation-failure",
 			url: "https://host.example.com/widget",
 			props: { amount: prop.number() },
-			timeout: 300,
+			initTimeout: 300,
 		});
 		const container = document.createElement("div");
 		document.body.append(container);
@@ -332,7 +332,7 @@ describe("Consumer/host handshake integration", () => {
 		expect(Object.keys(hostProps.consumer)).toEqual(["props"]);
 		expect(typeof hostProps.getPeerInstances).toBe("function");
 		expect(hostProps.getConsumer()).toBe(harness.consumerWindow);
-		expect(hostProps.getConsumerDomain()).toBe(harness.consumerOrigin);
+		expect(hostProps.consumerOrigin).toBe(harness.consumerOrigin);
 
 		await expect(
 			instance.updateProps({
@@ -436,7 +436,7 @@ describe("Prop updates requested during render", () => {
 				if (rendering) queueOnce(3);
 				return "https://host.example.com/widget";
 			},
-			domain: "https://host.example.com",
+			hostOrigins: "https://host.example.com",
 			validate: () => {
 				if (rendering) queueOnce(2);
 			},
@@ -474,7 +474,7 @@ describe("Prop updates requested during render", () => {
 				props.amount === 2
 					? "https://other.example.com/widget"
 					: "https://host.example.com/widget",
-			domain: ["https://host.example.com", "https://other.example.com"],
+			hostOrigins: ["https://host.example.com", "https://other.example.com"],
 		});
 		const instance = Component({ amount: 1 });
 		const rendering = instance.render(container);
@@ -489,7 +489,7 @@ describe("Prop updates requested during render", () => {
 
 	it("rejects queued updates with the closed error when the handshake times out", async () => {
 		const validate = vi.fn();
-		const { Component, container } = setup({ timeout: 20, validate });
+		const { Component, container } = setup({ initTimeout: 20, validate });
 		const instance = Component({ amount: 1 });
 		const rendering = instance.render(container);
 		const queued = instance.updateProps({ amount: 2 });

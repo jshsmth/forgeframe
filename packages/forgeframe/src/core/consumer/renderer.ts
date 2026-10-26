@@ -1,5 +1,6 @@
 import type { ContextType } from "../../constants";
 import { CONTEXT } from "../../constants";
+import { ForgeFrameError } from "../../errors";
 import {
 	createIframeElement,
 	destroyIframe,
@@ -90,10 +91,10 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
 		private resolveDimensions: () => Dimensions,
 		private callbacks: {
 			close: () => Promise<void>;
-			focus: () => Promise<void>;
+			focus: () => void;
 		},
 	) {
-		this.context = this.options.defaultContext;
+		this.context = this.options.context;
 	}
 
 	/**
@@ -101,7 +102,10 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
 	 */
 	resolveContainer(container?: string | HTMLElement): HTMLElement {
 		if (!container) {
-			throw new Error("Container is required for rendering");
+			throw new ForgeFrameError(
+				"VALIDATION",
+				"Container is required for rendering",
+			);
 		}
 
 		const element =
@@ -109,13 +113,16 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
 				? document.querySelector<HTMLElement>(container)
 				: container;
 		if (!element) {
-			throw new Error(`Container "${container}" not found`);
+			throw new ForgeFrameError(
+				"VALIDATION",
+				`Container "${container}" not found`,
+			);
 		}
 
 		// A detached iframe has no browsing context: it never loads, and a POST
 		// form targeting its name would open an untracked top-level window.
 		if (this.context === CONTEXT.IFRAME && !element.isConnected) {
-			throw new Error(DETACHED_IFRAME_CONTAINER_ERROR);
+			throw new ForgeFrameError("VALIDATION", DETACHED_IFRAME_CONTAINER_ERROR);
 		}
 		return element;
 	}
@@ -316,13 +323,16 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
 		hasBodyParams: boolean,
 	): Window | null {
 		if (!this.iframe) {
-			throw new Error("Iframe not created during prerender");
+			throw new ForgeFrameError(
+				"CLOSED",
+				"Iframe not created during prerender",
+			);
 		}
 
 		params.assertActive();
 		// Templates and lifecycle callbacks can detach the mount after resolution.
 		if (!this.iframe.isConnected) {
-			throw new Error(DETACHED_IFRAME_CONTAINER_ERROR);
+			throw new ForgeFrameError("VALIDATION", DETACHED_IFRAME_CONTAINER_ERROR);
 		}
 		if (hasBodyParams) {
 			params.submitBodyForm(this.iframe.name, url, bodyParams);
@@ -410,7 +420,8 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
 		const doc = this.container?.ownerDocument ?? document;
 		const root = doc.body ?? doc.documentElement;
 		if (!root) {
-			throw new Error(
+			throw new ForgeFrameError(
+				"VALIDATION",
 				"Document root is unavailable for bodyParam form submission",
 			);
 		}
@@ -459,9 +470,13 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
 	/**
 	 * Resizes iframe/popup context.
 	 *
-	 * @returns `false` when the browser denied resizing the popup window.
+	 * @returns `"resized"`, `"unmounted"` when no iframe is mounted and no
+	 * popup is open, or `"denied"` when the browser refused to resize the popup
 	 */
-	resize(dimensions: Dimensions, hostWindow: Window | null): boolean {
+	resize(
+		dimensions: Dimensions,
+		hostWindow: Window | null,
+	): "resized" | "unmounted" | "denied" {
 		if (this.context === CONTEXT.IFRAME && this.iframe) {
 			resizeIframe(this.iframe, dimensions);
 			if (this.ownedContainer && !this.options.containerTemplate) {
@@ -470,10 +485,12 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
 			if (this.prerenderElement && !this.options.prerenderTemplate) {
 				applyDimensions(this.prerenderElement, dimensions);
 			}
-		} else if (this.context === CONTEXT.POPUP && hostWindow) {
-			return resizePopup(hostWindow, dimensions);
+			return "resized";
 		}
-		return true;
+		if (this.context === CONTEXT.POPUP && hostWindow) {
+			return resizePopup(hostWindow, dimensions) ? "resized" : "denied";
+		}
+		return "unmounted";
 	}
 
 	/**

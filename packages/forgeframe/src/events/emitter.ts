@@ -1,3 +1,4 @@
+import { ForgeFrameError } from "../errors";
 import type { EventHandler, EventSubscriber } from "../types/events";
 
 /** One handler's subscription; its object identity is the registration token. */
@@ -196,10 +197,13 @@ export function createEventSubscriber<Events extends object>(
 ): EventSubscriber<Events> {
 	const assertKnown = (event: unknown, handler: unknown): void => {
 		if (typeof event !== "string" || !events.has(event)) {
-			throw new TypeError(describeUnknown(String(event)));
+			throw new ForgeFrameError("VALIDATION", describeUnknown(String(event)));
 		}
 		if (typeof handler !== "function") {
-			throw new TypeError(`The "${event}" event handler must be a function`);
+			throw new ForgeFrameError(
+				"VALIDATION",
+				`The "${event}" event handler must be a function`,
+			);
 		}
 	};
 	return Object.freeze({

@@ -8,19 +8,23 @@
  * pure policy in `consumer-origin-policy.ts` to select the messaging target.
  */
 
-import type { DomainMatcher } from "../../types/utility";
+import { ForgeFrameError, hasErrorCode } from "../../errors";
+import type { OriginMatcher } from "../../types/utility";
 import {
 	getConsumer,
 	getOpener,
 	isIframe,
 	isPopup,
 } from "../../window/helpers";
-
-export const CONSUMER_WINDOW_RESOLUTION_ERROR =
-	"Could not resolve consumer window";
-export { CONSUMER_ORIGIN_VERIFICATION_ERROR } from "./consumer-origin-policy";
-
 import { validateMessagingConsumerContext } from "./consumer-origin-policy";
+
+const CONSUMER_WINDOW_RESOLUTION_ERROR = "Could not resolve consumer window";
+
+/** Whether {@link resolveConsumerWindow} failed because this window has no consumer. */
+export function isConsumerWindowUnavailable(error: unknown): boolean {
+	return hasErrorCode(error, "CLOSED");
+}
+export { CONSUMER_ORIGIN_VERIFICATION_ERROR } from "./consumer-origin-policy";
 
 export function resolveConsumerWindow(hostWindow: Window = window): Window {
 	if (isIframe(hostWindow)) {
@@ -37,7 +41,7 @@ export function resolveConsumerWindow(hostWindow: Window = window): Window {
 		}
 	}
 
-	throw new Error(CONSUMER_WINDOW_RESOLUTION_ERROR);
+	throw new ForgeFrameError("CLOSED", CONSUMER_WINDOW_RESOLUTION_ERROR);
 }
 
 /**
@@ -64,15 +68,15 @@ export function getAccessibleConsumerOrigin(
  */
 export function resolveMessagingConsumerContext(options: {
 	consumerWindow: Window;
-	claimedConsumerDomain: string;
-	consumerOrigins: DomainMatcher;
+	claimedConsumerOrigin: string;
+	consumerOrigins: OriginMatcher;
 	tag: string;
 }): string {
-	const consumerDomain =
+	const consumerOrigin =
 		getAccessibleConsumerOrigin(options.consumerWindow) ??
-		options.claimedConsumerDomain;
+		options.claimedConsumerOrigin;
 	return validateMessagingConsumerContext(
-		consumerDomain,
+		consumerOrigin,
 		options.consumerOrigins,
 		options.tag,
 	);

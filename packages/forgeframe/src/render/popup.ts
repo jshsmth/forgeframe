@@ -1,3 +1,4 @@
+import { ForgeFrameError } from "../errors";
 import type { Dimensions } from "../types/utility";
 import { normalizeDimensionToNumber } from "../utils/dimension";
 import { buildPopupFeatures, nextPopupPollInterval } from "./popup-layout";
@@ -33,34 +34,6 @@ export interface PopupOptions {
 }
 
 /**
- * Error thrown when a popup window is blocked by the browser.
- *
- * @remarks
- * Modern browsers block popup windows that are not triggered by direct user
- * interaction (e.g., click events). This error is thrown by {@link openPopup}
- * when the browser prevents the popup from opening.
- *
- * @example
- * ```typescript
- * try {
- *   const popup = openPopup({ ... });
- * } catch (error) {
- *   if (error instanceof PopupOpenError) {
- *     alert('Please allow popups for this site');
- *   }
- * }
- * ```
- *
- * @public
- */
-export class PopupOpenError extends Error {
-	constructor(message = "Popup blocked by browser") {
-		super(message);
-		this.name = "PopupOpenError";
-	}
-}
-
-/**
  * Opens a popup window centered on the screen with the specified options.
  *
  * @remarks
@@ -72,11 +45,12 @@ export class PopupOpenError extends Error {
  * - Menu bar, toolbar, and status bar are hidden
  *
  * If the popup is blocked by the browser (e.g., due to popup blockers or
- * lack of user interaction), a {@link PopupOpenError} is thrown.
+ * lack of user interaction), a `ForgeFrameError` with code `POPUP_BLOCKED`
+ * is thrown.
  *
  * @param options - Configuration options for the popup
  * @returns The opened Window object
- * @throws {@link PopupOpenError} If the popup is blocked by the browser
+ * @throws ForgeFrameError `POPUP_BLOCKED` if the browser blocks the popup
  *
  * @example
  * ```typescript
@@ -93,7 +67,7 @@ export class PopupOpenError extends Error {
  *     console.log('Authentication completed');
  *   });
  * } catch (error) {
- *   if (error instanceof PopupOpenError) {
+ *   if (error instanceof ForgeFrameError && error.code === 'POPUP_BLOCKED') {
  *     // Handle blocked popup
  *   }
  * }
@@ -112,7 +86,7 @@ export function openPopup(options: PopupOptions): Window {
 	const win = window.open(url, name, features);
 
 	if (!win || isPopupBlocked(win)) {
-		throw new PopupOpenError();
+		throw new ForgeFrameError("POPUP_BLOCKED", "Popup blocked by browser");
 	}
 
 	return win;

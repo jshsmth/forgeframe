@@ -130,7 +130,7 @@ test.beforeAll(async () => {
 		window.results = 0;
 		window.paymentWindowClosed = false;
 		const payment = create({
-			tag:'acknowledgement-fixture',url:'${hostOrigin}/payment.html',domain:'${hostOrigin}',
+			tag:'acknowledgement-fixture',url:'${hostOrigin}/payment.html',hostOrigins:'${hostOrigin}',
 			dimensions:{width:480,height:740},
 			props:{invoiceId:prop.string(),amountCents:prop.number(),customer:prop.string(),
 				outcome:prop.enum(['success','decline']),onReady:prop.function(),onResult:prop.function()},

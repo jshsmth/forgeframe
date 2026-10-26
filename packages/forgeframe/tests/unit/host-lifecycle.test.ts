@@ -66,6 +66,7 @@ function createHost({
 	return new HostComponent(payload, {
 		props: propDefinitions,
 		consumerOrigins: "*",
+		consumerWindow,
 		autoInit,
 	});
 }
@@ -328,7 +329,7 @@ describe("Host lifecycle behavior", () => {
 		await expect(host.ready).rejects.toThrow(
 			"Validation failed: secret: Required",
 		);
-		expect(host.hostProps.getConsumerDomain()).toBe(window.location.origin);
+		expect(host.hostProps.consumerOrigin).toBe(window.location.origin);
 		expect(getHost()).toBeNull();
 	});
 
@@ -540,11 +541,7 @@ describe("Host lifecycle behavior", () => {
 		vi.spyOn(helpers, "getConsumer").mockReturnValue(consumerWindow);
 		vi.spyOn(helpers, "isPopup").mockReturnValue(false);
 
-		const host = new HostComponent(createPayload(), {
-			consumerOrigins: "*",
-			autoInit: false,
-		});
-		expect(host.hostProps.getConsumer()).toBe(consumerWindow);
+		expect(hostSecurity.resolveConsumerWindow()).toBe(consumerWindow);
 	});
 
 	it("should resolve consumer window from popup opener when available", () => {
@@ -553,23 +550,18 @@ describe("Host lifecycle behavior", () => {
 		vi.spyOn(helpers, "isPopup").mockReturnValue(true);
 		vi.spyOn(helpers, "getOpener").mockReturnValue(openerWindow);
 
-		const host = new HostComponent(createPayload(), {
-			consumerOrigins: "*",
-			autoInit: false,
-		});
-		expect(host.hostProps.getConsumer()).toBe(openerWindow);
+		expect(hostSecurity.resolveConsumerWindow()).toBe(openerWindow);
 	});
 
 	it("should throw when no consumer window can be resolved", () => {
 		vi.spyOn(helpers, "isIframe").mockReturnValue(false);
 		vi.spyOn(helpers, "isPopup").mockReturnValue(false);
 
-		expect(
-			() =>
-				new HostComponent(createPayload(), {
-					consumerOrigins: "*",
-					autoInit: false,
-				}),
-		).toThrow("Could not resolve consumer window");
+		expect(() => hostSecurity.resolveConsumerWindow()).toThrow(
+			expect.objectContaining({
+				code: "CLOSED",
+				message: "Could not resolve consumer window",
+			}),
+		);
 	});
 });

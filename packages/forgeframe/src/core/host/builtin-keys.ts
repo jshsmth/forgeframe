@@ -1,3 +1,4 @@
+import { ForgeFrameError } from "../../errors";
 import {
 	assertPropDefinitions,
 	hasOwnDeclaredField,
@@ -19,7 +20,7 @@ export const HOST_PROPS_BUILTIN_KEYS = new Set([
 	"onProps",
 	"reportError",
 	"getConsumer",
-	"getConsumerDomain",
+	"consumerOrigin",
 	"export",
 	"consumer",
 	"getPeerInstances",
@@ -44,7 +45,8 @@ export function assertNoReservedPropDefinitions(definitions: object): void {
 			HOST_PROPS_BUILTIN_KEYS.has(key) &&
 			hasOwnDeclaredField(definitions, key)
 		) {
-			throw new Error(
+			throw new ForgeFrameError(
+				"VALIDATION",
 				`Prop "${key}" is reserved by hostProps built-ins and cannot be defined as a custom prop`,
 			);
 		}

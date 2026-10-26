@@ -52,7 +52,7 @@ describe("Secure defaults integration", () => {
 			);
 			await rendering;
 
-			expect(hostProps.getConsumerDomain()).toBe(activeHarness.consumerOrigin);
+			expect(hostProps.consumerOrigin).toBe(activeHarness.consumerOrigin);
 			expect(hostProps.amount).toBe(1);
 		});
 	});
@@ -65,7 +65,7 @@ describe("Secure defaults integration", () => {
 					// Invalid JavaScript configuration is rejected at runtime.
 					...({ url: () => HOST_URL } as unknown as { url: string }),
 				}),
-			).toThrow("Component domain is required when url is a function");
+			).toThrow("Component hostOrigins is required when url is a function");
 		});
 
 		it.each([
@@ -84,7 +84,7 @@ describe("Secure defaults integration", () => {
 				const Component = create({
 					tag: `secure-function-url-${domain === "*" ? "any" : "listed"}`,
 					url: (props) => `https://host.example.com/${props.path}`,
-					domain,
+					hostOrigins: domain,
 					props: definitions,
 				});
 				const container = mountContainer();
@@ -111,7 +111,7 @@ describe("Secure defaults integration", () => {
 			const Component = create({
 				tag: "secure-function-url-unlisted",
 				url: () => "https://attacker.example.com/widget",
-				domain: "https://host.example.com",
+				hostOrigins: "https://host.example.com",
 			});
 			const container = mountContainer();
 
@@ -127,7 +127,7 @@ describe("Secure defaults integration", () => {
 			const Component = create({
 				tag: "secure-function-url-unlisted-popup",
 				url: () => "https://attacker.example.com/widget",
-				domain: "https://host.example.com",
+				hostOrigins: "https://host.example.com",
 			});
 
 			await expect(

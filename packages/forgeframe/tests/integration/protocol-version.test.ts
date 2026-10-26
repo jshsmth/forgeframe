@@ -2,7 +2,7 @@
  * Integration tests for the bootstrap protocol version across two windows.
  *
  * Covers the channel metadata a v2 consumer writes into `window.name`, the
- * INIT and GET_SIBLINGS wire fields, the host's refusal of payloads from
+ * INIT and GET_PEERS wire fields, the host's refusal of payloads from
  * other ForgeFrame major versions, and what `isHost()` reports for each.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -47,7 +47,7 @@ describe("Bootstrap protocol version", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("writes only channel metadata and sends INIT and GET_SIBLINGS without claimed identity", async () => {
+	it("writes only channel metadata and sends INIT and GET_PEERS without claimed identity", async () => {
 		harness = createIframeIntegrationHarness();
 		const definitions = { amount: prop.number() };
 		const Component = create({
@@ -88,7 +88,7 @@ describe("Bootstrap protocol version", () => {
 			hostProps.getPeerInstances({ allTags: true }),
 		).resolves.toEqual([]);
 		const siblings = readPostedRequests(posted).filter(
-			(message) => message?.name === MESSAGE_NAME.GET_SIBLINGS,
+			(message) => message?.name === MESSAGE_NAME.GET_PEERS,
 		);
 		expect(siblings.map((message) => message?.data)).toEqual([
 			{ options: { allTags: true } },

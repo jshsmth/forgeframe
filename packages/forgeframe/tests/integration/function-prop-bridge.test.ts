@@ -119,9 +119,10 @@ describe("Function prop bridge integration", () => {
 		const nextHost = activeHarness.bootstrapHost();
 		if (!nextHost) throw new Error("Expected host reinitialization");
 		await nextHost.ready;
-		await expect(pending).rejects.toThrow(
-			"Host reconnected before the call completed",
-		);
+		await expect(pending).rejects.toMatchObject({
+			code: "CLOSED",
+			message: "Host reconnected before the call completed",
+		});
 	});
 
 	it("rejects a pending host export call once the host window stops answering", async () => {
@@ -149,7 +150,7 @@ describe("Function prop bridge integration", () => {
 		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 		let outcome = "pending";
 		const pending = exports.wait().catch((error: Error) => {
-			outcome = error.message;
+			outcome = `${(error as { code?: string }).code}: ${error.message}`;
 		});
 		await vi.advanceTimersByTimeAsync(10_001);
 		// An answered liveness check keeps the call waiting.
@@ -162,7 +163,7 @@ describe("Function prop bridge integration", () => {
 		await vi.advanceTimersByTimeAsync(20_001);
 		await pending;
 		expect(outcome).toBe(
-			"The other window stopped responding before the call completed",
+			"CLOSED: The other window stopped responding before the call completed",
 		);
 	});
 
@@ -255,7 +256,10 @@ describe("Function prop bridge integration", () => {
 			]),
 		);
 		const recovered = instance.updateProps({ callbacks: replacement });
-		await expect(rejected).rejects.toThrow("500 distinct callback limit");
+		await expect(rejected).rejects.toMatchObject({
+			code: "CAPACITY",
+			message: expect.stringContaining("500 distinct callback limit"),
+		});
 		await recovered;
 		await expect(hostProps.callbacks.c0?.()).resolves.toBe(500);
 		await expect(hostProps.callbacks.c499?.()).resolves.toBe(999);
@@ -426,7 +430,10 @@ describe("Function prop bridge integration", () => {
 		await expect(hostProps.callbacks.c0?.()).resolves.toBe(500);
 		await expect(
 			instance.updateProps({ callbacks: { fresh: () => 1001 } }),
-		).rejects.toThrow("recovery pool is full");
+		).rejects.toMatchObject({
+			code: "CAPACITY",
+			message: expect.stringContaining("recovery pool is full"),
+		});
 		await expect(hostProps.callbacks.c499?.()).resolves.toBe(999);
 		post.mockRestore();
 		await instance.updateProps({ callbacks: replacement });

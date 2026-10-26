@@ -57,9 +57,9 @@ try {
 		resolve(directory, "smoke.mjs"),
 		`import assert from 'node:assert/strict';
 import * as entrypoint from 'forgeframe';
-import { VERSION, create, isHost, initHost, prop, createReactComponent } from 'forgeframe';
+import { VERSION, ForgeFrameError, create, isHost, initHost, prop, createReactComponent } from 'forgeframe';
 assert.equal(VERSION, ${JSON.stringify(version)});
-for (const removed of ['default', 'ForgeFrame', 'getHostProps', 'isEmbedded', 'CONTEXT', 'EVENT', 'isStandardSchema', 'StringSchema'])
+for (const removed of ['default', 'ForgeFrame', 'getHostProps', 'isEmbedded', 'CONTEXT', 'EVENT', 'isStandardSchema', 'StringSchema', 'PopupOpenError'])
 	assert.equal(removed in entrypoint, false, removed + ' was removed in ForgeFrame 2');
 assert.equal(typeof createReactComponent, 'function');
 assert.equal(isHost(), false);
@@ -69,7 +69,7 @@ assert.deepEqual(prop.function().default(() => callback)['~standard'].validate(u
 assert.ok(prop.function().default(() => 42)['~standard'].validate(undefined).issues);
 const Component = create({ tag: 'installed-package', url: 'https://example.com/widget' });
 assert.equal(initHost(Component, { consumerOrigins: 'https://consumer.example.com' }), null);
-assert.throws(() => initHost(), (error) => error.message.includes('initHost(Component, { consumerOrigins })'));
+assert.throws(() => initHost(), (error) => error instanceof ForgeFrameError && error.code === 'VALIDATION' && error.message.includes('initHost(Component, { consumerOrigins })'));
 `,
 	);
 	run(process.execPath, ["smoke.mjs"]);
@@ -100,6 +100,43 @@ const startedCount: number | undefined = started?.hostProps.count;
 void result; void remoteResult; void startedCount;
 `,
 	);
+	// A library exporting components emits declarations that must name every
+	// type the inferred component reaches through the root entry.
+	writeFileSync(
+		resolve(directory, "library.mts"),
+		`import { create, initHost, prop } from 'forgeframe';
+export const Library = create({
+ tag: 'library-package', url: 'https://example.com/widget',
+ props: {
+  user: prop.object({ id: prop.string(), tags: prop.array(prop.string()) }),
+  scores: prop.record(prop.number()), mode: prop.enum(['a', 'b']),
+  pair: prop.tuple(prop.string(), prop.number()), either: prop.union(prop.string(), prop.number()),
+  when: prop.date().optional(), raw: prop.any<{ a: number }>(),
+  onDone: prop.function<(id: string) => void>(), wrapped: { schema: prop.string(), queryParam: true },
+ },
+ exports: prop.object({ reset: prop.function<() => void>() }),
+});
+export const host = initHost(Library, { consumerOrigins: '*' });
+export const agnosticHost = initHost({ props: { n: prop.number() }, consumerOrigins: '*' });
+`,
+	);
+	run(process.execPath, [
+		resolve(repoRoot, "node_modules/typescript/bin/tsc"),
+		"--ignoreConfig",
+		"--declaration",
+		"--emitDeclarationOnly",
+		"--outDir",
+		"declarations",
+		"--strict",
+		"--skipLibCheck",
+		"--module",
+		"NodeNext",
+		"--moduleResolution",
+		"NodeNext",
+		"--target",
+		"ES2022",
+		"library.mts",
+	]);
 	const readme = readFileSync(resolve(repoRoot, "README.md"), "utf8");
 	const componentSection = readme.split("### 1. Define a Component")[1];
 	const readmeExample = componentSection?.match(

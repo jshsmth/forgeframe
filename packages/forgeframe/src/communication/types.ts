@@ -33,6 +33,11 @@ export interface Message {
 	/** Error information (for error responses) */
 	error?: {
 		message: string;
+		/**
+		 * The `ForgeFrameErrorCode` of an error ForgeFrame raised. Absent for
+		 * errors thrown by application code, such as a remote callback.
+		 */
+		code?: string;
 	};
 	/**
 	 * Message source metadata.

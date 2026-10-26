@@ -10,6 +10,7 @@
  */
 
 import { PROTOCOL_VERSION } from "../../constants";
+import { ForgeFrameError } from "../../errors";
 import { createEventSubscriber } from "../../events/emitter";
 import type { InferProps } from "../../types/props";
 import type {
@@ -33,10 +34,7 @@ import {
 	type HostStartOptions,
 	readInitHostArguments,
 } from "./init-host-arguments";
-import {
-	CONSUMER_WINDOW_RESOLUTION_ERROR,
-	resolveConsumerWindow,
-} from "./security";
+import { isConsumerWindowUnavailable, resolveConsumerWindow } from "./security";
 
 let hostInstance: HostComponent<Record<string, unknown>> | null = null;
 
@@ -53,7 +51,7 @@ function readInitialPayload(): WindowNamePayload | null {
 		// A stale name with no parent or opener has no consumer to upgrade, so it
 		// starts nothing, as a current payload without a consumer window does.
 		if (!hasConsumerWindow()) return null;
-		throw new Error(describeUnsupportedPayload(result));
+		throw new ForgeFrameError("VALIDATION", describeUnsupportedPayload(result));
 	}
 	if (result.kind === "invalid") {
 		console.error("Failed to parse ForgeFrame payload from window.name");
@@ -68,12 +66,7 @@ function hasConsumerWindow(): boolean {
 		resolveConsumerWindow();
 		return true;
 	} catch (error) {
-		if (
-			error instanceof Error &&
-			error.message === CONSUMER_WINDOW_RESOLUTION_ERROR
-		) {
-			return false;
-		}
+		if (isConsumerWindowUnavailable(error)) return false;
 		throw error;
 	}
 }
@@ -176,12 +169,14 @@ export function initHost<const D extends InferablePropsDefinition = never>(
 export function initHost(...args: unknown[]): Host | null {
 	const start = readInitHostArguments(args);
 	if (!hasBrowserWindow()) return null;
-	if (hostInstance) throw new Error(HOST_ALREADY_ACTIVE_ERROR);
+	if (hostInstance)
+		throw new ForgeFrameError("VALIDATION", HOST_ALREADY_ACTIVE_ERROR);
 
 	const payload = readInitialPayload();
 	if (!payload) return null;
 	if (start.componentTag !== undefined && start.componentTag !== payload.tag) {
-		throw new Error(
+		throw new ForgeFrameError(
+			"VALIDATION",
 			`initHost() received component "${start.componentTag}", but this window was opened for "${payload.tag}"`,
 		);
 	}
@@ -198,27 +193,26 @@ function startHostRuntime(
 	payload: WindowNamePayload,
 	start: HostStartOptions,
 ): HostComponent<Record<string, unknown>> | null {
-	let runtime: HostComponent<Record<string, unknown>>;
+	let consumerWindow: Window;
 	try {
-		runtime = new HostComponent(payload, {
+		consumerWindow = resolveConsumerWindow();
+	} catch (error) {
+		if (isConsumerWindowUnavailable(error)) return null;
+		throw error;
+	}
+	const runtime: HostComponent<Record<string, unknown>> = new HostComponent(
+		payload,
+		{
 			props: start.props,
-			exports: start.exports,
+			exportsSchema: start.exportsSchema,
 			consumerOrigins: start.consumerOrigins,
+			consumerWindow,
 			autoInit: start.autoInit,
 			onDestroy: () => {
 				if (hostInstance === runtime) hostInstance = null;
 			},
-		});
-	} catch (error) {
-		if (
-			error instanceof Error &&
-			error.message === CONSUMER_WINDOW_RESOLUTION_ERROR
-		) {
-			return null;
-		}
-
-		throw error;
-	}
+		},
+	);
 	hostInstance = runtime;
 	// Registered before the caller can observe ready, so a rejection handler
 	// can retry immediately.

@@ -32,7 +32,6 @@
 
 export type { ContextType } from "./constants";
 export { VERSION } from "./constants";
-
 // Named exports for tree-shaking
 export { closeAll, create, initHost, isHost } from "./core";
 // React integration exports
@@ -43,6 +42,7 @@ export {
 	type ReactDriverOptions,
 	withReactComponent,
 } from "./drivers/react";
+export { ForgeFrameError, type ForgeFrameErrorCode } from "./errors";
 // Prop schema builders; the schema classes are types, built with prop.*
 export {
 	type AnySchema,
@@ -51,6 +51,8 @@ export {
 	type DateSchema,
 	type EnumSchema,
 	type FunctionSchema,
+	type InferObjectInputShape,
+	type InferObjectShape,
 	type LiteralSchema,
 	type NumberSchema,
 	type ObjectSchema,
@@ -61,7 +63,6 @@ export {
 	type TupleSchema,
 	type UnionSchema,
 } from "./props/prop";
-export { PopupOpenError } from "./render/popup";
 // Type exports
 export type {
 	// Component types
@@ -74,7 +75,6 @@ export type {
 	ContainerTemplate,
 	// Utility types
 	Dimensions,
-	DomainMatcher,
 	// Event types
 	EventHandler,
 	EventSubscriber,
@@ -92,6 +92,7 @@ export type {
 	InferProps,
 	InitHostOptions,
 	InputOf,
+	OriginMatcher,
 	PeerInfo,
 	PrerenderTemplate,
 	// Props types

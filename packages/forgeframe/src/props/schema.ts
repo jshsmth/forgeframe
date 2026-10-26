@@ -11,6 +11,8 @@
  * @packageDocumentation
  */
 
+import { ForgeFrameError } from "../errors";
+
 // ============================================================================
 // Standard Schema V1 Types
 // ============================================================================
@@ -245,7 +247,10 @@ export function validateWithSchema<T>(
 ): T {
 	const result = runSchema(schema, value, propName);
 	if ("issues" in result) {
-		throw new Error(`Validation failed: ${result.issues}`);
+		throw new ForgeFrameError(
+			"VALIDATION",
+			`Validation failed: ${result.issues}`,
+		);
 	}
 	return result.value;
 }
@@ -269,7 +274,8 @@ export function runSchema<T>(
 	const result = schema["~standard"].validate(value);
 
 	if (isAsyncSchemaResult(result)) {
-		throw new Error(
+		throw new ForgeFrameError(
+			"VALIDATION",
 			`Prop "${propName}" uses an async schema. ForgeFrame only supports synchronous ` +
 				`schema validation. Please use a synchronous schema or remove async operations ` +
 				`(like database lookups) from your schema definition.`,

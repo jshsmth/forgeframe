@@ -14,6 +14,7 @@ import {
 	initHost,
 } from "@/core/host";
 import * as hostSecurity from "@/core/host/security";
+import { ForgeFrameError } from "@/errors";
 import { buildWindowName } from "@/window/name-payload";
 import type { WindowNamePayload } from "@/window/types";
 import { requireValue } from "../require-value";
@@ -55,7 +56,12 @@ function createHost({
 		consumerWindow,
 	);
 
-	return new HostComponent(payload, { consumerOrigins: "*", autoInit });
+	return new HostComponent(payload, {
+		props: "unchecked",
+		consumerOrigins: "*",
+		consumerWindow,
+		autoInit,
+	});
 }
 
 /**
@@ -101,9 +107,9 @@ describe("Host branch coverage and edge paths", () => {
 
 		await vi.waitFor(() => expect(sendSpy).toHaveBeenCalledTimes(2));
 		const [bootstrapCall, initCall] = sendSpy.mock.calls;
-		const [targetWindow, targetDomain, name, data] =
+		const [targetWindow, targetOrigin, name, data] =
 			requireValue(bootstrapCall);
-		expect([targetWindow, targetDomain, name]).toEqual([
+		expect([targetWindow, targetOrigin, name]).toEqual([
 			window,
 			window.location.origin,
 			MESSAGE_NAME.BOOTSTRAP,
@@ -162,7 +168,8 @@ describe("Host branch coverage and edge paths", () => {
 	it("reports INIT delivery failures on the host error event", async () => {
 		window.name = buildWindowName(createPayload());
 		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
-		const error = new Error("init send failed");
+		// A consumer that answers INIT with CLOSED keeps that code.
+		const error = new ForgeFrameError("CLOSED", "Component has been destroyed");
 		const sendSpy = vi
 			.spyOn(Messenger.prototype, "send")
 			.mockResolvedValueOnce({ props: {} })
@@ -188,9 +195,11 @@ describe("Host branch coverage and edge paths", () => {
 			undefined,
 			undefined,
 		);
-		expect(errors[0]).toBeInstanceOf(Error);
+		expect(errors[0]).toBeInstanceOf(ForgeFrameError);
 		expect(errors[0]).toMatchObject({
-			message: "Failed to initialize host component: init send failed",
+			code: "CLOSED",
+			message:
+				"Failed to initialize host component: Component has been destroyed",
 			cause: error,
 		});
 		expect(consoleSpy).toHaveBeenCalledWith(
@@ -234,7 +243,7 @@ describe("Host branch coverage and edge paths", () => {
 		expect(sendSpy).toHaveBeenCalledWith(
 			window,
 			window.location.origin,
-			MESSAGE_NAME.GET_SIBLINGS,
+			MESSAGE_NAME.GET_PEERS,
 			{ options: { allTags: true } },
 		);
 	});
@@ -278,7 +287,7 @@ describe("Host branch coverage and edge paths", () => {
 		const addEventListenerSpy = vi.spyOn(window, "addEventListener");
 		const removeEventListenerSpy = vi.spyOn(window, "removeEventListener");
 		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockImplementation(() => {
-			throw new Error("Could not resolve consumer window");
+			throw new ForgeFrameError("CLOSED", "Could not resolve consumer window");
 		});
 
 		const host = initHost({ consumerOrigins: "*" });

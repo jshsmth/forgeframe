@@ -9,10 +9,11 @@
  * props reach a host through postMessage, the query string, or a POST body.
  */
 
+import { ForgeFrameError } from "../errors";
 import type { PropDefinition, PropDelivery } from "../types/props";
 import { isDate, isPlainObject } from "../utils/realm-values";
 import { assertDefinedArrayEntries } from "../utils/wire-value";
-import { matchDomain } from "../window/helpers";
+import { matchOrigin } from "../window/helpers";
 import { SELF_ACCEPTANCE_MIGRATIONS } from "./definition-checks";
 import {
 	isStandardSchema,
@@ -232,25 +233,32 @@ function assertSelfAccepting(
 		outcome.status === "changed"
 			? "the schema changed the value"
 			: `the schema rejected it: ${outcome.issues}`;
-	throw new Error(
+	throw new ForgeFrameError(
+		"VALIDATION",
 		`Validation failed: ${key}: the prop schema must accept its own output unchanged, because ForgeFrame validates delivered values with the same schema; ${reason}. ${SELF_ACCEPTANCE_MIGRATIONS}`,
 	);
 }
 
 /**
- * Throws when a trust boundary finds a normalized value its schema rejects
- * or changes.
+ * Throws `VALIDATION` when a trust boundary finds a value its schema rejects
+ * (with the schema's issues) or changes (with `changedMessage`). Props and
+ * exports share it.
+ * @internal
  */
-function assertValidatesUnchanged(
+export function assertValidatesUnchanged(
 	outcome: UnchangedValidationOutcome,
-	key: string,
+	changedMessage: string,
 ): void {
 	if (outcome.status === "rejected") {
-		throw new Error(`Validation failed: ${outcome.issues}`);
+		throw new ForgeFrameError(
+			"VALIDATION",
+			`Validation failed: ${outcome.issues}`,
+		);
 	}
 	if (outcome.status === "changed") {
-		throw new Error(
-			`Validation failed: ${key}: value no longer matches its normalized schema output`,
+		throw new ForgeFrameError(
+			"VALIDATION",
+			`Validation failed: ${changedMessage}`,
 		);
 	}
 }
@@ -361,7 +369,7 @@ export function validateNormalizedProps(
 		if (excluded?.has(key)) continue;
 		assertValidatesUnchanged(
 			validateUnchanged(definition.schema, readSuppliedProp(props, key), key),
-			key,
+			`${key}: value no longer matches its normalized schema output`,
 		);
 	}
 }
@@ -413,7 +421,7 @@ export function isPropDelivered(
 	const deliverTo: PropDelivery | undefined = definition.deliverTo;
 	if (deliverTo === undefined) return true;
 	if (deliverTo === "same-origin") return target.sameOrigin;
-	return matchDomain(deliverTo, target.hostOrigin);
+	return matchOrigin(deliverTo, target.hostOrigin);
 }
 
 /**

@@ -17,17 +17,26 @@ import type { SerializedProps } from "../../props/types";
 import type { HostEvents } from "../../types/events";
 import type { PropsDefinition } from "../../types/props";
 import type { GetPeerInstancesOptions, PeerInfo } from "../../types/runtime";
-import type { Dimensions, DomainMatcher } from "../../types/utility";
+import type { Dimensions, OriginMatcher } from "../../types/utility";
 
 export type VerifiedMessageSource = Parameters<MessageHandler>[1];
 
+/**
+ * The props a host accepts: its definitions, which also select the fields it
+ * keeps, or `"unchecked"` for a tag-agnostic host without `props`, which keeps
+ * every field unvalidated. A component without props declares none.
+ */
+export type HostPropDefinitions<P> = PropsDefinition<P> | "unchecked";
+
 export interface HostRuntimeOptions<P> {
-	/** Validate the consumer's props; without them, props are not validated. */
-	props?: PropsDefinition<P>;
+	/** Validates the consumer's props, or keeps them unchecked. */
+	props: HostPropDefinitions<P>;
 	/** Checks each export before it is sent; without it, exports are sent unchecked. */
-	exports?: StandardSchemaV1;
+	exportsSchema?: StandardSchemaV1;
 	/** Checked against the selected consumer origin before BOOTSTRAP is sent. */
-	consumerOrigins: DomainMatcher;
+	consumerOrigins: OriginMatcher;
+	/** The parent or opener window, resolved before the runtime is built. */
+	consumerWindow: Window;
 	/** Sends INIT as soon as `ready` resolves; otherwise INIT waits for `init()`. */
 	autoInit?: boolean;
 	/** Runs first in `destroy()`, before resources are released. */
@@ -51,7 +60,7 @@ export interface HostPropsRuntimeOptions {
 	event: EventEmitter<HostEvents>;
 	controls: HostPropsRuntimeControls;
 	getConsumerWindow(): Window;
-	getConsumerDomain(): string;
+	getConsumerOrigin(): string;
 	getBridge(): FunctionBridge;
 }
 
@@ -61,8 +70,8 @@ export interface HostTransportOptions {
 	context: ContextType;
 	event: EventEmitter<HostEvents>;
 	consumerWindow: Window;
-	consumerDomain: string;
-	getConsumerDomain(): string;
+	consumerOrigin: string;
+	getConsumerOrigin(): string;
 	/** Settles once the verified bootstrap completes; INIT waits for it. */
 	beforeInit: () => Promise<unknown>;
 }

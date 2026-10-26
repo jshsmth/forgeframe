@@ -17,7 +17,7 @@ function mount(consumer: ConsumerComponent<Record<string, unknown>>) {
 	const internals = consumer as unknown as {
 		waitForHost: () => Promise<void>;
 		renderer: { iframe: HTMLIFrameElement };
-		transport: { openedHostDomain: string };
+		transport: { openedHostOrigin: string };
 	};
 	vi.spyOn(internals, "waitForHost").mockResolvedValue();
 	const container = document.createElement("div");
@@ -40,7 +40,7 @@ describe("Consumer navigation admission", () => {
 			create({
 				tag: "relative-origin-policy",
 				url: "/widget",
-				domain: window.location.origin,
+				hostOrigins: window.location.origin,
 			}),
 		).toThrow(
 			'Component URL origin "https://untrusted.example" is not allowed',
@@ -53,8 +53,8 @@ describe("Consumer navigation admission", () => {
 			const consumer = new ConsumerComponent<Record<string, unknown>>({
 				tag: "changed-base-policy",
 				...(dynamic
-					? { url: () => "/widget", domain: window.location.origin }
-					: { url: "/widget", domain: window.location.origin }),
+					? { url: () => "/widget", hostOrigins: window.location.origin }
+					: { url: "/widget", hostOrigins: window.location.origin }),
 			});
 			const { container } = mount(consumer);
 			setBase("https://untrusted.example/");
@@ -71,7 +71,7 @@ describe("Consumer navigation admission", () => {
 			{
 				tag: "pinned-base-navigation",
 				url: () => "widget#checkout?step=2",
-				domain: "https://host.example",
+				hostOrigins: "https://host.example",
 				props: {
 					order: {
 						schema: prop.string(),
@@ -90,9 +90,9 @@ describe("Consumer navigation admission", () => {
 		expect(internals.renderer.iframe.src).toBe(
 			"https://host.example/nested/widget?order=order-123#checkout?step=2",
 		);
-		expect(internals.transport.openedHostDomain).toBe("https://host.example");
+		expect(internals.transport.openedHostOrigin).toBe("https://host.example");
 		await expect(
 			consumer.updateProps({ order: "changed-order" }),
-		).rejects.toThrow("not allowed by the configured domain policy");
+		).rejects.toThrow("is not allowed by the component's hostOrigins");
 	});
 });

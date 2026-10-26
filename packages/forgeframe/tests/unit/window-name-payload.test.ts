@@ -56,7 +56,12 @@ describe("buildWindowName", () => {
 	it("should throw when payload exceeds the maximum size limit", () => {
 		expect(() =>
 			buildWindowName(createPayload({ tag: "x".repeat(70 * 1024) })),
-		).toThrow("exceeds maximum allowed size");
+		).toThrow(
+			expect.objectContaining({
+				code: "CAPACITY",
+				message: expect.stringContaining("exceeds maximum allowed size"),
+			}),
+		);
 	});
 
 	it("should wrap encoding failures with a descriptive error", () => {

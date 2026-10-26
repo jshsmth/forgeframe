@@ -282,7 +282,7 @@ void defaultedHostValue;
 
 const WrappedPresenceComponent = create({
 	tag: "wrapped-presence-component",
-	domain: "https://example.com",
+	hostOrigins: "https://example.com",
 	url: (props) => {
 		const requiredValue: string = props.requiredWrapper;
 		const optionalValue: string | undefined = props.optionalWrapper;
@@ -439,10 +439,6 @@ type RemovedInferPropsInput = import("../../src").InferPropsDefinitionInput<
 type RemovedForgeFrameComponent = import("../../src").ForgeFrameComponent;
 // @ts-expect-error ForgeFrameComponentInstance was renamed ComponentInstance
 type RemovedInstance = import("../../src").ForgeFrameComponentInstance;
-// @ts-expect-error InferObjectShape is internal
-type RemovedInferObjectShape = import("../../src").InferObjectShape<
-	Record<string, never>
->;
 export type RemovedDefinitionTypes = [
 	RemovedSchemaPropDefinition,
 	RemovedPropDefinitionEntry,
@@ -451,7 +447,6 @@ export type RemovedDefinitionTypes = [
 	RemovedInferPropsInput,
 	RemovedForgeFrameComponent,
 	RemovedInstance,
-	RemovedInferObjectShape,
 ];
 
 const coercedSchemaDefinition = {
@@ -466,7 +461,7 @@ const dateInput = z
 	.transform((value) => new Date(value));
 const CoercingComponent = create({
 	tag: "coercing-component",
-	domain: "https://example.com",
+	hostOrigins: "https://example.com",
 	url: (props) => {
 		const amount: number = props.amount;
 		const startsAt: Date = props.startsAt;
@@ -804,3 +799,23 @@ const AnyDefault = create({
 });
 // @ts-expect-error prop.any() is required, so the props argument is too
 void AnyDefault();
+
+// The origin-named options, and the removed names they replace.
+create({
+	tag: "renamed-component-options",
+	url: (props) => `https://example.com/${props.id}`,
+	hostOrigins: ["https://example.com"],
+	initTimeout: 5000,
+	context: "popup",
+	props: { id: prop.string() },
+});
+// @ts-expect-error domain was renamed hostOrigins
+create({ tag: "removed-domain", url: "https://example.com", domain: "*" });
+// @ts-expect-error timeout was renamed initTimeout
+create({ tag: "removed-timeout", url: "https://example.com", timeout: 1 });
+create({
+	tag: "removed-default-context",
+	url: "https://example.com",
+	// @ts-expect-error defaultContext was renamed context
+	defaultContext: "popup",
+});

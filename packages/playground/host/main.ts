@@ -54,7 +54,7 @@ const app = requireValue(document.getElementById("app"));
  * HostProps<MyProps> includes:
  * - All props passed from consumer (name, count, onGreet, etc.)
  * - Built-in methods (close, resize, focus, show, hide, export, etc.)
- * - Context info (uid, tag, getConsumerDomain, etc.)
+ * - Context info (uid, tag, consumerOrigin, etc.)
  */
 function renderEmbedded(hostProps: HostProps<MyProps>) {
 	// Built-in hostProps keys to exclude from "Received Props"
@@ -69,7 +69,7 @@ function renderEmbedded(hostProps: HostProps<MyProps>) {
 		"onProps",
 		"reportError",
 		"getConsumer",
-		"getConsumerDomain",
+		"consumerOrigin",
 		"export",
 		"consumer",
 		"getPeerInstances",
@@ -122,7 +122,7 @@ function renderEmbedded(hostProps: HostProps<MyProps>) {
               <dt>uid</dt>
               <dd id="host-uid"></dd>
               <dt>consumer</dt>
-              <dd id="consumer-domain"></dd>
+              <dd id="consumer-origin"></dd>
             </dl>
           </div>
         </div>
@@ -197,7 +197,7 @@ function renderEmbedded(hostProps: HostProps<MyProps>) {
 		for (const [id, text] of Object.entries({
 			"host-tag": hostProps.tag,
 			"host-uid": `${hostProps.uid.slice(0, 12)}...`,
-			"consumer-domain": hostProps.getConsumerDomain(),
+			"consumer-origin": hostProps.consumerOrigin,
 		})) {
 			const display = document.getElementById(id);
 			if (display) display.textContent = text;
@@ -315,7 +315,7 @@ function renderEmbedded(hostProps: HostProps<MyProps>) {
 					await new Promise((resolve) => setTimeout(resolve, 120));
 					await hostProps.show();
 					return {
-						consumerDomain: hostProps.getConsumerDomain(),
+						consumerOrigin: hostProps.consumerOrigin,
 						parentMatched: hostProps.getConsumer() === window.parent,
 					};
 				},
@@ -363,7 +363,7 @@ function renderEmbedded(hostProps: HostProps<MyProps>) {
 			await hostProps.export({
 				popupReady: true,
 				hasOpener: window.opener !== null,
-				consumerDomain: hostProps.getConsumerDomain(),
+				consumerOrigin: hostProps.consumerOrigin,
 				// Only the popup itself may resize a cross-origin popup window.
 				resizeSelf: (dimensions: { width: number; height: number }) =>
 					hostProps.resize(dimensions),

@@ -34,7 +34,7 @@ export async function runConfigurationScenario(
 			width: props.variant === "wide" ? 480 : 320,
 			height: 320,
 		}),
-		domain: HOST_ORIGIN,
+		hostOrigins: HOST_ORIGIN,
 		props: {
 			scenario: prop.string(),
 			variant: prop.string(),
@@ -250,7 +250,7 @@ export async function runInstancesScenario(
 const hostControlExports = prop.object({
 	runControls:
 		prop.function<
-			() => Promise<{ consumerDomain: string; parentMatched: boolean }>
+			() => Promise<{ consumerOrigin: string; parentMatched: boolean }>
 		>(),
 	requestClose: prop.function<() => Promise<boolean>>(),
 });
@@ -325,8 +325,8 @@ export async function runHostControlsScenario(
 			assertResult(
 				"Host sees the verified consumer window and origin",
 				controlResult.parentMatched &&
-					controlResult.consumerDomain === window.location.origin,
-				`parent matched: ${controlResult.parentMatched}; origin: ${controlResult.consumerDomain}`,
+					controlResult.consumerOrigin === window.location.origin,
+				`parent matched: ${controlResult.parentMatched}; origin: ${controlResult.consumerOrigin}`,
 			),
 		);
 
@@ -379,7 +379,7 @@ export async function runTransportScenario(
 		await waitForExports(trustInstance, () => trustInstance.exports?.observed);
 		results.push(
 			assertResult(
-				"Trusted-domain props reach an allowed host",
+				"Trusted-origin props reach an allowed host",
 				trustInstance.exports?.observed.trustedValue === "trusted-host-value",
 				`host observed: ${String(trustInstance.exports?.observed.trustedValue)}`,
 			),
@@ -476,7 +476,7 @@ export async function runReliabilityScenario(
 			const snapshot = renderUrlCalls === 1 ? "first" : "unexpected-repeat";
 			return `${HOST_URL}?scenario=reliability&snapshot=${snapshot}`;
 		},
-		domain: HOST_ORIGIN,
+		hostOrigins: HOST_ORIGIN,
 		dimensions: { width: "100%", height: 300 },
 		props: {
 			scenario: prop.string(),
@@ -699,7 +699,7 @@ export async function runCommonActionsScenario(
 			),
 		);
 
-		await instance.resize({ width: "92%", height: 360 });
+		instance.resize({ width: "92%", height: 360 });
 		results.push(
 			assertResult(
 				"A consumer can resize the active iframe",
@@ -708,11 +708,11 @@ export async function runCommonActionsScenario(
 			),
 		);
 
-		await instance.hide();
+		instance.hide();
 		const hidden =
 			iframe.style.display === "none" && iframe.style.visibility === "hidden";
-		await instance.show();
-		await instance.focus();
+		instance.show();
+		instance.focus();
 		results.push(
 			assertResult(
 				"Show, hide, and focus remain usable during the session",
@@ -755,7 +755,7 @@ export async function runRedirectScenario(
 		exports: commonActionsExports,
 		tag: uniqueTag("redirect"),
 		url: redirectUrl.toString(),
-		domain: [window.location.origin, HOST_ORIGIN],
+		hostOrigins: [window.location.origin, HOST_ORIGIN],
 		dimensions: { width: "100%", height: 320 },
 		props: {
 			scenario: prop.string(),
@@ -834,7 +834,7 @@ export async function runTimeoutRecoveryScenario(
 		exports: reliabilityExports,
 		tag: uniqueTag("timeout"),
 		url: `${HOST_URL}?scenario=reliability&initDelay=300`,
-		timeout: 100,
+		initTimeout: 100,
 		dimensions: { width: "100%", height: 260 },
 		props: {
 			scenario: prop.string(),
@@ -1028,7 +1028,7 @@ export async function runStressScenario(
 const popupExports = prop.object({
 	popupReady: prop.boolean(),
 	hasOpener: prop.boolean(),
-	consumerDomain: prop.string(),
+	consumerOrigin: prop.string(),
 	resizeSelf:
 		prop.function<
 			(dimensions: { width: number; height: number }) => Promise<void>
@@ -1047,7 +1047,7 @@ export async function runPopupScenario(
 		exports: popupExports,
 		tag: uniqueTag("popup"),
 		url: `${HOST_URL}?scenario=popup`,
-		defaultContext: "popup",
+		context: "popup",
 		dimensions: { width: 520, height: 420 },
 		props: { scenario: prop.string() },
 	});
@@ -1082,19 +1082,19 @@ export async function runPopupScenario(
 		results.push(
 			assertResult(
 				"Popup verifies its consumer origin",
-				instance.exports?.consumerDomain === window.location.origin,
-				`consumer origin: ${String(instance.exports?.consumerDomain)}`,
+				instance.exports?.consumerOrigin === window.location.origin,
+				`consumer origin: ${String(instance.exports?.consumerOrigin)}`,
 			),
 		);
 
-		await instance.focus();
+		instance.focus();
 		// Browsers block resizing another origin's window, so the consumer call
-		// is refused and the host resizes its own popup instead.
+		// throws at once and the host resizes its own popup instead.
 		results.push(
-			await expectFailure(
-				"Consumer resize of a cross-origin popup is refused",
+			expectSyncFailure(
+				"Consumer resize of a cross-origin popup throws VALIDATION",
 				() => instance.resize({ width: 540, height: 440 }),
-				"Cannot resize the popup",
+				"VALIDATION",
 			),
 		);
 		await requireValue(instance.exports).resizeSelf({
@@ -1288,6 +1288,22 @@ async function expectFailure(
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		return assertResult(name, message.includes(expectedMessage), message);
+	}
+}
+
+/** Runs a call that must throw synchronously with a ForgeFrameError code. */
+function expectSyncFailure(
+	name: string,
+	action: () => unknown,
+	expectedCode: string,
+): TestResult {
+	try {
+		action();
+		return assertResult(name, false, "operation unexpectedly succeeded");
+	} catch (error) {
+		const code = (error as { code?: unknown }).code;
+		const message = error instanceof Error ? error.message : String(error);
+		return assertResult(name, code === expectedCode, `${code}: ${message}`);
 	}
 }
 

@@ -1,5 +1,6 @@
 import type { ContextType } from "../constants";
 import { CONTEXT, PROTOCOL_VERSION, WINDOW_NAME_PREFIX } from "../constants";
+import { ForgeFrameError } from "../errors";
 import type { WindowNamePayload } from "./types";
 
 /**
@@ -182,7 +183,8 @@ function encodePayload(payload: WindowNamePayload): string {
 		// Base64 output is ASCII-only, so code-unit length matches byte length.
 		const byteSize = encoded.length;
 		if (byteSize > MAX_PAYLOAD_SIZE) {
-			throw new Error(
+			throw new ForgeFrameError(
+				"CAPACITY",
 				`Payload size (${Math.round(byteSize / 1024)}KB) exceeds maximum allowed size (${MAX_PAYLOAD_SIZE / 1024}KB).`,
 			);
 		}
@@ -192,7 +194,7 @@ function encodePayload(payload: WindowNamePayload): string {
 		if (err instanceof Error && err.message.includes("Payload size")) {
 			throw err;
 		}
-		throw new Error(`Failed to encode payload: ${err}`);
+		throw new ForgeFrameError("VALIDATION", `Failed to encode payload: ${err}`);
 	}
 }
 

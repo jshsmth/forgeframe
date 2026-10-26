@@ -138,7 +138,11 @@ describe("Promise Utils", () => {
 
 	it("promiseTimeout should preserve the result and clear its timer on success", async () => {
 		const deferred = createDeferred<string>();
-		const result = promiseTimeout(deferred.promise, 100);
+		const result = promiseTimeout(
+			deferred.promise,
+			100,
+			() => new Error("late"),
+		);
 
 		deferred.resolve("success");
 
@@ -148,7 +152,11 @@ describe("Promise Utils", () => {
 
 	it("promiseTimeout should preserve the error and clear its timer on failure", async () => {
 		const deferred = createDeferred<string>();
-		const result = promiseTimeout(deferred.promise, 100);
+		const result = promiseTimeout(
+			deferred.promise,
+			100,
+			() => new Error("late"),
+		);
 		const error = new Error("operation failed");
 
 		deferred.reject(error);
@@ -162,7 +170,7 @@ describe("Promise Utils", () => {
 		const result = promiseTimeout(
 			deferred.promise,
 			10,
-			"Host did not initialize",
+			() => new Error("Host did not initialize (10ms)"),
 		);
 		const assertion = expect(result).rejects.toThrow(
 			"Host did not initialize (10ms)",

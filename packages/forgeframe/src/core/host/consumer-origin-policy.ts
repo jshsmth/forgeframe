@@ -1,5 +1,6 @@
-import type { DomainMatcher } from "../../types/utility";
-import { matchDomain } from "../../window/helpers";
+import { ForgeFrameError } from "../../errors";
+import type { OriginMatcher } from "../../types/utility";
+import { matchOrigin } from "../../window/helpers";
 
 export const CONSUMER_ORIGIN_VERIFICATION_ERROR =
 	"Could not verify consumer origin";
@@ -9,20 +10,22 @@ export const CONSUMER_ORIGIN_VERIFICATION_ERROR =
  * @throws If the origin is empty or does not match the allowlist.
  * @internal
  */
-export function assertAllowedConsumerDomain(
-	consumerOrigins: DomainMatcher,
-	consumerDomain: string,
+export function assertAllowedConsumerOrigin(
+	consumerOrigins: OriginMatcher,
+	consumerOrigin: string,
 	tag: string,
 ): void {
-	if (!consumerDomain) {
-		throw new Error(
+	if (!consumerOrigin) {
+		throw new ForgeFrameError(
+			"ORIGIN_REJECTED",
 			`${CONSUMER_ORIGIN_VERIFICATION_ERROR} for component "${tag}"`,
 		);
 	}
 
-	if (!matchDomain(consumerOrigins, consumerDomain)) {
-		throw new Error(
-			`Consumer domain "${consumerDomain}" is not allowed for component "${tag}"`,
+	if (!matchOrigin(consumerOrigins, consumerOrigin)) {
+		throw new ForgeFrameError(
+			"ORIGIN_REJECTED",
+			`Consumer origin "${consumerOrigin}" is not allowed by consumerOrigins for component "${tag}"`,
 		);
 	}
 }
@@ -35,22 +38,28 @@ export function assertAllowedConsumerDomain(
  * @internal
  */
 export function validateMessagingConsumerContext(
-	consumerDomain: string,
-	consumerOrigins: DomainMatcher,
+	consumerOrigin: string,
+	consumerOrigins: OriginMatcher,
 	tag: string,
 ): string {
 	let origin: URL;
 	try {
-		origin = new URL(consumerDomain);
+		origin = new URL(consumerOrigin);
 	} catch {
-		throw new Error(CONSUMER_ORIGIN_VERIFICATION_ERROR);
+		throw new ForgeFrameError(
+			"ORIGIN_REJECTED",
+			CONSUMER_ORIGIN_VERIFICATION_ERROR,
+		);
 	}
 	if (
 		!["http:", "https:"].includes(origin.protocol) ||
-		origin.origin !== consumerDomain
+		origin.origin !== consumerOrigin
 	) {
-		throw new Error(CONSUMER_ORIGIN_VERIFICATION_ERROR);
+		throw new ForgeFrameError(
+			"ORIGIN_REJECTED",
+			CONSUMER_ORIGIN_VERIFICATION_ERROR,
+		);
 	}
-	assertAllowedConsumerDomain(consumerOrigins, consumerDomain, tag);
-	return consumerDomain;
+	assertAllowedConsumerOrigin(consumerOrigins, consumerOrigin, tag);
+	return consumerOrigin;
 }

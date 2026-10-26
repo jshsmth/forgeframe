@@ -10,6 +10,11 @@ describe("consumer origin policy from supplied evidence", () => {
 	])("rejects a non-exact messaging origin: %s", (origin) => {
 		expect(() =>
 			validateMessagingConsumerContext(origin, "*", "widget"),
-		).toThrow("Could not verify consumer origin");
+		).toThrow(
+			expect.objectContaining({
+				code: "ORIGIN_REJECTED",
+				message: "Could not verify consumer origin",
+			}),
+		);
 	});
 });

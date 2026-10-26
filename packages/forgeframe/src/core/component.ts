@@ -9,6 +9,7 @@
  */
 
 import { CONTEXT } from "../constants";
+import { ForgeFrameError } from "../errors";
 import { hasOwnDeclaredField } from "../props/definition-checks";
 import { isStandardSchema } from "../props/schema";
 import {
@@ -25,7 +26,7 @@ import type {
 	InferredComponentOptions,
 } from "../types/runtime";
 import { hasBrowserWindow } from "../utils/browser";
-import { assertDomainMatcher } from "../utils/domain-pattern";
+import { assertOriginMatcher } from "../utils/origin-pattern";
 import { resolveComponentHostUrl } from "../utils/url";
 import {
 	clearIndexedInstances,
@@ -43,6 +44,7 @@ import {
 } from "./component-registry";
 import { ConsumerComponent } from "./consumer";
 import { assertPropDefinitionsObject } from "./host/builtin-keys";
+import { resolveRenderContext } from "./render-context";
 
 /**
  * Validates component configuration options.
@@ -53,16 +55,22 @@ import { assertPropDefinitionsObject } from "./host/builtin-keys";
  * @internal
  */
 function validateComponentOptions<P>(options: ComponentOptions<P>): void {
-	assertComponentFields(options);
+	// Removed names come first, so a renamed option is reported by its new name.
 	assertNoRemovedComponentOptions(options);
+	assertComponentFields(options);
 	assertComponentMatchers(options);
+	if (options.context !== undefined)
+		resolveRenderContext(options.context, CONTEXT.IFRAME, "Component context");
 	assertSandboxOption(options.sandbox);
 	assertIframeAttributeNames(options.attributes);
 	assertPropDefinitionsObject(options.props ?? {});
 	assertExportsSchema(options.exports);
 	validateStaticComponentUrl(options);
 	if (hasRegisteredComponent(options.tag)) {
-		throw new Error(`Component "${options.tag}" is already registered`);
+		throw new ForgeFrameError(
+			"VALIDATION",
+			`Component "${options.tag}" is already registered`,
+		);
 	}
 }
 
@@ -77,48 +85,50 @@ function assertComponentFields<P>(options: ComponentOptions<P>): void {
 		options === null ||
 		Array.isArray(options)
 	) {
-		throw new Error("Component options must be an object");
+		throw new ForgeFrameError(
+			"VALIDATION",
+			"Component options must be an object",
+		);
 	}
 	if (!options.tag) {
-		throw new Error("Component tag is required");
+		throw new ForgeFrameError("VALIDATION", "Component tag is required");
 	}
 
 	if (
 		typeof options.tag !== "string" ||
 		!/^[a-z][a-z0-9-]*$/.test(options.tag)
 	) {
-		throw new Error(
+		throw new ForgeFrameError(
+			"VALIDATION",
 			`Invalid component tag "${options.tag}". Must start with lowercase letter and contain only lowercase letters, numbers, and hyphens.`,
 		);
 	}
 
 	if (!options.url) {
-		throw new Error("Component url is required");
+		throw new ForgeFrameError("VALIDATION", "Component url is required");
 	}
 	if (typeof options.url !== "string" && typeof options.url !== "function") {
-		throw new Error("Component url must be a string or a function");
+		throw new ForgeFrameError(
+			"VALIDATION",
+			"Component url must be a string or a function",
+		);
 	}
-	if (typeof options.url === "function" && options.domain === undefined) {
-		throw new Error(
-			"Component domain is required when url is a function: list the host origins the function may return, or pass '*' to trust any http(s) origin.",
+	if (typeof options.url === "function" && options.hostOrigins === undefined) {
+		throw new ForgeFrameError(
+			"VALIDATION",
+			"Component hostOrigins is required when url is a function: list the host origins the function may return, or pass '*' to trust any http(s) origin.",
 		);
 	}
 	if (
-		options.defaultContext !== undefined &&
-		options.defaultContext !== CONTEXT.IFRAME &&
-		options.defaultContext !== CONTEXT.POPUP
+		options.initTimeout !== undefined &&
+		(typeof options.initTimeout !== "number" ||
+			!Number.isFinite(options.initTimeout) ||
+			options.initTimeout < 0 ||
+			options.initTimeout > 2147483647)
 	) {
-		throw new Error('Component defaultContext must be "iframe" or "popup"');
-	}
-	if (
-		options.timeout !== undefined &&
-		(typeof options.timeout !== "number" ||
-			!Number.isFinite(options.timeout) ||
-			options.timeout < 0 ||
-			options.timeout > 2147483647)
-	) {
-		throw new Error(
-			"Component timeout must be a finite number between 0 and 2147483647 milliseconds",
+		throw new ForgeFrameError(
+			"VALIDATION",
+			"Component initTimeout must be a finite number between 0 and 2147483647 milliseconds",
 		);
 	}
 
@@ -126,21 +136,25 @@ function assertComponentFields<P>(options: ComponentOptions<P>): void {
 		options.cspNonce !== undefined &&
 		(typeof options.cspNonce !== "string" || options.cspNonce === "")
 	) {
-		throw new Error("Component cspNonce must be a non-empty string");
+		throw new ForgeFrameError(
+			"VALIDATION",
+			"Component cspNonce must be a non-empty string",
+		);
 	}
 }
 
-/** Checks the `domain` and `peers` origin matchers. */
+/** Checks the `hostOrigins` and `peers` origin matchers. */
 function assertComponentMatchers<P>(options: ComponentOptions<P>): void {
-	if (options.domain !== undefined)
-		assertDomainMatcher(options.domain, "Component domain");
+	if (options.hostOrigins !== undefined)
+		assertOriginMatcher(options.hostOrigins, "Component hostOrigins");
 	if ((options.peers as unknown) === false) {
-		throw new Error(
+		throw new ForgeFrameError(
+			"VALIDATION",
 			"Component peers must be true or an origin matcher; omit it to keep peer discovery off",
 		);
 	}
 	if (options.peers !== undefined && options.peers !== true)
-		assertDomainMatcher(options.peers, "Component peers");
+		assertOriginMatcher(options.peers, "Component peers");
 }
 
 /**
@@ -158,19 +172,27 @@ const REMOVED_COMPONENT_OPTIONS: Readonly<Record<string, string>> = {
 		'Component option "children" was removed. Import child components in the host page and render them there; each child host calls initHost(Child, { consumerOrigins }).',
 	peerDomains:
 		'Component option "peerDomains" was removed. Peer discovery is opt-in: set peers: true for same-origin peers, or peers: <origin matcher> to also admit those host origins.',
+	domain:
+		'Component option "domain" was renamed. Use hostOrigins, which lists host origins such as "https://pay.example.com".',
+	timeout:
+		'Component option "timeout" was renamed. Use initTimeout; it bounds only the initial handshake, and remote callbacks have no timeout.',
+	defaultContext: 'Component option "defaultContext" was renamed. Use context.',
 };
 
 /** Throws a migration error for any removed component option. */
-function assertNoRemovedComponentOptions(options: object): void {
+function assertNoRemovedComponentOptions(options: unknown): void {
+	if (typeof options !== "object" || options === null) return;
 	for (const [option, message] of Object.entries(REMOVED_COMPONENT_OPTIONS)) {
-		if (hasOwnDeclaredField(options, option)) throw new Error(message);
+		if (hasOwnDeclaredField(options, option))
+			throw new ForgeFrameError("VALIDATION", message);
 	}
 }
 
 /** Checks that the optional `exports` option is a Standard Schema. */
 function assertExportsSchema(exports: unknown): void {
 	if (exports !== undefined && !isStandardSchema(exports)) {
-		throw new Error(
+		throw new ForgeFrameError(
+			"VALIDATION",
 			"Component exports must be a Standard Schema, such as prop.object({ ... }) or a Zod object",
 		);
 	}
@@ -188,7 +210,7 @@ function validateStaticComponentUrl<P>(options: ComponentOptions<P>): void {
 		resolveComponentHostUrl(
 			options.url,
 			context.baseUrl,
-			context.enforceDomain ? options.domain : undefined,
+			context.enforceOrigins ? options.hostOrigins : undefined,
 		);
 	}
 }
@@ -197,7 +219,7 @@ function validateStaticComponentUrl<P>(options: ComponentOptions<P>): void {
 function staticUrlValidationContext(
 	url: string,
 	browserBaseUrl: string | null,
-): { baseUrl: string; enforceDomain: boolean } {
+): { baseUrl: string; enforceOrigins: boolean } {
 	let absolute = true;
 	try {
 		new URL(url);
@@ -206,7 +228,7 @@ function staticUrlValidationContext(
 	}
 	return {
 		baseUrl: browserBaseUrl ?? "https://forgeframe.invalid",
-		enforceDomain: browserBaseUrl !== null || absolute,
+		enforceOrigins: browserBaseUrl !== null || absolute,
 	};
 }
 
@@ -312,8 +334,8 @@ export function create(
 	 * @param props - Props to pass to the component instance
 	 * @returns A new component instance
 	 */
-	// biome-ignore lint/complexity/useArrowFunction: Preserve the factory's regular-function behavior for JavaScript callers.
-	const Component = function (
+	// A named regular function keeps the factory's name and `new` behavior for JavaScript callers.
+	const factory = function Component(
 		props?: RuntimeProps,
 	): ComponentInstance<RuntimeProps> {
 		return createTrackedInstance(props);
@@ -321,14 +343,14 @@ export function create(
 
 	// A fresh frozen snapshot per read keeps callers from desynchronizing the
 	// factory list from the global instance index.
-	Object.defineProperty(Component, "instances", {
+	Object.defineProperty(factory, "instances", {
 		get: () => Object.freeze([...instances]),
 		enumerable: true,
 	});
 
-	registerComponent(Component, runtimeOptions);
+	registerComponent(factory, runtimeOptions);
 
-	return Component;
+	return factory;
 }
 
 /**

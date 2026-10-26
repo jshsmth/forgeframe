@@ -15,13 +15,15 @@ import {
 } from "../../communication/bridge";
 import { Messenger } from "../../communication/messenger";
 import { CONTEXT, EVENT, MESSAGE_NAME } from "../../constants";
+import { ForgeFrameError, hasErrorCode, wireErrorCode } from "../../errors";
 import type { SerializedProps } from "../../props/types";
 import { resizePopup } from "../../render/popup";
 import type { GetPeerInstancesOptions, PeerInfo } from "../../types/runtime";
-import { normalizeError } from "../../utils/error";
 import { generateShortUID } from "../../utils/uid";
-import { getDomain, waitForWindowFocus } from "../../window/helpers";
+import { getOrigin, waitForWindowFocus } from "../../window/helpers";
 import type { HostBootstrapData } from "../../window/types";
+import { toHandshakeFailure } from "./handshake-failure";
+import { assertPeerInstancesOptions } from "./peer-instances-options";
 import type { HostTransportOptions, HostTransportPropsHandler } from "./types";
 
 /** Longest wait in `focus()` for this window to receive the consumer's focus. */
@@ -45,20 +47,20 @@ export class HostTransport {
 		this.messenger = new Messenger(
 			this.options.uid,
 			window,
-			getDomain(),
-			this.options.consumerDomain,
+			getOrigin(),
+			this.options.consumerOrigin,
 		);
 		this.bridge = new FunctionBridge(
 			this.messenger,
 			(source) =>
 				source.window === this.options.consumerWindow &&
-				source.domain === this.options.getConsumerDomain(),
+				source.domain === this.options.getConsumerOrigin(),
 		);
 		this.peerBridge = new FunctionBridge(
 			this.messenger,
 			(source) =>
 				source.window === this.options.consumerWindow &&
-				source.domain === this.options.getConsumerDomain(),
+				source.domain === this.options.getConsumerOrigin(),
 			MESSAGE_NAME.PEER_CALL,
 		);
 	}
@@ -68,7 +70,7 @@ export class HostTransport {
 			MESSAGE_NAME.PROPS,
 			(serializedProps, source) => {
 				if (
-					source.domain !== this.options.getConsumerDomain() ||
+					source.domain !== this.options.getConsumerOrigin() ||
 					!handler.isConsumerSource(source)
 				) {
 					return { success: false };
@@ -92,7 +94,7 @@ export class HostTransport {
 	async requestBootstrap(): Promise<HostBootstrapData> {
 		return this.messenger.send(
 			this.options.consumerWindow,
-			this.options.getConsumerDomain(),
+			this.options.getConsumerOrigin(),
 			MESSAGE_NAME.BOOTSTRAP,
 			{ sessionId: this.sessionId },
 		);
@@ -109,7 +111,7 @@ export class HostTransport {
 			{ focused?: boolean } | undefined
 		>(
 			this.options.consumerWindow,
-			this.options.getConsumerDomain(),
+			this.options.getConsumerOrigin(),
 			MESSAGE_NAME.FOCUS,
 			{},
 		);
@@ -142,13 +144,15 @@ export class HostTransport {
 		});
 	}
 
-	/** Reports a failed start or INIT delivery on the host `error` event. */
-	emitInitFailure(error: Error): void {
+	/** Reports a failed start or INIT delivery on the host `error` event, keeping its code. */
+	emitInitFailure(error: ForgeFrameError): void {
 		this.options.event.emit(
 			EVENT.ERROR,
-			new Error(`Failed to initialize host component: ${error.message}`, {
-				cause: error,
-			}),
+			new ForgeFrameError(
+				error.code,
+				`Failed to initialize host component: ${error.message}`,
+				{ cause: error },
+			),
 		);
 	}
 
@@ -162,6 +166,7 @@ export class HostTransport {
 		void this.sendMessage(MESSAGE_NAME.ERROR, {
 			message: `Host initialization failed: ${error.message}`,
 			initFailed: true,
+			code: wireErrorCode(error),
 		}).catch(() => undefined);
 	}
 
@@ -189,7 +194,8 @@ export class HostTransport {
 			});
 			this.bridge.finishBatch();
 		} catch (error) {
-			if (deliveryAttempted) this.bridge.finishBatch(true);
+			if (exportMayBeStored(deliveryAttempted, error))
+				this.bridge.finishBatch(true);
 			else this.bridge.abortBatch();
 			throw error;
 		}
@@ -204,8 +210,8 @@ export class HostTransport {
 			PeerInfo[]
 		>(
 			this.options.consumerWindow,
-			this.options.getConsumerDomain(),
-			MESSAGE_NAME.GET_SIBLINGS,
+			this.options.getConsumerOrigin(),
+			MESSAGE_NAME.GET_PEERS,
 			{ options },
 		);
 
@@ -213,7 +219,7 @@ export class HostTransport {
 			response ?? [],
 			this.peerBridge,
 			this.options.consumerWindow,
-			this.options.getConsumerDomain(),
+			this.options.getConsumerOrigin(),
 		) as PeerInfo[];
 	}
 
@@ -228,7 +234,7 @@ export class HostTransport {
 		try {
 			this.messenger.post(
 				this.options.consumerWindow,
-				this.options.getConsumerDomain(),
+				this.options.getConsumerOrigin(),
 				MESSAGE_NAME.TEARDOWN,
 				{},
 			);
@@ -253,7 +259,7 @@ export class HostTransport {
 		} catch (error) {
 			// Teardown rejects pending work; that is not an initialization failure.
 			if (this.destroyed) return;
-			this.emitInitFailure(normalizeError(error));
+			this.emitInitFailure(toHandshakeFailure(error));
 			console.error("Failed to send init message:", error);
 		}
 	}
@@ -265,7 +271,7 @@ export class HostTransport {
 	): Promise<void> {
 		await this.messenger.send(
 			this.options.consumerWindow,
-			this.options.getConsumerDomain(),
+			this.options.getConsumerOrigin(),
 			name,
 			data,
 			undefined,
@@ -275,23 +281,13 @@ export class HostTransport {
 }
 
 /**
- * Checks `getPeerInstances()` options before anything is sent, so a renamed
- * or mistyped option rejects instead of silently narrowing discovery.
- * @throws Error naming the option
- * @internal
+ * Whether a failed export may still have reached the consumer's state, so its
+ * callbacks must stay callable. A consumer that rejected the export with
+ * `VALIDATION` kept its previous exports instead.
  */
-export function assertPeerInstancesOptions(options: unknown): void {
-	if (options === undefined) return;
-	if (typeof options !== "object" || options === null) {
-		throw new Error("getPeerInstances() options must be an object");
-	}
-	if (Object.hasOwn(options, "anyConsumer")) {
-		throw new Error(
-			'getPeerInstances() option "anyConsumer" was renamed. Use { allTags: true } to include other component tags.',
-		);
-	}
-	const { allTags } = options as GetPeerInstancesOptions;
-	if (allTags !== undefined && typeof allTags !== "boolean") {
-		throw new Error("getPeerInstances() allTags must be a boolean");
-	}
+function exportMayBeStored(
+	deliveryAttempted: boolean,
+	error: unknown,
+): boolean {
+	return deliveryAttempted && !hasErrorCode(error, "VALIDATION");
 }

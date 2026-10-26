@@ -59,7 +59,7 @@ describe("Array prop transport", () => {
 			const Component = create({
 				tag: "redirect-array-transport",
 				url: `${original}/redirect`,
-				domain: [original, redirected],
+				hostOrigins: [original, redirected],
 				props: definitions,
 			});
 			const instance = Component({
@@ -127,7 +127,12 @@ describe("Array prop transport", () => {
 			} else {
 				await expect(
 					instance.updateProps({ record: invalid() }),
-				).rejects.toThrow("Cannot serialize undefined array entry");
+				).rejects.toMatchObject({
+					code: "VALIDATION",
+					message: expect.stringContaining(
+						"Cannot serialize undefined array entry",
+					),
+				});
 				await instance.updateProps({});
 			}
 			const rendering = instance.render(container);
@@ -154,7 +159,7 @@ describe("Array prop transport", () => {
 				tag: "array-transport-admission",
 				url: "https://host.example.com/widget",
 				props: definitions,
-				timeout: 100,
+				initTimeout: 100,
 			});
 			const instance = Component({
 				items: kind === "hole" ? new Array<string | undefined>(1) : [undefined],
@@ -323,7 +328,12 @@ describe("Array prop transport", () => {
 			instance.updateProps({
 				record: { toJSON: () => ({ items: [undefined] }) },
 			}),
-		).rejects.toThrow("Cannot serialize undefined array entry");
+		).rejects.toMatchObject({
+			code: "VALIDATION",
+			message: expect.stringContaining(
+				"Cannot serialize undefined array entry",
+			),
+		});
 		expect(hostProps.record).toEqual({ items: ["encoded"] });
 		await instance.updateProps({
 			record: { toJSON: () => ({ items: ["recovered"] }) },
@@ -438,7 +448,12 @@ describe("Array prop transport", () => {
 			harness.withHostGlobalsAsync(() =>
 				hostProps.export({ items: [undefined] }),
 			),
-		).rejects.toThrow("Cannot serialize undefined array entry");
+		).rejects.toMatchObject({
+			code: "VALIDATION",
+			message: expect.stringContaining(
+				"Cannot serialize undefined array entry",
+			),
+		});
 		expect(instance.exports).toEqual({ items: ["initial"] });
 		await harness.withHostGlobalsAsync(() =>
 			hostProps.export({ items: ["recovered"] }),

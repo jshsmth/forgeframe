@@ -19,10 +19,10 @@ import { clearHostInstance, isHost } from "@/core/host";
 import { prop } from "@/props/prop";
 import type { ComponentOptions } from "@/types";
 import {
-	PEER_HOST_DOMAIN,
-	setOpenedHostDomain,
-	setVerifiedHostDomain,
-} from "../peer-host-domain";
+	PEER_HOST_ORIGIN,
+	setOpenedHostOrigin,
+	setVerifiedHostOrigin,
+} from "../peer-host-origin";
 import { checkRenderValidation } from "../render-validation";
 
 const originalWindowName = window.name;
@@ -57,11 +57,11 @@ describe("Component Creation", () => {
 		{ url: 123 },
 		{ url: {} },
 		{ tag: ["valid-tag"] },
-		{ defaultContext: "unsupported" },
-		{ timeout: Infinity },
-		{ timeout: NaN },
-		{ timeout: -1 },
-		{ timeout: "1000" },
+		{ context: "unsupported" },
+		{ initTimeout: Infinity },
+		{ initTimeout: NaN },
+		{ initTimeout: -1 },
+		{ initTimeout: "1000" },
 		{ timeout: 2147483648 },
 	])(
 		"rejects invalid JavaScript configuration before registration: %j",
@@ -140,23 +140,27 @@ describe("Component Creation", () => {
 			create({
 				tag: "domain-policy-component",
 				url: "https://attacker.example.com/widget",
-				domain: "https://trusted.example.com",
+				hostOrigins: "https://trusted.example.com",
 			}),
-		).toThrow("is not allowed by the configured domain policy");
+		).toThrow("is not allowed by the component's hostOrigins");
 	});
 
 	it("should validate function URLs before rendering them", async () => {
 		const DynamicComponent = create({
 			tag: "dynamic-unsafe-url-component",
-			domain: "*",
+			hostOrigins: "*",
 			url: () => "javascript:alert(1)",
 		});
 		const instance = DynamicComponent({});
 
 		await expect(
 			instance.render(document.createElement("div")),
-		).rejects.toThrow("Only http: and https: are supported");
-		expect(DynamicComponent.instances).toEqual([]);
+		).rejects.toMatchObject({
+			code: "VALIDATION",
+			message: expect.stringContaining("Only http: and https: are supported"),
+		});
+		// Nothing opened, so the instance stays open and can render again.
+		expect(DynamicComponent.instances).toEqual([instance]);
 	});
 
 	it("should retry rendering after a transient function URL failure", async () => {
@@ -170,7 +174,7 @@ describe("Component Creation", () => {
 		});
 		const DynamicComponent = create({
 			tag: "retryable-dynamic-url-component",
-			domain: "https://example.com",
+			hostOrigins: "https://example.com",
 			url: resolveUrl,
 		});
 		const instance = DynamicComponent({});
@@ -275,8 +279,8 @@ describe("Component Creation", () => {
 	});
 
 	it.each([
-		{ option: "domain", value: "" },
-		{ option: "domain", value: " " },
+		{ option: "hostOrigins", value: "" },
+		{ option: "hostOrigins", value: " " },
 		{ option: "peers", value: ["https://partner.example.com", ""] },
 		{ option: "peers", value: null },
 	] as const)(
@@ -295,7 +299,7 @@ describe("Component Creation", () => {
 		},
 	);
 
-	it.each(["domain", "peers"])(
+	it.each(["hostOrigins", "peers"])(
 		"rejects an empty %s array, which would match no origin",
 		(option) => {
 			expect(() =>
@@ -345,7 +349,7 @@ describe("Component Creation", () => {
 				}),
 			}),
 		).toThrow(
-			"Component domain is required when url is a function: list the host origins the function may return, or pass '*' to trust any http(s) origin.",
+			"Component hostOrigins is required when url is a function: list the host origins the function may return, or pass '*' to trust any http(s) origin.",
 		);
 		expect(getComponent("function-url-without-domain")).toBeUndefined();
 	});
@@ -685,7 +689,7 @@ describe("Component Creation", () => {
 		const PopupComponent = create({
 			tag: "popup-component",
 			url: "https://example.com",
-			defaultContext: CONTEXT.POPUP,
+			context: CONTEXT.POPUP,
 		});
 		const instance = PopupComponent({});
 
@@ -696,7 +700,7 @@ describe("Component Creation", () => {
 	it("should materialize function url options from the latest normalized props", async () => {
 		const DynamicUrlComponent = create({
 			tag: "dynamic-url-component",
-			domain: "https://example.com",
+			hostOrigins: "https://example.com",
 			url: (props) => `https://example.com/${props.path}`,
 			props: {
 				path: { schema: prop.string() },
@@ -750,7 +754,7 @@ describe("Component Instance", () => {
 		const Component = create({
 			tag: "lazy-message-listener-component",
 			url: "https://host.example.com/widget",
-			timeout: 50,
+			initTimeout: 50,
 		});
 
 		const unrendered = Component();
@@ -778,7 +782,7 @@ describe("Component Instance", () => {
 		const validate = vi.fn((_options: { props: { amount: number } }) => {});
 		const CoercedComponent = create({
 			tag: "coerced-callback-component",
-			domain: "https://example.com",
+			hostOrigins: "https://example.com",
 			url: resolveUrl,
 			props: { amount: { schema: z.coerce.number() } },
 			validate,
@@ -904,7 +908,7 @@ describe("Component Instance", () => {
 		const MutableUrlComponent = create({
 			tag: "mutable-url-schema-component",
 			url: (props) => props.target.href,
-			domain: safeOrigin,
+			hostOrigins: safeOrigin,
 			props: {
 				target: z
 					.instanceof(URL)
@@ -925,7 +929,7 @@ describe("Component Instance", () => {
 		const allowedOrigins = new Set(["https://safe.example.com"]);
 		const PolicyComponent = create({
 			tag: "time-varying-schema-policy-component",
-			domain: "https://safe.example.com",
+			hostOrigins: "https://safe.example.com",
 			url: (props) => props.targetUrl,
 			props: {
 				targetUrl: z
@@ -953,7 +957,7 @@ describe("Component Instance", () => {
 		const sharedDefault = { href: `${safeOrigin}/component` };
 		const DefaultPolicyComponent = create({
 			tag: "mutable-default-policy-component",
-			domain: safeOrigin,
+			hostOrigins: safeOrigin,
 			url: (props) => props.target.href,
 			props: {
 				target: {
@@ -984,7 +988,7 @@ describe("Component Instance", () => {
 		const safeOrigin = "https://safe.example.com";
 		const PolicyComponent = create({
 			tag: "mutable-normalized-policy-component",
-			domain: safeOrigin,
+			hostOrigins: safeOrigin,
 			url: (props) => props.target.href,
 			props: {
 				target: z.object({
@@ -1036,7 +1040,7 @@ describe("Component Instance", () => {
 		const safeOrigin = "https://safe.example.com";
 		const RenderComponent = create({
 			tag: "render-mutated-normalized-policy-component",
-			domain: safeOrigin,
+			hostOrigins: safeOrigin,
 			url: (props) => props.target.href,
 			props: {
 				target: z.object({
@@ -1108,7 +1112,10 @@ describe("Component Instance", () => {
 	it("should open the updated url origin when props change before the first render", async () => {
 		const DynamicUrlComponent = create({
 			tag: "dynamic-origin-trust-component",
-			domain: ["https://origin-a.example.com", "https://origin-b.example.com"],
+			hostOrigins: [
+				"https://origin-a.example.com",
+				"https://origin-b.example.com",
+			],
 			url: (props) => props.targetUrl,
 			props: {
 				targetUrl: { schema: prop.string() },
@@ -1146,7 +1153,7 @@ describe("Component Instance", () => {
 		const DynamicUrlComponent = create({
 			tag: "dynamic-url-render-snapshot-component",
 			url: resolveDynamicUrl,
-			domain: [firstOrigin, secondOrigin],
+			hostOrigins: [firstOrigin, secondOrigin],
 		});
 		const instance = DynamicUrlComponent({});
 		const container = document.createElement("div");
@@ -1173,7 +1180,10 @@ describe("Component Instance", () => {
 	it("should apply idle updateProps synchronously before awaiting", async () => {
 		const DynamicUrlComponent = create({
 			tag: "dynamic-origin-sync-update-component",
-			domain: ["https://origin-a.example.com", "https://origin-b.example.com"],
+			hostOrigins: [
+				"https://origin-a.example.com",
+				"https://origin-b.example.com",
+			],
 			url: (props) => props.targetUrl,
 			props: {
 				targetUrl: { schema: prop.string() },
@@ -1203,7 +1213,10 @@ describe("Component Instance", () => {
 	it("should reject url origin changes after render", async () => {
 		const DynamicUrlComponent = create({
 			tag: "dynamic-origin-after-render-component",
-			domain: ["https://origin-a.example.com", "https://origin-b.example.com"],
+			hostOrigins: [
+				"https://origin-a.example.com",
+				"https://origin-b.example.com",
+			],
 			url: (props) => props.targetUrl,
 			props: {
 				targetUrl: { schema: prop.string() },
@@ -1389,8 +1402,8 @@ describe("Host Context Detection", () => {
 			const alphaPrimary = AlphaComponent({});
 			const alphaSibling = AlphaComponent({});
 			const betaSibling = BetaComponent({});
-			setVerifiedHostDomain(
-				PEER_HOST_DOMAIN,
+			setVerifiedHostOrigin(
+				PEER_HOST_ORIGIN,
 				alphaPrimary,
 				alphaSibling,
 				betaSibling,
@@ -1400,14 +1413,14 @@ describe("Host Context Detection", () => {
 				uid: alphaPrimary.uid,
 				tag: "peer-alpha",
 				peers: true,
-				hostDomain: PEER_HOST_DOMAIN,
+				hostOrigin: PEER_HOST_ORIGIN,
 				allTags: false,
 			});
 			const allTagsSiblings = getPeerInstances({
 				uid: alphaPrimary.uid,
 				tag: "peer-alpha",
 				peers: true,
-				hostDomain: PEER_HOST_DOMAIN,
+				hostOrigin: PEER_HOST_ORIGIN,
 				allTags: true,
 			});
 
@@ -1460,13 +1473,13 @@ describe("Host Context Detection", () => {
 			const sameOriginOtherTag = BetaComponent({});
 			foreignSameTag.exports = { secret: "foreign-same-tag" };
 			foreignOtherTag.exports = { secret: "foreign-other-tag" };
-			setVerifiedHostDomain(
-				PEER_HOST_DOMAIN,
+			setVerifiedHostOrigin(
+				PEER_HOST_ORIGIN,
 				requester,
 				sameOrigin,
 				sameOriginOtherTag,
 			);
-			setVerifiedHostDomain(
+			setVerifiedHostOrigin(
 				"https://foreign-host.example.com",
 				foreignSameTag,
 				foreignOtherTag,
@@ -1477,7 +1490,7 @@ describe("Host Context Detection", () => {
 					uid: requester.uid,
 					tag: "peer-origin-alpha",
 					peers: true,
-					hostDomain: PEER_HOST_DOMAIN,
+					hostOrigin: PEER_HOST_ORIGIN,
 					allTags,
 				}).map((sibling) => sibling.uid);
 
@@ -1504,31 +1517,31 @@ describe("Host Context Detection", () => {
 			const SharedComponent = create({
 				tag: "peer-domains-shared",
 				url: "https://widgets-a.myapp.example/widget",
-				domain: "https://*.myapp.example",
+				hostOrigins: "https://*.myapp.example",
 				peers: "https://*.myapp.example",
 			});
 			const PrivateComponent = create({
 				tag: "peer-domains-private",
 				peers: true,
 				url: "https://widgets-a.myapp.example/private",
-				domain: "https://*.myapp.example",
+				hostOrigins: "https://*.myapp.example",
 			});
 
 			const requester = SharedComponent({});
 			const sharedPeer = SharedComponent({});
 			const privatePeer = PrivateComponent({});
-			setVerifiedHostDomain("https://widgets-a.myapp.example", requester);
-			setVerifiedHostDomain(
+			setVerifiedHostOrigin("https://widgets-a.myapp.example", requester);
+			setVerifiedHostOrigin(
 				"https://widgets-b.myapp.example",
 				sharedPeer,
 				privatePeer,
 			);
-			const lookup = (hostDomain: string) =>
+			const lookup = (hostOrigin: string) =>
 				getPeerInstances({
 					uid: requester.uid,
 					tag: "peer-domains-shared",
 					peers: true,
-					hostDomain,
+					hostOrigin,
 					allTags: true,
 				}).map((sibling) => sibling.uid);
 
@@ -1555,16 +1568,16 @@ describe("Host Context Detection", () => {
 			const opaquePeer = PartnerComponent({});
 			const namedPeer = PartnerComponent({});
 			opaquePeer.exports = { secret: "sandboxed document" };
-			setVerifiedHostDomain("https://widgets.myapp.example", requester);
-			setVerifiedHostDomain("null", opaquePeer);
-			setVerifiedHostDomain("https://other.myapp.example", namedPeer);
+			setVerifiedHostOrigin("https://widgets.myapp.example", requester);
+			setVerifiedHostOrigin("null", opaquePeer);
+			setVerifiedHostOrigin("https://other.myapp.example", namedPeer);
 
 			expect(
 				getPeerInstances({
 					uid: requester.uid,
 					tag: "peer-domains-opaque-peer",
 					peers: true,
-					hostDomain: "https://widgets.myapp.example",
+					hostOrigin: "https://widgets.myapp.example",
 					allTags: false,
 				}).map((sibling) => sibling.uid),
 			).toEqual([namedPeer.uid]);
@@ -1585,9 +1598,9 @@ describe("Host Context Detection", () => {
 			const loadingPeer = LoadingComponent({});
 			const foreignLoadingPeer = LoadingComponent({});
 			loadingPeer.exports = { early: "not yet verified" };
-			setVerifiedHostDomain(PEER_HOST_DOMAIN, requester);
-			setOpenedHostDomain(PEER_HOST_DOMAIN, loadingPeer);
-			setOpenedHostDomain(
+			setVerifiedHostOrigin(PEER_HOST_ORIGIN, requester);
+			setOpenedHostOrigin(PEER_HOST_ORIGIN, loadingPeer);
+			setOpenedHostOrigin(
 				"https://foreign-host.example.com",
 				foreignLoadingPeer,
 			);
@@ -1597,20 +1610,20 @@ describe("Host Context Detection", () => {
 					uid: requester.uid,
 					tag: "peer-loading",
 					peers: true,
-					hostDomain: PEER_HOST_DOMAIN,
+					hostOrigin: PEER_HOST_ORIGIN,
 					allTags: false,
 				}),
 			).toEqual([
 				{ uid: loadingPeer.uid, tag: "peer-loading", exports: undefined },
 			]);
 
-			setVerifiedHostDomain(PEER_HOST_DOMAIN, loadingPeer);
+			setVerifiedHostOrigin(PEER_HOST_ORIGIN, loadingPeer);
 			expect(
 				getPeerInstances({
 					uid: requester.uid,
 					tag: "peer-loading",
 					peers: true,
-					hostDomain: PEER_HOST_DOMAIN,
+					hostOrigin: PEER_HOST_ORIGIN,
 					allTags: false,
 				}),
 			).toEqual([
@@ -1637,14 +1650,14 @@ describe("Host Context Detection", () => {
 
 			const primary = IndexedComponent({});
 			const sibling = IndexedComponent({});
-			setVerifiedHostDomain(PEER_HOST_DOMAIN, primary, sibling);
+			setVerifiedHostOrigin(PEER_HOST_ORIGIN, primary, sibling);
 
 			expect(
 				getPeerInstances({
 					uid: primary.uid,
 					tag: "peer-index-cleanup",
 					peers: true,
-					hostDomain: PEER_HOST_DOMAIN,
+					hostOrigin: PEER_HOST_ORIGIN,
 					allTags: false,
 				}),
 			).toEqual([
@@ -1661,7 +1674,7 @@ describe("Host Context Detection", () => {
 					uid: primary.uid,
 					tag: "peer-index-cleanup",
 					peers: true,
-					hostDomain: PEER_HOST_DOMAIN,
+					hostOrigin: PEER_HOST_ORIGIN,
 					allTags: false,
 				}),
 			).toEqual([]);
@@ -1683,13 +1696,13 @@ describe("Host Context Detection", () => {
 
 			const alphaPrimary = AlphaComponent({});
 			const betaSibling = BetaComponent({});
-			setVerifiedHostDomain(PEER_HOST_DOMAIN, alphaPrimary, betaSibling);
+			setVerifiedHostOrigin(PEER_HOST_ORIGIN, alphaPrimary, betaSibling);
 
 			const siblingsBeforeUnregister = getPeerInstances({
 				uid: alphaPrimary.uid,
 				tag: "peer-index-unregister-alpha",
 				peers: true,
-				hostDomain: PEER_HOST_DOMAIN,
+				hostOrigin: PEER_HOST_ORIGIN,
 				allTags: true,
 			});
 			expect(
@@ -1704,7 +1717,7 @@ describe("Host Context Detection", () => {
 				uid: alphaPrimary.uid,
 				tag: "peer-index-unregister-alpha",
 				peers: true,
-				hostDomain: PEER_HOST_DOMAIN,
+				hostOrigin: PEER_HOST_ORIGIN,
 				allTags: true,
 			});
 			expect(

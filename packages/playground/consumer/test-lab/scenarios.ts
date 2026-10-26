@@ -185,16 +185,16 @@ async function runSecurityScenario(
 
 	results.push(
 		await expectFailure(
-			"Rejects a URL outside the domain policy",
+			"Rejects a URL outside hostOrigins",
 			() =>
 				Promise.resolve(
 					create({
-						tag: uniqueTag("domain"),
+						tag: uniqueTag("origin"),
 						url: HOST_URL,
-						domain: "https://blocked.example.com",
+						hostOrigins: "https://blocked.example.com",
 					}),
 				),
-			"is not allowed by the configured domain policy",
+			"is not allowed by the component's hostOrigins",
 		),
 	);
 
@@ -218,9 +218,9 @@ async function runSecurityScenario(
 
 	const allowedContainer = createContainer(sandbox);
 	const AllowedComponent = create({
-		tag: uniqueTag("allowed-domain"),
+		tag: uniqueTag("allowed-origin"),
 		url: HOST_URL,
-		domain: new URL(HOST_URL).origin,
+		hostOrigins: new URL(HOST_URL).origin,
 		dimensions: { width: "100%", height: 420 },
 	});
 	const allowedInstance = AllowedComponent();
@@ -403,7 +403,7 @@ async function runControlsScenario(
 			container.querySelector<HTMLIFrameElement>("iframe"),
 		);
 
-		await instance.resize({ width: "90%", height: 360 });
+		instance.resize({ width: "90%", height: 360 });
 		results.push(
 			assertResult(
 				"Resize updates the rendered iframe dimensions",
@@ -412,10 +412,10 @@ async function runControlsScenario(
 			),
 		);
 
-		await instance.hide();
+		instance.hide();
 		const hidden =
 			iframe.style.display === "none" && iframe.style.visibility === "hidden";
-		await instance.show();
+		instance.show();
 		results.push(
 			assertResult(
 				"Hide and show restore iframe visibility",
@@ -426,7 +426,7 @@ async function runControlsScenario(
 			),
 		);
 
-		await instance.focus();
+		instance.focus();
 		results.push(
 			assertResult(
 				"Focus emits one lifecycle event",

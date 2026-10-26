@@ -8,22 +8,37 @@
  * reach it only through the `Host` object that `initHost()` returns.
  */
 
+import { ForgeFrameError } from "../../errors";
 import { EventEmitter } from "../../events/emitter";
 import { validateExports } from "../../props/exports";
 import type { StandardSchemaV1 } from "../../props/schema";
 import type { HostEvents } from "../../types/events";
 import type { HostProps } from "../../types/runtime";
-import type { DomainMatcher } from "../../types/utility";
+import type { OriginMatcher } from "../../types/utility";
 import { normalizeError } from "../../utils/error";
 import type { HostBootstrapData, WindowNamePayload } from "../../window/types";
-import { assertAllowedConsumerDomain } from "./consumer-origin-policy";
+import { assertAllowedConsumerOrigin } from "./consumer-origin-policy";
+import { toHandshakeFailure } from "./handshake-failure";
 import { HostPropsRuntime } from "./props-runtime";
-import {
-	resolveConsumerWindow,
-	resolveMessagingConsumerContext,
-} from "./security";
+import { resolveMessagingConsumerContext } from "./security";
 import { HostTransport } from "./transport";
 import type { HostRuntimeOptions } from "./types";
+
+/**
+ * Checks the shape of the consumer's BOOTSTRAP response.
+ * @throws ForgeFrameError `VALIDATION` unless it carries a props object
+ */
+function assertBootstrapResponse(
+	data: unknown,
+): asserts data is HostBootstrapData {
+	const props = (data as Partial<HostBootstrapData> | null | undefined)?.props;
+	if (typeof props !== "object" || props === null || Array.isArray(props)) {
+		throw new ForgeFrameError(
+			"VALIDATION",
+			"Invalid consumer bootstrap response",
+		);
+	}
+}
 
 export class HostComponent<P extends Record<string, unknown>> {
 	public event: EventEmitter<HostEvents>;
@@ -37,7 +52,7 @@ export class HostComponent<P extends Record<string, unknown>> {
 
 	private consumerWindow!: Window;
 
-	private consumerDomain!: string;
+	private consumerOrigin!: string;
 
 	private transport!: HostTransport;
 
@@ -45,7 +60,7 @@ export class HostComponent<P extends Record<string, unknown>> {
 
 	private destroyed = false;
 
-	private readonly consumerOrigins: DomainMatcher;
+	private readonly consumerOrigins: OriginMatcher;
 
 	private readonly exportsSchema?: StandardSchemaV1;
 
@@ -57,19 +72,19 @@ export class HostComponent<P extends Record<string, unknown>> {
 		this.tag = payload.tag;
 		this.event = new EventEmitter();
 		this.consumerOrigins = options.consumerOrigins;
-		this.exportsSchema = options.exports;
+		this.exportsSchema = options.exportsSchema;
 		this.onDestroy = options.onDestroy;
 
 		let transport: HostTransport | null = null;
 		let propsRuntime: HostPropsRuntime<P> | null = null;
 
 		try {
-			this.consumerWindow = resolveConsumerWindow();
+			this.consumerWindow = options.consumerWindow;
 
 			// The bootstrap exchange verifies this target before any props arrive.
-			this.consumerDomain = resolveMessagingConsumerContext({
+			this.consumerOrigin = resolveMessagingConsumerContext({
 				consumerWindow: this.consumerWindow,
-				claimedConsumerDomain: payload.consumerDomain,
+				claimedConsumerOrigin: payload.consumerDomain,
 				consumerOrigins: this.consumerOrigins,
 				tag: this.tag,
 			});
@@ -79,8 +94,8 @@ export class HostComponent<P extends Record<string, unknown>> {
 				context: payload.context,
 				event: this.event,
 				consumerWindow: this.consumerWindow,
-				consumerDomain: this.consumerDomain,
-				getConsumerDomain: () => this.consumerDomain,
+				consumerOrigin: this.consumerOrigin,
+				getConsumerOrigin: () => this.consumerOrigin,
 				beforeInit: () => this.ready,
 			});
 			this.transport = transport;
@@ -101,7 +116,7 @@ export class HostComponent<P extends Record<string, unknown>> {
 						this.transport.getPeerInstances(options),
 				},
 				getConsumerWindow: () => this.consumerWindow,
-				getConsumerDomain: () => this.consumerDomain,
+				getConsumerOrigin: () => this.consumerOrigin,
 				getBridge: () => this.transport.bridge,
 			});
 			this.propsRuntime = propsRuntime;
@@ -149,7 +164,10 @@ export class HostComponent<P extends Record<string, unknown>> {
 			throw error;
 		}
 		if (this.destroyed)
-			throw new Error("Host destroyed before bootstrap completed");
+			throw new ForgeFrameError(
+				"CLOSED",
+				"Host destroyed before bootstrap completed",
+			);
 		return this.propsRuntime.hostProps;
 	}
 
@@ -164,27 +182,24 @@ export class HostComponent<P extends Record<string, unknown>> {
 		try {
 			const data = await this.transport.requestBootstrap();
 			if (this.destroyed)
-				throw new Error("Host destroyed before bootstrap completed");
-			if (
-				!data ||
-				typeof data.props !== "object" ||
-				data.props === null ||
-				Array.isArray(data.props)
-			) {
-				throw new Error("Invalid consumer bootstrap response");
-			}
+				throw new ForgeFrameError(
+					"CLOSED",
+					"Host destroyed before bootstrap completed",
+				);
+			assertBootstrapResponse(data);
 			// Defence in depth: the origin was checked before BOOTSTRAP was sent, and
 			// the messenger accepts this response only from that origin.
-			assertAllowedConsumerDomain(
+			assertAllowedConsumerOrigin(
 				this.consumerOrigins,
-				this.consumerDomain,
+				this.consumerOrigin,
 				this.tag,
 			);
 			return data;
 		} catch (error) {
-			if (!this.destroyed)
-				this.transport.emitInitFailure(normalizeError(error));
-			throw error;
+			if (this.destroyed) throw error;
+			const failure = toHandshakeFailure(error);
+			this.transport.emitInitFailure(failure);
+			throw failure;
 		}
 	}
 

@@ -4,7 +4,7 @@
  *
  * @remarks
  * This module handles serializing and deserializing props for transfer
- * between consumer and host windows across domain boundaries.
+ * between consumer and host windows across origin boundaries.
  */
 
 import {
@@ -57,7 +57,7 @@ export function serializeProps<P extends Record<string, unknown>>(
  * @param serialized - Serialized props from consumer
  * @param bridge - Function bridge for deserializing functions
  * @param consumerWin - Consumer window reference
- * @param consumerDomain - Consumer origin domain
+ * @param consumerOrigin - Consumer origin
  * @returns Deserialized props
  *
  * @internal
@@ -66,7 +66,7 @@ export function deserializeProps<P extends Record<string, unknown>>(
 	serialized: SerializedProps,
 	bridge: FunctionBridge,
 	consumerWin: Window,
-	consumerDomain: string,
+	consumerOrigin: string,
 ): P {
 	const result = {} as P;
 
@@ -77,7 +77,7 @@ export function deserializeProps<P extends Record<string, unknown>>(
 			value,
 			bridge,
 			consumerWin,
-			consumerDomain,
+			consumerOrigin,
 		);
 	}
 

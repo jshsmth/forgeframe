@@ -1,7 +1,7 @@
 /**
  * Unit tests for `@/core/host/transport`.
  *
- * Covers deferred init scheduling guards, the INIT and GET_SIBLINGS wire shapes,
+ * Covers deferred init scheduling guards, the INIT and GET_PEERS wire shapes,
  * init failure normalization, props handler filtering, and idempotent teardown.
  */
 
@@ -25,8 +25,8 @@ const createdTransports: HostTransport[] = [];
 function createTransport({
 	uid = "host-transport-uid",
 	context = CONTEXT.IFRAME,
-	consumerDomain = "https://consumer.example.com",
-	getConsumerDomain,
+	consumerOrigin = "https://consumer.example.com",
+	getConsumerOrigin,
 	beforeInit = () => Promise.resolve(),
 	consumerWindow = { postMessage: vi.fn() } as unknown as Window,
 }: Partial<HostTransportOptions> = {}) {
@@ -36,8 +36,8 @@ function createTransport({
 		context,
 		event,
 		consumerWindow,
-		consumerDomain,
-		getConsumerDomain: getConsumerDomain ?? (() => consumerDomain),
+		consumerOrigin,
+		getConsumerOrigin: getConsumerOrigin ?? (() => consumerOrigin),
 		beforeInit,
 	};
 
@@ -266,9 +266,9 @@ describe("HostTransport", () => {
 	});
 
 	it("should return sibling results from the messenger and fall back to an empty array", async () => {
-		let activeDomain = "https://consumer.example.com";
+		let activeOrigin = "https://consumer.example.com";
 		const { transport, consumerWindow } = createTransport({
-			getConsumerDomain: () => activeDomain,
+			getConsumerOrigin: () => activeOrigin,
 		});
 		const sendSpy = vi.spyOn(transport.messenger, "send");
 
@@ -285,18 +285,18 @@ describe("HostTransport", () => {
 		expect(sendSpy).toHaveBeenLastCalledWith(
 			consumerWindow,
 			"https://consumer.example.com",
-			MESSAGE_NAME.GET_SIBLINGS,
+			MESSAGE_NAME.GET_PEERS,
 			{ options: { allTags: true } },
 		);
 
-		activeDomain = "https://updated.example.com";
+		activeOrigin = "https://updated.example.com";
 		sendSpy.mockResolvedValueOnce(undefined);
 
 		await expect(transport.getPeerInstances()).resolves.toEqual([]);
 		expect(sendSpy).toHaveBeenLastCalledWith(
 			consumerWindow,
 			"https://updated.example.com",
-			MESSAGE_NAME.GET_SIBLINGS,
+			MESSAGE_NAME.GET_PEERS,
 			{ options: undefined },
 		);
 	});

@@ -21,12 +21,13 @@ const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
 type ConsumerInternals = {
 	transport: {
 		hostWindow: Window | null;
-		attachHostWindow(hostWindow: Window | null, openedHostDomain: string): void;
-		openedHostDomain: string | null;
+		attachHostWindow(hostWindow: Window | null, openedHostOrigin: string): void;
+		openedHostOrigin: string | null;
+		syncTrustedOriginForUrl(url: string): void;
 		messenger: {
 			allowedOrigins: Set<string>;
 			allowedOriginPatterns: RegExp[];
-			addTrustedDomain: (domain: string) => void;
+			addTrustedOrigin: (origin: string) => void;
 			send: (...args: unknown[]) => Promise<unknown>;
 		};
 	};
@@ -44,7 +45,6 @@ type ConsumerInternals = {
 	};
 	options: Record<string, unknown>;
 	resolveUrlOrigin: (url: string) => string | null;
-	syncTrustedDomainForUrl: (url: string) => void;
 	resolveContainer: (container?: string | HTMLElement) => HTMLElement;
 	checkEligibility: () => void;
 	prerender: () => Promise<void>;
@@ -110,7 +110,7 @@ describe("Consumer branch coverage and edge paths", () => {
 	it("should trust domain option when configured as string", () => {
 		const consumer = createConsumer({
 			url: "https://trusted.example.com/widget",
-			domain: "https://trusted.example.com",
+			hostOrigins: "https://trusted.example.com",
 		});
 		const allowedOrigins = Array.from(
 			getInternals(consumer).transport.messenger.allowedOrigins,
@@ -122,7 +122,7 @@ describe("Consumer branch coverage and edge paths", () => {
 	it("should trust domain option when configured as array", () => {
 		const consumer = createConsumer({
 			url: "https://trusted-a.example.com/widget",
-			domain: [
+			hostOrigins: [
 				"https://trusted-a.example.com",
 				"https://trusted-b.example.com",
 			],
@@ -138,7 +138,7 @@ describe("Consumer branch coverage and edge paths", () => {
 	it("should trust mixed array domain option entries including RegExp", () => {
 		const consumer = createConsumer({
 			url: "https://api.trusted.example.com/widget",
-			domain: [
+			hostOrigins: [
 				"https://trusted-a.example.com",
 				/^https:\/\/.*\.trusted\.example\.com$/,
 			],
@@ -159,7 +159,7 @@ describe("Consumer branch coverage and edge paths", () => {
 	it("should trust domain option when configured as RegExp", () => {
 		const consumer = createConsumer({
 			url: "https://api.trusted.example.com/widget",
-			domain: /^https:\/\/.*\.trusted\.example\.com$/,
+			hostOrigins: /^https:\/\/.*\.trusted\.example\.com$/,
 		});
 		const patterns =
 			getInternals(consumer).transport.messenger.allowedOriginPatterns;
@@ -252,17 +252,25 @@ describe("Consumer branch coverage and edge paths", () => {
 		);
 	});
 
-	it("should reject a URL origin outside the configured domain policy", () => {
+	it("should reject a URL origin outside the component's hostOrigins", () => {
+		const consumer = createConsumer({
+			hostOrigins: "https://trusted.example.com",
+		});
 		expect(() =>
-			createConsumer({ domain: "https://trusted.example.com" }),
-		).toThrow("is not allowed by the configured domain policy");
+			getInternals(consumer).resolveUrlOrigin("https://host.example.com"),
+		).toThrow("is not allowed by the component's hostOrigins");
 	});
 
-	it("should reject invalid URLs during trusted-domain sync", () => {
+	it("should reject invalid URLs during trusted-origin sync", () => {
 		const consumer = createConsumer();
 		expect(() =>
-			getInternals(consumer).syncTrustedDomainForUrl("http://%"),
-		).toThrow("Invalid component URL");
+			getInternals(consumer).transport.syncTrustedOriginForUrl("http://%"),
+		).toThrow(
+			expect.objectContaining({
+				code: "VALIDATION",
+				message: expect.stringContaining("Invalid component URL"),
+			}),
+		);
 	});
 
 	it("should prune stale function refs after each host serialization batch", async () => {

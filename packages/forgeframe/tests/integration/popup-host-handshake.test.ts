@@ -5,7 +5,7 @@
  * through the real popup messaging pipeline.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { create, PopupOpenError, prop } from "@/index";
+import { create, ForgeFrameError, prop } from "@/index";
 import type { PropsDefinition } from "@/types";
 import {
 	createPopupIntegrationHarness,
@@ -65,7 +65,7 @@ describe("Popup host handshake integration", () => {
 			message: "Popup ready",
 		});
 		expect(hostProps.getConsumer()).toBe(harness.consumerWindow);
-		expect(hostProps.getConsumerDomain()).toBe(harness.consumerOrigin);
+		expect(hostProps.consumerOrigin).toBe(harness.consumerOrigin);
 		expect(container.childElementCount).toBe(0);
 		expect(container.isConnected).toBe(true);
 
@@ -82,7 +82,7 @@ describe("Popup host handshake integration", () => {
 			tag: "integration-popup-held-update",
 			url: "https://host.example.com/widget",
 			props: POPUP_PROP_DEFINITIONS,
-			defaultContext: "popup",
+			context: "popup",
 		});
 		const instance = PopupComponent({ amount: 1, message: "first" });
 		const rendering = instance.render(container);
@@ -100,7 +100,7 @@ describe("Popup host handshake integration", () => {
 		);
 	});
 
-	it("resizes a cross-origin popup from the host and rejects consumer-initiated resizing", async () => {
+	it("resizes a cross-origin popup from the host and throws for consumer-initiated resizing", async () => {
 		harness = createPopupIntegrationHarness();
 		const activeHarness = harness;
 		const container = document.createElement("div");
@@ -146,8 +146,15 @@ describe("Popup host handshake integration", () => {
 		const resized = vi.fn();
 		instance.event.on("resize", resized);
 
-		await expect(instance.resize({ width: 600, height: 400 })).rejects.toThrow(
-			'Cannot resize the popup for component "integration-popup-resize-component"',
+		// The refusal is synchronous, at the line that asked for it.
+		expect(() => instance.resize({ width: 600, height: 400 })).toThrow(
+			expect.objectContaining({
+				name: "ForgeFrameError",
+				code: "VALIDATION",
+				message: expect.stringContaining(
+					'Cannot resize the popup for component "integration-popup-resize-component"',
+				),
+			}),
 		);
 		expect(resized).not.toHaveBeenCalled();
 
@@ -172,7 +179,7 @@ describe("Popup host handshake integration", () => {
 		const PopupComponent = create({
 			tag: "integration-popup-timeout",
 			url: "https://host.example.com/widget",
-			timeout: 10,
+			initTimeout: 10,
 		});
 		const instance = PopupComponent({});
 		const closeSpy = vi.spyOn(harness.hostWindow, "close");
@@ -186,7 +193,7 @@ describe("Popup host handshake integration", () => {
 		expect(closeSpy).toHaveBeenCalledOnce();
 	});
 
-	it("should reject render() with PopupOpenError when the browser blocks the popup", async () => {
+	it("should reject render() with POPUP_BLOCKED when the browser blocks the popup", async () => {
 		harness = createPopupIntegrationHarness();
 		harness.blockNextPopup();
 
@@ -200,9 +207,9 @@ describe("Popup host handshake integration", () => {
 
 		const instance = PopupComponent({});
 
-		await expect(instance.render(container, "popup")).rejects.toBeInstanceOf(
-			PopupOpenError,
-		);
+		const rejection = instance.render(container, "popup");
+		await expect(rejection).rejects.toBeInstanceOf(ForgeFrameError);
+		await expect(rejection).rejects.toMatchObject({ code: "POPUP_BLOCKED" });
 		expect(container.childElementCount).toBe(0);
 		expect(harness.getLastPopupOpen()).toBeNull();
 	});

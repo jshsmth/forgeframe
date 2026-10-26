@@ -2,6 +2,7 @@
  * Internal helpers for preserving non-JSON runtime values on ForgeFrame's wire formats.
  */
 
+import { ForgeFrameError } from "../errors";
 import { isDate, isPlainObject } from "./realm-values";
 
 interface DateWireValue {
@@ -62,7 +63,8 @@ export function isRecordWireValue(value: unknown): value is RecordWireValue {
 /** Rejects array entries that JSON would silently change to null. @internal */
 export function assertDefinedArrayEntry(value: unknown, path: string[]): void {
 	if (value === undefined) {
-		throw new Error(
+		throw new ForgeFrameError(
+			"VALIDATION",
 			`Cannot serialize undefined array entry at ${JSON.stringify(path)}; use null with nullable() or an item default`,
 		);
 	}

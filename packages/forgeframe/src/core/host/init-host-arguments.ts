@@ -9,45 +9,56 @@
  * names the v2 call shape.
  */
 
+import { ForgeFrameError } from "../../errors";
 import { EMPTY_PROP_DEFINITIONS } from "../../props/definitions";
 import type { StandardSchemaV1 } from "../../props/schema";
 import type { PropsDefinition } from "../../types/props";
-import type { DomainMatcher } from "../../types/utility";
-import { assertDomainMatcher } from "../../utils/domain-pattern";
+import type { OriginMatcher } from "../../types/utility";
+import { assertOriginMatcher } from "../../utils/origin-pattern";
 import { getComponentOptions } from "../component-registry";
 import { assertPropDefinitionsObject } from "./builtin-keys";
+import type { HostPropDefinitions } from "./types";
 
 /** The v2 call shapes that argument errors name. */
 const INIT_HOST_CALL_SHAPE =
 	"initHost(Component, { consumerOrigins }) or initHost({ props, consumerOrigins })";
 
+/**
+ * Removed `initHost()` option names, each with its replacement, so they can
+ * be retired in one place.
+ */
+const REMOVED_INIT_HOST_OPTIONS: Readonly<Record<string, string>> = {
+	allowedConsumerDomains:
+		'initHost() option "allowedConsumerDomains" was renamed to consumerOrigins.',
+};
+
 /** What a valid `initHost()` call starts the host with. */
 export interface HostStartOptions {
 	/** The tag the component form requires; absent for the tag-agnostic form. */
 	componentTag?: string;
-	/**
-	 * The definitions the host validates with; absent only for a tag-agnostic
-	 * host without `props`, which accepts every field unchecked.
-	 */
-	props?: PropsDefinition<Record<string, unknown>>;
+	/** The definitions the host validates with, or `"unchecked"`. */
+	props: HostPropDefinitions<Record<string, unknown>>;
 	/**
 	 * The component's `exports` schema, checked before each export is sent;
 	 * absent for the tag-agnostic form.
 	 */
-	exports?: StandardSchemaV1;
-	consumerOrigins: DomainMatcher;
+	exportsSchema?: StandardSchemaV1;
+	consumerOrigins: OriginMatcher;
 	autoInit: boolean;
 }
 
 /** Builds an argument error that ends with the v2 call shapes. */
-function callShapeError(message: string): TypeError {
-	return new TypeError(`${message} Use ${INIT_HOST_CALL_SHAPE}.`);
+function callShapeError(message: string): ForgeFrameError {
+	return new ForgeFrameError(
+		"VALIDATION",
+		`${message} Use ${INIT_HOST_CALL_SHAPE}.`,
+	);
 }
 
 /**
  * Checks the call shape and resolves what the host starts with.
  *
- * @throws TypeError for a bare call, a non-ForgeFrame component, v1
+ * @throws ForgeFrameError `VALIDATION` for a bare call, a non-ForgeFrame component, v1
  * positional arguments, an unknown option, or an invalid option value
  */
 export function readInitHostArguments(
@@ -73,7 +84,7 @@ export function readInitHostArguments(
 			// A component without props declares none, so its host accepts none.
 			props: (componentOptions.props ??
 				EMPTY_PROP_DEFINITIONS) as PropsDefinition<Record<string, unknown>>,
-			exports: componentOptions.exports,
+			exportsSchema: componentOptions.exports,
 		};
 	}
 	if (args.length > 1) {
@@ -100,6 +111,8 @@ function readInitHostOptions(
 				"initHost(Component, options) does not take props; the component supplies its own prop definitions.",
 			);
 		}
+		if (Object.hasOwn(REMOVED_INIT_HOST_OPTIONS, key))
+			throw callShapeError(REMOVED_INIT_HOST_OPTIONS[key] as string);
 		if (key !== "consumerOrigins" && key !== "autoInit" && key !== "props") {
 			throw callShapeError(`initHost() does not accept the "${key}" option.`);
 		}
@@ -107,11 +120,11 @@ function readInitHostOptions(
 	const { consumerOrigins, autoInit, props } = value as Record<string, unknown>;
 	if (consumerOrigins === undefined) {
 		throw callShapeError(
-			"initHost() requires consumerOrigins, the consumer origins allowed to embed this host; pass '*' to allow any origin. See https://github.com/jshsmth/forgeframe#domain-security.",
+			"initHost() requires consumerOrigins, the consumer origins allowed to embed this host; pass '*' to allow any origin. See https://github.com/jshsmth/forgeframe#origin-security.",
 		);
 	}
 	try {
-		assertDomainMatcher(
+		assertOriginMatcher(
 			consumerOrigins,
 			"initHost() consumerOrigins",
 			"allowed",
@@ -131,8 +144,11 @@ function readInitHostOptions(
 		assertPropDefinitionsObject(props);
 	}
 	return {
-		consumerOrigins: consumerOrigins as DomainMatcher,
+		consumerOrigins: consumerOrigins as OriginMatcher,
 		autoInit: autoInit ?? true,
-		props: props as PropsDefinition<Record<string, unknown>> | undefined,
+		// A tag-agnostic host without props keeps every field unchecked.
+		props:
+			(props as PropsDefinition<Record<string, unknown>> | undefined) ??
+			"unchecked",
 	};
 }

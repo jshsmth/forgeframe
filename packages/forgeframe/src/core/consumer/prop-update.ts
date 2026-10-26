@@ -62,8 +62,8 @@ export function definedInputKeys(
 /**
  * Chooses the origin an update is delivered to: the host's verified or opened
  * origin once rendered, otherwise the origin of the URL the update resolves.
- * A rendered instance whose origins teardown has cleared falls back to the
- * URL origin; the update then rejects as closed.
+ * Teardown clears both origins only once the instance is closing, which the
+ * caller checks first, so the update rejects as closed.
  * @internal
  */
 export function selectUpdateDeliveryOrigin(
