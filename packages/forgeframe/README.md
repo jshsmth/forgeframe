@@ -1109,7 +1109,7 @@ Codes cross windows: a prop update the host rejects arrives as `VALIDATION`, as 
 ForgeFrame 1.x follows semantic versioning for its public API. Read the [GitHub release notes](https://github.com/jshsmth/ForgeFrame/releases) before upgrading, and upgrade consumer and host bundles together when a release changes wire behavior.
 
 - **From 1.x to 2.x:** upgrade the consumer and host together; a v2 host refuses consumers on ForgeFrame 0.x or 1.x. See [Migrating from v1 to v2](#migrating-from-v1-to-v2).
-- **From 1.0.4:** review these behavior changes. Remote callbacks no longer time out after 10 seconds; add your own timer where you need one. `instance.resize()` rejects for a cross-origin popup; resize it from the host with `hostProps.resize()`. JSON props and exports deliver a value's `toJSON()` result. Schema refinements such as `.email().pattern()` now all apply. Empty or blank `domain`, `allowedConsumerDomains`, and `peerDomains` strings throw. Query and body parameters send dates as ISO strings and skip `null`. Iframe renders require an attached container. The factory's `isHost()` and `hostProps` no longer start a host, and defining a component logs host startup errors instead of throwing them. Hosts with an opaque origin are no longer listed as peers. `attributes.sandbox: false` now keeps the default iframe sandbox instead of removing it. Event `once()` registrations follow DOM listener rules: `off()` cancels them, and registering a handler twice keeps one registration.
+- **From 1.0.4:** review these behavior changes. Remote callbacks no longer time out after 10 seconds; add your own timer where you need one. `instance.resize()` rejects for a cross-origin popup (in 2.x it throws synchronously); resize it from the host with `hostProps.resize()`. JSON props and exports deliver a value's `toJSON()` result. Schema refinements such as `.email().pattern()` now all apply. Empty or blank `domain`, `allowedConsumerDomains`, and `peerDomains` strings throw. Query and body parameters send dates as ISO strings and skip `null`. Iframe renders require an attached container. The factory's `isHost()` and `hostProps` no longer start a host, and defining a component logs host startup errors instead of throwing them. Hosts with an opaque origin are no longer listed as peers. `attributes.sandbox: false` now keeps the default iframe sandbox instead of removing it. Event `once()` registrations follow DOM listener rules: `off()` cancels them, and registering a handler twice keeps one registration.
 - **From 1.0.1:** function prop defaults must use the factory form. Replace `.default(onCancel)` with `.default(() => onCancel)`; the types reject the direct form. Exceeding [callback capacity](#callback-capacity) rejects with an explicit error instead of silently breaking older callbacks.
 
 ---
@@ -1527,6 +1527,7 @@ import {
   createReactComponent,
   withReactComponent,
   type Component,
+  type AnyComponent,      // Constrains generics that accept any component
   type ComponentInstance,
   type PropsOf,
   type InputOf,
@@ -1575,7 +1576,7 @@ Read the pieces of a component back from `typeof Component`:
 | `ExportsOf<typeof C>` | The `exports` schema's output, or `unknown` |
 | `HostPropsOf<typeof C>` | The host's `hostProps`: props, built-in controls, and `export()` typed by the exports schema |
 
-`Component<Props, Input = Props, Exports = unknown>` and `ComponentInstance<Props, Input = Props, Exports = unknown>` annotate factories and instances; `instance.exports` is `RemoteValue<Exports>`, whose methods return promises. For a schema's own types, use `StandardSchemaV1.InferOutput<typeof schema>` and `StandardSchemaV1.InferInput<typeof schema>`.
+`Component<Props, Input = Props, Exports = unknown>` and `ComponentInstance<Props, Input = Props, Exports = unknown>` annotate factories and instances, and `AnyComponent` constrains a generic that accepts any component (`<C extends AnyComponent>`); `instance.exports` is `RemoteValue<Exports>`, whose methods return promises. For a schema's own types, use `StandardSchemaV1.InferOutput<typeof schema>` and `StandardSchemaV1.InferInput<typeof schema>`.
 
 To start from a hand-written interface, check the definitions against it with `satisfies`. `PropsDefinition<P>` needs an entry for every key of `P`, and each schema's output must match: a required key rejects a schema that may produce `undefined`. Give an optional key an optional schema too; a required schema there still type-checks, but the inferred props then make the key required.
 

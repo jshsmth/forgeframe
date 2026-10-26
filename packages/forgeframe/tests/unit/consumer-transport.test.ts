@@ -427,11 +427,14 @@ describe("ConsumerTransport", () => {
 			vi.fn(),
 		);
 		// A 1.x host refuses a v2 payload without replying, so only the timeout can say why.
-		const secondRejection = expect(second).rejects.toThrow(
+		const secondRejection = second.catch((caught: unknown) => caught);
+		await vi.advanceTimersByTimeAsync(25);
+		const secondError = await secondRejection;
+		expect((secondError as Error).message).toContain(
 			"within 25ms. Check that the host page loads correctly and calls the initialization code, and that consumer and host run the same ForgeFrame major version.",
 		);
-		await vi.advanceTimersByTimeAsync(25);
-		await secondRejection;
+		// Without a host failure there is no cause, not an own `cause: undefined`.
+		expect(Object.hasOwn(secondError as Error, "cause")).toBe(false);
 	});
 
 	it("should rebind cached host export callbacks to the verified origin after a redirect", async () => {

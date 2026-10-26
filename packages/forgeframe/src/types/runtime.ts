@@ -528,7 +528,12 @@ export interface Component<
 
 /**
  * Any component returned by `create()`, whatever its props, input and exports.
- * @internal
+ *
+ * @remarks
+ * Use it to constrain a generic that accepts any component, as
+ * {@link PropsOf} and `createReactComponent` do.
+ *
+ * @public
  */
 // biome-ignore lint/suspicious/noExplicitAny: Matches every component; the factory input is contravariant.
 export type AnyComponent = Component<any, any, any>;

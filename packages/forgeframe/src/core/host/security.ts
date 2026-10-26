@@ -8,7 +8,7 @@
  * pure policy in `consumer-origin-policy.ts` to select the messaging target.
  */
 
-import { ForgeFrameError, hasErrorCode } from "../../errors";
+import { ForgeFrameError } from "../../errors";
 import type { OriginMatcher } from "../../types/utility";
 import {
 	getConsumer,
@@ -20,9 +20,12 @@ import { validateMessagingConsumerContext } from "./consumer-origin-policy";
 
 const CONSUMER_WINDOW_RESOLUTION_ERROR = "Could not resolve consumer window";
 
+/** Failures {@link resolveConsumerWindow} raised because this window has no consumer. */
+const consumerWindowUnavailableErrors = new WeakSet<Error>();
+
 /** Whether {@link resolveConsumerWindow} failed because this window has no consumer. */
 export function isConsumerWindowUnavailable(error: unknown): boolean {
-	return hasErrorCode(error, "CLOSED");
+	return error instanceof Error && consumerWindowUnavailableErrors.has(error);
 }
 export { CONSUMER_ORIGIN_VERIFICATION_ERROR } from "./consumer-origin-policy";
 
@@ -41,7 +44,9 @@ export function resolveConsumerWindow(hostWindow: Window = window): Window {
 		}
 	}
 
-	throw new ForgeFrameError("CLOSED", CONSUMER_WINDOW_RESOLUTION_ERROR);
+	const error = new ForgeFrameError("CLOSED", CONSUMER_WINDOW_RESOLUTION_ERROR);
+	consumerWindowUnavailableErrors.add(error);
+	throw error;
 }
 
 /**

@@ -414,9 +414,11 @@ export class ConsumerComponent<
 	 * @internal
 	 */
 	private resizeForHost(dimensions: Dimensions): void {
-		// Without a host window the renderer resizes only an iframe.
-		this.renderer.resize(dimensions, null);
-		this.emitResize(dimensions);
+		// Without a host window the renderer resizes only an iframe. A popup host
+		// resized itself; an unmounted iframe was not resized, so it emits nothing.
+		const outcome = this.renderer.resize(dimensions, null);
+		if (outcome === "resized" || this.renderer.context === CONTEXT.POPUP)
+			this.emitResize(dimensions);
 	}
 
 	/** Notifies resize observers. @internal */

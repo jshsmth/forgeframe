@@ -58,6 +58,13 @@ interface RemoteFunctionEntry {
  * @internal
  */
 const MAX_FUNCTIONS = 500;
+
+/**
+ * Wrappers this module created for functions in other windows. A relayed
+ * wrapper's own failure (such as `CLOSED`) is ForgeFrame's, so it keeps its code.
+ * @internal
+ */
+const remoteWrappers = new WeakSet<CallableFunction>();
 /** Previous and possibly delivered snapshots share this bounded recovery pool. */
 const MAX_RETAINED_FUNCTIONS = MAX_FUNCTIONS * 2;
 const UNSAFE_OBJECT_KEYS = new Set(["__proto__"]);
@@ -278,6 +285,7 @@ export class FunctionBridge {
 			value: ref.__name__,
 			configurable: true,
 		});
+		remoteWrappers.add(wrapper);
 		return wrapper;
 	}
 
@@ -384,8 +392,9 @@ export class FunctionBridge {
 					return await fn(...args);
 				} catch (error) {
 					// An application callback's failure is its own, so it never
-					// carries a ForgeFrame code to the caller.
-					throw error instanceof ForgeFrameError
+					// carries a ForgeFrame code to the caller. A relayed remote
+					// wrapper's failure is ForgeFrame's and keeps its code.
+					throw error instanceof ForgeFrameError && !remoteWrappers.has(fn)
 						? new Error(error.message)
 						: error;
 				}

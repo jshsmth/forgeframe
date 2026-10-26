@@ -66,6 +66,7 @@ export {
 // Type exports
 export type {
 	// Component types
+	AnyComponent,
 	Component,
 	ComponentBaseOptions,
 	ComponentEvents,
