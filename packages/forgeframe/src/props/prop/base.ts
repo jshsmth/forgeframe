@@ -1,9 +1,10 @@
-import { isDate } from "../../utils/realm-values";
+import { isDate, isPlainObject } from "../../utils/realm-values";
 
 export { isPlainObject } from "../../utils/realm-values";
 
 import {
 	isAsyncSchemaResult,
+	isStandardSchema,
 	type StandardSchemaV1,
 	type StandardSchemaV1Issue,
 	type StandardSchemaV1Props,
@@ -207,6 +208,33 @@ export function validateSchemaPresence<T>(
 }
 
 /**
+ * Copies array, plain-object and `Date` defaults, so instances never share a
+ * default value. Other values, such as class instances, are returned as is.
+ * @internal
+ */
+export function copyDefaultValue<T>(value: T): T {
+	if (Array.isArray(value)) return value.map(copyDefaultValue) as T;
+	if (isDate(value)) return new Date(value.getTime()) as T;
+	if (isPlainObject(value)) {
+		return Object.fromEntries(
+			Object.entries(value).map(([key, entry]) => [
+				key,
+				copyDefaultValue(entry),
+			]),
+		) as T;
+	}
+	return value;
+}
+
+/**
+ * Rejects a missing nested schema when a composite schema is built.
+ * @internal
+ */
+export function assertNestedSchema(schema: unknown, message: string): void {
+	if (!isStandardSchema(schema)) throw new TypeError(message);
+}
+
+/**
  * Abstract base class for all ForgeFrame prop schemas.
  *
  * @remarks
@@ -242,7 +270,7 @@ export abstract class PropSchema<T, I = T> implements StandardSchemaV1<I, T> {
 	protected _getDefaultValue(): T {
 		return typeof this._default === "function"
 			? (this._default as () => T)()
-			: (this._default as T);
+			: copyDefaultValue(this._default as T);
 	}
 
 	/** @internal */
@@ -288,6 +316,9 @@ export abstract class PropSchema<T, I = T> implements StandardSchemaV1<I, T> {
 	 * @remarks
 	 * The default replaces `undefined` input, so the output excludes `undefined`
 	 * unless the default itself can be `undefined`, even after `.optional()`.
+	 *
+	 * Array, plain-object and `Date` defaults are copied for each use, so
+	 * instances never share them.
 	 *
 	 * @param value - Non-callable default value or a factory that returns the default value.
 	 * Function defaults must use a factory, for example `.default(() => callback)`.

@@ -1,3 +1,4 @@
+import type { AnyFactoryInput } from "../types/runtime";
 /**
  * @packageDocumentation
  * Internal active component instance index.
@@ -39,13 +40,9 @@ const componentInstanceIndexByTag = new Map<
  * Adds an instance to the internal lookup index.
  * @internal
  */
-export function indexComponentInstance<
-	P extends Record<string, unknown>,
-	X,
-	SchemaInputs,
->(
+export function indexComponentInstance<P extends Record<string, unknown>, X>(
 	tag: string,
-	instance: ForgeFrameComponentInstance<P, X, SchemaInputs> &
+	instance: ForgeFrameComponentInstance<P, X, AnyFactoryInput> &
 		IndexedInstanceAccess,
 ): void {
 	const indexedInstance = instance as IndexedComponentInstance;

@@ -279,9 +279,9 @@ describe("validateWithSchema", () => {
 // ============================================================================
 
 /** Normalizes `props` in place, as the consumer does for a component's inputs. */
-function validateProps<P extends Record<string, unknown>, I = P>(
+function validateProps<P extends Record<string, unknown>>(
 	props: P,
-	definitions: PropsDefinition<P, I>,
+	definitions: PropsDefinition<P>,
 ): void;
 function validateProps(props: object, definitions: object): void;
 function validateProps(props: object, definitions: object): void {
@@ -300,10 +300,9 @@ describe("normalizeProps with schema", () => {
 			return { issues: [{ message: "Must be an email" }] };
 		});
 
-		const definitions: PropsDefinition<{ email: string }, { email?: unknown }> =
-			{
-				email: { schema },
-			};
+		const definitions: PropsDefinition<{ email: string }> = {
+			email: { schema },
+		};
 
 		// Valid email
 		expect(() =>
@@ -321,7 +320,7 @@ describe("normalizeProps with schema", () => {
 			value: String(v).toLowerCase(),
 		}));
 
-		const definitions: PropsDefinition<{ name: string }, { name?: unknown }> = {
+		const definitions: PropsDefinition<{ name: string }> = {
 			name: { schema },
 		};
 
@@ -361,10 +360,9 @@ describe("normalizeProps with schema", () => {
 			},
 		};
 
-		const definitions: PropsDefinition<{ name?: string }, { name?: unknown }> =
-			{
-				name: { schema },
-			};
+		const definitions: PropsDefinition<{ name?: string }> = {
+			name: { schema },
+		};
 
 		const props = {} as { name?: string };
 		validateProps(props, definitions);
@@ -372,27 +370,19 @@ describe("normalizeProps with schema", () => {
 		expect(props.name).toBe("test");
 	});
 
-	it("should handle schema that transforms values", () => {
-		// Schema accepts any value and transforms to string
+	it("should reject a schema that changes its own output", () => {
+		// Each run prefixes the value, so the output does not validate unchanged.
 		const schema = createMockSchema<string>((v) => ({
 			value: `processed: ${v}`,
 		}));
 
-		const definitions: PropsDefinition<{ value: string }, { value?: unknown }> =
-			{
-				value: {
-					schema,
-					outputSchema: createMockSchema<string>((v) => ({
-						value: String(v),
-					})) as StandardSchemaV1<string, string>,
-				},
-			};
+		const definitions: PropsDefinition<{ value: string }> = {
+			value: { schema },
+		};
 
-		// Pass a number - schema transforms it to string
-		const props = { value: 42 as unknown as string };
-		validateProps(props, definitions);
-
-		expect(props.value).toBe("processed: 42");
+		expect(() => validateProps({ value: "42" }, definitions)).toThrow(
+			"Validation failed: value: the prop schema must accept its own output unchanged, because ForgeFrame validates delivered values with the same schema; the schema changed the value.",
+		);
 	});
 });
 
@@ -419,7 +409,7 @@ describe("prop schema API", () => {
 	});
 
 	it("should work with required validation", () => {
-		const definitions: PropsDefinition<{ name: string }, { name?: unknown }> = {
+		const definitions: PropsDefinition<{ name: string }> = {
 			name: { schema: prop.string() },
 		};
 
@@ -439,13 +429,10 @@ describe("prop schema API", () => {
 			return { issues: [{ message: "Must have id" }] };
 		});
 
-		const definitions: PropsDefinition<
-			{
-				user: { id: string };
-				callback: () => void;
-			},
-			{ user: unknown; callback: () => void }
-		> = {
+		const definitions: PropsDefinition<{
+			user: { id: string };
+			callback: () => void;
+		}> = {
 			user: { schema: customSchema },
 			callback: prop.function(),
 		};

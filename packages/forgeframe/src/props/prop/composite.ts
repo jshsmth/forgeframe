@@ -1,8 +1,4 @@
-import {
-	isStandardSchema,
-	type StandardSchemaV1Issue,
-	type StandardSchemaV1Result,
-} from "../schema";
+import type { StandardSchemaV1Issue, StandardSchemaV1Result } from "../schema";
 import type {
 	InferSchemaInput,
 	InferSchemaValue,
@@ -11,6 +7,7 @@ import type {
 } from "./base";
 import {
 	addSchemaCheck,
+	assertNestedSchema,
 	defineDataProperty,
 	findFailedSchemaCheck,
 	getValueKind,
@@ -133,6 +130,10 @@ export class TupleSchema<
 		// Copy positions while retaining the caller's inferred tuple shape.
 		const items: PropSchema<unknown, unknown>[] = [];
 		for (let index = 0; index < schemas.length; index++) {
+			assertNestedSchema(
+				schemas[index],
+				`prop.tuple() requires a schema at position ${index}. Use prop.any() for a value that is deliberately unchecked.`,
+			);
 			items.push(schemas[index]);
 		}
 		this._itemSchemas = items as unknown as S;
@@ -236,6 +237,12 @@ export class ObjectSchema<
 				"prop.object(shape) requires a shape. Use prop.record(value) for dictionaries, or prop.any<T>() for an object that is deliberately unchecked.",
 			);
 		}
+		for (const [field, schema] of Object.entries(shape)) {
+			assertNestedSchema(
+				schema,
+				`prop.object(shape) requires a schema for "${field}". Use prop.any() for a field that is deliberately unchecked.`,
+			);
+		}
 		this._shape = { ...shape };
 	}
 
@@ -300,6 +307,10 @@ export class RecordSchema<T = unknown, I = T> extends PropSchema<
 
 	constructor(schema: PropSchema<T, I>) {
 		super();
+		assertNestedSchema(
+			schema,
+			"prop.record(value) requires a value schema. Use prop.any<Record<string, T>>() for a record whose values are deliberately unchecked.",
+		);
 		this._valueSchema = schema;
 	}
 
@@ -320,11 +331,6 @@ export class RecordSchema<T = unknown, I = T> extends PropSchema<
 	protected _clone(): RecordSchema<T, I> {
 		return this._copyBaseTo(new RecordSchema(this._valueSchema));
 	}
-}
-
-/** Rejects a missing nested schema when a composite schema is built. */
-function assertNestedSchema(schema: unknown, message: string): void {
-	if (!isStandardSchema(schema)) throw new TypeError(message);
 }
 
 /** Composes nested schemas after outer shape constraints pass. */

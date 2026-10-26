@@ -42,10 +42,7 @@ export interface ConsumerPropsUpdateHooks<P extends Record<string, unknown>> {
  *
  * @internal
  */
-export class ConsumerPropsPipeline<
-	P extends Record<string, unknown>,
-	SchemaInputs = P,
-> {
+export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
 	/** Current normalized prop snapshot. */
 	public props: P;
 
@@ -59,7 +56,7 @@ export class ConsumerPropsPipeline<
 	public pendingPropsUpdate: Promise<void> | null = null;
 
 	constructor(
-		private options: NormalizedOptions<P, SchemaInputs>,
+		private options: NormalizedOptions<P>,
 		initialInputProps: Record<string, unknown>,
 	) {
 		this.inputProps = { ...initialInputProps };

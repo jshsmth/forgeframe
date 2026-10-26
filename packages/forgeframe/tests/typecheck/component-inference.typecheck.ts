@@ -18,6 +18,7 @@ import {
 	type HostPropsDefinition,
 	initHost,
 	type PropDefinition,
+	type PropsDefinition,
 	prop,
 	type SchemaPropDefinition,
 	withReactComponent,
@@ -138,18 +139,10 @@ const ExternalSchemaComponent = create({
 	props: {
 		zodValue: z.string(),
 		valibotValue: v.string(),
-		transformedValue: {
-			schema: z.string().transform(Number),
-			outputSchema: z.number(),
-		},
 		defaultedValue: z.string().default("fallback"),
 		wrappedValue: {
 			schema: z.number(),
 			deliverTo: "same-origin",
-		},
-		wrappedTransformedValue: {
-			schema: z.string().transform((value) => value.length),
-			outputSchema: z.number(),
 		},
 	},
 });
@@ -157,41 +150,22 @@ const ExternalSchemaComponent = create({
 void ExternalSchemaComponent({
 	zodValue: "zod",
 	valibotValue: "valibot",
-	transformedValue: "42",
 	wrappedValue: 42,
-	wrappedTransformedValue: "wrapped",
 });
 
 void ExternalSchemaComponent({
 	// @ts-expect-error third-party Standard Schema inputs are inferred
 	zodValue: 1,
 	valibotValue: "ok",
-	transformedValue: "42",
 	wrappedValue: 42,
-	wrappedTransformedValue: "wrapped",
-});
-
-void ExternalSchemaComponent({
-	zodValue: "zod",
-	valibotValue: "valibot",
-	// @ts-expect-error transformed schema outputs are not accepted as consumer inputs
-	transformedValue: 42,
-	wrappedValue: 42,
-	wrappedTransformedValue: "wrapped",
 });
 
 const externalSchemaHostProps = initHost(ExternalSchemaComponent, {
 	consumerOrigins: "*",
 })?.hostProps;
-const transformedHostValue: number | undefined =
-	externalSchemaHostProps?.transformedValue;
 const defaultedHostValue: string | undefined =
 	externalSchemaHostProps?.defaultedValue;
-const wrappedTransformedHostValue: number | undefined =
-	externalSchemaHostProps?.wrappedTransformedValue;
-void transformedHostValue;
 void defaultedHostValue;
-void wrappedTransformedHostValue;
 
 const WrappedPresenceComponent = create({
 	tag: "wrapped-presence-component",
@@ -300,187 +274,195 @@ const deliveryDefinitions: PropDefinition<string>[] = [
 ];
 void deliveryDefinitions;
 
-const transformedFallbackSchema = z.string().transform(Number);
+const typeChangingSchema = z.string().transform(Number);
 
 create({
 	tag: "invalid-direct-transform-component",
 	url: "https://example.com/invalid-direct-transform",
 	props: {
-		// @ts-expect-error type-changing schemas must be wrapped with outputSchema
-		amount: transformedFallbackSchema,
+		// @ts-expect-error a schema's output must be valid input to the same schema
+		amount: typeChangingSchema,
 	},
 });
 
-// @ts-expect-error transformed schemas require a normalized-output validator
-const missingOutputSchemaDefinition: SchemaPropDefinition<
-	typeof transformedFallbackSchema
-> = {
-	schema: transformedFallbackSchema,
-};
-void missingOutputSchemaDefinition;
-
-// @ts-expect-error consumer-only transforms still require output validation
-const missingConsumerOnlyOutputSchemaDefinition: SchemaPropDefinition<
-	typeof transformedFallbackSchema
-> = {
-	schema: transformedFallbackSchema,
-	sendToHost: false,
-};
-void missingConsumerOnlyOutputSchemaDefinition;
-
-const transformedFallbackDefinition = {
-	schema: transformedFallbackSchema,
-	outputSchema: z.number(),
-	queryParam: true,
-} satisfies SchemaPropDefinition<typeof transformedFallbackSchema>;
-void transformedFallbackDefinition;
-
-const invalidOutputSchemaDefinition = {
-	schema: transformedFallbackSchema,
-	// @ts-expect-error outputSchema validates the normalized number output
-	outputSchema: z.string(),
-} satisfies SchemaPropDefinition<typeof transformedFallbackSchema>;
-void invalidOutputSchemaDefinition;
-
-type ExplicitTransformProps = {
-	amount: number;
-};
-
-type ExplicitTransformInput = {
-	amount: string;
-};
-
-const ExplicitTransformComponent = create<
-	ExplicitTransformProps,
-	unknown,
-	ExplicitTransformInput
->({
-	tag: "explicit-transform-fallback-component",
-	url: "https://example.com/explicit-transform-fallback",
+create({
+	tag: "invalid-wrapped-transform-component",
+	url: "https://example.com/invalid-wrapped-transform",
 	props: {
-		amount: {
-			schema: transformedFallbackSchema,
-			outputSchema: z.number(),
+		// @ts-expect-error wrapped schemas follow the same rule
+		amount: { schema: typeChangingSchema, queryParam: true },
+	},
+});
+
+create({
+	tag: "invalid-consumer-only-transform-component",
+	url: "https://example.com/invalid-consumer-only-transform",
+	props: {
+		target: {
+			// @ts-expect-error consumer-only props are rechecked with the same schema
+			schema: z.string().transform((href) => new URL(href)),
+			sendToHost: false,
 		},
 	},
 });
 
-void ExplicitTransformComponent({ amount: "2" });
-
-const hostTransformDefinitions = {
-	amount: {
-		schema: transformedFallbackSchema,
-		outputSchema: z.number(),
-	},
-} satisfies HostPropsDefinition<ExplicitTransformProps, ExplicitTransformInput>;
-
-const invalidHostTransformDefinitions: HostPropsDefinition<ExplicitTransformProps> =
-	{
-		amount: {
-			// @ts-expect-error host definitions need an output schema for type-changing inputs
-			schema: transformedFallbackSchema,
-		},
-	};
-void invalidHostTransformDefinitions;
-
-const missingHostOutputSchema: HostPropsDefinition<
-	ExplicitTransformProps,
-	ExplicitTransformInput
-> = {
-	// @ts-expect-error type-changing host definitions require outputSchema
-	amount: {
-		schema: transformedFallbackSchema,
-	},
+// The removed outputSchema option is not part of a prop definition.
+const removedOutputSchemaDefinition: PropDefinition<number> = {
+	schema: z.number(),
+	// @ts-expect-error outputSchema was removed; each prop has one schema
+	outputSchema: z.number(),
 };
-void missingHostOutputSchema;
+void removedOutputSchemaDefinition;
+
+// @ts-expect-error SchemaPropDefinition is unusable for a type-changing schema
+const typeChangingSchemaDefinition: SchemaPropDefinition<
+	typeof typeChangingSchema
+> = { schema: typeChangingSchema };
+void typeChangingSchemaDefinition;
+
+const coercedSchemaDefinition = {
+	schema: z.coerce.number(),
+	queryParam: true,
+} satisfies SchemaPropDefinition<ReturnType<typeof z.coerce.number>>;
+void coercedSchemaDefinition;
+
+// Coercing and union-accepting schemas take a wider input than they produce.
+const dateInput = z
+	.union([z.iso.datetime(), z.date()])
+	.transform((value) => new Date(value));
+const CoercingComponent = create({
+	tag: "coercing-component",
+	url: (props) => {
+		const amount: number = props.amount;
+		const startsAt: Date = props.startsAt;
+		return `https://example.com/coercing/${amount}/${startsAt.getTime()}`;
+	},
+	props: {
+		amount: z.coerce.number(),
+		startsAt: { schema: dateInput, bodyParam: true },
+		count: prop.number().default(0),
+	},
+});
+const coercingInstance = CoercingComponent({
+	amount: "41",
+	startsAt: "2026-11-01T09:00:00Z",
+});
+void CoercingComponent({ amount: 41, startsAt: new Date() });
+void coercingInstance.updateProps({ amount: "42" });
+void coercingInstance.updateProps({ startsAt: new Date(), count: 1 });
+// A defaulted key stays optional in the factory input and in updates.
+void coercingInstance.updateProps({});
+// @ts-expect-error coercing inputs are still typed by their schema
+void CoercingComponent({ amount: "41", startsAt: 1 });
+
+// Any props value is valid factory input.
+type ComponentPropsOf<C> =
+	C extends ForgeFrameComponent<infer P, unknown, boolean, infer _Input>
+		? P
+		: never;
+declare const coercingProps: ComponentPropsOf<typeof CoercingComponent>;
+const coercedAmount: number = coercingProps.amount;
+void coercedAmount;
+void CoercingComponent(coercingProps);
+void coercingInstance.updateProps(coercingProps);
+
+const coercingHost = initHost(CoercingComponent, { consumerOrigins: "*" });
+if (coercingHost) {
+	const amount: number = coercingHost.hostProps.amount;
+	const startsAt: Date = coercingHost.hostProps.startsAt;
+	const count: number = coercingHost.hostProps.count;
+	void amount;
+	void startsAt;
+	void count;
+}
+
+// Definition maps are typed by their outputs alone, so defaults fit.
+const defaultedDefinitions: PropsDefinition<{ count: number; label: string }> =
+	{
+		count: prop.number().default(0),
+		label: z.string().default("ready"),
+	};
+void defaultedDefinitions;
 
 const outputCompatibleHostDefinitions = {
 	label: { schema: z.string() },
-} satisfies HostPropsDefinition<{ label: string }>;
+	count: prop.number().default(0),
+} satisfies HostPropsDefinition<{ label: string; count: number }>;
 void outputCompatibleHostDefinitions;
 
-const typedTransformHost = initHost<
-	ExplicitTransformProps,
-	ExplicitTransformInput
->({ props: hostTransformDefinitions, consumerOrigins: "*" });
-const hostTransformAmount: number | undefined =
-	typedTransformHost?.hostProps.amount;
-void hostTransformAmount;
+const outputTypedHost = initHost({
+	props: outputCompatibleHostDefinitions,
+	consumerOrigins: "*",
+});
+const outputTypedCount: number | undefined = outputTypedHost?.hostProps.count;
+void outputTypedCount;
 
-const explicitTransformInstance = ExplicitTransformComponent({ amount: "2" });
-const explicitlyTypedTransformComponent: ForgeFrameComponent<
-	ExplicitTransformProps,
+// @ts-expect-error the tag-agnostic initHost takes the props type alone
+void initHost<{ count: number }, { count?: number }>({ consumerOrigins: "*" });
+
+// @ts-expect-error ComponentOptions takes the props type alone
+type TwoParameterOptions = ComponentOptions<
+	{ count: number },
+	{ count?: number }
+>;
+
+export type { TwoParameterOptions };
+
+// Explicit factories keep an optional factory-input parameter.
+type ExplicitCoercedProps = { amount: number };
+type ExplicitCoercedInput = { amount: number | string };
+const ExplicitCoercedComponent = create<
+	ExplicitCoercedProps,
+	unknown,
+	ExplicitCoercedInput
+>({
+	tag: "explicit-coerced-component",
+	url: "https://example.com/explicit-coerced",
+	props: { amount: z.coerce.number() },
+});
+const explicitCoercedInstance = ExplicitCoercedComponent({ amount: "2" });
+const explicitlyTypedCoercedComponent: ForgeFrameComponent<
+	ExplicitCoercedProps,
 	unknown,
 	false,
-	ExplicitTransformInput
-> = ExplicitTransformComponent;
-const explicitlyTypedTransformInstance: ForgeFrameComponentInstance<
-	ExplicitTransformProps,
+	ExplicitCoercedInput
+> = ExplicitCoercedComponent;
+const explicitlyTypedCoercedInstance: ForgeFrameComponentInstance<
+	ExplicitCoercedProps,
 	unknown,
-	ExplicitTransformInput
-> = explicitTransformInstance;
-void explicitlyTypedTransformComponent({ amount: "2" });
-void explicitlyTypedTransformInstance.updateProps({ amount: "3" });
-void explicitTransformInstance.updateProps({ amount: "3" });
-void ExplicitTransformComponent.instances[0]?.updateProps({ amount: "3" });
+	ExplicitCoercedInput
+> = explicitCoercedInstance;
+void explicitlyTypedCoercedComponent({ amount: 2 });
+void explicitlyTypedCoercedInstance.updateProps({ amount: "3" });
+void ExplicitCoercedComponent.instances[0]?.updateProps({ amount: "3" });
+// @ts-expect-error updates use the factory input type
+void explicitCoercedInstance.updateProps({ amount: true });
 
-const explicitTransformOptions: ComponentOptions<
-	ExplicitTransformProps,
-	ExplicitTransformInput
-> = {
-	tag: "explicit-transform-options-component",
-	url: "https://example.com/explicit-transform-options",
-	props: {
-		amount: { schema: transformedFallbackSchema, outputSchema: z.number() },
-	},
-};
-void explicitTransformOptions;
-
-const ExplicitTransformReactComponent = createReactComponent(
-	ExplicitTransformComponent,
-	{ React: {} as never },
-);
-void ExplicitTransformReactComponent({ amount: "4" });
-
-const ExplicitGenericTransformReactComponent = createReactComponent<
-	ExplicitTransformProps,
+const CoercingReactComponent = createReactComponent(CoercingComponent, {
+	React: {} as never,
+});
+void CoercingReactComponent({ amount: "4", startsAt: "2026-11-01T09:00:00Z" });
+const ExplicitGenericCoercedReactComponent = createReactComponent<
+	ExplicitCoercedProps,
 	unknown,
 	unknown,
 	false,
-	ExplicitTransformInput
->(ExplicitTransformComponent, { React: {} as never });
-void ExplicitGenericTransformReactComponent({ amount: "4" });
+	ExplicitCoercedInput
+>(ExplicitCoercedComponent, { React: {} as never });
+void ExplicitGenericCoercedReactComponent({ amount: "4" });
 
 const createBoundReactComponent = withReactComponent({} as never);
-const BoundTransformReactComponent = createBoundReactComponent(
-	ExplicitTransformComponent,
+const BoundCoercedReactComponent = createBoundReactComponent(
+	ExplicitCoercedComponent,
 );
-const ExplicitGenericBoundTransformReactComponent = createBoundReactComponent<
-	ExplicitTransformProps,
-	unknown,
-	false,
-	ExplicitTransformInput
->(ExplicitTransformComponent);
-void BoundTransformReactComponent({ amount: "4" });
-void ExplicitGenericBoundTransformReactComponent({ amount: "4" });
-
-// @ts-expect-error normalized outputs are not necessarily valid schema inputs
-void ExplicitTransformComponent({ amount: 2 });
-
-// @ts-expect-error updates use schema input types
-void explicitTransformInstance.updateProps({ amount: 3 });
-
-// @ts-expect-error tracked instances retain schema input types
-void ExplicitTransformComponent.instances[0]?.updateProps({ amount: 3 });
-
-// @ts-expect-error React wrappers preserve schema input types
-void ExplicitTransformReactComponent({ amount: 4 });
-
-// @ts-expect-error curried React wrappers preserve schema input types
-void BoundTransformReactComponent({ amount: 4 });
+void BoundCoercedReactComponent({ amount: "4" });
+// @ts-expect-error React wrappers preserve the factory input type
+void CoercingReactComponent({ amount: true });
+// @ts-expect-error curried React wrappers preserve the factory input type
+void BoundCoercedReactComponent({ amount: true });
 
 // @ts-expect-error aliases were removed; factories accept only defined keys
-void ExplicitTransformComponent({ amount: "2", legacyAmount: "2" });
+void ExplicitCoercedComponent({ amount: "2", legacyAmount: "2" });
 
 const WrappedZodComponent = create({
 	tag: "wrapped-zod-component",
@@ -502,36 +484,6 @@ const IdentityTransformComponent = create({
 void IdentityTransformComponent({ label: "ready" });
 // @ts-expect-error safe direct transforms retain their schema input types
 void IdentityTransformComponent({ label: 1 });
-
-const RequiredTransformComponent = create({
-	tag: "required-transform-component",
-	url: (props) => {
-		const transformedValue: string | undefined = props.transformedValue;
-		return `https://example.com/required-transform/${transformedValue ?? "missing"}`;
-	},
-	props: {
-		transformedValue: {
-			schema: z
-				.string()
-				.transform((value) => (value.length > 0 ? value : undefined)),
-			outputSchema: z.string().optional(),
-		},
-	},
-});
-
-void RequiredTransformComponent({ transformedValue: "input" });
-
-// @ts-expect-error requiredness follows the schema input even when output may be undefined
-void RequiredTransformComponent({});
-
-const requiredTransformHost = initHost(RequiredTransformComponent, {
-	consumerOrigins: "*",
-});
-if (requiredTransformHost) {
-	const transformedValue: string | undefined =
-		requiredTransformHost.hostProps.transformedValue;
-	void transformedValue;
-}
 
 const AnyComponent = create({
 	tag: "any-component",

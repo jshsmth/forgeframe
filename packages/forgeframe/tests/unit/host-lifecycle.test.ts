@@ -5,7 +5,6 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { z } from "zod";
 import { type MessageHandler, Messenger } from "@/communication/messenger";
 import { CONTEXT, EVENT, MESSAGE_NAME, PROTOCOL_VERSION } from "@/constants";
 import { ConsumerComponent } from "@/core/consumer";
@@ -290,110 +289,6 @@ describe("Host lifecycle behavior", () => {
 		);
 	});
 
-	it("should validate transformed consumer outputs with the host output schema", async () => {
-		const definitions = {
-			amount: {
-				schema: z.string().transform(Number),
-				outputSchema: z.number(),
-			},
-		};
-		const consumer = createConsumer(
-			{ url: "/widget", props: definitions },
-			{ amount: "42" },
-		);
-
-		window.name = (
-			consumer as unknown as { buildWindowName: () => string }
-		).buildWindowName();
-		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
-
-		vi.spyOn(Messenger.prototype, "send").mockResolvedValueOnce({
-			props: { amount: 42 },
-		});
-		const host = initHost<{ amount: number }, { amount: string }>({
-			props: definitions,
-			consumerOrigins: "*",
-			autoInit: false,
-		});
-		await host?.ready;
-
-		expect(host?.hostProps.amount).toBe(42);
-		expect(host?.hostProps.consumer.props).toMatchObject({ amount: 42 });
-	});
-
-	it("should let the output schema decide whether a required input may normalize to undefined", async () => {
-		const optionalOutputDefinitions = {
-			amount: {
-				schema: z
-					.string()
-					.transform((value) =>
-						value === "empty" ? undefined : Number(value),
-					),
-				outputSchema: z.number().optional(),
-			},
-		};
-
-		const optionalOutputHost = await createBootstrappedHost(
-			{},
-			{ propDefinitions: optionalOutputDefinitions },
-		);
-		expect(optionalOutputHost.hostProps.amount).toBeUndefined();
-		optionalOutputHost.destroy();
-
-		vi.spyOn(console, "error").mockImplementation(() => {});
-		await expect(
-			createBootstrappingHost(
-				{},
-				{
-					propDefinitions: {
-						amount: {
-							schema: z.string().transform(Number),
-							outputSchema: z.number(),
-						},
-					},
-				},
-			).ready,
-		).rejects.toThrow("Invalid input: expected number, received undefined");
-	});
-
-	it("should reject normalized host props that fail their output schema", async () => {
-		vi.spyOn(console, "error").mockImplementation(() => {});
-
-		await expect(
-			createBootstrappingHost(
-				{ amount: -1 },
-				{
-					propDefinitions: {
-						amount: {
-							schema: z.string().transform(Number),
-							outputSchema: z.number().nonnegative(),
-						},
-					},
-				},
-			).ready,
-		).rejects.toThrow("Too small: expected number to be >=0");
-	});
-
-	it("should reject output schemas that transform normalized host props", async () => {
-		vi.spyOn(console, "error").mockImplementation(() => {});
-
-		await expect(
-			createBootstrappingHost(
-				{ amount: 1 },
-				{
-					propDefinitions: {
-						amount: {
-							schema: z.string().transform(Number),
-							outputSchema: z.number().transform((value) => value + 1),
-						},
-					},
-				},
-			).ready,
-		).rejects.toThrow(
-			"Validation failed: amount: value no longer matches its normalized schema output",
-		);
-	});
-
 	it("should not create a host instance for invalid bootstrap payloads", () => {
 		const invalidName = "__forgeframe__not-valid-base64";
 		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -630,41 +525,6 @@ describe("Host lifecycle behavior", () => {
 		).toThrow("Validation failed: amount: Expected number, got string");
 		expect(typedHost.hostProps.amount).toBe(10);
 		expect(typedHost.hostProps.consumer.props).toEqual({ amount: 10 });
-		expect(consoleSpy).toHaveBeenCalledWith(
-			"Error deserializing props:",
-			expect.any(Error),
-		);
-		typedHost.destroy();
-	});
-
-	it("should validate PROPS updates as normalized outputs and preserve prior state", async () => {
-		const typedHost = await createBootstrappedHost(
-			{ amount: 10 },
-			{
-				propDefinitions: {
-					amount: {
-						schema: z.string().transform(Number),
-						outputSchema: z.number().int().nonnegative(),
-					},
-				},
-			},
-		);
-		const propsHandler = (
-			typedHost as unknown as {
-				messenger: { handlers: Map<string, DirectHandler> };
-			}
-		).messenger.handlers.get(MESSAGE_NAME.PROPS);
-		const subscriber = vi.fn();
-		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-		typedHost.hostProps.onProps(subscriber);
-
-		expect(propsHandler).toBeDefined();
-		expect(() =>
-			requireValue(propsHandler)({ amount: "42" }, createMessageSource(window)),
-		).toThrow("Invalid input: expected number, received string");
-		expect(typedHost.hostProps.amount).toBe(10);
-		expect(typedHost.hostProps.consumer.props).toEqual({ amount: 10 });
-		expect(subscriber).not.toHaveBeenCalled();
 		expect(consoleSpy).toHaveBeenCalledWith(
 			"Error deserializing props:",
 			expect.any(Error),

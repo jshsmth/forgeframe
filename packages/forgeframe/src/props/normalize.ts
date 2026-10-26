@@ -13,7 +13,13 @@ import type { PropDefinition, PropDelivery } from "../types/props";
 import { isDate, isPlainObject } from "../utils/realm-values";
 import { assertDefinedArrayEntries } from "../utils/wire-value";
 import { matchDomain } from "../window/helpers";
-import { isStandardSchema, validateWithSchema } from "./schema";
+import { SELF_ACCEPTANCE_MIGRATIONS } from "./definition-checks";
+import {
+	isStandardSchema,
+	runSchema,
+	type StandardSchemaV1,
+	validateWithSchema,
+} from "./schema";
 
 interface CompiledPropDefinition {
 	key: string;
@@ -148,29 +154,74 @@ function readSuppliedProp(props: object, key: string): unknown {
 }
 
 /**
- * Establishes that a converted value can be checked unchanged at later trust
- * boundaries. An explicit `outputSchema` must not transform it. Without one,
- * the input schema must also accept its own normalized output unchanged.
+ * Outcome of validating a normalized value with its own prop schema.
+ * @internal
  */
-function assertNormalizedOutputContract(
-	value: unknown,
-	{ key, definition }: CompiledPropDefinition,
-): void {
-	const outputSchema = definition.outputSchema;
-	if (outputSchema) {
-		const validatedOutput = validateWithSchema(outputSchema, value, key);
-		if (!schemaOutputMatchesInput(value, validatedOutput)) {
-			throw new Error(
-				`Validation failed: ${key}: outputSchema must not transform normalized values`,
-			);
-		}
-		return;
-	}
+export type UnchangedValidationOutcome =
+	| { status: "unchanged" }
+	| { status: "changed" }
+	| { status: "rejected"; issues: string };
 
-	const revalidated = validateWithSchema(definition.schema, value, key);
-	if (!schemaOutputMatchesInput(value, revalidated)) {
+/**
+ * Validates a normalized value with its prop schema and compares the result.
+ *
+ * @remarks
+ * Every trust boundary uses this check: normalization, the consumer's
+ * rechecks, and host validation. A value is unchanged when the schema accepts
+ * it and returns a structurally equal value.
+ *
+ * @throws Error when the schema is async
+ * @internal
+ */
+export function validateUnchanged(
+	schema: StandardSchemaV1,
+	value: unknown,
+	key: string,
+): UnchangedValidationOutcome {
+	const result = runSchema(schema, value, key);
+	if ("issues" in result) return { status: "rejected", issues: result.issues };
+	return schemaOutputMatchesInput(value, result.value)
+		? { status: "unchanged" }
+		: { status: "changed" };
+}
+
+/**
+ * Throws when normalization finds a prop schema that does not accept its own
+ * output unchanged.
+ *
+ * @remarks
+ * Delivered and consumer-only values are rechecked with the same schema, so a
+ * schema that changes the type or re-applies a transform is a definition
+ * mistake, reported here with the migrations.
+ */
+function assertSelfAccepting(
+	outcome: UnchangedValidationOutcome,
+	key: string,
+): void {
+	if (outcome.status === "unchanged") return;
+	const reason =
+		outcome.status === "changed"
+			? "the schema changed the value"
+			: `the schema rejected it: ${outcome.issues}`;
+	throw new Error(
+		`Validation failed: ${key}: the prop schema must accept its own output unchanged, because ForgeFrame validates delivered values with the same schema; ${reason}. ${SELF_ACCEPTANCE_MIGRATIONS}`,
+	);
+}
+
+/**
+ * Throws when a trust boundary finds a normalized value its schema rejects
+ * or changes.
+ */
+function assertValidatesUnchanged(
+	outcome: UnchangedValidationOutcome,
+	key: string,
+): void {
+	if (outcome.status === "rejected") {
+		throw new Error(`Validation failed: ${outcome.issues}`);
+	}
+	if (outcome.status === "changed") {
 		throw new Error(
-			`Prop "${key}" requires outputSchema because its schema cannot validate the normalized value unchanged`,
+			`Validation failed: ${key}: value no longer matches its normalized schema output`,
 		);
 	}
 }
@@ -204,7 +255,10 @@ export function normalizeProps(
 			readSuppliedProp(input, compiled.key),
 			compiled.key,
 		);
-		assertNormalizedOutputContract(value, compiled);
+		assertSelfAccepting(
+			validateUnchanged(compiled.definition.schema, value, compiled.key),
+			compiled.key,
+		);
 		result[compiled.key] = value;
 	}
 	return result;
@@ -262,8 +316,7 @@ export function revalidatePropInputs(
  * Validates already-normalized props at a consumer or host trust boundary.
  *
  * @remarks
- * Each defined prop is checked with its `outputSchema`, or its schema when it
- * has none, including absent values. Validation must not change a value.
+ * Each defined prop, including an absent one, must pass its schema unchanged.
  *
  * @internal
  */
@@ -272,17 +325,10 @@ export function validateNormalizedProps(
 	definitions: object,
 ): void {
 	for (const { key, definition } of getCompiledPropDefinitions(definitions)) {
-		const value = readSuppliedProp(props, key);
-		const validated = validateWithSchema(
-			definition.outputSchema ?? definition.schema,
-			value,
+		assertValidatesUnchanged(
+			validateUnchanged(definition.schema, readSuppliedProp(props, key), key),
 			key,
 		);
-		if (!schemaOutputMatchesInput(value, validated)) {
-			throw new Error(
-				`Validation failed: ${key}: value no longer matches its normalized schema output`,
-			);
-		}
 	}
 }
 

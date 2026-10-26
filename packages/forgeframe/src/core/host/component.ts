@@ -25,10 +25,7 @@ import {
 import { HostTransport } from "./transport";
 import type { HostRuntimeOptions } from "./types";
 
-export class HostComponent<
-	P extends Record<string, unknown>,
-	SchemaInputs = P,
-> {
+export class HostComponent<P extends Record<string, unknown>> {
 	public event: EventEmitter<HostEvents>;
 
 	/** Resolves to `hostProps` once initial props have passed the host schemas. */
@@ -44,7 +41,7 @@ export class HostComponent<
 
 	private transport!: HostTransport;
 
-	private propsRuntime!: HostPropsRuntime<P, SchemaInputs>;
+	private propsRuntime!: HostPropsRuntime<P>;
 
 	private destroyed = false;
 
@@ -53,10 +50,7 @@ export class HostComponent<
 	private readonly onDestroy?: () => void;
 
 	/** Selects and checks the consumer origin, then requests BOOTSTRAP. */
-	constructor(
-		payload: WindowNamePayload,
-		options: HostRuntimeOptions<P, SchemaInputs>,
-	) {
+	constructor(payload: WindowNamePayload, options: HostRuntimeOptions<P>) {
 		this.uid = payload.uid;
 		this.tag = payload.tag;
 		this.event = new EventEmitter();
@@ -64,7 +58,7 @@ export class HostComponent<
 		this.onDestroy = options.onDestroy;
 
 		let transport: HostTransport | null = null;
-		let propsRuntime: HostPropsRuntime<P, SchemaInputs> | null = null;
+		let propsRuntime: HostPropsRuntime<P> | null = null;
 
 		try {
 			this.consumerWindow = resolveConsumerWindow();
@@ -89,8 +83,7 @@ export class HostComponent<
 			this.transport = transport;
 
 			propsRuntime = new HostPropsRuntime(
-				options.props ??
-					(EMPTY_PROP_DEFINITIONS as HostPropsDefinition<P, SchemaInputs>),
+				options.props ?? (EMPTY_PROP_DEFINITIONS as HostPropsDefinition<P>),
 				{
 					uid: this.uid,
 					tag: this.tag,

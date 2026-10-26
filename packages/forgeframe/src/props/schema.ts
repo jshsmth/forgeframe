@@ -250,6 +250,29 @@ export function validateWithSchema<T>(
 	value: unknown,
 	propName: string,
 ): T {
+	const result = runSchema(schema, value, propName);
+	if ("issues" in result) {
+		throw new Error(`Validation failed: ${result.issues}`);
+	}
+	return result.value;
+}
+
+/**
+ * Runs a schema synchronously and reports its issues instead of throwing.
+ *
+ * @param schema - The Standard Schema to validate with
+ * @param value - The value to validate
+ * @param propName - The prop name (for issue paths)
+ * @returns The validated value, or the issues joined as `<path>: <message>`
+ * @throws Error if the schema is async
+ *
+ * @internal
+ */
+export function runSchema<T>(
+	schema: StandardSchemaV1<unknown, T>,
+	value: unknown,
+	propName: string,
+): { value: T } | { issues: string } {
 	const result = schema["~standard"].validate(value);
 
 	if (isAsyncSchemaResult(result)) {
@@ -261,14 +284,17 @@ export function validateWithSchema<T>(
 	}
 
 	if (result.issues) {
-		const messages = result.issues.map((issue) => {
-			const path = formatIssuePath(issue.path, propName);
-			return `${path}: ${issue.message}`;
-		});
-		throw new Error(`Validation failed: ${messages.join("; ")}`);
+		return {
+			issues: result.issues
+				.map(
+					(issue) =>
+						`${formatIssuePath(issue.path, propName)}: ${issue.message}`,
+				)
+				.join("; "),
+		};
 	}
 
-	return result.value;
+	return { value: result.value };
 }
 
 /** Recognizes and observes unsupported asynchronous results across window realms. @internal */

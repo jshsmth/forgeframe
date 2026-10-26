@@ -63,11 +63,7 @@ export interface ConsumerTransportHandlers<X> {
  * Owns consumer transport concerns (messenger, function bridge, trust management, handshake).
  * @internal
  */
-export class ConsumerTransport<
-	P extends Record<string, unknown>,
-	X = unknown,
-	SchemaInputs = P,
-> {
+export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 	/** Messenger for host communication. */
 	public messenger: Messenger;
 
@@ -104,7 +100,7 @@ export class ConsumerTransport<
 
 	constructor(
 		private uid: string,
-		private options: NormalizedOptions<P, SchemaInputs>,
+		private options: NormalizedOptions<P>,
 		private resolveUrl: () => string,
 		private resolveUrlOrigin: (url: string) => string,
 	) {
@@ -210,7 +206,7 @@ export class ConsumerTransport<
 	 */
 	async sendPropsUpdateToHost(
 		nextProps: P,
-		propDefinitions: PropsDefinition<P, SchemaInputs>,
+		propDefinitions: PropsDefinition<P>,
 	): Promise<void> {
 		if (!this.hostWindow || isWindowClosed(this.hostWindow)) {
 			return;

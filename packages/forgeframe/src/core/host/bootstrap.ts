@@ -1,3 +1,4 @@
+import type { AnyFactoryInput } from "../../types/runtime";
 /**
  * @packageDocumentation
  * Host start-up and singleton lifecycle.
@@ -33,10 +34,7 @@ import {
 	resolveConsumerWindow,
 } from "./security";
 
-let hostInstance: HostComponent<
-	Record<string, unknown>,
-	Record<string, unknown>
-> | null = null;
+let hostInstance: HostComponent<Record<string, unknown>> | null = null;
 
 /**
  * Reads the channel metadata the host starts from.
@@ -134,9 +132,8 @@ export function initHost<
 	P extends Record<string, unknown>,
 	X,
 	RequireProps extends boolean,
-	SchemaInputs,
 >(
-	component: ForgeFrameComponent<P, X, RequireProps, SchemaInputs>,
+	component: ForgeFrameComponent<P, X, RequireProps, AnyFactoryInput>,
 	options: Omit<InitHostOptions, "props">,
 ): Host<P> | null;
 /**
@@ -170,8 +167,7 @@ export function initHost<
  */
 export function initHost<
 	P extends Record<string, unknown> = Record<string, unknown>,
-	SchemaInputs = P,
->(options: InitHostOptions<P, SchemaInputs>): Host<P> | null;
+>(options: InitHostOptions<P>): Host<P> | null;
 export function initHost(...args: unknown[]): Host | null {
 	const start = readInitHostArguments(args);
 	if (!hasBrowserWindow()) return null;
@@ -245,9 +241,8 @@ function createHost(runtime: HostComponent<Record<string, unknown>>): Host {
 
 export function getHost<
 	P extends Record<string, unknown>,
-	SchemaInputs = P,
->(): HostComponent<P, SchemaInputs> | null {
-	return hostInstance as HostComponent<P, SchemaInputs> | null;
+>(): HostComponent<P> | null {
+	return hostInstance as HostComponent<P> | null;
 }
 
 export function clearHostInstance(): void {

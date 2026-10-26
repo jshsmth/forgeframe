@@ -3,17 +3,13 @@
  */
 
 import type { ContextType } from "../constants";
-import type {
-	InferInput,
-	InferOutput,
-	StandardSchemaV1,
-} from "../props/schema";
+import type { InferOutput, StandardSchemaV1 } from "../props/schema";
 import type { ComponentEvents, EventSubscriber, HostEvents } from "./events";
 import type {
-	HostPropsDefinition,
 	InferPropsDefinition,
 	PropDefinition,
 	PropsDefinition,
+	SelfAcceptanceError,
 } from "./props";
 import type { ContainerTemplate, PrerenderTemplate } from "./templates";
 import type {
@@ -82,45 +78,12 @@ export type RemoteValue<T> = T extends (...args: never[]) => Promise<unknown>
 				? { [K in keyof T]: RemoteValue<T[K]> }
 				: T;
 
-/** Whether two prop shapes expose the same set of keys. @internal */
-type HasSamePropKeys<A, B> = [Exclude<keyof A, keyof B>] extends [never]
-	? [Exclude<keyof B, keyof A>] extends [never]
-		? true
-		: false
-	: false;
-
 /**
- * Schema inputs, falling back to normalized values for keys without one.
+ * Stands for any factory input where only the props type matters: a factory
+ * or instance with any input is assignable to one typed with this.
  * @internal
  */
-type CanonicalConsumerProps<P, SchemaInputs> =
-	HasSamePropKeys<P, SchemaInputs> extends true
-		? SchemaInputs
-		: Pick<SchemaInputs, Extract<keyof P, keyof SchemaInputs>> &
-				Pick<P, Exclude<keyof P, keyof SchemaInputs>>;
-
-/**
- * Props accepted when creating a component instance.
- *
- * @typeParam P - Normalized props exposed to the host.
- * @typeParam SchemaInputs - Values accepted by each prop schema.
- * @internal
- */
-export type ComponentPropsInput<P, SchemaInputs> = CanonicalConsumerProps<
-	P,
-	SchemaInputs
->;
-
-/**
- * Partial props accepted by component updates.
- *
- * @typeParam P - Normalized props exposed to the host.
- * @typeParam SchemaInputs - Values accepted by each prop schema.
- * @internal
- */
-export type ComponentPropsUpdate<P, SchemaInputs> = Partial<
-	CanonicalConsumerProps<P, SchemaInputs>
->;
+export type AnyFactoryInput = never;
 
 /** A schema-backed definition map from which `create()` can infer props. @internal */
 export type InferablePropsDefinition = Record<
@@ -140,39 +103,47 @@ type InferContextualSchemas<D extends InferablePropsDefinition> = {
 			: never;
 };
 
-/** Applies `Omit` independently to each member of a union. @internal */
-type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
-	? Omit<T, K>
-	: never;
-
-/** A wrapped inferred definition, requiring `outputSchema` for type-changing schemas. @internal */
-type ContextualWrappedPropDefinition<Schema extends StandardSchemaV1> =
-	DistributiveOmit<
-		PropDefinition<InferOutput<Schema>, InferInput<Schema>>,
-		"schema"
-	> & {
-		schema: Schema;
-	};
+/** A wrapped inferred definition whose schema types its callbacks. @internal */
+type ContextualWrappedPropDefinition<Schema extends StandardSchemaV1> = Omit<
+	PropDefinition<InferOutput<Schema>>,
+	"schema"
+> & {
+	schema: Schema;
+};
 
 /**
- * A concise schema entry whose output can be checked by the same schema.
- * Only expose Standard Schema metadata for contextual typing so library methods
- * do not conflict with wrapped prop options.
+ * A concise schema entry. Only expose Standard Schema metadata for contextual
+ * typing so library methods do not conflict with wrapped prop options.
  * @internal
  */
-type ContextualDirectSchema<Schema extends StandardSchemaV1> = [
-	InferOutput<Schema>,
-] extends [InferInput<Schema>]
-	? Pick<Schema, "~standard">
-	: never;
+type ContextualDirectSchema<Schema extends StandardSchemaV1> = Pick<
+	Schema,
+	"~standard"
+>;
 
-/** Prevents contextual inference from widening an unsafe direct schema. @internal */
-type SafeDirectPropsDefinition<D extends InferablePropsDefinition> = {
-	[K in keyof D]: D[K] extends StandardSchemaV1<infer Input, infer Output>
+/** Whether a schema's output is valid input to the same schema. @internal */
+type IsSelfAccepting<Schema> =
+	Schema extends StandardSchemaV1<infer Input, infer Output>
 		? [Output] extends [Input]
+			? true
+			: false
+		: true;
+
+/**
+ * Reports a schema that does not accept its own output at the offending
+ * entry, or at its wrapped `schema` field.
+ * @internal
+ */
+export type SelfAcceptingPropsDefinition<D> = {
+	[K in keyof D]: D[K] extends StandardSchemaV1
+		? IsSelfAccepting<D[K]> extends true
 			? unknown
-			: never
-		: unknown;
+			: SelfAcceptanceError
+		: D[K] extends { schema: infer Schema }
+			? IsSelfAccepting<Schema> extends true
+				? unknown
+				: { schema: SelfAcceptanceError }
+			: unknown;
 };
 
 /** Contextual callback types inferred from each entry's schema. @internal */
@@ -189,23 +160,19 @@ export type InferredComponentOptions<
 > = Omit<ComponentOptions<InferPropsDefinition<D>>, "props"> & {
 	props: D &
 		ContextualPropsDefinition<ContextualSchemas> &
-		SafeDirectPropsDefinition<D>;
+		SelfAcceptingPropsDefinition<D>;
 };
 
 /** Arguments accepted by a component factory based on required input keys. @internal */
 type ComponentFactoryArguments<
-	P,
 	RequireProps extends boolean,
-	SchemaInputs,
-> = RequireProps extends true
-	? [props: ComponentPropsInput<P, SchemaInputs>]
-	: [props?: ComponentPropsInput<P, SchemaInputs>];
+	Input,
+> = RequireProps extends true ? [props: Input] : [props?: Input];
 
 /**
  * Configuration options for creating a component.
  *
  * @typeParam P - The normalized props type for the component
- * @typeParam SchemaInputs - Schema input types keyed like `P`
  *
  * @remarks
  * These options are passed to `create()` to define a new component.
@@ -226,10 +193,7 @@ type ComponentFactoryArguments<
  *
  * @public
  */
-export interface ComponentOptions<
-	P = Record<string, unknown>,
-	SchemaInputs = P,
-> {
+export interface ComponentOptions<P = Record<string, unknown>> {
 	/**
 	 * Unique tag name for the component.
 	 *
@@ -247,7 +211,7 @@ export interface ComponentOptions<
 	/**
 	 * Prop definitions for validation and delivery to the host.
 	 */
-	props?: PropsDefinition<P, SchemaInputs>;
+	props?: PropsDefinition<P>;
 
 	/**
 	 * Default dimensions for the component.
@@ -331,7 +295,8 @@ export interface ComponentOptions<
  *
  * @typeParam P - The props type for the component
  * @typeParam X - The type of exports from the host
- * @typeParam SchemaInputs - Canonical values accepted by each prop schema
+ * @typeParam Input - The factory input, inferred from the prop schemas: defaults
+ * make keys optional and coercions accept wider types than the props
  *
  * @remarks
  * Component instances are created by calling the component factory function
@@ -350,7 +315,7 @@ export interface ComponentOptions<
 export interface ForgeFrameComponentInstance<
 	P = Record<string, unknown>,
 	X = unknown,
-	SchemaInputs = P,
+	Input = P,
 > {
 	/**
 	 * Unique instance identifier.
@@ -411,7 +376,7 @@ export interface ForgeFrameComponentInstance<
 	 * @param props - Partial props to merge with existing
 	 * @returns Promise that resolves when props are updated
 	 */
-	updateProps(props: ComponentPropsUpdate<P, SchemaInputs>): Promise<void>;
+	updateProps(props: Partial<Input>): Promise<void>;
 
 	/**
 	 * Subscribes to lifecycle events with `on` and `once`.
@@ -433,7 +398,8 @@ export interface ForgeFrameComponentInstance<
  * @typeParam P - The props type for the component
  * @typeParam X - The type of exports from the host
  * @typeParam RequireProps - Whether the factory requires a props argument
- * @typeParam SchemaInputs - Canonical values accepted by each prop schema
+ * @typeParam Input - The factory input, inferred from the prop schemas: defaults
+ * make keys optional and coercions accept wider types than the props
  *
  * @remarks
  * This is the return type of `create()`. Call it to create consumer
@@ -460,7 +426,7 @@ export interface ForgeFrameComponent<
 	P = Record<string, unknown>,
 	X = unknown,
 	RequireProps extends boolean = false,
-	SchemaInputs = P,
+	Input = P,
 > {
 	/**
 	 * Create a new component instance with props.
@@ -469,8 +435,8 @@ export interface ForgeFrameComponent<
 	 * @returns New component instance
 	 */
 	(
-		...args: ComponentFactoryArguments<P, RequireProps, SchemaInputs>
-	): ForgeFrameComponentInstance<P, X, SchemaInputs>;
+		...args: ComponentFactoryArguments<RequireProps, Input>
+	): ForgeFrameComponentInstance<P, X, Input>;
 
 	/**
 	 * Live instances of this component, in creation order.
@@ -479,11 +445,7 @@ export interface ForgeFrameComponent<
 	 * Each read returns a new frozen snapshot. A held snapshot does not update,
 	 * so read it again after closing instances.
 	 */
-	readonly instances: readonly ForgeFrameComponentInstance<
-		P,
-		X,
-		SchemaInputs
-	>[];
+	readonly instances: readonly ForgeFrameComponentInstance<P, X, Input>[];
 }
 
 /**
@@ -696,14 +658,10 @@ export type HostProps<P = Record<string, unknown>> = RemoteValue<P> &
  * Options for `initHost()`.
  *
  * @typeParam P - The host props type
- * @typeParam SchemaInputs - Canonical schema input types keyed like `P`
  *
  * @public
  */
-export interface InitHostOptions<
-	P = Record<string, unknown>,
-	SchemaInputs = P,
-> {
+export interface InitHostOptions<P = Record<string, unknown>> {
 	/**
 	 * Consumer origins allowed to embed this host.
 	 *
@@ -734,7 +692,7 @@ export interface InitHostOptions<
 	 * throws when this is passed. Without definitions, delivered props are not
 	 * validated.
 	 */
-	props?: HostPropsDefinition<P, SchemaInputs>;
+	props?: PropsDefinition<P>;
 }
 
 /**

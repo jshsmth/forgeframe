@@ -51,10 +51,7 @@ export interface ConsumerOpenParams {
  * Owns consumer rendering concerns (container resolution, prerender, iframe/popup lifecycle).
  * @internal
  */
-export class ConsumerRenderer<
-	P extends Record<string, unknown>,
-	SchemaInputs = P,
-> {
+export class ConsumerRenderer<P extends Record<string, unknown>> {
 	/** Active rendering context. */
 	public context: ContextType;
 
@@ -86,7 +83,7 @@ export class ConsumerRenderer<
 	> | null = null;
 
 	constructor(
-		private options: NormalizedOptions<P, SchemaInputs>,
+		private options: NormalizedOptions<P>,
 		private uid: string,
 		private getProps: () => P,
 		private resolveDimensions: () => Dimensions,

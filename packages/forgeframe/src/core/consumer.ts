@@ -25,8 +25,6 @@ import type { ComponentEvents, EventSubscriber } from "../types/events";
 import type { PropsDefinition } from "../types/props";
 import type {
 	ComponentOptions,
-	ComponentPropsInput,
-	ComponentPropsUpdate,
 	ForgeFrameComponentInstance,
 	RemoteValue,
 } from "../types/runtime";
@@ -57,15 +55,15 @@ import type { NormalizedOptions } from "./consumer/types";
  *
  * @typeParam P - The props type passed to the component
  * @typeParam X - The exports type that the host can expose to the consumer
- * @typeParam SchemaInputs - Canonical values accepted by each prop schema
+ * @typeParam Input - The factory input, inferred from the prop schemas
  *
  * @internal
  */
 export class ConsumerComponent<
 	P extends Record<string, unknown>,
 	X = unknown,
-	SchemaInputs extends Record<string, unknown> = P,
-> implements ForgeFrameComponentInstance<P, X, SchemaInputs>
+	Input = P,
+> implements ForgeFrameComponentInstance<P, X, Input>
 {
 	/** Subscribe-only view of this instance's lifecycle events. */
 	public readonly event: EventSubscriber<ComponentEvents<P, X>>;
@@ -91,19 +89,19 @@ export class ConsumerComponent<
 	}
 
 	/** @internal */
-	private options: NormalizedOptions<P, SchemaInputs>;
+	private options: NormalizedOptions<P>;
 
 	/** @internal */
 	private cleanup: CleanupManager;
 
 	/** @internal */
-	private transport!: ConsumerTransport<P, X, SchemaInputs>;
+	private transport!: ConsumerTransport<P, X>;
 
 	/** @internal */
-	private renderer!: ConsumerRenderer<P, SchemaInputs>;
+	private renderer!: ConsumerRenderer<P>;
 
 	/** @internal */
-	private propsPipeline!: ConsumerPropsPipeline<P, SchemaInputs>;
+	private propsPipeline!: ConsumerPropsPipeline<P>;
 
 	/** @internal */
 	private rendered = false;
@@ -134,10 +132,10 @@ export class ConsumerComponent<
 	 * @param untrackInstance - Owning factory cleanup independent of public observers
 	 */
 	constructor(
-		options: ComponentOptions<P, SchemaInputs>,
-		props?: ComponentPropsInput<P, SchemaInputs>,
+		options: ComponentOptions<P>,
+		props?: Input,
 		private untrackInstance?: (
-			instance: ConsumerComponent<P, X, SchemaInputs>,
+			instance: ConsumerComponent<P, X, Input>,
 		) => void,
 	) {
 		this._uid = generateUID();
@@ -438,9 +436,7 @@ export class ConsumerComponent<
 	 *
 	 * @param newProps - Partial props object to merge with existing props
 	 */
-	async updateProps(
-		newProps: ComponentPropsUpdate<P, SchemaInputs>,
-	): Promise<void> {
+	async updateProps(newProps: Partial<Input>): Promise<void> {
 		this.assertPropsUpdateActive();
 		if (this.renderPromise && !this.rendered) {
 			throw new Error("Cannot update props while the component is rendering");
@@ -452,9 +448,7 @@ export class ConsumerComponent<
 	 * Applies a props update and synchronizes it to the host when connected.
 	 * @internal
 	 */
-	private async applyPropsUpdate(
-		newProps: ComponentPropsUpdate<P, SchemaInputs>,
-	): Promise<void> {
+	private async applyPropsUpdate(newProps: Partial<Input>): Promise<void> {
 		const hooks: ConsumerPropsUpdateHooks<P> = {
 			assertActive: () => this.assertPropsUpdateActive(),
 			resolveUrl: (nextProps) => this.resolveUrl(nextProps),
@@ -541,14 +535,10 @@ export class ConsumerComponent<
 	 * Normalizes component options with default values.
 	 * @internal
 	 */
-	private normalizeOptions(
-		options: ComponentOptions<P, SchemaInputs>,
-	): NormalizedOptions<P, SchemaInputs> {
+	private normalizeOptions(options: ComponentOptions<P>): NormalizedOptions<P> {
 		return {
 			...options,
-			props:
-				options.props ??
-				(EMPTY_PROP_DEFINITIONS as PropsDefinition<P, SchemaInputs>),
+			props: options.props ?? (EMPTY_PROP_DEFINITIONS as PropsDefinition<P>),
 			defaultContext: options.defaultContext ?? CONTEXT.IFRAME,
 			dimensions: options.dimensions ?? { width: "100%", height: "100%" },
 			timeout: options.timeout ?? 10000,

@@ -1,16 +1,19 @@
 /**
  * Unit tests for props normalization and host/query/body mapping utilities.
  *
- * Covers schema-decided presence and defaults, the delivery policy for
- * `sendToHost` and `deliverTo`, and query/body parameter encoding.
+ * Covers schema-decided presence and defaults, the "validate unchanged" check
+ * every trust boundary shares, the delivery policy for `sendToHost` and
+ * `deliverTo`, and query/body parameter encoding.
  */
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import {
 	getPropsForHost,
 	isPropDelivered,
 	normalizeProps,
 	propsToBodyParams,
 	propsToQueryParams,
+	validateUnchanged,
 } from "@/props/normalize";
 import { prop } from "@/props/prop";
 import type { PropDefinition, PropsDefinition } from "@/types";
@@ -133,6 +136,60 @@ describe("Props Normalization", () => {
 		expect(() => normalizeProps({ value: invalid }, definitions)).toThrow(
 			"Validation failed: value:",
 		);
+	});
+});
+
+describe("validateUnchanged", () => {
+	it.each([
+		["a Date with the same time", prop.date(), new Date(0)],
+		[
+			"a URL with the same href",
+			prop.any<URL>(),
+			new URL("https://a.example/"),
+		],
+		[
+			"a nested record",
+			prop.record(prop.object({ tags: prop.array(prop.string()) })),
+			{ first: { tags: ["a", "b"] } },
+		],
+		["a trimmed string", z.string().trim(), "ready"],
+	])("accepts %s unchanged", (_label, schema, value) => {
+		expect(validateUnchanged(schema, value, "value")).toEqual({
+			status: "unchanged",
+		});
+	});
+
+	it("reports a value the schema changes", () => {
+		expect(
+			validateUnchanged(
+				z.object({ name: z.string() }),
+				{ name: "Ada", role: "admin" },
+				"profile",
+			),
+		).toEqual({ status: "changed" });
+		expect(
+			validateUnchanged(
+				z.date().transform((date) => new Date(date.getTime() + 1)),
+				new Date(0),
+				"startsAt",
+			),
+		).toEqual({ status: "changed" });
+		expect(
+			validateUnchanged(
+				z.array(z.number()).transform((items) => [...items, 0]),
+				[1],
+				"items",
+			),
+		).toEqual({ status: "changed" });
+	});
+
+	it("reports the schema's issues for a value it rejects", () => {
+		expect(
+			validateUnchanged(z.string().transform(Number), 42, "amount"),
+		).toEqual({
+			status: "rejected",
+			issues: "amount: Invalid input: expected string, received number",
+		});
 	});
 });
 

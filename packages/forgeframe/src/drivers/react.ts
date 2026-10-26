@@ -1,7 +1,6 @@
 import type { ContextType } from "../constants";
 import type {
-	ComponentPropsInput,
-	ComponentPropsUpdate,
+	AnyFactoryInput,
 	ForgeFrameComponent,
 	ForgeFrameComponentInstance,
 } from "../types/runtime";
@@ -129,7 +128,7 @@ export interface ReactComponentProps<_P = unknown> {
  *
  * @typeParam P - The component-specific props type from the ForgeFrame component
  * @typeParam RequireProps - Whether the wrapped factory requires initial props
- * @typeParam SchemaInputs - Canonical values accepted by each prop schema
+ * @typeParam Input - The factory input, inferred from the prop schemas
  *
  * @remarks
  * This type merges {@link ReactComponentProps} with the component's initial
@@ -141,11 +140,9 @@ export interface ReactComponentProps<_P = unknown> {
 type FullReactComponentProps<
 	P,
 	RequireProps extends boolean = false,
-	SchemaInputs = P,
+	Input = P,
 > = ReactComponentProps<P> &
-	(RequireProps extends true
-		? ComponentPropsInput<P, SchemaInputs>
-		: ComponentPropsUpdate<P, SchemaInputs>);
+	(RequireProps extends true ? Input : Partial<Input>);
 
 /** Attaches the container element and forwards it to one forwarded ref. @internal */
 type ContainerRefCallback = (
@@ -290,7 +287,7 @@ export interface ReactComponentType<P, E = unknown> {
  * @typeParam X - The export type for data shared from the host component
  * @typeParam E - The React element return type
  * @typeParam RequireProps - Whether the wrapped factory requires props
- * @typeParam SchemaInputs - Canonical values accepted by each prop schema
+ * @typeParam Input - The factory input, inferred from the prop schemas
  *
  * @returns A React component that renders the ForgeFrame component
  *
@@ -336,23 +333,20 @@ export function createReactComponent<
 	X = unknown,
 	E = unknown,
 	RequireProps extends boolean = false,
-	SchemaInputs extends Record<string, unknown> = P,
+	Input extends Record<string, unknown> = P,
 >(
-	Component: ForgeFrameComponent<P, X, RequireProps, SchemaInputs>,
+	Component: ForgeFrameComponent<P, X, RequireProps, Input>,
 	options: ReactDriverOptions<E>,
-): ReactComponentType<
-	FullReactComponentProps<P, RequireProps, SchemaInputs>,
-	E
-> {
+): ReactComponentType<FullReactComponentProps<P, RequireProps, Input>, E> {
 	const { createElement, useRef, useEffect, useState, forwardRef } =
 		options.React as unknown as ReactRuntime<E>;
 	const createInstance = Component as unknown as (
-		props: ComponentPropsInput<P, SchemaInputs>,
-	) => ForgeFrameComponentInstance<P, X, SchemaInputs>;
+		props: Record<string, unknown>,
+	) => ForgeFrameComponentInstance<P, X, AnyFactoryInput>;
 
 	const ReactComponent = forwardRef<
 		HTMLDivElement,
-		FullReactComponentProps<P, RequireProps, SchemaInputs>
+		FullReactComponentProps<P, RequireProps, Input>
 	>(function ForgeFrameComponent(props, ref) {
 		const {
 			onRendered,
@@ -368,11 +362,9 @@ export function createReactComponent<
 		const instanceRef = useRef<ForgeFrameComponentInstance<
 			P,
 			X,
-			SchemaInputs
+			AnyFactoryInput
 		> | null>(null);
-		const propSyncRef = useRef<ReactPropSyncState<P, X, SchemaInputs> | null>(
-			null,
-		);
+		const propSyncRef = useRef<ReactPropSyncState<P, X> | null>(null);
 		const onRenderedRef = useRef<typeof onRendered>(onRendered);
 		const onErrorRef = useRef<typeof onError>(onError);
 		const onCloseRef = useRef<typeof onClose>(onClose);
@@ -384,11 +376,11 @@ export function createReactComponent<
 		const attachContainer = containerRefCache.current(ref);
 
 		const refs = { instanceRef, propSyncRef };
-		const isCurrent = (state: ReactPropSyncState<P, X, SchemaInputs>) =>
+		const isCurrent = (state: ReactPropSyncState<P, X>) =>
 			isCurrentSyncState(state, refs);
 		const onDriverError = (err: Error) =>
 			reportReactError(onErrorRef.current ?? undefined, err);
-		const drain = (state: ReactPropSyncState<P, X, SchemaInputs>) =>
+		const drain = (state: ReactPropSyncState<P, X>) =>
 			drainPropUpdates(state, isCurrent, onDriverError);
 
 		useEffect(() => {
@@ -495,7 +487,7 @@ export function withReactComponent<E>(React: ReactLike<E>) {
 	 * @typeParam P - The props type defined in the ForgeFrame component
 	 * @typeParam X - The export type for data shared from the host component
 	 * @typeParam RequireProps - Whether the wrapped factory requires props
-	 * @typeParam SchemaInputs - Canonical values accepted by each prop schema
+	 * @typeParam Input - The factory input, inferred from the prop schemas
 	 *
 	 * @param Component - The ForgeFrame component to wrap
 	 * @returns A React component that renders the ForgeFrame component
@@ -506,13 +498,10 @@ export function withReactComponent<E>(React: ReactLike<E>) {
 		P extends Record<string, unknown>,
 		X = unknown,
 		RequireProps extends boolean = false,
-		SchemaInputs extends Record<string, unknown> = P,
+		Input extends Record<string, unknown> = P,
 	>(
-		Component: ForgeFrameComponent<P, X, RequireProps, SchemaInputs>,
-	): ReactComponentType<
-		FullReactComponentProps<P, RequireProps, SchemaInputs>,
-		E
-	> {
+		Component: ForgeFrameComponent<P, X, RequireProps, Input>,
+	): ReactComponentType<FullReactComponentProps<P, RequireProps, Input>, E> {
 		return createReactComponent(Component, { React });
 	};
 }

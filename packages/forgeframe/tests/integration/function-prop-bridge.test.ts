@@ -365,10 +365,9 @@ describe("Function prop bridge integration", () => {
 		});
 		const instance = Component({});
 		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost<
-			{ callback: () => number },
-			{ callback?: () => number }
-		>(container, definitions);
+		const { hostProps } = await harness.bootstrapIframeHost<{
+			callback: () => number;
+		}>(container, definitions);
 		await rendering;
 		expect(callback).not.toHaveBeenCalled();
 		await expect(hostProps.callback()).resolves.toBe(42);

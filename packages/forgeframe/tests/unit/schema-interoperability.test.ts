@@ -65,10 +65,10 @@ describe("Standard Schema interoperability", () => {
 
 	it("should validate callable schemas as direct and wrapped prop definitions", () => {
 		const schema = createCallableStringSchema();
-		const direct: PropsDefinition<{ name: string }, { name?: unknown }> = {
+		const direct: PropsDefinition<{ name: string }> = {
 			name: schema,
 		};
-		const wrapped: PropsDefinition<{ name: string }, { name?: unknown }> = {
+		const wrapped: PropsDefinition<{ name: string }> = {
 			name: { schema },
 		};
 

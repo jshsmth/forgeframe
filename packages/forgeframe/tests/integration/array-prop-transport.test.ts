@@ -218,10 +218,10 @@ describe("Array prop transport", () => {
 		});
 		const instance = Component({ items: [undefined], nullable: [null] });
 		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost<
-			{ items: string[]; nullable: (string | null)[] },
-			{ items: (string | undefined)[]; nullable: (string | null)[] }
-		>(container, definitions);
+		const { hostProps } = await harness.bootstrapIframeHost<{
+			items: string[];
+			nullable: (string | null)[];
+		}>(container, definitions);
 		await rendering;
 		expect(hostProps.items).toEqual(["fallback"]);
 		expect(hostProps.nullable).toEqual([null]);
