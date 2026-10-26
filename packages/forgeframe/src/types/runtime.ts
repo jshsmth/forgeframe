@@ -103,26 +103,39 @@ type IsSelfAccepting<Schema> =
 			: false
 		: true;
 
-/** The transport options a wrapped entry is checked against. @internal */
-type WrappedPropOptions = Omit<PropDefinition, "schema">;
+/**
+ * The transport options a wrapped entry is checked against; any other field,
+ * such as a misspelled option, is reported as `never`.
+ * @internal
+ */
+type WrappedPropOptions<Entry> = Omit<PropDefinition, "schema"> & {
+	[Field in Exclude<keyof Entry, keyof PropDefinition>]: never;
+};
+
+/** Reported at a prop named `then` or `children`. @internal */
+export type ReservedPropError =
+	"ForgeFrame: then and children are reserved prop names";
 
 /**
  * Reports, at the offending entry or its wrapped `schema` field, an entry that
- * is not schema-backed or whose schema does not accept its own output.
+ * is not schema-backed, uses a reserved name or an unknown wrapped option, or
+ * whose schema does not accept its own output.
  * @internal
  */
 export type CheckedPropsDefinition<D> = {
-	[K in keyof D]: D[K] extends StandardSchemaV1
-		? IsSelfAccepting<D[K]> extends true
-			? unknown
-			: SelfAcceptanceError
-		: D[K] extends { schema: infer Schema extends StandardSchemaV1 }
-			? IsSelfAccepting<Schema> extends true
-				? WrappedPropOptions
-				: { schema: SelfAcceptanceError }
-			: D[K] extends StandardSchemaV1 | { schema: StandardSchemaV1 }
+	[K in keyof D]: K extends "then" | "children"
+		? ReservedPropError
+		: D[K] extends StandardSchemaV1
+			? IsSelfAccepting<D[K]> extends true
 				? unknown
-				: PropEntryError;
+				: SelfAcceptanceError
+			: D[K] extends { schema: infer Schema extends StandardSchemaV1 }
+				? IsSelfAccepting<Schema> extends true
+					? WrappedPropOptions<D[K]>
+					: { schema: SelfAcceptanceError }
+				: D[K] extends StandardSchemaV1 | { schema: StandardSchemaV1 }
+					? unknown
+					: PropEntryError;
 };
 
 /**

@@ -296,7 +296,10 @@ describe("Function prop bridge integration", () => {
 
 		await expect(
 			instance.updateProps({ callbacks: replacement, metadata: 1n }),
-		).rejects.toThrow(/BigInt/);
+		).rejects.toMatchObject({
+			code: "VALIDATION",
+			message: expect.stringMatching(/BigInt/),
+		});
 		expect(hostProps.callbacks).toBe(previous);
 		await expect(previous.c0?.()).resolves.toBe(0);
 		await expect(previous.c499?.()).resolves.toBe(499);

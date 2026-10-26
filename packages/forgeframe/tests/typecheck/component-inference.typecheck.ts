@@ -807,3 +807,23 @@ create({
 	// @ts-expect-error defaultContext was renamed context
 	defaultContext: "popup",
 });
+
+create({
+	tag: "typed-misspelled-wrapped-option",
+	url: "https://example.com",
+	props: {
+		label: {
+			schema: prop.string(),
+			// @ts-expect-error a misspelled wrapped option is not ignored
+			deliverto: "same-origin",
+		},
+	},
+});
+
+initHost({
+	consumerOrigins: "*",
+	props: {
+		// @ts-expect-error children is a reserved prop name
+		children: prop.string(),
+	},
+});

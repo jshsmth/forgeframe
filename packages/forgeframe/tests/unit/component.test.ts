@@ -484,6 +484,7 @@ describe("Component Creation", () => {
 					props: {
 						profile: {
 							schema: prop.any<Record<string, unknown>>(),
+							// @ts-expect-error removed options are unknown wrapped fields
 							serialization,
 						},
 					},
@@ -508,6 +509,7 @@ describe("Component Creation", () => {
 			props: {
 				profile: {
 					schema: prop.any<Record<string, unknown>>(),
+					// @ts-expect-error removed options are unknown wrapped fields
 					serialization: undefined,
 				},
 			},
@@ -604,6 +606,7 @@ describe("Component Creation", () => {
 				tag: "reserved-then-prop",
 				url: "https://example.com",
 				props: {
+					// @ts-expect-error then is a reserved prop name
 					// biome-ignore lint/suspicious/noThenProperty: checks the reserved name
 					then: prop.function(),
 				},
@@ -628,6 +631,7 @@ describe("Component Creation", () => {
 				tag: "reserved-children-prop",
 				url: "https://example.com",
 				props: {
+					// @ts-expect-error children is a reserved prop name
 					children: prop.any<Record<string, unknown>>(),
 				},
 			}),

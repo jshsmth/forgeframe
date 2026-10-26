@@ -62,10 +62,13 @@ function readDeclaredField(target: object, key: string): unknown {
  * never read. Each entry must be a data field, because the definitions are
  * read again when props are normalized; so must each field of a wrapped
  * definition that delivery reads. A wrapped definition needs a
- * `schema`; `deliverTo` must be `'same-origin'` or an origin matcher;
- * `queryParam` and `bodyParam` must be a boolean or a non-empty parameter
- * name. Only own fields count, a data field set to `undefined` counts as
- * omitted, and accessors are never invoked.
+ * `schema` and has no fields beyond the delivery options, so a misspelled
+ * option fails instead of being ignored; `deliverTo` must be `'same-origin'`
+ * or an origin matcher; `sendToHost` must be a boolean; `queryParam` and
+ * `bodyParam` must be a boolean or a non-empty parameter name, are never
+ * combined with `deliverTo: 'same-origin'`, and no two props share a query or
+ * body parameter name. Only own fields count, a data field set to `undefined`
+ * counts as omitted, and accessors are never invoked.
  *
  * @param definitions - Prop definitions passed to `create()` or `initHost()`
  * @throws Error naming the first prop that is malformed, and the replacement
@@ -74,6 +77,7 @@ function readDeclaredField(target: object, key: string): unknown {
  * @internal
  */
 export function assertPropDefinitions(definitions: object): void {
+	const parameters = { queryParam: new Map(), bodyParam: new Map() } as const;
 	for (const key of Object.keys(definitions)) {
 		if (!isDataField(definitions, key)) {
 			throw new ForgeFrameError(
@@ -90,7 +94,32 @@ export function assertPropDefinitions(definitions: object): void {
 			);
 		}
 		assertWrappedPropDefinition(key, definition);
+		for (const option of PARAMETER_OPTIONS) {
+			const name = readParameterName(key, definition, option);
+			if (name === undefined) continue;
+			const owner = parameters[option].get(name);
+			if (owner !== undefined) {
+				throw new ForgeFrameError(
+					"VALIDATION",
+					`Props "${owner}" and "${key}" both use the ${option} name "${name}"; one value would overwrite the other`,
+				);
+			}
+			parameters[option].set(name, key);
+		}
 	}
+}
+
+const PARAMETER_OPTIONS = ["queryParam", "bodyParam"] as const;
+
+/** The query or body parameter name a checked definition sends, if any. */
+function readParameterName(
+	key: string,
+	definition: object,
+	option: (typeof PARAMETER_OPTIONS)[number],
+): string | undefined {
+	const parameter = readDeclaredField(definition, option);
+	if (parameter === true) return key;
+	return typeof parameter === "string" ? parameter : undefined;
 }
 
 /** Wrapped-definition fields that delivery reads again after this check. */
@@ -120,6 +149,24 @@ function assertWrappedPropDefinition(key: string, definition: object): void {
 			);
 		}
 	}
+	const unknownField = Reflect.ownKeys(definition).find(
+		(field) =>
+			!(DELIVERY_FIELDS as readonly PropertyKey[]).includes(field) &&
+			hasOwnDeclaredField(definition, field),
+	);
+	if (unknownField !== undefined) {
+		throw new ForgeFrameError(
+			"VALIDATION",
+			`Prop "${key}" has the unknown option "${String(unknownField)}". A wrapped definition accepts only ${DELIVERY_FIELDS.join(", ")}.`,
+		);
+	}
+	const sendToHost = readDeclaredField(definition, "sendToHost");
+	if (sendToHost !== undefined && typeof sendToHost !== "boolean") {
+		throw new ForgeFrameError(
+			"VALIDATION",
+			`Prop "${key}" sendToHost must be a boolean`,
+		);
+	}
 	if (!isStandardSchema(readDeclaredField(definition, "schema"))) {
 		throw new ForgeFrameError(
 			"VALIDATION",
@@ -136,7 +183,7 @@ function assertWrappedPropDefinition(key: string, definition: object): void {
 		}
 		assertOriginMatcher(deliverTo, `Prop "${key}" deliverTo`);
 	}
-	for (const option of ["queryParam", "bodyParam"] as const) {
+	for (const option of PARAMETER_OPTIONS) {
 		const parameter = readDeclaredField(definition, option);
 		if (
 			parameter !== undefined &&
@@ -146,6 +193,16 @@ function assertWrappedPropDefinition(key: string, definition: object): void {
 			throw new ForgeFrameError(
 				"VALIDATION",
 				`Prop "${key}" ${option} must be a boolean or a non-empty parameter name. To encode a value, pass the encoded string as its own prop, or build the URL in a url(props) function.`,
+			);
+		}
+		if (
+			deliverTo === "same-origin" &&
+			parameter !== undefined &&
+			parameter !== false
+		) {
+			throw new ForgeFrameError(
+				"VALIDATION",
+				`Prop "${key}" cannot combine ${option} with deliverTo: 'same-origin'; a same-origin prop never appears in the URL or POST body`,
 			);
 		}
 	}

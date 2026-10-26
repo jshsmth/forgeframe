@@ -156,7 +156,7 @@ describe("Bootstrap protocol version", () => {
 
 			expect(() =>
 				activeHarness.bootstrapHost({ amount: prop.number() }),
-			).toThrow(message);
+			).toThrow(expect.objectContaining({ code: "VERSION_MISMATCH", message }));
 			await activeHarness.flushMessages();
 
 			expect(posted).not.toHaveBeenCalled();

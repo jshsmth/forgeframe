@@ -29,6 +29,8 @@ function describeCode(code: ForgeFrameErrorCode): string {
 			return "Try again";
 		case "VALIDATION":
 			return "Fix the configuration";
+		case "VERSION_MISMATCH":
+			return "Upgrade both sides";
 		case "ORIGIN_REJECTED":
 			return "This page cannot be embedded here";
 		case "CANCELLED":

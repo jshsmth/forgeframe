@@ -30,6 +30,8 @@ const INIT_HOST_CALL_SHAPE =
 const REMOVED_INIT_HOST_OPTIONS: Readonly<Record<string, string>> = {
 	allowedConsumerDomains:
 		'initHost() option "allowedConsumerDomains" was renamed to consumerOrigins.',
+	deferInit:
+		'initHost() option "deferInit" was replaced. Pass autoInit: false, then call host.init() when the host is ready.',
 };
 
 /** What a valid `initHost()` call starts the host with. */

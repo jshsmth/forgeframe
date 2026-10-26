@@ -431,9 +431,19 @@ describe("Host controls and routing integration", () => {
 			]),
 		);
 
-		await expect(host.export({ ...replacement, metadata: 1n })).rejects.toThrow(
-			/BigInt/,
-		);
+		await expect(
+			host.export({ ...replacement, metadata: 1n }),
+		).rejects.toMatchObject({
+			code: "VALIDATION",
+			message: expect.stringMatching(/BigInt/),
+			cause: expect.any(TypeError),
+		});
+		await expect(
+			host.resize({ width: 1n as unknown as number, height: 10 }),
+		).rejects.toMatchObject({
+			code: "VALIDATION",
+			cause: expect.any(TypeError),
+		});
 		expect(instance.exports).toBe(previous);
 		await expect(previous.m0?.()).resolves.toBe(0);
 		await expect(previous.m499?.()).resolves.toBe(499);

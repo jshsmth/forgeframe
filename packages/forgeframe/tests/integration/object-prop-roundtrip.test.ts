@@ -545,9 +545,11 @@ describe("JSON encoder conversion", () => {
 		await expect(
 			instance.updateProps({ payload: { custom: new CyclicValue() } }),
 		).rejects.toThrow("Circular reference detected");
-		await expect(
-			instance.updateProps({ payload: { custom: Object(1n) } }),
-		).rejects.toThrow(TypeError);
+		const boxed = await instance
+			.updateProps({ payload: { custom: Object(1n) } })
+			.catch((error: unknown) => error);
+		expect(boxed).toMatchObject({ code: "VALIDATION" });
+		expect((boxed as Error).cause).toBeInstanceOf(TypeError);
 		expect(hostProps.payload).toEqual({ stage: "initial" });
 		await instance.updateProps({ payload: { stage: "recovered" } });
 		expect(hostProps.payload).toEqual({ stage: "recovered" });

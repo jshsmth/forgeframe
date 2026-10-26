@@ -455,10 +455,11 @@ export class Messenger {
 		origin: string,
 	): Promise<void> {
 		const handler = this.handlers.get(message.name);
-		if (!handler) return;
 		let responseData: unknown;
 		let responseError: Error | undefined;
 		try {
+			// A peer on another version fails fast instead of at its timeout.
+			if (!handler) throw unsupportedRequest(message.name);
 			responseData = await this.executeRequest(
 				handler,
 				message.data,
@@ -570,4 +571,12 @@ export class Messenger {
 		this.pending.clear();
 		this.handlers.clear();
 	}
+}
+
+/** The reply to a request this window has no handler for. */
+function unsupportedRequest(name: string): ForgeFrameError {
+	return new ForgeFrameError(
+		"VERSION_MISMATCH",
+		`This window's ForgeFrame does not support the "${name}" request; run the same ForgeFrame version in both windows`,
+	);
 }

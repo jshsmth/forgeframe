@@ -53,7 +53,10 @@ function readInitialPayload(): WindowNamePayload | null {
 		// A stale name with no parent or opener has no consumer to upgrade, so it
 		// starts nothing, as a current payload without a consumer window does.
 		if (!hasConsumerWindow()) return null;
-		throw new ForgeFrameError("VALIDATION", describeUnsupportedPayload(result));
+		throw new ForgeFrameError(
+			"VERSION_MISMATCH",
+			describeUnsupportedPayload(result),
+		);
 	}
 	if (result.kind === "invalid") {
 		console.error("Failed to parse ForgeFrame payload from window.name");

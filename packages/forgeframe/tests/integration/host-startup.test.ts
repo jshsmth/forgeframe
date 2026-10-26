@@ -171,9 +171,9 @@ describe("Explicit host start-up", () => {
 				call: (component: unknown) =>
 					callInitHost(component, {
 						consumerOrigins: "*",
-						deferInit: true,
+						autoStart: true,
 					}),
-				message: 'initHost() does not accept the "deferInit" option',
+				message: 'initHost() does not accept the "autoStart" option',
 			},
 			{
 				label: "a v1 definitions map",
@@ -217,6 +217,16 @@ describe("Explicit host start-up", () => {
 					}),
 				message:
 					"initHost() autoInit must be a boolean. Use initHost(Component, { consumerOrigins })",
+			},
+			{
+				label: "the removed deferInit option",
+				call: (component: unknown) =>
+					callInitHost(component, {
+						consumerOrigins: "*",
+						deferInit: true,
+					}),
+				message:
+					'initHost() option "deferInit" was replaced. Pass autoInit: false, then call host.init() when the host is ready.',
 			},
 			{
 				label: "a third positional argument",

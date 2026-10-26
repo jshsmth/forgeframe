@@ -3,6 +3,7 @@
  */
 
 import { ForgeFrameError } from "../errors";
+import { stringifyForWire } from "./json";
 import { isDate, isPlainObject } from "./realm-values";
 
 interface DateWireValue {
@@ -206,6 +207,6 @@ function unboxJsonPrimitive(value: object): unknown {
 	// An empty property list skips record fields entirely, while native JSON
 	// still unboxes primitive wrappers. Return that conversion so coercion
 	// hooks run once, including for wrappers with customized prototypes.
-	const json = JSON.stringify({ toJSON: () => value }, []);
+	const json = stringifyForWire({ toJSON: () => value }, "a value", []);
 	return json === "{}" || json === undefined ? value : JSON.parse(json);
 }

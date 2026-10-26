@@ -125,6 +125,7 @@ describe("Origin naming and error codes", () => {
 				create({
 					tag: "reserved-then",
 					url: HOST_URL,
+					// @ts-expect-error then is a reserved prop name
 					// biome-ignore lint/suspicious/noThenProperty: checks the reserved name
 					props: { then: prop.function() },
 				}),

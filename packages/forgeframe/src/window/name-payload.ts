@@ -192,7 +192,13 @@ function encodePayload(payload: WindowNamePayload): string {
 		return encoded;
 	} catch (err) {
 		if (hasErrorCode(err, "CAPACITY")) throw err;
-		throw new ForgeFrameError("VALIDATION", `Failed to encode payload: ${err}`);
+		throw new ForgeFrameError(
+			"VALIDATION",
+			`Failed to encode payload: ${err}`,
+			{
+				cause: err,
+			},
+		);
 	}
 }
 
