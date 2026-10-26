@@ -21,10 +21,12 @@ import type {
 } from "../types/runtime";
 import {
 	callReactCallback,
+	createMountState,
 	isCurrentSyncState,
 	isHeldUpdateCancellation,
 	mountReactInstance,
-	type ReactInstanceRefs,
+	type ReactInstance,
+	type ReactMountState,
 	retargetHandle,
 } from "./react/lifecycle";
 import {
@@ -32,24 +34,6 @@ import {
 	enqueuePropSnapshot,
 	snapshotProps,
 } from "./react/prop-sync";
-
-/**
- * The rendered ForgeFrame instance that `instanceRef` receives.
- *
- * @remarks
- * The wrapper owns rendering and prop synchronization, so the handle leaves
- * out `render()` and `updateProps()`. `close()` closes the instance through
- * the wrapper, which then calls `onClose` and clears `instanceRef`.
- *
- * @typeParam Exports - What the host exports, from the component's `exports`
- * schema
- *
- * @public
- */
-export type ReactInstance<Exports = unknown> = Pick<
-	ComponentInstance<Record<string, unknown>, Record<string, unknown>, Exports>,
-	"uid" | "exports" | "event" | "close" | "focus" | "resize" | "show" | "hide"
->;
 
 /**
  * Props every wrapper from {@link createReactComponent} accepts, besides the
@@ -136,7 +120,12 @@ export type ReactComponentOf<C extends AnyComponent> =
 			RefAttributes<HTMLDivElement>
 	>;
 
-/** Props consumed by the wrapper and never forwarded to the component. */
+export type { ReactInstance };
+
+/**
+ * Props consumed by the wrapper or by React, never forwarded to the
+ * component. React keeps `key` and `ref` out of the props it passes.
+ */
 const RESERVED_WRAPPER_PROPS = [
 	"onRendered",
 	"onError",
@@ -146,7 +135,12 @@ const RESERVED_WRAPPER_PROPS = [
 	"className",
 	"style",
 	"ref",
-] as const;
+	"key",
+] as const satisfies readonly (keyof ReactComponentProps | "ref" | "key")[];
+
+const RESERVED_WRAPPER_PROP_NAMES: ReadonlySet<string> = new Set(
+	RESERVED_WRAPPER_PROPS,
+);
 
 /** All props the wrapper body receives. @internal */
 type WrapperProps = Record<string, unknown> & ReactComponentProps;
@@ -197,35 +191,22 @@ function assertReactComponentArguments(
 }
 
 /**
- * Splits the wrapper's own props from the props it forwards to the component.
+ * Splits the wrapper's own props from the props it forwards to the component,
+ * by the one list of reserved names.
  * @internal
  */
 function splitWrapperProps(props: WrapperProps): {
 	wrapperProps: ReactComponentProps;
 	componentProps: Record<string, unknown>;
 } {
-	const {
-		onRendered,
-		onError,
-		onClose,
-		context,
-		instanceRef,
-		className,
-		style,
-		...componentProps
-	} = props;
-	return {
-		wrapperProps: {
-			onRendered,
-			onError,
-			onClose,
-			context,
-			instanceRef,
-			className,
-			style,
-		},
-		componentProps,
-	};
+	const wrapperProps: Record<string, unknown> = {};
+	const componentProps: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(props)) {
+		(RESERVED_WRAPPER_PROP_NAMES.has(key) ? wrapperProps : componentProps)[
+			key
+		] = value;
+	}
+	return { wrapperProps: wrapperProps as ReactComponentProps, componentProps };
 }
 
 /**
@@ -374,7 +355,7 @@ export function createReactComponent(
 				wrapperProps;
 
 			const containerRef = useRef<HTMLDivElement | null>(null);
-			const mountRefsRef = useRef<ReactInstanceRefs>(null);
+			const mountStateRef = useRef<ReactMountState>(null);
 			const onRenderedRef = useRef(onRendered);
 			const onErrorRef = useRef(onError);
 			const onCloseRef = useRef(onClose);
@@ -384,13 +365,8 @@ export function createReactComponent(
 			// Lazily created once; React re-attaches only when the forwarded ref changes.
 			containerRefCache.current ??= createContainerRefCache(containerRef);
 			const attachContainer = containerRefCache.current(ref);
-			mountRefsRef.current ??= {
-				current: null,
-				published: null,
-				target: instanceRef,
-				targetCleanup: undefined,
-			};
-			const mountRefs = mountRefsRef.current;
+			mountStateRef.current ??= createMountState(instanceRef);
+			const mountState = mountStateRef.current;
 
 			useEffect(() => {
 				onRenderedRef.current = onRendered;
@@ -398,7 +374,7 @@ export function createReactComponent(
 				onCloseRef.current = onClose;
 			}, [onRendered, onError, onClose]);
 
-			// biome-ignore lint/correctness/useExhaustiveDependencies: an instance mounts with its first committed props and remounts only for a new context; later props sync through the queue, and mountRefs is created once.
+			// biome-ignore lint/correctness/useExhaustiveDependencies: an instance mounts with its first committed props and remounts only for a new context; later props sync through the queue, and mountState is created once.
 			useEffect(() => {
 				const container = containerRef.current;
 				if (!container) return;
@@ -409,7 +385,7 @@ export function createReactComponent(
 					snapshotProps(componentProps),
 					container,
 					context,
-					mountRefs,
+					mountState,
 					{
 						onRendered: () => onRenderedRef.current?.(),
 						onClose: () => onCloseRef.current?.(),
@@ -419,18 +395,18 @@ export function createReactComponent(
 				);
 			}, [context]);
 
-			// biome-ignore lint/correctness/useExhaustiveDependencies: mountRefs is created once per wrapper and never replaced.
+			// biome-ignore lint/correctness/useExhaustiveDependencies: mountState is created once per wrapper and never replaced.
 			useEffect(() => {
-				retargetHandle(mountRefs, instanceRef);
+				retargetHandle(mountState, instanceRef);
 			}, [instanceRef]);
 
 			useEffect(() => {
-				const state = mountRefs.current;
-				if (!state || !isCurrentSyncState(state, mountRefs)) return;
+				const state = mountState.syncState;
+				if (!state || !isCurrentSyncState(state, mountState)) return;
 				if (enqueuePropSnapshot(state, snapshotProps(componentProps))) {
 					void drainPropUpdates(
 						state,
-						(candidate) => isCurrentSyncState(candidate, mountRefs),
+						(candidate) => isCurrentSyncState(candidate, mountState),
 						(err) => {
 							if (!isHeldUpdateCancellation(state, err))
 								reportReactError(onErrorRef.current, err);

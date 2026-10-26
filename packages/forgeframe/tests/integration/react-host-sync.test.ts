@@ -918,6 +918,17 @@ describe("React commits across the host boundary", () => {
 			"VALIDATION",
 			'"onClose", "instanceRef"',
 		);
+		// React consumes `key` itself, so the wrapper could never forward it.
+		const KeyProp = create({
+			tag: "react-reserved-key",
+			url: "https://host.example.com/widget",
+			props: { key: prop.string() },
+		});
+		expectCode(
+			catchError(() => createReactComponent(KeyProp)),
+			"VALIDATION",
+			'"key"',
+		);
 	});
 });
 

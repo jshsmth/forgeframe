@@ -94,12 +94,12 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
 			},
 			getPeerInstances: (options) =>
 				this.options.controls.getPeerInstances(options),
-		} as HostProps<P>;
+		} as Omit<HostProps<P>, "consumerOrigin">;
 		Object.defineProperty(hostProps, "consumerOrigin", {
 			value: this.options.getConsumerOrigin(),
 			enumerable: true,
 		});
-		return hostProps;
+		return hostProps as HostProps<P>;
 	}
 
 	/**

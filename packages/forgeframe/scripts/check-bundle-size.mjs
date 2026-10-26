@@ -23,7 +23,7 @@ function staticGraph(file, seen = new Set()) {
 	seen.add(file);
 	const code = readFileSync(file, "utf8");
 	for (const [, specifier] of code.matchAll(
-		/(?:^|[;\s}])(?:import|export)\s*(?:[^"'`;]*?\sfrom\s*)?["'](\.{1,2}\/[^"']+)["']/g,
+		/(?:^|[;\s}])(?:import|export)\s*(?:[^"'`;]*?(?:\s|\})from\s*)?["'](\.{1,2}\/[^"']+)["']/g,
 	)) {
 		staticGraph(resolve(dirname(file), specifier), seen);
 	}

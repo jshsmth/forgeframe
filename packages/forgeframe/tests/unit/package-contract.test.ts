@@ -142,9 +142,10 @@ describe("package contract", () => {
 			try {
 				const filler = (bytes: number) => randomBytes(bytes).toString("base64");
 				writeFileSync(join(dir, "shared-abc.js"), filler((shared * 3) / 4));
+				// Compact, as a minifier writes it.
 				writeFileSync(
 					join(dir, "forgeframe.js"),
-					`import { a } from "./shared-abc.js";\n`,
+					`import{a as e}from"./shared-abc.js";\n`,
 				);
 				writeFileSync(
 					join(dir, "react.js"),

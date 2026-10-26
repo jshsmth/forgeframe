@@ -920,7 +920,7 @@ The React component accepts your component props alongside these wrapper props:
 
 The handle `instanceRef` receives (`ReactInstance<Exports>`) has the instance's `uid`, `exports`, `event` (`on` and `once`, including the `exports` event), `resize()`, `focus()`, `show()`, `hide()` and `close()`. It has no `render()` or `updateProps()`: the wrapper renders the instance and sends prop changes itself. It is set only after `render()` resolves, so every method works on it; while the frame loads it is `null`.
 
-These names are reserved: `createReactComponent` throws a `VALIDATION` error for a component that declares a prop named `onRendered`, `onError`, `onClose`, `context`, `instanceRef`, `className`, `style` or `ref`. Give such a prop another name, such as `onHostClose`.
+These names are reserved: `createReactComponent` throws a `VALIDATION` error for a component that declares a prop named `onRendered`, `onError`, `onClose`, `context`, `instanceRef`, `className`, `style`, `ref` or `key` (React keeps `ref` and `key` for itself). Give such a prop another name, such as `onHostClose`.
 
 Removing a prop from your JSX resets it exactly as `updateProps({ key: undefined })` does, and passing `undefined` counts as leaving the prop out, so `theme={dark ? 'dark' : undefined}` sends no update when it switches between the two. Commits made while the frame is still loading reach the host in order once it has started. After the instance closes, prop changes are not sent until a new instance renders (change `context` or the React `key`).
 

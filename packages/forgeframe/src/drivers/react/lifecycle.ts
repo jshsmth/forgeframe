@@ -3,17 +3,34 @@ import type { ContextType } from "../../constants";
 import { hasErrorCode } from "../../errors";
 import type { ComponentInstance } from "../../types/runtime";
 import { normalizeError } from "../../utils/error";
-import type { ReactInstance } from "../react";
 import { deactivatePropSyncState, type ReactPropSyncState } from "./prop-sync";
+
+/**
+ * The rendered ForgeFrame instance that `instanceRef` receives.
+ *
+ * @remarks
+ * The wrapper owns rendering and prop synchronization, so the handle leaves
+ * out `render()` and `updateProps()`. `close()` closes the instance through
+ * the wrapper, which then calls `onClose` and clears `instanceRef`.
+ *
+ * @typeParam Exports - What the host exports, from the component's `exports`
+ * schema
+ *
+ * @public
+ */
+export type ReactInstance<Exports = unknown> = Pick<
+	ComponentInstance<Record<string, unknown>, Record<string, unknown>, Exports>,
+	"uid" | "exports" | "event" | "close" | "focus" | "resize" | "show" | "hide"
+>;
 
 /**
  * Mount state the React wrapper owns across renders: the current mount's
  * sync state and where its instance handle is published.
  * @internal
  */
-export interface ReactInstanceRefs {
+export interface ReactMountState {
 	/** Sync state of the current mount; `null` before mounting and after cleanup. */
-	current: ReactPropSyncState | null;
+	syncState: ReactPropSyncState | null;
 	/** The handle the target currently holds, or `null`. */
 	published: ReactInstance | null;
 	/** The latest `instanceRef` prop. */
@@ -34,12 +51,24 @@ export function isHeldUpdateCancellation(
 	return !state.rendered && hasErrorCode(error, "CLOSED");
 }
 
+/** Creates the wrapper's mount state, with nothing mounted or published yet. @internal */
+export function createMountState(
+	target: Ref<ReactInstance> | undefined,
+): ReactMountState {
+	return {
+		syncState: null,
+		published: null,
+		target,
+		targetCleanup: undefined,
+	};
+}
+
 /** Rejects completed work from an obsolete, closed, or unmounted instance. @internal */
 export function isCurrentSyncState(
 	state: ReactPropSyncState,
-	refs: Pick<ReactInstanceRefs, "current">,
+	mount: Pick<ReactMountState, "syncState">,
 ): boolean {
-	return state.active && refs.current === state;
+	return state.active && mount.syncState === state;
 }
 
 /** Creates isolated state for one mounted instance without performing lifecycle work. */
@@ -63,9 +92,7 @@ function createPropSyncState(
  * and has no `render()` or `updateProps()`, which the wrapper owns.
  * @internal
  */
-export function createInstanceHandle(
-	instance: ComponentInstance,
-): ReactInstance {
+function createInstanceHandle(instance: ComponentInstance): ReactInstance {
 	return Object.freeze({
 		uid: instance.uid,
 		get exports() {
@@ -85,7 +112,7 @@ export function createInstanceHandle(
  * cleanup is returned so that it can run in place of a `null` call.
  * @internal
  */
-export function assignRef<T>(
+function assignRef<T>(
 	target: Ref<T> | undefined,
 	value: T | null,
 ): (() => void) | undefined {
@@ -100,7 +127,7 @@ export function assignRef<T>(
 }
 
 /** Clears a ref, running a callback's cleanup instead of calling it with `null`. @internal */
-export function clearRef<T>(
+function clearRef<T>(
 	target: Ref<T> | undefined,
 	cleanup: (() => void) | undefined,
 ): void {
@@ -109,24 +136,21 @@ export function clearRef<T>(
 }
 
 /** Gives the target a handle. @internal */
-export function publishHandle(
-	refs: ReactInstanceRefs,
-	handle: ReactInstance,
-): void {
-	refs.published = handle;
-	refs.targetCleanup = assignRef(refs.target, handle);
+function publishHandle(mount: ReactMountState, handle: ReactInstance): void {
+	mount.published = handle;
+	mount.targetCleanup = assignRef(mount.target, handle);
 }
 
 /** Clears the target if it still holds this handle. @internal */
-export function unpublishHandle(
-	refs: ReactInstanceRefs,
+function unpublishHandle(
+	mount: ReactMountState,
 	handle: ReactInstance | null,
 ): void {
-	if (handle === null || refs.published !== handle) return;
-	refs.published = null;
-	const cleanup = refs.targetCleanup;
-	refs.targetCleanup = undefined;
-	clearRef(refs.target, cleanup);
+	if (handle === null || mount.published !== handle) return;
+	mount.published = null;
+	const cleanup = mount.targetCleanup;
+	mount.targetCleanup = undefined;
+	clearRef(mount.target, cleanup);
 }
 
 /**
@@ -135,14 +159,14 @@ export function unpublishHandle(
  * @internal
  */
 export function retargetHandle(
-	refs: ReactInstanceRefs,
+	mount: ReactMountState,
 	target: Ref<ReactInstance> | undefined,
 ): void {
-	if (refs.target === target) return;
-	const handle = refs.published;
-	unpublishHandle(refs, handle);
-	refs.target = target;
-	if (handle) publishHandle(refs, handle);
+	if (mount.target === target) return;
+	const handle = mount.published;
+	unpublishHandle(mount, handle);
+	mount.target = target;
+	if (handle) publishHandle(mount, handle);
 }
 
 /**
@@ -172,11 +196,11 @@ export function callReactCallback(name: string, run: () => unknown): void {
  * Owns one mounted instance's subscriptions, handle and prop synchronization.
  *
  * @remarks
- * Render completion affects state only while the refs still belong to this
- * mount: it publishes the handle, then calls `onRendered`. A close clears the
- * handle before `onClose`. Cleanup deactivates queued work before initiating
- * close and clears only refs still owned by this mount, protecting a
- * replacement mount.
+ * Render completion affects state only while the mount state still belongs
+ * to this mount: it publishes the handle, then calls `onRendered`. A close
+ * clears the handle before `onClose`. Cleanup deactivates queued work before
+ * initiating close and clears only state still owned by this mount,
+ * protecting a replacement mount.
  *
  * @returns Effect cleanup, or `undefined` after a reported construction failure.
  * @internal
@@ -186,7 +210,7 @@ export function mountReactInstance(
 	initialProps: Record<string, unknown>,
 	container: HTMLDivElement,
 	context: ContextType | undefined,
-	refs: ReactInstanceRefs,
+	mount: ReactMountState,
 	observers: {
 		onRendered: () => unknown;
 		onClose: () => void | Promise<void>;
@@ -205,11 +229,11 @@ export function mountReactInstance(
 	}
 	const syncState = createPropSyncState(instance, initialProps);
 	const handle = createInstanceHandle(instance);
-	refs.current = syncState;
+	mount.syncState = syncState;
 
 	const unsubscribeClose = instance.event.once("close", () => {
 		deactivatePropSyncState(syncState);
-		unpublishHandle(refs, handle);
+		unpublishHandle(mount, handle);
 		return observers.onClose();
 	});
 	// A failed render can also arrive on the `error` event; report it once.
@@ -221,13 +245,13 @@ export function mountReactInstance(
 
 	instance.render(container, context).then(
 		() => {
-			if (!isCurrentSyncState(syncState, refs)) return;
+			if (!isCurrentSyncState(syncState, mount)) return;
 			syncState.rendered = true;
-			publishHandle(refs, handle);
+			publishHandle(mount, handle);
 			callReactCallback("onRendered", observers.onRendered);
 		},
 		(err: Error) => {
-			if (!isCurrentSyncState(syncState, refs)) return;
+			if (!isCurrentSyncState(syncState, mount)) return;
 			deactivatePropSyncState(syncState);
 			observers.setError(err);
 			if (!reported.has(err)) observers.onError(err);
@@ -239,7 +263,7 @@ export function mountReactInstance(
 		instance.close().catch(() => undefined);
 		unsubscribeClose();
 		unsubscribeError();
-		unpublishHandle(refs, handle);
-		if (refs.current === syncState) refs.current = null;
+		unpublishHandle(mount, handle);
+		if (mount.syncState === syncState) mount.syncState = null;
 	};
 }
