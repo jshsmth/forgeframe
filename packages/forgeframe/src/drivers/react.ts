@@ -13,13 +13,13 @@ import {
 import type { ContextType } from "../constants";
 import { getComponentOptions } from "../core/component-registry";
 import { ForgeFrameError } from "../errors";
-import { hasOwnDeclaredField } from "../props/definition-checks";
 import type {
 	AnyComponent,
 	ComponentInstance,
 	ExportsOf,
 	InputOf,
 } from "../types/runtime";
+import { hasOwnDeclaredField } from "../utils/own-field";
 import {
 	assignRef,
 	callReactCallback,

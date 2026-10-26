@@ -10,7 +10,6 @@
 
 import { CONTEXT } from "../constants";
 import { ForgeFrameError } from "../errors";
-import { hasOwnDeclaredField } from "../props/definition-checks";
 import { isStandardSchema } from "../props/schema";
 import {
 	assertIframeAttributeNames,
@@ -27,6 +26,7 @@ import type {
 } from "../types/runtime";
 import { hasBrowserWindow } from "../utils/browser";
 import { assertOriginMatcher } from "../utils/origin-pattern";
+import { hasOwnDeclaredField } from "../utils/own-field";
 import { resolveComponentHostUrl } from "../utils/url";
 import {
 	clearIndexedInstances,

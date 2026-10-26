@@ -8,7 +8,14 @@
 
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	copyFileSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -45,6 +52,32 @@ function readText(path: string): string {
 
 function readJson<T>(path: string): T {
 	return JSON.parse(readText(path)) as T;
+}
+
+/**
+ * Runs a release script from a copy of the package that has the given
+ * version, since the scripts read the version from `../package.json`.
+ */
+function runReleaseScript(
+	script: string,
+	version: string,
+	env: Record<string, string> = {},
+) {
+	const dir = mkdtempSync(join(tmpdir(), "forgeframe-release-"));
+	try {
+		mkdirSync(join(dir, "scripts"));
+		copyFileSync(
+			resolve(packageRoot, "scripts", script),
+			join(dir, "scripts", script),
+		);
+		writeFileSync(join(dir, "package.json"), JSON.stringify({ version }));
+		return spawnSync(process.execPath, [join(dir, "scripts", script)], {
+			encoding: "utf8",
+			env: { ...process.env, ...env },
+		});
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
 }
 
 describe("package contract", () => {
@@ -125,28 +158,45 @@ describe("package contract", () => {
 	});
 
 	it.each([
-		{ label: "within", shared: 1024, react: 1024, failing: [] },
+		{
+			label: "within",
+			shared: 1024,
+			react: 1024,
+			rootImport: `import{a as e}from"./shared-abc.js";`,
+			failing: [],
+		},
 		// Random bytes do not compress, so these exceed both budgets. The root
-		// entry counts the shared chunk it imports.
+		// entry counts the shared chunk it imports, in either minified form.
 		{
 			label: "over",
 			shared: 140 * 1024,
 			react: 1024,
+			rootImport: `import{a as e}from"./shared-abc.js";`,
 			failing: ["forgeframe.js"],
 		},
-		{ label: "over", shared: 1024, react: 20 * 1024, failing: ["react.js"] },
+		{
+			label: "over",
+			shared: 140 * 1024,
+			react: 1024,
+			rootImport: `export*from"./shared-abc.js";`,
+			failing: ["forgeframe.js"],
+		},
+		{
+			label: "over",
+			shared: 1024,
+			react: 20 * 1024,
+			rootImport: `import{a as e}from"./shared-abc.js";`,
+			failing: ["react.js"],
+		},
 	])(
-		"should check each entry's size budget, with its shared chunks, for a build $label budget",
-		({ shared, react, failing }) => {
+		"should check each entry's size budget, with its shared chunks, for a build $label budget ($rootImport)",
+		({ shared, react, rootImport, failing }) => {
 			const dir = mkdtempSync(join(tmpdir(), "forgeframe-size-"));
 			try {
 				const filler = (bytes: number) => randomBytes(bytes).toString("base64");
 				writeFileSync(join(dir, "shared-abc.js"), filler((shared * 3) / 4));
 				// Compact, as a minifier writes it.
-				writeFileSync(
-					join(dir, "forgeframe.js"),
-					`import{a as e}from"./shared-abc.js";\n`,
-				);
+				writeFileSync(join(dir, "forgeframe.js"), `${rootImport}\n`);
 				writeFileSync(
 					join(dir, "react.js"),
 					`import "./shared-abc.js";\n${filler((react * 3) / 4)}`,
@@ -170,27 +220,17 @@ describe("package contract", () => {
 	);
 
 	it.each([
-		{ refType: "tag", matching: true, succeeds: true },
-		{ refType: "tag", matching: false, succeeds: false },
-		{ refType: "branch", matching: true, succeeds: false },
+		{ version: "2.0.0", refType: "tag", matching: true, succeeds: true },
+		{ version: "2.0.0-beta.1", refType: "tag", matching: true, succeeds: true },
+		{ version: "2.0.0", refType: "tag", matching: false, succeeds: false },
+		{ version: "2.0.0", refType: "branch", matching: true, succeeds: false },
 	])(
-		"should validate release refs: $refType, matching version $matching",
-		({ refType, matching, succeeds }) => {
-			const { version } = readJson<ForgeFramePackageJson>(
-				resolve(packageRoot, "package.json"),
-			);
-			const result = spawnSync(
-				process.execPath,
-				[resolve(packageRoot, "scripts/check-release-tag.mjs")],
-				{
-					encoding: "utf8",
-					env: {
-						...process.env,
-						GITHUB_REF_TYPE: refType,
-						GITHUB_REF_NAME: matching ? `v${version}` : `v${version}-wrong`,
-					},
-				},
-			);
+		"should validate release refs: $version, $refType, matching version $matching",
+		({ version, refType, matching, succeeds }) => {
+			const result = runReleaseScript("check-release-tag.mjs", version, {
+				GITHUB_REF_TYPE: refType,
+				GITHUB_REF_NAME: matching ? `v${version}` : `v${version}-wrong`,
+			});
 			expect(result.error).toBeUndefined();
 			expect(result.status).toBe(succeeds ? 0 : 1);
 			if (!succeeds) {
@@ -200,4 +240,31 @@ describe("package contract", () => {
 			}
 		},
 	);
+
+	it.each([
+		{ version: "2.0.0", tag: "latest" },
+		{ version: "2.0.1", tag: "latest" },
+		{ version: "2.0.0-beta.1", tag: "next" },
+		{ version: "2.1.0-rc.0", tag: "next" },
+	])("should choose the npm dist-tag $tag for $version", ({ version, tag }) => {
+		const result = runReleaseScript("release-dist-tag.mjs", version);
+		expect(result.error).toBeUndefined();
+		expect(result.status).toBe(0);
+		expect(result.stdout).toBe(`tag=${tag}\n`);
+	});
+
+	it("should publish with the chosen dist-tag and mark pre-releases on GitHub", () => {
+		const workflow = readText(
+			resolve(repoRoot, ".github/workflows/release.yml"),
+		);
+		expect(workflow).toContain(
+			'node packages/forgeframe/scripts/release-dist-tag.mjs >> "$GITHUB_OUTPUT"',
+		);
+		expect(workflow).toContain(
+			"npm publish -w forgeframe --provenance --tag ${{ steps.dist-tag.outputs.tag }}",
+		);
+		expect(workflow).toContain(
+			"prerelease: ${{ steps.dist-tag.outputs.tag == 'next' }}",
+		);
+	});
 });

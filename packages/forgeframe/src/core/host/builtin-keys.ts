@@ -1,8 +1,6 @@
 import { ForgeFrameError } from "../../errors";
-import {
-	assertPropDefinitions,
-	hasOwnDeclaredField,
-} from "../../props/definition-checks";
+import { assertPropDefinitions } from "../../props/definition-checks";
+import { hasOwnDeclaredField } from "../../utils/own-field";
 
 /**
  * Host-side built-in keys that are reserved on `hostProps`.
