@@ -62,7 +62,7 @@ describe("Bootstrap protocol version", () => {
 		const posted = vi.spyOn(harness.consumerWindow, "postMessage");
 
 		const rendering = instance.render(container);
-		const { hostProps, iframe } = await harness.bootstrapIframeHost(
+		const { host, hostProps, iframe } = await harness.bootstrapIframeHost(
 			container,
 			definitions,
 		);
@@ -84,9 +84,7 @@ describe("Bootstrap protocol version", () => {
 		expect(init).toHaveLength(1);
 		expect(init[0]?.data).toEqual({ sessionId: expect.any(String) });
 
-		await expect(
-			hostProps.getPeerInstances({ allTags: true }),
-		).resolves.toEqual([]);
+		await expect(host.getPeerInstances({ allTags: true })).resolves.toEqual([]);
 		const siblings = readPostedRequests(posted).filter(
 			(message) => message?.name === MESSAGE_NAME.GET_PEERS,
 		);

@@ -1,7 +1,7 @@
 /**
  * Dynamic props bar for ForgeFrame Playground
  */
-import { HOST_PROPS_BUILTIN_KEYS } from "../../forgeframe/src/core/host/builtin-keys";
+import { RESERVED_PROP_NAMES } from "../../forgeframe/src/core/host/reserved-props";
 import { requireValue } from "../require-value";
 import { updateConfigurationStatus } from "./configuration-status";
 import { elements } from "./elements";
@@ -308,12 +308,12 @@ export function renderPropsBar(config: PlaygroundConfig) {
 
 			if (
 				!name ||
-				HOST_PROPS_BUILTIN_KEYS.has(name) ||
+				RESERVED_PROP_NAMES.has(name) ||
 				["__proto__", "constructor", "prototype"].includes(name)
 			) {
 				setPropInputError(
 					newPropName,
-					"Enter a name that is not reserved for a host control.",
+					"Enter a name that ForgeFrame does not reserve.",
 				);
 				log("A non-reserved prop name is required", "error");
 				return;

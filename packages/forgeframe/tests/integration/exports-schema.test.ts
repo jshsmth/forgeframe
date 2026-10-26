@@ -43,29 +43,28 @@ describe("Exports schema integration", () => {
 			errors.push(error);
 		});
 		const rendering = instance.render(container);
-		const { hostProps } =
+		const { host } =
 			hostForm === "component"
 				? await harness.bootstrapIframeHost(container, Component)
 				: await harness.bootstrapIframeHost(container, {});
 		await rendering;
-		return { instance, hostProps, errors, activeHarness: harness };
+		return { instance, host, errors, activeHarness: harness };
 	}
 
 	it.each(["tag-agnostic", "component"] as const)(
 		"stores valid exports and keeps exported methods callable (%s host)",
 		async (hostForm) => {
-			const { instance, hostProps, errors, activeHarness } =
-				await renderWithHost(
-					`exports-schema-valid-${hostForm}`,
-					prop.object({
-						ready: prop.boolean(),
-						total: prop.function<() => number>(),
-						createdAt: prop.date(),
-					}),
-					hostForm,
-				);
+			const { instance, host, errors, activeHarness } = await renderWithHost(
+				`exports-schema-valid-${hostForm}`,
+				prop.object({
+					ready: prop.boolean(),
+					total: prop.function<() => number>(),
+					createdAt: prop.date(),
+				}),
+				hostForm,
+			);
 			await activeHarness.withHostGlobalsAsync(() =>
-				hostProps.export({
+				host.export({
 					ready: true,
 					total: () => 42,
 					createdAt: new Date("2026-10-26T00:00:00.000Z"),
@@ -84,7 +83,7 @@ describe("Exports schema integration", () => {
 	);
 
 	it("rejects invalid exports, keeps the previous exports and emits one error", async () => {
-		const { instance, hostProps, errors, activeHarness } = await renderWithHost(
+		const { instance, host, errors, activeHarness } = await renderWithHost(
 			"exports-schema-invalid",
 			prop.object({ ready: prop.boolean() }),
 			"tag-agnostic",
@@ -94,13 +93,11 @@ describe("Exports schema integration", () => {
 			exported.push(exports);
 		});
 		await activeHarness.withHostGlobalsAsync(() =>
-			hostProps.export({ ready: true }),
+			host.export({ ready: true }),
 		);
 		const previous = instance.exports;
 		await expect(
-			activeHarness.withHostGlobalsAsync(() =>
-				hostProps.export({ ready: "yes" }),
-			),
+			activeHarness.withHostGlobalsAsync(() => host.export({ ready: "yes" })),
 		).rejects.toThrow("Validation failed: exports.ready");
 		expect(instance.exports).toBe(previous);
 		expect(instance.exports).toEqual({ ready: true });
@@ -110,14 +107,14 @@ describe("Exports schema integration", () => {
 	});
 
 	it("rejects exports that a transforming schema would change", async () => {
-		const { instance, hostProps, errors, activeHarness } = await renderWithHost(
+		const { instance, host, errors, activeHarness } = await renderWithHost(
 			"exports-schema-transform",
 			z.object({ label: z.string().transform((value) => value.trim()) }),
 			"tag-agnostic",
 		);
 		await expect(
 			activeHarness.withHostGlobalsAsync(() =>
-				hostProps.export({ label: " padded " }),
+				host.export({ label: " padded " }),
 			),
 		).rejects.toThrow(
 			"Validation failed: exports: the exports schema must return the exported value unchanged",
@@ -125,53 +122,51 @@ describe("Exports schema integration", () => {
 		expect(instance.exports).toBeUndefined();
 		expect(errors).toHaveLength(1);
 		await activeHarness.withHostGlobalsAsync(() =>
-			hostProps.export({ label: "trimmed" }),
+			host.export({ label: "trimmed" }),
 		);
 		expect(instance.exports).toEqual({ label: "trimmed" });
 	});
 
 	it("rejects invalid exports locally on a host started from the component", async () => {
-		const { instance, hostProps, errors, activeHarness } = await renderWithHost(
+		const { instance, host, errors, activeHarness } = await renderWithHost(
 			"exports-schema-host-check",
 			prop.object({ ready: prop.boolean() }),
 			"component",
 		);
 		await expect(
 			activeHarness.withHostGlobalsAsync(() =>
-				hostProps.export({ ready: "yes" } as never),
+				host.export({ ready: "yes" } as never),
 			),
 		).rejects.toThrow("Validation failed: exports.ready");
 		// Nothing was sent, so the consumer neither stored nor reported it.
 		expect(instance.exports).toBeUndefined();
 		expect(errors).toEqual([]);
 		await activeHarness.withHostGlobalsAsync(() =>
-			hostProps.export({ ready: true }),
+			host.export({ ready: true }),
 		);
 		expect(instance.exports).toEqual({ ready: true });
 	});
 
 	it("validates a tag-agnostic host's unchecked exports on the consumer", async () => {
-		const { instance, hostProps, errors, activeHarness } = await renderWithHost(
+		const { instance, host, errors, activeHarness } = await renderWithHost(
 			"exports-schema-tag-agnostic",
 			prop.object({ ready: prop.boolean() }),
 			"tag-agnostic",
 		);
 		await expect(
-			activeHarness.withHostGlobalsAsync(() => hostProps.export({ ready: 1 })),
+			activeHarness.withHostGlobalsAsync(() => host.export({ ready: 1 })),
 		).rejects.toThrow("Validation failed: exports.ready");
 		expect(instance.exports).toBeUndefined();
 		expect(errors).toHaveLength(1);
 	});
 
 	it("accepts any exports when the component has no exports schema", async () => {
-		const { instance, hostProps, activeHarness } = await renderWithHost(
+		const { instance, host, activeHarness } = await renderWithHost(
 			"exports-schema-none",
 			undefined,
 			"tag-agnostic",
 		);
-		await activeHarness.withHostGlobalsAsync(() =>
-			hostProps.export(["any", 1]),
-		);
+		await activeHarness.withHostGlobalsAsync(() => host.export(["any", 1]));
 		expect(instance.exports).toEqual(["any", 1]);
 	});
 });

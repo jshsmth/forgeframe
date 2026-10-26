@@ -40,9 +40,9 @@ function respondToDelivery(
 		window.unhandled = []; window.notifications = [];
 		window.addEventListener('unhandledrejection', event => { window.unhandled.push(String(event.reason)); });
 		const host = initHost({props:{count:prop.number(),allowed:prop.string(),restricted:prop.string().optional()}, consumerOrigins:['${consumerOrigin}']});
-		await host.ready; window.received = host.hostProps; window.ready = true;
-		host.hostProps.onProps(async () => { throw new Error('async observer failure'); });
-		host.hostProps.onProps(props => window.notifications.push(props.count));
+		window.received = await host.ready; window.host = host; window.ready = true;
+		host.onProps(async () => { throw new Error('async observer failure'); });
+		host.onProps(props => window.notifications.push(props.count));
 		</script>`,
 		);
 	});
@@ -122,7 +122,7 @@ test.beforeAll(async () => {
 					`<!doctype html><script type="module">
 			import {initHost,prop} from '/library.js';
 			const host = initHost({props:{config:prop.object({onComplete:prop.function(),list:prop.array(prop.function()),date:prop.date()}),label:prop.string().optional()}, consumerOrigins:['${consumerOrigin}']});
-			await host.ready; window.received = host.hostProps; window.ready = true;
+			window.received = await host.ready; window.host = host; window.ready = true;
 			</script>`,
 				);
 			if (req.url === "/record-props") {
@@ -131,9 +131,8 @@ test.beforeAll(async () => {
 					`<!doctype html><script type="module">
 				import {initHost,prop} from '/library.js';
 				const host = initHost({props:{record:prop.any()}, consumerOrigins:['${consumerOrigin}']});
-				await host.ready;
-				window.received = host.hostProps;
-				await host.hostProps.export({record:host.hostProps.record});
+				window.received = await host.ready;
+				await host.export({record:window.received.record});
 				window.ready = true;
 				</script>`,
 				);
@@ -145,8 +144,8 @@ test.beforeAll(async () => {
 				import {initHost} from '/library.js';
 				const host = initHost({consumerOrigins:['${consumerOrigin}']});
 				await host.ready;
-				await host.hostProps.export({ready:true});
-				try { await host.hostProps.export({ready:'yes'}); window.rejection = 'none'; }
+				await host.export({ready:true});
+				try { await host.export({ready:'yes'}); window.rejection = 'none'; }
 				catch (error) { window.rejection = error.message; }
 				window.ready = true;
 				</script>`,
@@ -158,8 +157,8 @@ test.beforeAll(async () => {
 					`<!doctype html><script type="module">
 				import {initHost} from '/library.js';
 				const host = initHost({consumerOrigins:['${consumerOrigin}'], autoInit:false});
-				const props = await host.ready;
-				await props.hide();
+				await host.ready;
+				await host.hide();
 				host.init();
 				window.ready = true;
 				</script>`,
@@ -171,7 +170,7 @@ test.beforeAll(async () => {
 					`<!doctype html><script type="module">
 				import {initHost,prop} from '/library.js';
 				const host = initHost({props:{createdAt:prop.date(), config:prop.any(), record:prop.record(prop.string())}, consumerOrigins:['${consumerOrigin}']});
-				await host.ready; window.received = host.hostProps; window.ready = true;
+				window.received = await host.ready; window.host = host; window.ready = true;
 				</script>`,
 				);
 			}
@@ -182,7 +181,7 @@ test.beforeAll(async () => {
 				import {initHost,prop} from '/library.js';
 				(window.opener || window.parent).postMessage('forgeframe-test-host-started', '${consumerOrigin}');
 				const host = initHost({props:{count:prop.number(),secret:prop.string(),onComplete:prop.function()}, consumerOrigins:['${consumerOrigin}']});
-				await host.ready; window.received = host.hostProps; window.ready = true;
+				window.received = await host.ready; window.host = host; window.ready = true;
 				</script>`,
 				);
 			}
@@ -194,7 +193,7 @@ test.beforeAll(async () => {
 				window.calls = 0;
 				const host = initHost({props:{count:prop.number(),secret:prop.string(),onComplete:prop.function()}, consumerOrigins:['${consumerOrigin}']});
 				await host.ready;
-				await host.hostProps.export({
+				await host.export({
 					destroy: () => { host.destroy(); },
 					value: () => ++window.calls,
 				});
@@ -211,7 +210,7 @@ test.beforeAll(async () => {
 				const resizeTo = window.resizeTo.bind(window);
 				window.resizeTo = (width, height) => { window.resizeCalls.push([width, height]); resizeTo(width, height); };
 				const host = initHost({props:{count:prop.number(),secret:prop.string(),onComplete:prop.function()}, consumerOrigins:['${consumerOrigin}']});
-				await host.ready; window.received = host.hostProps; window.ready = true;
+				window.received = await host.ready; window.host = host; window.ready = true;
 				</script>`,
 				);
 			}
@@ -224,7 +223,7 @@ test.beforeAll(async () => {
 				try { await failed.ready; } catch(error) { window.firstError = error.message; }
 				const host = initHost({props:{count:prop.number(),secret:prop.string(),onComplete:prop.function()}, consumerOrigins:['${consumerOrigin}']});
 				window.reusedFailedHost = host === failed;
-				await host.ready; window.received = host.hostProps; window.ready = true;
+				window.received = await host.ready; window.host = host; window.ready = true;
 				</script>`,
 				);
 			}
@@ -255,8 +254,8 @@ test.beforeAll(async () => {
 				reject = false;
 				const host = initHost(Component, options);
 				window.received = await host.ready;
-				window.sameHostProps = window.received === host.hostProps;
-				window.freshHostProps = host.hostProps !== failed.hostProps;
+				window.sameHostProps = window.received === await host.ready;
+				window.freshHostProps = window.received !== await failed.ready.catch(() => undefined);
 				window.ready = true;
 				</script>`,
 				);
@@ -267,7 +266,7 @@ test.beforeAll(async () => {
 		<script type="module">
 		import {initHost,prop} from '/library.js';
 		const host = initHost({props:{count:prop.number(),secret:prop.string(),onComplete:prop.function()}, consumerOrigins:['${consumerOrigin}']});
-		try { await host.ready; window.received = host.hostProps; window.ready = true; }
+		try { window.received = await host.ready; window.host = host; window.ready = true; }
 		catch(error) { window.readyError = error.message; }
 		</script>`,
 			);
@@ -304,7 +303,7 @@ test.beforeAll(async () => {
 				import {initHost,prop} from "/library.js";
 				const consumerOrigins = ${JSON.stringify(req.url === "/any-consumer" ? "*" : ["https://excluded.example"])};
 				const host = initHost({props:{label:prop.string()}, consumerOrigins});
-				host.ready.then(props => { window.consumerOrigin = props.consumerOrigin; window.label = props.label; window.ready = true; },
+				host.ready.then(props => { window.consumerOrigin = host.consumerOrigin; window.label = props.label; window.ready = true; },
 					error => { window.failure = error.message; });
 				</script>`,
 				);
@@ -314,7 +313,7 @@ test.beforeAll(async () => {
 					`<!doctype html><script type="module">
 				import {initHost} from "/library.js";
 				const host = initHost({consumerOrigins:["${consumerOrigin}"]});
-				await host.ready; window.received = host.hostProps; window.ready = true;
+				window.received = await host.ready; window.host = host; window.ready = true;
 				</script>`,
 				);
 			respond(
@@ -971,7 +970,7 @@ test("preserves foreign-window dates and ordinary records", async ({
 		await hostFrame.evaluate(() => {
 			const props = (
 				window as unknown as {
-					received: import("../../src/types").HostProps<{
+					received: import("../../src/types").RemoteValue<{
 						createdAt: Date;
 						config: { nested: { createdAt: Date } };
 						record: Record<string, string>;
@@ -998,12 +997,10 @@ test("preserves foreign-window dates and ordinary records", async ({
 			Date: DateConstructor;
 			Object: ObjectConstructor;
 		};
-		const props = (
-			window as unknown as {
-				received: import("../../src/types").HostProps<Record<string, unknown>>;
-			}
-		).received;
-		await props.export({
+		const { host } = window as unknown as {
+			host: import("../../src/types").Host;
+		};
+		await host.export({
 			createdAt: new foreign.Date("2026-02-03T04:05:06.789Z"),
 			record: foreign.Object.assign(new foreign.Object(), {
 				name: "exported",
@@ -1455,7 +1452,7 @@ test("concurrent widgets isolate props and callbacks and survive a peer closing"
 		frame.evaluate(async () => {
 			// The fixture stores the value of host.ready.
 			const { received: hostProps } = window as unknown as {
-				received: import("../../src/types").HostProps<WidgetProps>;
+				received: import("../../src/types").RemoteValue<WidgetProps>;
 			};
 			return {
 				count: hostProps.count,
@@ -1739,11 +1736,11 @@ test("a cross-origin popup host resizes itself and consumer resizing reports the
 	await popup.evaluate(() =>
 		(
 			window as unknown as {
-				received: {
+				host: {
 					resize(dimensions: { width: number; height: number }): Promise<void>;
 				};
 			}
-		).received.resize({ width: 640, height: 480 }),
+		).host.resize({ width: 640, height: 480 }),
 	);
 	expect(
 		await popup.evaluate(
@@ -1971,16 +1968,11 @@ for (const context of ["iframe", "popup"] as const) {
 		);
 		expect(
 			await host.evaluate(async () => {
-				const props = (
-					window as unknown as {
-						received: {
-							count: number;
-							onComplete(): Promise<number>;
-							resize(dimensions: { width: number }): Promise<void>;
-						};
-					}
-				).received;
-				await props.resize({ width: 360 });
+				const { received: props, host } = window as unknown as {
+					received: { count: number; onComplete(): Promise<number> };
+					host: { resize(dimensions: { width: number }): Promise<void> };
+				};
+				await host.resize({ width: 360 });
 				return { count: props.count, callback: await props.onComplete() };
 			}),
 		).toEqual({ count: 2, callback: 1 });
@@ -2254,14 +2246,10 @@ for (const context of ["iframe", "popup"] as const) {
 		});
 		expect(
 			await host.evaluate(() => {
-				const received = (
-					window as unknown as {
-						received: { consumer: { props: object } } & object;
-					}
-				).received;
+				const { received } = window as unknown as { received: object };
 				return {
 					hostProps: "cspNonce" in received,
-					consumerProps: received.consumer.props,
+					consumerProps: { ...received },
 					windowName: window.name.includes("nonce"),
 				};
 			}),
@@ -2331,12 +2319,8 @@ for (const context of ["iframe", "popup"] as const) {
 			const values = ["exported"];
 			Object.defineProperty(values, "map", { value: () => ["corrupted"] });
 			await (
-				window as unknown as {
-					received: import("../../src/types").HostProps<
-						Record<string, unknown>
-					>;
-				}
-			).received.export({
+				window as unknown as { host: import("../../src/types").Host }
+			).host.export({
 				values,
 				nested: Object.setPrototypeOf(["nested"], null),
 			});

@@ -154,7 +154,7 @@ afterEach(() => {
 });
 
 describe("Host security", () => {
-	it("should preserve built-in hostProps when bootstrap props reuse reserved names", async () => {
+	it("keeps host controls when bootstrap props reuse control names", async () => {
 		const consumerWindow = { postMessage: vi.fn() } as unknown as Window;
 		const { host } = await startBootstrappedHost(
 			consumerWindow,
@@ -171,16 +171,14 @@ describe("Host security", () => {
 			{ title: prop.string() },
 		);
 
-		expect(host.hostProps.uid).toBe("host-uid-reserved-bootstrap");
-		expect(host.hostProps.tag).toBe("secure-component-reserved-bootstrap");
-		expect(typeof host.hostProps.close).toBe("function");
-		expect(Object.keys(host.hostProps.consumer)).toEqual(["props"]);
-		expect(host.hostProps.title).toBe("Visible title");
-		// Reserved names can never be declared, so they never arrive.
-		expect(host.hostProps.consumer.props).toEqual({ title: "Visible title" });
+		expect(host.uid).toBe("host-uid-reserved-bootstrap");
+		expect(host.tag).toBe("secure-component-reserved-bootstrap");
+		expect(typeof host.close).toBe("function");
+		// Undeclared fields never arrive, whatever their name.
+		expect(await host.ready).toEqual({ title: "Visible title" });
 	});
 
-	it("should ignore reserved names during prop sync without deleting built-ins", async () => {
+	it("ignores undeclared control names during prop sync", async () => {
 		const consumerWindow = { postMessage: vi.fn() } as unknown as Window;
 		const { host } = await startBootstrappedHost(
 			consumerWindow,
@@ -194,7 +192,7 @@ describe("Host security", () => {
 				status: prop.string().optional(),
 			},
 		);
-		expect(host.hostProps.amount).toBe(10);
+		expect((await host.ready).amount).toBe(10);
 
 		const propsHandler = (
 			host as unknown as {
@@ -214,12 +212,10 @@ describe("Host security", () => {
 			createMessageSource(consumerWindow),
 		);
 
-		expect(host.hostProps.amount).toBeUndefined();
-		expect(host.hostProps.uid).toBe("host-uid-reserved-sync");
-		expect(typeof host.hostProps.close).toBe("function");
-		expect(Object.keys(host.hostProps.consumer)).toEqual(["props"]);
-		expect(host.hostProps.status).toBe("updated");
-		expect(host.hostProps.consumer.props).toEqual({ status: "updated" });
+		expect((await host.ready).amount).toBeUndefined();
+		expect(host.uid).toBe("host-uid-reserved-sync");
+		expect(typeof host.close).toBe("function");
+		expect(await host.ready).toEqual({ status: "updated" });
 	});
 
 	it("should ignore spoofed PROPS from a different trusted window and accept the resolved consumer window", async () => {
@@ -238,7 +234,7 @@ describe("Host security", () => {
 		const onProps = vi.fn();
 		const onError = vi.fn();
 		host.event.on("error", onError);
-		host.hostProps.onProps(onProps);
+		host.onProps(onProps);
 
 		dispatchConsumerMessage(MESSAGE_NAME.PROPS, spoofedWindow, {
 			data: { amount: 42 },
@@ -247,8 +243,7 @@ describe("Host security", () => {
 		await flushMessages();
 
 		expect(readResponseData(spoofedWindow)).toEqual({ success: false });
-		expect(host.hostProps.amount).toBe(10);
-		expect(host.hostProps.consumer.props).toEqual({ amount: 10 });
+		expect(await host.ready).toEqual({ amount: 10 });
 		expect(onProps).not.toHaveBeenCalled();
 		expect(onError).not.toHaveBeenCalled();
 
@@ -259,8 +254,7 @@ describe("Host security", () => {
 		await flushMessages();
 
 		expect(readResponseData(consumerWindow)).toEqual({ success: true });
-		expect(host.hostProps.amount).toBe(42);
-		expect(host.hostProps.consumer.props).toEqual({ amount: 42 });
+		expect(await host.ready).toEqual({ amount: 42 });
 		expect(onProps).toHaveBeenCalledTimes(1);
 		expect(onProps).toHaveBeenCalledWith({ amount: 42 });
 		expect(onError).not.toHaveBeenCalled();
@@ -365,7 +359,7 @@ describe("Host security", () => {
 		});
 
 		expect(host).not.toBeNull();
-		expect(host?.hostProps.consumerOrigin).toBe("https://evil.example.com");
+		expect(host?.consumerOrigin).toBe("https://evil.example.com");
 		expect(window.name).toBe(bootstrapWindowName);
 	});
 
@@ -389,9 +383,7 @@ describe("Host security", () => {
 		});
 
 		expect(host).not.toBeNull();
-		expect(host?.hostProps.consumerOrigin).toBe(
-			"https://api.trusted.example.com",
-		);
+		expect(host?.consumerOrigin).toBe("https://api.trusted.example.com");
 		expect(Object.hasOwn(window, "hostProps")).toBe(false);
 	});
 
@@ -428,7 +420,7 @@ describe("Host security", () => {
 
 		const host = initHost({ consumerOrigins: "*", autoInit: false });
 
-		expect(host?.hostProps.consumerOrigin).toBe("https://verified.example.com");
+		expect(host?.consumerOrigin).toBe("https://verified.example.com");
 	});
 
 	it("should request bootstrap from an inaccessible consumer only at its exact allowlisted claimed origin", () => {
@@ -476,7 +468,7 @@ describe("Host security", () => {
 			autoInit: false,
 		});
 
-		expect(host?.hostProps.consumerOrigin).toBe("https://trusted.example.com");
+		expect(host?.consumerOrigin).toBe("https://trusted.example.com");
 		expect(postMessage).toHaveBeenCalledOnce();
 		expect(postMessage).toHaveBeenCalledWith(
 			expect.stringContaining(MESSAGE_NAME.BOOTSTRAP),

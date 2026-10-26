@@ -248,7 +248,7 @@ export interface ComponentBaseOptions<P = Record<string, unknown>> {
 	props?: PropsDefinition<P>;
 
 	/**
-	 * Standard Schema for the value the host passes to `hostProps.export()`.
+	 * Standard Schema for the value the host passes to `host.export()`.
 	 *
 	 * @remarks
 	 * `create()` infers `instance.exports` and the host's `export()` parameter
@@ -434,7 +434,7 @@ export interface ComponentInstance<
 	 *
 	 * @param dimensions - New dimensions
 	 * @throws ForgeFrameError `VALIDATION` for a cross-origin popup, which the
-	 * browser does not let the consumer resize; call `hostProps.resize()` from
+	 * browser does not let the consumer resize; call `host.resize()` from
 	 * the host instead
 	 */
 	resize(dimensions: Dimensions): void;
@@ -465,7 +465,7 @@ export interface ComponentInstance<
 	readonly event: EventSubscriber<ComponentEvents<Props, Exports>>;
 
 	/**
-	 * Data exported from the host component via `hostProps.export()`, once
+	 * Data exported from the host component via `host.export()`, once
 	 * it has passed the component's `exports` schema.
 	 */
 	exports?: RemoteValue<Exports>;
@@ -574,22 +574,33 @@ export type ExportsOf<C extends AnyComponent> =
 		: never;
 
 /**
- * The `hostProps` type of a component's host: its props, the built-in
- * controls, and `export()` typed by its `exports` schema.
+ * The props a component's host receives from `await host.ready`.
  *
  * @example
  * ```typescript
- * function submit(props: HostPropsOf<typeof PaymentForm>) {
- *   return props.onSuccess({ id: 'txn_1' });
+ * function describe(props: HostPropsOf<typeof PaymentForm>) {
+ *   return `${props.amount} ${props.currency}`;
  * }
  * ```
  *
  * @public
  */
-export type HostPropsOf<C extends AnyComponent> = HostProps<
-	PropsOf<C>,
-	ExportsOf<C>
->;
+export type HostPropsOf<C extends AnyComponent> = RemoteValue<PropsOf<C>>;
+
+/**
+ * The host handle `initHost(Component, ...)` returns for a component.
+ *
+ * @example
+ * ```typescript
+ * async function finish(host: HostOf<typeof PaymentForm>) {
+ *   await host.export({ status: 'done' });
+ *   await host.close();
+ * }
+ * ```
+ *
+ * @public
+ */
+export type HostOf<C extends AnyComponent> = Host<PropsOf<C>, ExportsOf<C>>;
 
 /**
  * A peer component instance that `getPeerInstances()` lists.
@@ -620,195 +631,6 @@ export interface GetPeerInstancesOptions {
 	 */
 	allTags?: boolean;
 }
-
-/**
- * Built-in properties and methods available on hostProps.
- *
- * @typeParam P - The props type for the component
- * @typeParam Exports - The value `export()` accepts, from the component's
- * `exports` schema; any value when `unknown`
- *
- * @remarks
- * These are the framework-provided properties that are always available
- * on the hostProps object, regardless of user-defined props.
- *
- * @public
- */
-export interface HostPropsBuiltins<
-	P = Record<string, unknown>,
-	Exports = unknown,
-> {
-	/** Unique instance ID */
-	uid: string;
-
-	/** Component tag name */
-	tag: string;
-
-	/**
-	 * Close the component.
-	 *
-	 * @returns Promise that resolves when closed
-	 */
-	close: () => Promise<void>;
-
-	/**
-	 * Focus the component window.
-	 *
-	 * @remarks
-	 * Resolves once this window has focus, or after a short wait, so the host
-	 * can then focus one of its own elements.
-	 *
-	 * @returns Promise that resolves when focused
-	 */
-	focus: () => Promise<void>;
-
-	/**
-	 * Resize the component.
-	 *
-	 * @param dimensions - New dimensions
-	 * @returns Promise that resolves when resized
-	 */
-	resize: (dimensions: Dimensions) => Promise<void>;
-
-	/**
-	 * Show the component (if hidden).
-	 *
-	 * @returns Promise that resolves when shown
-	 */
-	show: () => Promise<void>;
-
-	/**
-	 * Hide the component.
-	 *
-	 * @returns Promise that resolves when hidden
-	 */
-	hide: () => Promise<void>;
-
-	/**
-	 * Subscribe to prop updates from consumer.
-	 * Subscribers run after commitment in registration order. Async work is not
-	 * awaited; synchronous throws and returned promise rejections are logged.
-	 *
-	 * @param handler - Function called when props change
-	 * @returns A function that removes this registration
-	 */
-	onProps: (handler: (props: RemoteValue<P>) => void) => () => void;
-
-	/**
-	 * Report an error to the consumer, which emits it on its `error` event.
-	 *
-	 * @param err - Error to report
-	 * @returns Promise that resolves when the consumer acknowledges the error
-	 */
-	reportError: (err: Error) => Promise<void>;
-
-	/**
-	 * Get a reference to the consumer window.
-	 *
-	 * @returns Consumer window object
-	 */
-	getConsumer: () => Window;
-
-	/**
-	 * The consumer window's origin, verified by the bootstrap exchange and
-	 * matched against `consumerOrigins`.
-	 */
-	readonly consumerOrigin: string;
-
-	/**
-	 * Export data/methods to the consumer.
-	 *
-	 * @remarks
-	 * The consumer validates the value against the component's `exports`
-	 * schema and rejects an invalid one, keeping its previous exports. A host
-	 * started with `initHost(Component, ...)` checks it before sending.
-	 *
-	 * @param exports - Data to export
-	 * @returns Promise that resolves when the consumer has accepted the export
-	 */
-	export(exports: Exports): Promise<void>;
-
-	/**
-	 * The consumer's current prop snapshot.
-	 *
-	 * @remarks
-	 * The object keeps its identity; `props` is replaced on every prop update.
-	 */
-	consumer: {
-		/** The consumer's props, including those the host did not declare. */
-		readonly props: RemoteValue<P>;
-	};
-
-	/**
-	 * Get peer component instances (other ForgeFrame components from the same consumer).
-	 *
-	 * @remarks
-	 * Peer instances are other ForgeFrame component instances that share the same
-	 * consumer window. This enables communication between multiple embedded components.
-	 * Discovery is opt-in: this host's component and every listed peer's
-	 * component set `peers`. Without it on this host's component, the call
-	 * rejects. Only peers whose hosts the consumer verified at this host's
-	 * origin are returned, unless a peer's `peers` matcher admits this origin.
-	 * Peers whose hosts are still loading are listed without exports until rediscovery.
-	 * Exported methods are relayed through the consumer and return promises.
-	 * Rediscover peers after a peer replaces its exports or reconnects; retired
-	 * methods reject. Unrelated prop updates do not retire cached peer methods.
-	 *
-	 * @param options - Options for peer discovery
-	 * @returns Promise resolving to array of peer info
-	 */
-	getPeerInstances: (options?: GetPeerInstancesOptions) => Promise<PeerInfo[]>;
-}
-
-/**
- * Props object a host reads from `await host.ready`, where `host` is the
- * value `initHost()` returned.
- *
- * @typeParam P - The props type for the component
- * @typeParam Exports - The value `export()` accepts; any value when `unknown`
- *
- * @remarks
- * The hostProps object (short for "host properties") contains all props passed
- * from the consumer (the embedding app), plus built-in methods for controlling
- * the component and communicating back to the consumer. User-defined props from
- * P are properly typed, and built-in methods are always available.
- *
- * The name "hostProps" reflects that these are the props available to the host
- * (the embedded iframe/popup), passed from the consumer (the embedding app).
- * `initHost(Component, ...)` infers both parameters from the component. To
- * annotate helpers that receive the props, use `HostPropsOf<typeof Component>`.
- *
- * @example
- * ```typescript
- * // In host window with typed props
- * import { initHost, type HostPropsOf } from 'forgeframe';
- * import { MyComponent } from './my-component';
- *
- * function submit(props: HostPropsOf<typeof MyComponent>) {
- *   // Call consumer callbacks
- *   return props.onSubmit({ success: true });
- * }
- *
- * const host = initHost(MyComponent, { consumerOrigins: 'https://app.example.com' });
- * if (host) {
- *   const props = await host.ready;
- *
- *   // User props are properly typed
- *   console.log(props.name); // string
- *   await submit(props);
- *
- *   // Built-in methods are always available
- *   await props.resize({ width: 500, height: 400 });
- *   await props.close();
- * }
- * ```
- *
- * @public
- */
-export type HostProps<
-	P = Record<string, unknown>,
-	Exports = unknown,
-> = RemoteValue<P> & HostPropsBuiltins<P, Exports>;
 
 /**
  * Options for `initHost()`.
@@ -856,8 +678,12 @@ export interface InitHostOptions<P = Record<string, unknown>> {
  *
  * @typeParam P - The host props type, inferred from the component passed to
  * `initHost()`
- * @typeParam Exports - The value `hostProps.export()` accepts, inferred from
- * the component's `exports` schema
+ * @typeParam Exports - The value `export()` accepts, inferred from the
+ * component's `exports` schema; any value when `unknown`
+ *
+ * @remarks
+ * The handle carries every host control; `ready` resolves to the consumer's
+ * props only, so no prop name clashes with a control.
  *
  * @example
  * ```typescript
@@ -867,6 +693,7 @@ export interface InitHostOptions<P = Record<string, unknown>> {
  * const host = initHost(PaymentForm, { consumerOrigins: ['https://shop.example.com'] });
  * if (host) {
  *   const { amount, onSuccess } = await host.ready;
+ *   await host.resize({ width: 400, height: 300 });
  * }
  * ```
  *
@@ -874,26 +701,115 @@ export interface InitHostOptions<P = Record<string, unknown>> {
  */
 export interface Host<P = Record<string, unknown>, Exports = unknown> {
 	/**
-	 * Resolves to {@link Host.hostProps} once the consumer's verified bootstrap
-	 * has passed the host schemas.
+	 * Resolves to the consumer's props once its verified bootstrap has passed
+	 * the host schemas.
 	 *
 	 * @remarks
-	 * Rejects when the bootstrap response is invalid, the consumer origin is not
-	 * allowed, schema validation fails, messaging fails, or the host is
-	 * destroyed first. A rejected start releases the host, so `initHost()` can
-	 * be called again.
+	 * The object's identity never changes; later prop updates are applied to
+	 * it, and {@link Host.onProps} reports each one. Rejects when the
+	 * bootstrap response is invalid, the consumer origin is not allowed,
+	 * schema validation fails, messaging fails, or the host is destroyed
+	 * first. A rejected start releases the host, so `initHost()` can be called
+	 * again.
 	 */
-	readonly ready: Promise<HostProps<P, Exports>>;
+	readonly ready: Promise<RemoteValue<P>>;
+
+	/** Unique instance ID. */
+	readonly uid: string;
+
+	/** Component tag name. */
+	readonly tag: string;
 
 	/**
-	 * The live host props object.
+	 * The consumer window's origin, matched against `consumerOrigins` before
+	 * any props are requested.
 	 *
 	 * @remarks
-	 * It holds only the built-in controls until `ready` resolves, so read
-	 * consumer props after awaiting `ready`. Its identity never changes, and
-	 * later prop updates are applied to it.
+	 * The bootstrap exchange verifies it: read it as verified once `ready`
+	 * resolves.
 	 */
-	readonly hostProps: HostProps<P, Exports>;
+	readonly consumerOrigin: string;
+
+	/**
+	 * Closes the component.
+	 *
+	 * @returns Promise that resolves when closed
+	 */
+	close(): Promise<void>;
+
+	/**
+	 * Focuses the component window.
+	 *
+	 * @remarks
+	 * Resolves once this window has focus, or after a short wait, so the host
+	 * can then focus one of its own elements.
+	 */
+	focus(): Promise<void>;
+
+	/**
+	 * Resizes the component.
+	 *
+	 * @param dimensions - New dimensions
+	 */
+	resize(dimensions: Dimensions): Promise<void>;
+
+	/** Shows the component, if hidden. */
+	show(): Promise<void>;
+
+	/** Hides the component. */
+	hide(): Promise<void>;
+
+	/**
+	 * Exports data and methods to the consumer.
+	 *
+	 * @remarks
+	 * The consumer validates the value against the component's `exports`
+	 * schema and rejects an invalid one, keeping its previous exports. A host
+	 * started with `initHost(Component, ...)` checks it before sending.
+	 *
+	 * @param exports - Data to export
+	 * @returns Promise that resolves when the consumer has accepted the export
+	 */
+	export(exports: Exports): Promise<void>;
+
+	/**
+	 * Subscribes to prop updates from the consumer.
+	 *
+	 * @remarks
+	 * Handlers receive the same props shape as `ready`. They run after the
+	 * update is committed, in registration order. Async work is not awaited;
+	 * synchronous throws and returned promise rejections are logged.
+	 *
+	 * @param handler - Function called with the new props
+	 * @returns A function that removes this registration
+	 */
+	onProps(handler: (props: RemoteValue<P>) => void): () => void;
+
+	/**
+	 * Reports an error to the consumer, which emits it on its `error` event.
+	 *
+	 * @returns Promise that resolves when the consumer acknowledges the error
+	 */
+	reportError(error: Error): Promise<void>;
+
+	/**
+	 * Lists peer component instances (other ForgeFrame components on the same
+	 * consumer page).
+	 *
+	 * @remarks
+	 * Discovery is opt-in: this host's component and every listed peer's
+	 * component set `peers`. Without it on this host's component, the call
+	 * rejects. Only peers whose hosts the consumer verified at this host's
+	 * origin are returned, unless a peer's `peers` matcher admits this origin.
+	 * Peers whose hosts are still loading are listed without exports until
+	 * rediscovery. Exported methods are relayed through the consumer and
+	 * return promises. Rediscover peers after a peer replaces its exports or
+	 * reconnects; retired methods reject. Unrelated prop updates do not retire
+	 * cached peer methods.
+	 *
+	 * @param options - Options for peer discovery
+	 */
+	getPeerInstances(options?: GetPeerInstancesOptions): Promise<PeerInfo[]>;
 
 	/**
 	 * Sends INIT to the consumer, which resolves its `render()`.
@@ -910,9 +826,8 @@ export interface Host<P = Record<string, unknown>, Exports = unknown> {
 	 * Tears down this host and tells the consumer the session ended.
 	 *
 	 * @remarks
-	 * Idempotent. Controls on the old `hostProps` reject afterwards, and
-	 * `initHost()` can start a fresh host. Destroying a stale host never affects
-	 * a newer one.
+	 * Idempotent. Controls reject afterwards, and `initHost()` can start a
+	 * fresh host. Destroying a stale host never affects a newer one.
 	 */
 	destroy(): void;
 
@@ -925,10 +840,10 @@ export interface Host<P = Record<string, unknown>, Exports = unknown> {
 	 * rejected bootstrap snapshot, report the validation error. Any other
 	 * failed start, and an INIT delivery failure, report an `Error` whose
 	 * `cause` is the original failure. Observe prop updates with
-	 * `hostProps.onProps()`.
+	 * {@link Host.onProps}.
 	 */
-	on: EventSubscriber<HostEvents>["on"];
+	readonly on: EventSubscriber<HostEvents>["on"];
 
 	/** Like {@link Host.on}, for the next emission only. */
-	once: EventSubscriber<HostEvents>["once"];
+	readonly once: EventSubscriber<HostEvents>["once"];
 }

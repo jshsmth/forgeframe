@@ -115,7 +115,7 @@ describe("Cross-realm prop and export delivery", () => {
 		const container = document.createElement("div");
 		document.body.append(container);
 		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(
+		const { host, hostProps } = await harness.bootstrapIframeHost(
 			container,
 			definitions,
 		);
@@ -125,9 +125,9 @@ describe("Cross-realm prop and export delivery", () => {
 			payload: { values: array("updated", false) },
 		});
 		expect(hostProps.payload).toEqual({ values: ["updated"] });
-		await hostProps.export({ values: array("exported", true) });
+		await host.export({ values: array("exported", true) });
 		expect(instance.exports).toEqual({ values: ["exported"] });
-		await hostProps.export({ values: array("replaced", false) });
+		await host.export({ values: array("replaced", false) });
 		expect(instance.exports).toEqual({ values: ["replaced"] });
 	});
 
@@ -150,7 +150,7 @@ describe("Cross-realm prop and export delivery", () => {
 		const container = document.createElement("div");
 		document.body.append(container);
 		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(
+		const { host, hostProps } = await harness.bootstrapIframeHost(
 			container,
 			definitions,
 		);
@@ -176,7 +176,7 @@ describe("Cross-realm prop and export delivery", () => {
 			"2026-10-02T00:00:00.000Z",
 		);
 		expect(await hostProps.payload.callback()).toBe("updated");
-		await hostProps.export({ payload: updated.payload });
+		await host.export({ payload: updated.payload });
 		const exports = instance.exports;
 		expect(exports?.payload.createdAt).toBeInstanceOf(Date);
 		expect(exports?.payload.createdAt.toISOString()).toBe(
@@ -219,7 +219,7 @@ describe("Cross-realm prop and export delivery", () => {
 		const container = document.createElement("div");
 		document.body.append(container);
 		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(
+		const { host, hostProps } = await harness.bootstrapIframeHost(
 			container,
 			definitions,
 		);
@@ -241,7 +241,7 @@ describe("Cross-realm prop and export delivery", () => {
 		};
 		const hostRawValue = hostRealm.JSON.rawJSON("3");
 		await harness.withHostGlobalsAsync(() =>
-			hostProps.export({
+			host.export({
 				custom: new RawValues("exported"),
 				nested: [hostRawValue, rawJSON("4")],
 			}),

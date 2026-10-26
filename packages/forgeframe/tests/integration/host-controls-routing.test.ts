@@ -111,13 +111,13 @@ describe("Host controls and routing integration", () => {
 		const rendering = instance.render(container);
 		const { host, iframe } = await harness.bootstrapIframeHost(container);
 		await host.ready;
-		await host.hostProps.hide();
+		await host.hide();
 		expect(iframe.style.display).toBe("none");
 		await rendering;
 		expect(rendered).toHaveBeenCalledOnce();
 		expect(iframe.style.display).toBe("none");
 		expect(iframe.style.visibility).toBe("hidden");
-		await host.hostProps.show();
+		await host.show();
 		expect(iframe.style.display).toBe("");
 		expect(iframe.style.visibility).toBe("visible");
 	});
@@ -134,15 +134,12 @@ describe("Host controls and routing integration", () => {
 		});
 		const instance = Component({ label: "exporter" });
 		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(
-			container,
-			definitions,
-		);
+		const { host } = await harness.bootstrapIframeHost(container, definitions);
 		await rendering;
 		const methods = Object.fromEntries(
 			Array.from({ length: 500 }, (_, index) => [`m${index}`, () => index]),
 		);
-		await harness.withHostGlobalsAsync(() => hostProps.export(methods));
+		await harness.withHostGlobalsAsync(() => host.export(methods));
 		const first = instance.exports as Record<string, () => Promise<number>>;
 		await expect(first.m0?.()).resolves.toBe(0);
 		const oversized = Object.fromEntries(
@@ -152,7 +149,7 @@ describe("Host controls and routing integration", () => {
 			]),
 		);
 		await expect(
-			harness.withHostGlobalsAsync(() => hostProps.export(oversized)),
+			harness.withHostGlobalsAsync(() => host.export(oversized)),
 		).rejects.toMatchObject({
 			code: "CAPACITY",
 			message: expect.stringContaining("500 distinct callback limit"),
@@ -160,9 +157,7 @@ describe("Host controls and routing integration", () => {
 		expect(instance.exports).toBe(first);
 		await expect(first.m0?.()).resolves.toBe(0);
 		await expect(first.m499?.()).resolves.toBe(499);
-		await harness.withHostGlobalsAsync(() =>
-			hostProps.export({ next: () => 42 }),
-		);
+		await harness.withHostGlobalsAsync(() => host.export({ next: () => 42 }));
 		const next = instance.exports as { next: () => Promise<number> };
 		await expect(next.next()).resolves.toBe(42);
 		await expect(first.m0?.()).rejects.toThrow("not found");
@@ -179,7 +174,7 @@ describe("Host controls and routing integration", () => {
 		});
 		const instance = Component();
 		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(container);
+		const { host } = await harness.bootstrapIframeHost(container);
 		await rendering;
 		let reads = 0;
 		const values: string[] = [];
@@ -187,7 +182,7 @@ describe("Host controls and routing integration", () => {
 			enumerable: true,
 			get: () => (++reads === 1 ? "captured" : undefined),
 		});
-		await hostProps.export({ values, run: () => 42 });
+		await host.export({ values, run: () => 42 });
 		const previous = instance.exports;
 		if (!previous) throw new Error("Missing captured exports");
 		expect(reads).toBe(1);
@@ -195,11 +190,11 @@ describe("Host controls and routing integration", () => {
 		const missing: unknown[] = [];
 		Object.defineProperty(missing, "0", { get: () => undefined });
 		await expect(
-			hostProps.export({ values: missing, run: () => 100 }),
+			host.export({ values: missing, run: () => 100 }),
 		).rejects.toThrow("undefined array entry");
 		expect(instance.exports).toBe(previous);
 		await expect(previous.run()).resolves.toBe(42);
-		await hostProps.export({ values: ["recovered"], run: () => 7 });
+		await host.export({ values: ["recovered"], run: () => 7 });
 		expect(instance.exports?.values).toEqual(["recovered"]);
 		await expect(instance.exports?.run()).resolves.toBe(7);
 		await expect(previous.run()).rejects.toThrow("not found");
@@ -219,19 +214,19 @@ describe("Host controls and routing integration", () => {
 		const initial = () => 42;
 		sibling.exports = { initial };
 		const rendering = requester.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(container);
+		const { host } = await harness.bootstrapIframeHost(container);
 		await rendering;
 		setVerifiedHostOrigin(getVerifiedHostOrigin(requester), sibling);
-		const peers = await hostProps.getPeerInstances();
+		const peers = await host.getPeerInstances();
 		const held = peers[0]?.exports as { initial: () => Promise<number> };
 		const failedMethods = Object.fromEntries(
 			Array.from({ length: 499 }, (_, index) => [`m${index}`, () => index]),
 		);
 		sibling.exports = { initial, ...failedMethods, metadata: 1n };
-		await expect(hostProps.getPeerInstances()).rejects.toThrow(/serializ/i);
+		await expect(host.getPeerInstances()).rejects.toThrow(/serializ/i);
 		await expect(held.initial()).resolves.toBe(42);
 		sibling.exports = { initial, fresh: () => 7 };
-		const recovered = await hostProps.getPeerInstances();
+		const recovered = await host.getPeerInstances();
 		const methods = recovered[0]?.exports as {
 			initial: () => Promise<number>;
 			fresh: () => Promise<number>;
@@ -263,7 +258,7 @@ describe("Host controls and routing integration", () => {
 		foreignSameTag.exports = { secret: () => "foreign-same-tag" };
 		foreignOtherTag.exports = { secret: () => "foreign-other-tag" };
 		const rendering = requester.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(container);
+		const { host } = await harness.bootstrapIframeHost(container);
 		await rendering;
 		const requesterOrigin = getVerifiedHostOrigin(requester);
 		expect(requesterOrigin).toBe("https://host.example.com");
@@ -276,7 +271,7 @@ describe("Host controls and routing integration", () => {
 
 		for (const options of [undefined, { allTags: true }]) {
 			await expect(
-				harness.withHostGlobalsAsync(() => hostProps.getPeerInstances(options)),
+				harness.withHostGlobalsAsync(() => host.getPeerInstances(options)),
 			).resolves.toEqual([
 				{
 					uid: sameOrigin.uid,
@@ -312,12 +307,12 @@ describe("Host controls and routing integration", () => {
 		shared.exports = { run: () => "shared-partner" };
 		privatePeer.exports = { run: () => "private-partner" };
 		const rendering = requester.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(container);
+		const { host } = await harness.bootstrapIframeHost(container);
 		await rendering;
 		setVerifiedHostOrigin("https://partner.example.com", shared, privatePeer);
 
 		const peers = await harness.withHostGlobalsAsync(() =>
-			hostProps.getPeerInstances({ allTags: true }),
+			host.getPeerInstances({ allTags: true }),
 		);
 		expect(peers.map(({ uid, tag }) => ({ uid, tag }))).toEqual([
 			{ uid: shared.uid, tag: "integration-peer-domains-shared" },
@@ -340,12 +335,12 @@ describe("Host controls and routing integration", () => {
 		const other = Private();
 		other.exports = { secret: () => "private" };
 		const rendering = requester.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(container);
+		const { host } = await harness.bootstrapIframeHost(container);
 		await rendering;
 		setVerifiedHostOrigin(getVerifiedHostOrigin(requester), other);
 
 		await expect(
-			harness.withHostGlobalsAsync(() => hostProps.getPeerInstances()),
+			harness.withHostGlobalsAsync(() => host.getPeerInstances()),
 		).rejects.toThrow(
 			'Peer discovery is not enabled for component "integration-peers-disabled". Set peers: true, or an origin matcher, in its create() options.',
 		);
@@ -370,13 +365,13 @@ describe("Host controls and routing integration", () => {
 		listed.exports = { id: "listed" };
 		hidden.exports = { secret: () => "hidden" };
 		const rendering = requester.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(container);
+		const { host } = await harness.bootstrapIframeHost(container);
 		await rendering;
 		setVerifiedHostOrigin(getVerifiedHostOrigin(requester), listed, hidden);
 
 		for (const options of [undefined, { allTags: true }]) {
 			await expect(
-				harness.withHostGlobalsAsync(() => hostProps.getPeerInstances(options)),
+				harness.withHostGlobalsAsync(() => host.getPeerInstances(options)),
 			).resolves.toEqual([
 				{
 					uid: listed.uid,
@@ -398,12 +393,12 @@ describe("Host controls and routing integration", () => {
 		});
 		const requester = Component();
 		const rendering = requester.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(container);
+		const { host } = await harness.bootstrapIframeHost(container);
 		await rendering;
 
 		await expect(
 			harness.withHostGlobalsAsync(() =>
-				hostProps.getPeerInstances({ anyConsumer: true } as never),
+				host.getPeerInstances({ anyConsumer: true } as never),
 			),
 		).rejects.toThrow(
 			'getPeerInstances() option "anyConsumer" was renamed. Use { allTags: true } to include other component tags.',
@@ -421,12 +416,12 @@ describe("Host controls and routing integration", () => {
 		});
 		const instance = Component();
 		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(container);
+		const { host } = await harness.bootstrapIframeHost(container);
 		await rendering;
 		const methods = Object.fromEntries(
 			Array.from({ length: 500 }, (_, index) => [`m${index}`, () => index]),
 		);
-		await hostProps.export(methods);
+		await host.export(methods);
 		const previous = instance.exports;
 		if (!previous) throw new Error("Missing initial exports");
 		const replacement = Object.fromEntries(
@@ -436,13 +431,13 @@ describe("Host controls and routing integration", () => {
 			]),
 		);
 
-		await expect(
-			hostProps.export({ ...replacement, metadata: 1n }),
-		).rejects.toThrow(/BigInt/);
+		await expect(host.export({ ...replacement, metadata: 1n })).rejects.toThrow(
+			/BigInt/,
+		);
 		expect(instance.exports).toBe(previous);
 		await expect(previous.m0?.()).resolves.toBe(0);
 		await expect(previous.m499?.()).resolves.toBe(499);
-		await hostProps.export({ fresh: () => 1001 });
+		await host.export({ fresh: () => 1001 });
 		const current = instance.exports;
 		if (!current) throw new Error("Missing replacement exports");
 		await expect(current.fresh?.()).resolves.toBe(1001);
@@ -465,14 +460,11 @@ describe("Host controls and routing integration", () => {
 		const initial = () => 42;
 		sibling.exports = { initial };
 		const rendering = requester.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(
-			container,
-			definitions,
-		);
+		const { host } = await harness.bootstrapIframeHost(container, definitions);
 		await rendering;
 		setVerifiedHostOrigin(getVerifiedHostOrigin(requester), sibling);
 		const peers = await harness.withHostGlobalsAsync(() =>
-			hostProps.getPeerInstances(),
+			host.getPeerInstances(),
 		);
 		const held = peers[0]?.exports as { initial: () => Promise<number> };
 		await expect(held.initial()).resolves.toBe(42);
@@ -483,7 +475,7 @@ describe("Host controls and routing integration", () => {
 			),
 		};
 		await expect(
-			harness.withHostGlobalsAsync(() => hostProps.getPeerInstances()),
+			harness.withHostGlobalsAsync(() => host.getPeerInstances()),
 		).rejects.toMatchObject({
 			code: "CAPACITY",
 			message: expect.stringContaining("500 distinct callback limit"),
@@ -491,7 +483,7 @@ describe("Host controls and routing integration", () => {
 		await expect(held.initial()).resolves.toBe(42);
 		sibling.exports = { initial, next: () => 7 };
 		const recovered = await harness.withHostGlobalsAsync(() =>
-			hostProps.getPeerInstances(),
+			host.getPeerInstances(),
 		);
 		const methods = recovered[0]?.exports as {
 			initial: () => Promise<number>;
@@ -535,7 +527,7 @@ describe("Host controls and routing integration", () => {
 		sibling.exports = { peer: "sibling" };
 
 		const renderPromise = instance.render(container);
-		const { hostProps, iframe } = await harness.bootstrapIframeHost(
+		const { host, iframe } = await harness.bootstrapIframeHost(
 			container,
 			CONTROL_PROP_DEFINITIONS,
 		);
@@ -544,26 +536,24 @@ describe("Host controls and routing integration", () => {
 		setVerifiedHostOrigin(getVerifiedHostOrigin(instance), sibling);
 
 		const resizeDimensions: Dimensions = { width: 320, height: 240 };
-		await harness.withHostGlobalsAsync(() =>
-			hostProps.resize(resizeDimensions),
-		);
+		await harness.withHostGlobalsAsync(() => host.resize(resizeDimensions));
 		expect(iframe.style.width).toBe("320px");
 		expect(iframe.style.height).toBe("240px");
 		expect(onResize).toHaveBeenCalledWith(resizeDimensions);
 
-		await harness.withHostGlobalsAsync(() => hostProps.hide());
+		await harness.withHostGlobalsAsync(() => host.hide());
 		expect(iframe.style.display).toBe("none");
 		expect(iframe.style.visibility).toBe("hidden");
 
-		await harness.withHostGlobalsAsync(() => hostProps.show());
+		await harness.withHostGlobalsAsync(() => host.show());
 		expect(iframe.style.display).toBe("");
 		expect(iframe.style.visibility).toBe("visible");
 
-		await harness.withHostGlobalsAsync(() => hostProps.focus());
+		await harness.withHostGlobalsAsync(() => host.focus());
 		expect(onFocus).toHaveBeenCalledTimes(1);
 
 		await harness.withHostGlobalsAsync(() =>
-			hostProps.reportError(new Error("host-side integration error")),
+			host.reportError(new Error("host-side integration error")),
 		);
 		expect(errorEvent).toHaveBeenCalledExactlyOnceWith(
 			expect.objectContaining({
@@ -572,7 +562,7 @@ describe("Host controls and routing integration", () => {
 		);
 
 		await harness.withHostGlobalsAsync(() =>
-			hostProps.export({
+			host.export({
 				ready: true,
 				ping: (value: string) => `pong:${value}`,
 			}),
@@ -586,7 +576,7 @@ describe("Host controls and routing integration", () => {
 		expect(onExports).toHaveBeenCalledExactlyOnceWith(instance.exports);
 
 		await expect(
-			harness.withHostGlobalsAsync(() => hostProps.getPeerInstances()),
+			harness.withHostGlobalsAsync(() => host.getPeerInstances()),
 		).resolves.toEqual([
 			{
 				uid: sibling.uid,
@@ -595,7 +585,7 @@ describe("Host controls and routing integration", () => {
 			},
 		]);
 
-		await harness.withHostGlobalsAsync(() => hostProps.close());
+		await harness.withHostGlobalsAsync(() => host.close());
 
 		expect(lifecycle).toEqual(["render", "rendered", "close", "closed"]);
 		expect(container.querySelector("iframe")).toBeNull();
@@ -616,7 +606,7 @@ describe("Host controls and routing integration", () => {
 		const instance = ControlsComponent({ label: "Original" });
 
 		const renderPromise = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(
+		const { host, hostProps } = await harness.bootstrapIframeHost(
 			container,
 			CONTROL_PROP_DEFINITIONS,
 		);
@@ -630,7 +620,7 @@ describe("Host controls and routing integration", () => {
 			origin: "https://evil.example.com",
 			name: MESSAGE_NAME.EXPORT,
 			data: { ready: "evil" },
-			claimedUid: hostProps.uid,
+			claimedUid: host.uid,
 			claimedDomain: harness.hostOrigin,
 		});
 		await harness.flushMessages();
@@ -650,7 +640,7 @@ describe("Host controls and routing integration", () => {
 			origin: harness.hostOrigin,
 			name: MESSAGE_NAME.EXPORT,
 			data: { ready: "spoofed-host" },
-			claimedUid: hostProps.uid,
+			claimedUid: host.uid,
 			claimedDomain: harness.hostOrigin,
 		});
 		await harness.flushMessages();
@@ -669,7 +659,7 @@ describe("Host controls and routing integration", () => {
 			origin: "https://evil.example.com",
 			name: MESSAGE_NAME.PROPS,
 			data: serializedProps,
-			claimedUid: hostProps.uid,
+			claimedUid: host.uid,
 			claimedDomain: harness.consumerOrigin,
 		});
 		await harness.flushMessages();
@@ -692,7 +682,7 @@ describe("Host controls and routing integration", () => {
 			origin: harness.consumerOrigin,
 			name: MESSAGE_NAME.PROPS,
 			data: serializedProps,
-			claimedUid: hostProps.uid,
+			claimedUid: host.uid,
 			claimedDomain: harness.consumerOrigin,
 		});
 		await harness.flushMessages();

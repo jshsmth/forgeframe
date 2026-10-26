@@ -48,9 +48,9 @@ void InferredComponent({
 	onSubmit: (_value) => undefined,
 });
 
-const inferredHostCount: number | undefined = initHost(InferredComponent, {
-	consumerOrigins: "*",
-})?.hostProps.count;
+const inferredHostCount: number | undefined = (
+	await initHost(InferredComponent, { consumerOrigins: "*" })?.ready
+)?.count;
 void inferredHostCount;
 
 // @ts-expect-error inferred direct schemas reject the wrong value type
@@ -86,9 +86,9 @@ void CallableSchemaComponent({ name: "ready" });
 // @ts-expect-error callable schemas reject the wrong value type
 void CallableSchemaComponent({ name: 1 });
 
-const callableHostName: string | undefined = initHost(CallableSchemaComponent, {
-	consumerOrigins: "*",
-})?.hostProps.name;
+const callableHostName: string | undefined = (
+	await initHost(CallableSchemaComponent, { consumerOrigins: "*" })?.ready
+)?.name;
 void callableHostName;
 
 // create() takes no type arguments: types come from the schemas.
@@ -271,9 +271,9 @@ void ExternalSchemaComponent({
 	wrappedValue: 42,
 });
 
-const externalSchemaHostProps = initHost(ExternalSchemaComponent, {
+const externalSchemaHostProps = await initHost(ExternalSchemaComponent, {
 	consumerOrigins: "*",
-})?.hostProps;
+})?.ready;
 const defaultedHostValue: string | undefined =
 	externalSchemaHostProps?.defaultedValue;
 void defaultedHostValue;
@@ -310,7 +310,7 @@ const wrappedPresenceHost = initHost(WrappedPresenceComponent, {
 	consumerOrigins: "*",
 });
 if (wrappedPresenceHost) {
-	const hostProps = wrappedPresenceHost.hostProps;
+	const hostProps = await wrappedPresenceHost.ready;
 	const requiredValue: string = hostProps.requiredWrapper;
 	const optionalValue: string | undefined = hostProps.optionalWrapper;
 	const defaultedValue: string = hostProps.defaultedWrapper;
@@ -499,9 +499,13 @@ void coercingInstance.updateProps(coercingProps);
 
 const coercingHost = initHost(CoercingComponent, { consumerOrigins: "*" });
 if (coercingHost) {
-	const amount: number = coercingHost.hostProps.amount;
-	const startsAt: Date = coercingHost.hostProps.startsAt;
-	const count: number = coercingHost.hostProps.count;
+	const { amount, startsAt, count } = await coercingHost.ready;
+	const typedAmount: number = amount;
+	const typedStartsAt: Date = startsAt;
+	const typedCount: number = count;
+	void typedAmount;
+	void typedStartsAt;
+	void typedCount;
 	void amount;
 	void startsAt;
 	void count;
@@ -525,7 +529,8 @@ const outputTypedHost = initHost({
 	props: outputCompatibleHostDefinitions,
 	consumerOrigins: "*",
 });
-const outputTypedCount: number | undefined = outputTypedHost?.hostProps.count;
+const outputTypedCount: number | undefined = (await outputTypedHost?.ready)
+	?.count;
 void outputTypedCount;
 
 // @ts-expect-error the tag-agnostic initHost takes the props type alone
@@ -720,7 +725,7 @@ type RemovedDestroyByTag = PublicApi["destroyByTag"];
 type RemovedDestroyAll = PublicApi["destroyAll"];
 // @ts-expect-error ChildrenDefinition was removed with nested children.
 type RemovedChildrenDefinition = import("../../src").ChildrenDefinition;
-// @ts-expect-error ConsumerNamespace was removed; hostProps.consumer is { props }.
+// @ts-expect-error ConsumerNamespace was removed with hostProps.consumer.
 type RemovedConsumerNamespace = import("../../src").ConsumerNamespace;
 // @ts-expect-error EligibilityResult was removed with eligible.
 type RemovedEligibilityResult = import("../../src").EligibilityResult;

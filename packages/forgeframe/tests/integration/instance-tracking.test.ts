@@ -140,7 +140,7 @@ describe("Component.instances", () => {
 		document.body.append(firstContainer, secondContainer);
 		const first = Component({ amount: 1 });
 		const firstRendering = first.render(firstContainer);
-		const { hostProps } = await harness.bootstrapIframeHost(
+		const { host } = await harness.bootstrapIframeHost(
 			firstContainer,
 			definitions,
 		);
@@ -162,7 +162,7 @@ describe("Component.instances", () => {
 		}).toThrow(TypeError);
 		expect(Component.instances).toEqual([first, second]);
 		await expect(
-			harness.withHostGlobalsAsync(() => hostProps.getPeerInstances()),
+			harness.withHostGlobalsAsync(() => host.getPeerInstances()),
 		).resolves.toEqual([
 			{ uid: second.uid, tag: "instances-snapshot", exports: undefined },
 		]);

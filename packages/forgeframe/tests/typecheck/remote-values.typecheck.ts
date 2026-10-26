@@ -2,7 +2,7 @@
 import {
 	create,
 	type ExportsOf,
-	type HostProps,
+	type Host,
 	initHost,
 	prop,
 	type RemoteValue,
@@ -15,13 +15,14 @@ type Props = {
 	createdAt: Date;
 };
 
-declare const host: HostProps<Props>;
-const count: Promise<number> = host.count();
-const optional: Promise<string> | undefined = host.optional?.("label");
-const nested: Promise<boolean> = host.nested.callbacks[0](1);
-const date: Date = host.createdAt;
-const year: number = host.createdAt.getFullYear();
-const consumerCount: Promise<number> = host.consumer.props.count();
+declare const host: Host<Props>;
+declare const hostProps: RemoteValue<Props>;
+const count: Promise<number> = hostProps.count();
+const optional: Promise<string> | undefined = hostProps.optional?.("label");
+const nested: Promise<boolean> = hostProps.nested.callbacks[0](1);
+const date: Date = hostProps.createdAt;
+const year: number = hostProps.createdAt.getFullYear();
+const readyCount: Promise<number> = (await host.ready).count();
 host.onProps((props) => {
 	const nextCount: Promise<number> = props.count();
 	// @ts-expect-error Remote return values must be awaited.
@@ -29,12 +30,11 @@ host.onProps((props) => {
 	void [nextCount, synchronousCount];
 });
 // @ts-expect-error Remote return values must be awaited.
-const synchronousCount: number = host.count();
+const synchronousCount: number = hostProps.count();
 // @ts-expect-error Remote callbacks retain their parameter types.
-host.nested.callbacks[0]("wrong");
+hostProps.nested.callbacks[0]("wrong");
 // @ts-expect-error Readonly tuples stay readonly across the boundary.
-host.nested.callbacks[0] = () => Promise.resolve(true);
-const localWindow: Window = host.getConsumer();
+hostProps.nested.callbacks[0] = () => Promise.resolve(true);
 const unsubscribe: () => void = host.onProps(() => {});
 
 const Component = create({
@@ -106,16 +106,16 @@ const InferredComponent = create({
 	props: { count: prop.function<() => number>() },
 });
 void InferredComponent({ count: () => 42 });
-const inferredCount: Promise<number> | undefined = initHost(InferredComponent, {
-	consumerOrigins: "*",
-})?.hostProps.count();
+const inferredCount: Promise<number> | undefined = (
+	await initHost(InferredComponent, { consumerOrigins: "*" })?.ready
+)?.count();
 
 type Lookup = {
 	(value: string): Promise<string>;
 	(value: number): Promise<number>;
 };
 type Identity = <T extends string | number>(value: T) => Promise<T>;
-declare const asyncHost: HostProps<{ lookup: Lookup; identity: Identity }>;
+declare const asyncHost: RemoteValue<{ lookup: Lookup; identity: Identity }>;
 const stringLookup: Promise<string> = asyncHost.lookup("value");
 const numberLookup: Promise<number> = asyncHost.lookup(42);
 const identity: Promise<"value"> = asyncHost.identity("value");
@@ -129,9 +129,8 @@ void [
 	nested,
 	date,
 	year,
-	consumerCount,
+	readyCount,
 	synchronousCount,
-	localWindow,
 	unsubscribe,
 	exportedCount,
 	exportedDate,

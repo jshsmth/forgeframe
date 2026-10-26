@@ -215,7 +215,7 @@ describe("Host branch coverage and edge paths", () => {
 		).messenger.handlers.get(MESSAGE_NAME.PROPS);
 		const onPropsSpy = vi.fn();
 
-		const unsubscribe = host.hostProps.onProps(onPropsSpy);
+		const unsubscribe = host.onProps(onPropsSpy);
 		unsubscribe();
 		requireValue(propsHandler)({ amount: 50 }, createMessageSource(window));
 
@@ -235,7 +235,7 @@ describe("Host branch coverage and edge paths", () => {
 			)
 			.mockResolvedValue(undefined);
 
-		const siblings = await host.hostProps.getPeerInstances({
+		const siblings = await host.getPeerInstances({
 			allTags: true,
 		});
 
@@ -354,6 +354,6 @@ describe("Host branch coverage and edge paths", () => {
 		const host = initHost({ consumerOrigins: "*", autoInit: false });
 
 		expect(host).not.toBeNull();
-		expect(getHost()?.hostProps).toBe(host?.hostProps);
+		expect(getHost()?.uid).toBe(host?.uid);
 	});
 });

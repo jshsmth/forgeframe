@@ -110,7 +110,7 @@ export interface ComponentEvents<
 	closed: undefined;
 	/**
 	 * The handshake timed out, or the host reported an error with
-	 * `hostProps.reportError()`.
+	 * `host.reportError()`.
 	 */
 	error: Error;
 	/**
@@ -123,7 +123,7 @@ export interface ComponentEvents<
 	/** A focus request was applied to a mounted iframe or an open popup. */
 	focus: undefined;
 	/**
-	 * The host exported values with `hostProps.export()`. `instance.exports`
+	 * The host exported values with `host.export()`. `instance.exports`
 	 * already holds them.
 	 */
 	exports: RemoteValue<Exports>;

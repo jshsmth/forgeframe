@@ -16,7 +16,7 @@ import type { PropsDefinition } from "../../types/props";
 import type { OriginMatcher } from "../../types/utility";
 import { assertOriginMatcher } from "../../utils/origin-pattern";
 import { getComponentOptions } from "../component-registry";
-import { assertPropDefinitionsObject } from "./builtin-keys";
+import { assertPropDefinitionsObject } from "./reserved-props";
 import type { HostPropDefinitions } from "./types";
 
 /** The v2 call shapes that argument errors name. */

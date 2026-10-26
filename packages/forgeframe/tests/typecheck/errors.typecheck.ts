@@ -3,7 +3,7 @@ import {
 	type ComponentInstance,
 	ForgeFrameError,
 	type ForgeFrameErrorCode,
-	type HostProps,
+	type Host,
 	type OriginMatcher,
 } from "@/index";
 
@@ -60,13 +60,13 @@ type RemovedDomainMatcher = import("@/index").DomainMatcher;
 type RemovedPopupOpenError = import("@/index").PopupOpenError;
 export type RemovedErrorTypes = [RemovedDomainMatcher, RemovedPopupOpenError];
 
-declare const hostProps: HostProps<{ amount: number }>;
-const consumerOrigin: string = hostProps.consumerOrigin;
+declare const host: Host<{ amount: number }>;
+const consumerOrigin: string = host.consumerOrigin;
 void consumerOrigin;
 // @ts-expect-error consumerOrigin is read-only
-hostProps.consumerOrigin = "https://other.example";
+host.consumerOrigin = "https://other.example";
 // @ts-expect-error getConsumerDomain() was replaced by consumerOrigin
-hostProps.getConsumerDomain();
+host.getConsumerDomain();
 
 declare const instance: ComponentInstance<{ amount: number }>;
 instance.event.on("error", (error) => {

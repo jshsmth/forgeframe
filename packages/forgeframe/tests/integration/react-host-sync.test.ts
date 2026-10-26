@@ -68,7 +68,7 @@ describe("React commits across the host boundary", () => {
 			definitions,
 		);
 		await vi.waitFor(() => expect(iframe.style.visibility).toBe("visible"));
-		expect(hostProps.consumer.props).toEqual({ title: "hello" });
+		expect(hostProps).toEqual({ title: "hello" });
 		await React.act(async () => root.render(null));
 		expect(ref.current).toBeNull();
 		expect(Component.instances).toHaveLength(0);
@@ -156,14 +156,14 @@ describe("React commits across the host boundary", () => {
 		);
 		expect(oldRef.mock.calls).toEqual([[mount], [null]]);
 		expect(ref).toHaveBeenCalledExactlyOnceWith(mount);
-		const { hostProps, iframe } = await harness.bootstrapIframeHost(
+		const { host, iframe } = await harness.bootstrapIframeHost(
 			container,
 			definitions,
 		);
 		await vi.waitFor(() => expect(rendered).toHaveBeenCalledOnce());
 		expect(oldRendered).not.toHaveBeenCalled();
 		const updates = vi.fn();
-		hostProps.onProps(updates);
+		host.onProps(updates);
 		await React.act(async () =>
 			root.render(
 				React.createElement(Wrapped, {
@@ -195,7 +195,7 @@ describe("React commits across the host boundary", () => {
 		expect(container.querySelector("iframe")).toBe(iframe);
 		await React.act(async () => {
 			await harness.withHostGlobalsAsync(() =>
-				hostProps.reportError(new Error("host operation failed")),
+				host.reportError(new Error("host operation failed")),
 			);
 		});
 		expect(onError).toHaveBeenCalledExactlyOnceWith(
@@ -203,7 +203,7 @@ describe("React commits across the host boundary", () => {
 		);
 		expect(oldError).not.toHaveBeenCalled();
 		await React.act(async () => {
-			await harness.withHostGlobalsAsync(() => hostProps.close());
+			await harness.withHostGlobalsAsync(() => host.close());
 		});
 		expect(closed).toHaveBeenCalledOnce();
 		expect(oldClose).not.toHaveBeenCalled();
@@ -429,12 +429,12 @@ describe("React commits across the host boundary", () => {
 		expect(host).not.toBeNull();
 		if (!host) throw new Error("Expected an initialized host");
 		const snapshots: string[] = [];
-		host.hostProps.onProps(({ title }) => {
+		host.onProps(({ title }) => {
 			snapshots.push(title);
 		});
 		await React.act(async () => {
-			await host.ready;
-			await vi.waitFor(() => expect(host.hostProps.title).toBe("third"));
+			const props = await host.ready;
+			await vi.waitFor(() => expect(props.title).toBe("third"));
 		});
 		expect(snapshots).toEqual(["initial", "second", "third"]);
 		expect(onRendered).toHaveBeenCalledOnce();
@@ -474,7 +474,7 @@ describe("React commits across the host boundary", () => {
 			root.render(React.createElement(Wrapped, { title: "updated" }));
 		});
 		await vi.waitFor(() => expect(hostProps.title).toBe("updated"));
-		expect(hostProps.consumer.props).toEqual({
+		expect(hostProps).toEqual({
 			title: "updated",
 			theme: "light",
 		});
@@ -497,20 +497,20 @@ describe("React commits across the host boundary", () => {
 		await React.act(async () => {
 			root.render(React.createElement(Wrapped, { title: "a", theme: "dark" }));
 		});
-		const { hostProps, iframe } = await harness.bootstrapIframeHost(
+		const { host, hostProps, iframe } = await harness.bootstrapIframeHost(
 			container,
 			Component,
 		);
 		await vi.waitFor(() => expect(iframe.style.visibility).toBe("visible"));
 		const notifications: Record<string, unknown>[] = [];
-		hostProps.onProps((props) => notifications.push({ ...props }));
+		host.onProps((props) => notifications.push({ ...props }));
 		await React.act(async () => {
 			root.render(
 				React.createElement(Wrapped, { title: "a", theme: undefined }),
 			);
 		});
 		await vi.waitFor(() => expect(hostProps.theme).toBe("light"));
-		const afterUndefined = { ...hostProps.consumer.props };
+		const afterUndefined = { ...hostProps };
 		await React.act(async () => {
 			root.render(React.createElement(Wrapped, { title: "a" }));
 		});
@@ -521,7 +521,7 @@ describe("React commits across the host boundary", () => {
 		});
 		await harness.flushMessages();
 		expect(notifications).toEqual([{ title: "a", theme: "light" }]);
-		expect(hostProps.consumer.props).toEqual(afterUndefined);
+		expect(hostProps).toEqual(afterUndefined);
 	});
 
 	it("resets a removed callback prop to its default through React", async () => {
@@ -564,13 +564,13 @@ describe("React commits across the host boundary", () => {
 		await React.act(async () => {
 			root.render(React.createElement(Wrapped, { amount: 1, onError }));
 		});
-		const { hostProps, iframe } = await harness.bootstrapIframeHost(
+		const { host, hostProps, iframe } = await harness.bootstrapIframeHost(
 			container,
 			definitions,
 		);
 		await vi.waitFor(() => expect(iframe.style.visibility).toBe("visible"));
 		const snapshots: number[] = [];
-		hostProps.onProps(({ amount }) => {
+		host.onProps(({ amount }) => {
 			snapshots.push(amount);
 		});
 		await React.act(async () => {
@@ -676,7 +676,7 @@ describe("React commits across the host boundary", () => {
 		);
 		expect(instanceRef.current).toBeNull();
 
-		const { hostProps, iframe } = await harness.bootstrapIframeHost(
+		const { host, iframe } = await harness.bootstrapIframeHost(
 			container,
 			Component,
 		);
@@ -691,7 +691,7 @@ describe("React commits across the host boundary", () => {
 		const exported = vi.fn();
 		handle.event.on("exports", exported);
 		await harness.withHostGlobalsAsync(() =>
-			hostProps.export({ ready: true, total: () => 42 }),
+			host.export({ ready: true, total: () => 42 }),
 		);
 		await vi.waitFor(() => expect(exported).toHaveBeenCalledOnce());
 		expect(handle.exports?.ready).toBe(true);
@@ -736,15 +736,12 @@ describe("React commits across the host boundary", () => {
 				}),
 			),
 		);
-		const { hostProps } = await harness.bootstrapIframeHost(
-			container,
-			definitions,
-		);
+		const { host } = await harness.bootstrapIframeHost(container, definitions);
 		await vi.waitFor(() => expect(onRendered).toHaveBeenCalledOnce());
 		expect(instanceRef.current).not.toBeNull();
 
 		await React.act(async () => {
-			await harness.withHostGlobalsAsync(() => hostProps.close());
+			await harness.withHostGlobalsAsync(() => host.close());
 		});
 		await vi.waitFor(() => expect(onClose).toHaveBeenCalledOnce());
 		expect(refAtClose).toEqual([null]);

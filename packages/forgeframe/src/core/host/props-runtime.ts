@@ -3,7 +3,7 @@
  * Host props state and reconciliation helpers.
  *
  * @remarks
- * This internal module owns `hostProps` construction, reserved key filtering,
+ * This internal module owns the live props object, reserved name filtering,
  * bootstrap validation, and live prop reconciliation.
  */
 
@@ -19,33 +19,25 @@ import {
 import { deserializeProps } from "../../props/serialize";
 import type { SerializedProps } from "../../props/types";
 import type { PropsDefinition } from "../../types/props";
-import type { HostProps, RemoteValue } from "../../types/runtime";
+import type { RemoteValue } from "../../types/runtime";
 import { normalizeError } from "../../utils/error";
 import { getOrigin } from "../../window/helpers";
 import type { HostBootstrapData } from "../../window/types";
-import { HOST_PROPS_BUILTIN_KEYS } from "./builtin-keys";
+import { RESERVED_PROP_NAMES } from "./reserved-props";
 import type { HostPropDefinitions, HostPropsRuntimeOptions } from "./types";
 
-function filterReservedHostPropKeys<P extends Record<string, unknown>>(
-	props: P,
-): P {
-	const filteredProps: Record<string, unknown> = {};
-
+/** Drops fields no host receives, such as a `then` from an unchecked consumer. */
+function omitReservedPropNames<P extends Record<string, unknown>>(props: P): P {
+	const kept: Record<string, unknown> = {};
 	for (const [key, value] of Object.entries(props)) {
-		if (HOST_PROPS_BUILTIN_KEYS.has(key)) {
-			continue;
-		}
-
-		filteredProps[key] = value;
+		if (!RESERVED_PROP_NAMES.has(key)) kept[key] = value;
 	}
-
-	return filteredProps as P;
+	return kept as P;
 }
 
 export class HostPropsRuntime<P extends Record<string, unknown>> {
-	public hostProps!: HostProps<P>;
-
-	public consumerProps!: RemoteValue<P>;
+	/** The live props object `ready` resolves to; its identity never changes. */
+	public readonly props = {} as RemoteValue<P>;
 
 	public propsHandlers: Set<(props: RemoteValue<P>) => void> = new Set();
 	private propsHandlerRegistrations = new WeakMap<
@@ -68,41 +60,6 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
 		private options: HostPropsRuntimeOptions,
 	) {}
 
-	/** Starts with built-in controls only; consumer props arrive through bootstrap. */
-	initializeHostProps(): HostProps<P> {
-		this.consumerProps = {} as RemoteValue<P>;
-		this.hostProps = this.createHostProps();
-		return this.hostProps;
-	}
-
-	/** Constructs the host API surface; callbacks defer control work until invoked. */
-	private createHostProps(): HostProps<P> {
-		const hostProps = {
-			uid: this.options.uid,
-			tag: this.options.tag,
-			close: () => this.options.controls.close(),
-			focus: () => this.options.controls.focus(),
-			resize: (dimensions) => this.options.controls.resize(dimensions),
-			show: () => this.options.controls.show(),
-			hide: () => this.options.controls.hide(),
-			onProps: (handler: (props: RemoteValue<P>) => void) =>
-				this.onProps(handler),
-			reportError: (error: Error) => this.options.controls.reportError(error),
-			getConsumer: () => this.options.getConsumerWindow(),
-			export: <T>(exports: T) => this.options.controls.exportData(exports),
-			consumer: {
-				props: this.consumerProps,
-			},
-			getPeerInstances: (options) =>
-				this.options.controls.getPeerInstances(options),
-		} as Omit<HostProps<P>, "consumerOrigin">;
-		Object.defineProperty(hostProps, "consumerOrigin", {
-			value: this.options.getConsumerOrigin(),
-			enumerable: true,
-		});
-		return hostProps as HostProps<P>;
-	}
-
 	/**
 	 * Completes bootstrap using any newer acknowledged props received while it was pending.
 	 * The selected snapshot is validated against the host definitions.
@@ -121,7 +78,7 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
 
 	/**
 	 * Validates and commits a wire snapshot before notifying subscribers.
-	 * Stale custom keys are removed while built-in controls keep their identity.
+	 * Stale keys are removed while the live props object keeps its identity.
 	 * Validation failure preserves the current prop snapshot and emits an error.
 	 * An update acknowledged before bootstrap completes is published by bootstrap.
 	 */
@@ -140,18 +97,11 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
 		serializedProps: SerializedProps,
 	): RemoteValue<P> {
 		try {
-			const previousProps = this.consumerProps;
-			const nextProps = this.deserialize(serializedProps);
-
-			validateNormalizedProps(nextProps as P, this.expectedDefinitions());
-			const nextHostProps = filterReservedHostPropKeys(nextProps);
-
-			this.commitHostProps(
-				previousProps,
-				nextProps,
-				nextHostProps,
-				serializedProps,
+			const nextProps = omitReservedPropNames(
+				this.deserialize(serializedProps),
 			);
+			validateNormalizedProps(nextProps as P, this.expectedDefinitions());
+			this.commitProps(nextProps, serializedProps);
 			return nextProps;
 		} catch (error) {
 			const propsError = toPropsFailure(error);
@@ -161,18 +111,16 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
 		}
 	}
 
-	private commitHostProps(
-		previousProps: RemoteValue<P>,
+	/** Replaces the live props object's fields with the next snapshot's. */
+	private commitProps(
 		nextProps: RemoteValue<P>,
-		nextHostProps: Record<string, unknown>,
 		serializedProps: SerializedProps,
 	): void {
-		this.removeStaleHostProps(previousProps, nextHostProps);
-		this.consumerProps = nextProps;
-		Object.assign(this.hostProps, nextHostProps);
-		// The consumer object keeps its identity; only its snapshot is replaced.
-		(this.hostProps.consumer as { props: RemoteValue<P> }).props =
-			this.consumerProps;
+		for (const key of Object.keys(this.props)) {
+			if (!Object.hasOwn(nextProps, key))
+				delete (this.props as Record<string, unknown>)[key];
+		}
+		Object.assign(this.props, nextProps);
 		if (!this.initialized) {
 			this.pendingBootstrapProps = serializedProps;
 		}
@@ -208,7 +156,7 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
 		this.pendingBootstrapProps = null;
 	}
 
-	private onProps(handler: (props: RemoteValue<P>) => void): () => void {
+	onProps(handler: (props: RemoteValue<P>) => void): () => void {
 		if (!this.propsHandlers.has(handler))
 			this.propsHandlerRegistrations.set(handler, {});
 		this.propsHandlers.add(handler);
@@ -257,22 +205,6 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
 			createDeliveryTarget(this.hostOrigin, this.options.getConsumerOrigin()),
 		);
 		return this.deliveredPropDefinitions;
-	}
-
-	private removeStaleHostProps(
-		previousProps: RemoteValue<P>,
-		nextHostProps: Record<string, unknown>,
-	): void {
-		for (const key of Object.keys(previousProps)) {
-			if (
-				HOST_PROPS_BUILTIN_KEYS.has(key) ||
-				Object.hasOwn(nextHostProps, key)
-			) {
-				continue;
-			}
-
-			delete (this.hostProps as Record<string, unknown>)[key];
-		}
 	}
 }
 

@@ -19,7 +19,7 @@ export const HOST_EVENT_NAMES: ReadonlySet<string> = new Set([EVENT.ERROR]);
  */
 export function describeUnknownHostEvent(event: string): string {
 	if (event === "props") {
-		return 'The host "props" event was removed in ForgeFrame 2; use hostProps.onProps(handler) instead';
+		return 'The host "props" event was removed in ForgeFrame 2; use host.onProps(handler) instead';
 	}
 	return `Host events support "error", not "${event}"`;
 }

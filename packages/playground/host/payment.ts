@@ -8,7 +8,7 @@
  *
  * @packageDocumentation
  */
-import { type HostProps, initHost } from "forgeframe";
+import { type Host, initHost, type RemoteValue } from "forgeframe";
 import {
 	formatMoney,
 	type PaymentProps,
@@ -60,7 +60,10 @@ function collectReceiptEvidence(digits: string): ReceiptEvidence {
  * host closes. The first valid attempt can decline; retry then approves. Card
  * fields never enter that callback, apart from the receipt's last four digits.
  */
-function renderForm(props: HostProps<PaymentProps>): void {
+function renderForm(
+	props: RemoteValue<PaymentProps>,
+	host: Host<PaymentProps>,
+): void {
 	app.innerHTML = `<div class="payment-context"><header class="provider-header"><span class="provider-mark" aria-hidden="true">H</span><span>Harbor Pay</span><span class="provider-demo">Demo</span></header><section class="payment-summary"><h1>Pay Pip Veterinary</h1><p>Invoice <span id="payment-invoice"></span></p><strong id="payment-total"></strong><span class="payment-currency">AUD · One-off payment</span><span class="simulation-note">Simulation · No money moves</span></section></div><div class="demo-card-help"><p>Fill the form in one click. No real card is needed.</p><button type="button" id="use-demo-details" class="provider-text-button">Use demo details</button></div><form id="payment-form"><label for="cardholder">Name on card</label><input id="cardholder" name="cardholder" autocomplete="off" maxlength="80" required><label for="card-number">Card number</label><input id="card-number" name="card-number" inputmode="numeric" autocomplete="off" placeholder="4242 4242 4242 4242" maxlength="19" pattern="[0-9 ]{16,19}" required><div class="card-fields"><div><label for="card-expiry">Expiry</label><input id="card-expiry" name="card-expiry" placeholder="MM / YY" inputmode="numeric" autocomplete="off" maxlength="7" pattern="(0[1-9]|1[0-2]) ?/ ?[0-9]{2}" required></div><div><label for="card-cvc">Security code</label><input id="card-cvc" name="card-cvc" type="password" inputmode="numeric" autocomplete="off" placeholder="CVC" maxlength="4" pattern="[0-9]{3,4}" required></div></div><p id="payment-feedback" class="payment-feedback" role="status" tabindex="-1" hidden></p><div class="provider-actions"><button id="submit-payment" type="submit" class="provider-primary"></button><button id="cancel-provider-payment" type="button" class="provider-cancel">Cancel payment</button></div><p class="payment-footnote">Demo only. No charge is made and card inputs are not sent to Pip Veterinary.</p></form>`;
 	field("#payment-invoice").textContent = props.invoiceId;
 	field("#payment-total").textContent = formatMoney(props.amountCents);
@@ -81,7 +84,7 @@ function renderForm(props: HostProps<PaymentProps>): void {
 	const close = async () => {
 		cancelled = true;
 		try {
-			await props.close();
+			await host.close();
 		} catch {
 			feedback.textContent =
 				"The clinic connection has ended. Close this window to return to the invoice.";
@@ -150,7 +153,7 @@ function renderForm(props: HostProps<PaymentProps>): void {
 			"recorded",
 		);
 		approved = true;
-		await props.close();
+		await host.close();
 	}
 
 	/** Sequences the simulation; timing and cancellation remain in this window. */
@@ -200,7 +203,7 @@ function renderForm(props: HostProps<PaymentProps>): void {
  * guidance. `VITE_CONSUMER_URL` sets the explicit consumer-origin allowlist. The
  * tag-agnostic form validates with the shared prop definitions, so this bundle
  * does not include the consumer runtime that `create()` brings.
- * After readiness, built-in show/focus controls reveal the loading iframe before
+ * After readiness, the host show/focus controls reveal the loading iframe before
  * the demo-fill shortcut receives focus without scrolling away from the amount.
  */
 async function start(): Promise<void> {
@@ -225,10 +228,10 @@ async function start(): Promise<void> {
 		const props = await host.ready;
 		if (__FORGEFRAME_PAYMENT_TEST_HOOK__)
 			Reflect.set(window, "__forgeframePaymentTest", { hostProps: props });
-		renderForm(props);
+		renderForm(props, host);
 		await props.onReady();
-		await props.show();
-		await props.focus();
+		await host.show();
+		await host.focus();
 		field<HTMLButtonElement>("#use-demo-details").focus({
 			preventScroll: true,
 		});

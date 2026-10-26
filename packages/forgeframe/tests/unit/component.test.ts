@@ -586,18 +586,30 @@ describe("Component Creation", () => {
 		expect(getComponent("malformed-wrapped-definition")).toBeUndefined();
 	});
 
-	it("should reject custom props that collide with hostProps built-ins", () => {
+	it("should reject props named then or children and accept host control names", () => {
 		expect(() =>
 			create({
-				tag: "reserved-close-prop",
+				tag: "reserved-then-prop",
 				url: "https://example.com",
 				props: {
-					close: prop.function(),
+					// biome-ignore lint/suspicious/noThenProperty: checks the reserved name
+					then: prop.function(),
 				},
 			}),
 		).toThrow(
-			'Prop "close" is reserved by hostProps built-ins and cannot be defined as a custom prop',
+			'Prop "then" is reserved by ForgeFrame and cannot be defined as a custom prop',
 		);
+		expect(() =>
+			create({
+				tag: "control-named-props",
+				url: "https://example.com",
+				props: {
+					close: prop.function(),
+					resize: prop.string(),
+					consumerOrigin: prop.string(),
+				},
+			}),
+		).not.toThrow();
 
 		expect(() =>
 			create({
@@ -608,7 +620,7 @@ describe("Component Creation", () => {
 				},
 			}),
 		).toThrow(
-			'Prop "children" is reserved by hostProps built-ins and cannot be defined as a custom prop',
+			'Prop "children" is reserved by ForgeFrame and cannot be defined as a custom prop',
 		);
 	});
 

@@ -106,9 +106,8 @@ test.beforeAll(async () => {
 		const delay = Number(new URLSearchParams(location.search).get('delay') ?? 0);
 		await new Promise((resolve) => setTimeout(resolve, delay));
 		const host = initHost({props:{label:prop.string(), count:prop.number().min(0), theme:prop.string(), onAction:prop.function()}, consumerOrigins:['${consumerOrigin}']});
-		await host.ready;
-		const props = host.hostProps;
-		await props.export({ greet: (name) => 'hello ' + name + ' from ' + props.label });
+		const props = await host.ready;
+		await host.export({ greet: (name) => 'hello ' + name + ' from ' + props.label });
 		const history = [];
 		const show = () => {
 			const snapshot = props.label + ':' + props.count + ':' + props.theme;
@@ -117,7 +116,7 @@ test.beforeAll(async () => {
 			document.getElementById('history').textContent = history.join('|');
 		};
 		show();
-		props.onProps(show);
+		host.onProps(show);
 		let calls = 0;
 		document.getElementById('invoke').onclick = async () => {
 			document.getElementById('result').textContent = await props.onAction('host-click-' + ++calls);

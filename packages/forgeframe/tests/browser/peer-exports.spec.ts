@@ -49,8 +49,7 @@ test.beforeAll(async () => {
 				`<!doctype html><script type="module">
 				import {initHost,prop} from '/library.js';
 				const host = initHost({props:{callbacks:prop.record(prop.function()),onDefault:prop.function()}, consumerOrigins:['${consumerOrigin}']});
-				await host.ready;
-				window.props = host.hostProps;
+				window.props = await host.ready;
 				window.ready = true;
 				</script>`,
 			);
@@ -60,12 +59,12 @@ test.beforeAll(async () => {
 			`<!doctype html><script type="module">
 		import {initHost,prop} from '/library.js';
 		const host = initHost({props:{label:prop.string(),onRun:prop.function()}, consumerOrigins:['${consumerOrigin}']});
-		await host.ready;
-		window.props = host.hostProps;
-		await host.hostProps.export({
+		const props = await host.ready;
+		window.host = host;
+		await host.export({
 			ready:true,
 			date:new Date('2026-01-02T03:04:05.678Z'),
-			nested:{run:value=>host.hostProps.onRun(value)},
+			nested:{run:value=>props.onRun(value)},
 			fail:()=>{throw new Error('peer method failed');}
 		});
 		window.ready = true;
@@ -162,7 +161,7 @@ test("peer exports retain callable methods and dates across independent prop upd
 	);
 	const first = await requester.evaluate(async () => {
 		const state = window as unknown as {
-			props: { getPeerInstances(): Promise<Array<{ exports?: unknown }>> };
+			host: { getPeerInstances(): Promise<Array<{ exports?: unknown }>> };
 			peer: {
 				ready: boolean;
 				date: Date;
@@ -170,7 +169,7 @@ test("peer exports retain callable methods and dates across independent prop upd
 				fail(): Promise<void>;
 			};
 		};
-		const peers = await state.props.getPeerInstances();
+		const peers = await state.host.getPeerInstances();
 		state.peer = peers[0]?.exports as typeof state.peer;
 		return {
 			peers: peers.length,
@@ -219,9 +218,9 @@ test("peer exports retain callable methods and dates across independent prop upd
 	await sibling.evaluate(async () => {
 		await (
 			window as unknown as {
-				props: { export(data: unknown): Promise<void> };
+				host: { export(data: unknown): Promise<void> };
 			}
-		).props.export({
+		).host.export({
 			nested: { run: (value: string) => `replacement:${value}` },
 		});
 	});
@@ -242,13 +241,13 @@ test("peer exports retain callable methods and dates across independent prop upd
 	expect(
 		await requester.evaluate(async () => {
 			const state = window as unknown as {
-				props: {
+				host: {
 					getPeerInstances(options?: {
 						allTags: boolean;
 					}): Promise<Array<{ tag: string; exports?: unknown }>>;
 				};
 			};
-			const peers = await state.props.getPeerInstances({ allTags: true });
+			const peers = await state.host.getPeerInstances({ allTags: true });
 			return Promise.all(
 				peers.map(async (peer) => ({
 					tag: peer.tag,
@@ -280,7 +279,7 @@ async function readyFrame(page: Page, selector: string): Promise<Frame> {
 function discoverAllTagPeers() {
 	return (
 		window as unknown as {
-			props: {
+			host: {
 				getPeerInstances(options?: { allTags: boolean }): Promise<
 					Array<{
 						tag: string;
@@ -289,7 +288,7 @@ function discoverAllTagPeers() {
 				>;
 			};
 		}
-	).props
+	).host
 		.getPeerInstances({ allTags: true })
 		.then((peers) =>
 			Promise.all(
@@ -474,9 +473,9 @@ test("components without peers neither discover nor appear to others", async ({
 			try {
 				await (
 					window as unknown as {
-						props: { getPeerInstances(): Promise<unknown[]> };
+						host: { getPeerInstances(): Promise<unknown[]> };
 					}
-				).props.getPeerInstances();
+				).host.getPeerInstances();
 			} catch (error) {
 				return error instanceof Error ? error.message : String(error);
 			}

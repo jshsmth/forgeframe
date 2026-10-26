@@ -11,17 +11,17 @@ import {
 	serializeMessage,
 } from "@/communication/protocol";
 import { clearComponents, closeAll } from "@/core/component";
-import { clearHostInstance, getHost } from "@/core/host";
+import { clearHostInstance } from "@/core/host";
 import { initHost } from "@/index";
 import type {
 	AnyComponent,
 	Host,
-	HostProps,
 	InferablePropsDefinition,
 	InferProps,
 	OriginMatcher,
 	PropsDefinition,
 	PropsOf,
+	RemoteValue,
 } from "@/types";
 
 const DEFAULT_HOST_URL = "https://host.example.com/widget";
@@ -128,7 +128,7 @@ type BootstrapHost = <const D extends HarnessHostDefinition = never>(
 
 type BootstrappedHost<P extends Record<string, unknown>> = {
 	host: Host<P>;
-	hostProps: HostProps<P>;
+	hostProps: RemoteValue<P>;
 };
 
 function waitForNextTick(): Promise<void> {
@@ -223,7 +223,6 @@ interface BaseIntegrationHarness {
 	withHostGlobals: <T>(callback: () => T) => T;
 	withHostGlobalsAsync: <T>(callback: () => Promise<T>) => Promise<T>;
 	bootstrapHost: BootstrapHost;
-	getHostProps: <P extends Record<string, unknown>>() => HostProps<P>;
 	getLastFormSubmission: () => FormSubmissionRecord | null;
 	flushMessages: () => Promise<void>;
 	cleanup: () => Promise<void>;
@@ -536,17 +535,6 @@ function createBaseIntegrationHarness(options?: {
 		) as Host<HarnessHostProps<D>> | null;
 	};
 
-	/** Reads the active host's props, however that host was started. */
-	const getHostProps = <P extends Record<string, unknown>>(): HostProps<P> => {
-		const hostProps = getHost<P>()?.hostProps;
-
-		if (!hostProps) {
-			throw new Error("Expected an active host");
-		}
-
-		return hostProps;
-	};
-
 	/** Starts a host and waits for `ready`, which resolves to its props. */
 	const startReadyHost = async <const D extends HarnessHostDefinition = never>(
 		definition?: D,
@@ -629,7 +617,6 @@ function createBaseIntegrationHarness(options?: {
 		bootstrapHost,
 		bootstrapIframeHost,
 		bootstrapPopupHost,
-		getHostProps,
 		cleanup,
 	};
 }

@@ -50,9 +50,9 @@ describe("Lifecycle events integration", () => {
 		}
 
 		const rendering = instance.render(container, "popup");
-		const { hostProps } = await popupHarness.bootstrapPopupHost();
+		const { host } = await popupHarness.bootstrapPopupHost();
 		await rendering;
-		await popupHarness.withHostGlobalsAsync(() => hostProps.focus());
+		await popupHarness.withHostGlobalsAsync(() => host.focus());
 		await instance.close();
 
 		expect(events).toEqual(["render", "rendered", "focus", "close", "closed"]);
@@ -97,16 +97,11 @@ describe("Lifecycle events integration", () => {
 			received.push({ payload, current: instance.exports });
 		});
 		const rendering = instance.render(container);
-		const { host, hostProps } =
-			await iframeHarness.bootstrapIframeHost(container);
+		const { host } = await iframeHarness.bootstrapIframeHost(container);
 		await rendering;
 
-		await iframeHarness.withHostGlobalsAsync(() =>
-			hostProps.export({ version: 1 }),
-		);
-		await iframeHarness.withHostGlobalsAsync(() =>
-			hostProps.export({ version: 2 }),
-		);
+		await iframeHarness.withHostGlobalsAsync(() => host.export({ version: 1 }));
+		await iframeHarness.withHostGlobalsAsync(() => host.export({ version: 2 }));
 		expect(received).toEqual([
 			{ payload: { version: 1 }, current: { version: 1 } },
 			{ payload: { version: 2 }, current: { version: 2 } },
@@ -118,13 +113,13 @@ describe("Lifecycle events integration", () => {
 		iframeHarness.withHostGlobals(() => host.destroy());
 		const nextHost = iframeHarness.bootstrapHost();
 		if (!nextHost) throw new Error("Expected host reinitialization");
-		const nextProps = await nextHost.ready;
+		await nextHost.ready;
 		await iframeHarness.flushMessages();
 		expect(instance.exports).toBeUndefined();
 		expect(received).toHaveLength(2);
 
 		await iframeHarness.withHostGlobalsAsync(() =>
-			nextProps.export({ version: 3 }),
+			nextHost.export({ version: 3 }),
 		);
 		expect(received.at(-1)).toEqual({
 			payload: { version: 3 },
@@ -193,6 +188,6 @@ describe("Lifecycle events integration", () => {
 		expect(nonces).not.toContain("prop-nonce");
 		expect(iframe.name).not.toContain("nonce");
 		expect(hostProps).not.toHaveProperty("cspNonce");
-		expect(hostProps.consumer.props).toEqual({ label: "pay" });
+		expect(hostProps).toEqual({ label: "pay" });
 	});
 });

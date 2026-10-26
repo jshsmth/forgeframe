@@ -78,7 +78,7 @@ describe("Ordinary object prop round trips", () => {
 			const record = { ...expected, metadata: Symbol("local metadata") };
 			const instance = Component({ record });
 			const rendering = instance.render(container);
-			const { hostProps } = await harness.bootstrapIframeHost(
+			const { host, hostProps } = await harness.bootstrapIframeHost(
 				container,
 				definitions,
 			);
@@ -86,7 +86,7 @@ describe("Ordinary object prop round trips", () => {
 			expect(hostProps.record).toEqual(expected);
 			await instance.updateProps({ record: { nested: record } });
 			expect(hostProps.record).toEqual({ nested: expected });
-			await hostProps.export({ record });
+			await host.export({ record });
 			expect(instance.exports).toEqual({ record: expected });
 		},
 	);
@@ -152,7 +152,7 @@ describe("Ordinary object prop round trips", () => {
 		});
 		const instance = Component({ record });
 		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(
+		const { host, hostProps } = await harness.bootstrapIframeHost(
 			container,
 			definitions,
 		);
@@ -165,7 +165,7 @@ describe("Ordinary object prop round trips", () => {
 			record: { nested: record, records: [record] },
 		});
 		expect(hostProps.record).toEqual({ nested: record, records: [record] });
-		await hostProps.export({ record });
+		await host.export({ record });
 		expect(instance.exports).toEqual({ record });
 	});
 	it.each([
@@ -230,7 +230,7 @@ describe("Ordinary object prop round trips", () => {
 			};
 			const instance = Component({ record: records() });
 			const rendering = instance.render(container);
-			const { hostProps } = await harness.bootstrapIframeHost(
+			const { host, hostProps } = await harness.bootstrapIframeHost(
 				container,
 				definitions,
 			);
@@ -238,7 +238,7 @@ describe("Ordinary object prop round trips", () => {
 			expect(hostProps.record).toEqual(expected);
 			await instance.updateProps({ record: { nested: records() } });
 			expect(hostProps.record).toEqual({ nested: expected });
-			await hostProps.export({ record: records() });
+			await host.export({ record: records() });
 			expect(instance.exports).toEqual({ record: expected });
 		},
 	);
@@ -593,11 +593,11 @@ describe("JSON encoder conversion", () => {
 		});
 		const instance = Component();
 		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(container);
+		const { host } = await harness.bootstrapIframeHost(container);
 		await rendering;
 
 		await harness.withHostGlobalsAsync(() =>
-			hostProps.export({ session: new Session("user-4", "secret-4") }),
+			host.export({ session: new Session("user-4", "secret-4") }),
 		);
 		expect(instance.exports).toEqual({ session: { userId: "user-4" } });
 	});

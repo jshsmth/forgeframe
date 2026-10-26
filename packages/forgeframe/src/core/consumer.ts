@@ -387,7 +387,7 @@ export class ConsumerComponent<
 	 * @remarks
 	 * Browsers do not let the consumer resize a cross-origin popup. That call
 	 * throws without emitting `resize`; the host can resize its own popup with
-	 * `hostProps.resize()`.
+	 * `host.resize()`.
 	 *
 	 * With no iframe mounted and no popup open there is nothing to resize, so
 	 * the call does nothing and emits no `resize`, as `focus()` does. The
@@ -402,7 +402,7 @@ export class ConsumerComponent<
 		if (outcome === "denied") {
 			throw new ForgeFrameError(
 				"VALIDATION",
-				`Cannot resize the popup for component "${this.options.tag}": the browser blocks resizing a cross-origin window. Call hostProps.resize() from the host instead.`,
+				`Cannot resize the popup for component "${this.options.tag}": the browser blocks resizing a cross-origin window. Call host.resize() from the host instead.`,
 			);
 		}
 		if (outcome === "resized") this.emitResize(dimensions);

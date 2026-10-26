@@ -101,11 +101,10 @@ describe("Function prop bridge integration", () => {
 		});
 		const instance = Component();
 		const rendering = instance.render(container);
-		const { host, hostProps } =
-			await activeHarness.bootstrapIframeHost(container);
+		const { host } = await activeHarness.bootstrapIframeHost(container);
 		await rendering;
 		await activeHarness.withHostGlobalsAsync(() =>
-			hostProps.export({ wait: () => new Promise<never>(() => {}) }),
+			host.export({ wait: () => new Promise<never>(() => {}) }),
 		);
 		const exports = instance.exports;
 		if (!exports) throw new Error("Expected host exports");
@@ -139,11 +138,10 @@ describe("Function prop bridge integration", () => {
 		});
 		const instance = Component();
 		const rendering = instance.render(container);
-		const { host, hostProps } =
-			await activeHarness.bootstrapIframeHost(container);
+		const { host } = await activeHarness.bootstrapIframeHost(container);
 		await rendering;
 		await activeHarness.withHostGlobalsAsync(() =>
-			hostProps.export({ wait: () => new Promise<never>(() => {}) }),
+			host.export({ wait: () => new Promise<never>(() => {}) }),
 		);
 		const exports = instance.exports;
 		if (!exports) throw new Error("Expected host exports");
@@ -181,11 +179,10 @@ describe("Function prop bridge integration", () => {
 		});
 		const instance = Component();
 		const rendering = instance.render(container);
-		const { host, hostProps } =
-			await activeHarness.bootstrapIframeHost(container);
+		const { host } = await activeHarness.bootstrapIframeHost(container);
 		await rendering;
 		await activeHarness.withHostGlobalsAsync(() =>
-			hostProps.export({ wait: () => new Promise<string>(() => {}) }),
+			host.export({ wait: () => new Promise<string>(() => {}) }),
 		);
 		const exports = instance.exports;
 		if (!exports) throw new Error("Expected host exports");
@@ -211,7 +208,7 @@ describe("Function prop bridge integration", () => {
 		if (!nextHost) throw new Error("Expected host reinitialization");
 		await nextHost.ready;
 		await activeHarness.withHostGlobalsAsync(() =>
-			nextHost.hostProps.export({ wait: async () => "next" }),
+			nextHost.export({ wait: async () => "next" }),
 		);
 		await expect(instance.exports?.wait()).resolves.toBe("next");
 	});
@@ -339,13 +336,13 @@ describe("Function prop bridge integration", () => {
 			document.body.append(container);
 			const instance = Component({ run });
 			const rendering = instance.render(container);
-			const { hostProps } = await harness.bootstrapIframeHost(
+			const { host, hostProps } = await harness.bootstrapIframeHost(
 				container,
 				definitions,
 			);
 			await rendering;
 			await expect(hostProps.run()).rejects.toThrow("Unknown error");
-			await hostProps.export({ run });
+			await host.export({ run });
 			const exported = instance.exports;
 			if (!exported) throw new Error("Missing exported callback");
 			await expect(exported.run()).rejects.toThrow("Unknown error");

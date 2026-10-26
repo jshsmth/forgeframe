@@ -43,7 +43,7 @@ import {
 	registerComponent,
 } from "./component-registry";
 import { ConsumerComponent } from "./consumer";
-import { assertPropDefinitionsObject } from "./host/builtin-keys";
+import { assertPropDefinitionsObject } from "./host/reserved-props";
 import { resolveRenderContext } from "./render-context";
 
 /**

@@ -3,49 +3,38 @@ import { assertPropDefinitions } from "../../props/definition-checks";
 import { hasOwnDeclaredField } from "../../utils/own-field";
 
 /**
- * Host-side built-in keys that are reserved on `hostProps`.
+ * Prop names no component may define, and no host receives.
+ *
+ * @remarks
+ * `then` would make the props object a thenable, so `await host.ready` would
+ * never settle. `children` is reserved so React JSX children never reach
+ * hosts. Host controls live on the `Host` handle, not on the props, so no
+ * other name is reserved.
  *
  * @internal
  */
-export const HOST_PROPS_BUILTIN_KEYS = new Set([
-	"uid",
-	"tag",
-	"close",
-	"focus",
-	"resize",
-	"show",
-	"hide",
-	"onProps",
-	"reportError",
-	"getConsumer",
-	"consumerOrigin",
-	"export",
-	"consumer",
-	"getPeerInstances",
-	// Not a built-in any more, but reserved so React JSX children never reach hosts.
+export const RESERVED_PROP_NAMES: ReadonlySet<string> = new Set([
+	"then",
 	"children",
 ]);
 
 /**
- * Throws when a definitions record defines a reserved built-in name.
+ * Throws when a definitions record defines a reserved prop name.
  *
  * @remarks
  * `create()` and `initHost()` share this declaration policy. Fields are read
  * by the own-field rule of `hasOwnDeclaredField`: entries set to `undefined`
  * count as omitted, and accessors are not invoked.
  *
- * @throws Error naming the first reserved prop
+ * @throws ForgeFrameError `VALIDATION` naming the first reserved prop
  * @internal
  */
 export function assertNoReservedPropDefinitions(definitions: object): void {
 	for (const key of Object.keys(definitions)) {
-		if (
-			HOST_PROPS_BUILTIN_KEYS.has(key) &&
-			hasOwnDeclaredField(definitions, key)
-		) {
+		if (RESERVED_PROP_NAMES.has(key) && hasOwnDeclaredField(definitions, key)) {
 			throw new ForgeFrameError(
 				"VALIDATION",
-				`Prop "${key}" is reserved by hostProps built-ins and cannot be defined as a custom prop`,
+				`Prop "${key}" is reserved by ForgeFrame and cannot be defined as a custom prop`,
 			);
 		}
 	}
@@ -53,9 +42,9 @@ export function assertNoReservedPropDefinitions(definitions: object): void {
 
 /**
  * Checks a prop definitions object as `create()` and `initHost()` both
- * declare it: no reserved built-in names, then every entry's own rules.
+ * declare it: no reserved names, then every entry's own rules.
  *
- * @throws Error naming the first invalid prop
+ * @throws ForgeFrameError `VALIDATION` naming the first invalid prop
  * @internal
  */
 export function assertPropDefinitionsObject(definitions: object): void {

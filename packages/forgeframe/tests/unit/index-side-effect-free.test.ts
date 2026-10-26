@@ -58,7 +58,7 @@ describe("Index side effects", () => {
 		});
 
 		expect(host).not.toBeNull();
-		expect(getHost()?.hostProps).toBe(host?.hostProps);
+		expect(getHost()?.uid).toBe(host?.uid);
 		expect(window.name).toBe(bootstrapWindowName);
 		expect(publicEntrypoint.isHost()).toBe(true);
 		expect(Object.hasOwn(window, "hostProps")).toBe(false);

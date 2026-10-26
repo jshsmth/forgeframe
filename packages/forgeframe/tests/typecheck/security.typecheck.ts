@@ -10,7 +10,7 @@ import type { SiblingInfo } from "@/index";
 import {
 	create,
 	type GetPeerInstancesOptions,
-	type HostProps,
+	type Host,
 	initHost,
 	type PeerInfo,
 	prop,
@@ -102,8 +102,8 @@ const allTags: GetPeerInstancesOptions = { allTags: true };
 // @ts-expect-error anyConsumer was renamed allTags.
 const anyConsumer: GetPeerInstancesOptions = { anyConsumer: true };
 
-declare const hostProps: HostProps<{ label: string }>;
-const peers: Promise<PeerInfo[]> = hostProps.getPeerInstances(allTags);
+declare const host: Host<{ label: string }>;
+const peers: Promise<PeerInfo[]> = host.getPeerInstances(allTags);
 
 void [anyConsumer, peers];
 

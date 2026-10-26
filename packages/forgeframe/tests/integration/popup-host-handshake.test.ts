@@ -50,7 +50,7 @@ describe("Popup host handshake integration", () => {
 
 		const renderPromise = instance.render(container, "popup");
 		const popupOpen = await harness.waitForPopupOpen();
-		const { hostProps } = await harness.bootstrapPopupHost(
+		const { host, hostProps } = await harness.bootstrapPopupHost(
 			POPUP_PROP_DEFINITIONS,
 		);
 
@@ -60,16 +60,15 @@ describe("Popup host handshake integration", () => {
 		expect(typeof popupOpen.name).toBe("string");
 		expect(hostProps.amount).toBe(9);
 		expect(hostProps.message).toBe("Popup ready");
-		expect(hostProps.consumer.props).toEqual({
+		expect(hostProps).toEqual({
 			amount: 9,
 			message: "Popup ready",
 		});
-		expect(hostProps.getConsumer()).toBe(harness.consumerWindow);
-		expect(hostProps.consumerOrigin).toBe(harness.consumerOrigin);
+		expect(host.consumerOrigin).toBe(harness.consumerOrigin);
 		expect(container.childElementCount).toBe(0);
 		expect(container.isConnected).toBe(true);
 
-		await harness.withHostGlobalsAsync(() => hostProps.export({ ready: true }));
+		await harness.withHostGlobalsAsync(() => host.export({ ready: true }));
 
 		expect(instance.exports).toEqual({ ready: true });
 	});
@@ -92,7 +91,7 @@ describe("Popup host handshake integration", () => {
 		);
 		expect((await host.ready).amount).toBe(1);
 		const notified = vi.fn();
-		hostProps.onProps(notified);
+		host.onProps(notified);
 		await Promise.all([rendering, held]);
 		expect(hostProps.amount).toBe(2);
 		expect(notified).toHaveBeenLastCalledWith(
@@ -112,7 +111,7 @@ describe("Popup host handshake integration", () => {
 		});
 		const instance = PopupComponent({ amount: 1, message: "resize" });
 		const renderPromise = instance.render(container, "popup");
-		const { hostProps } = await activeHarness.bootstrapPopupHost(
+		const { host } = await activeHarness.bootstrapPopupHost(
 			POPUP_PROP_DEFINITIONS,
 		);
 		await renderPromise;
@@ -161,7 +160,7 @@ describe("Popup host handshake integration", () => {
 		// Start the host call with host globals only; the consumer then handles RESIZE.
 		const deniedBeforeHostResize = deniedAccesses;
 		await activeHarness.withHostGlobals(() =>
-			hostProps.resize({ width: 640, height: 480 }),
+			host.resize({ width: 640, height: 480 }),
 		);
 		expect(hostResizes).toEqual([[640, 480]]);
 		// The consumer does not retry a resize the host already applied.
