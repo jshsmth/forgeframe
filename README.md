@@ -1350,7 +1350,7 @@ A host that shares definitions with a `deliverTo` prop no longer requires that p
 | Definition map keys | `PropsDefinition<P>` entries were optional | Every key of `P` needs an entry, so `satisfies` reports a missing definition; declare an optional prop with an optional schema |
 | Inference types | `InferPropsDefinition<D>`, `InferPropsDefinitionInput<D>` | `InferProps<D>`, `InferInput<D>` |
 | Schema output type | `InferSchemaOutput<S>` | `StandardSchemaV1.InferOutput<S>` (and `StandardSchemaV1.InferInput<S>`) |
-| Removed types | `SchemaPropDefinition`, `PropDefinitionEntry`, `InferObjectShape`, `InferObjectInputShape`, `Prop` | Use `PropDefinition`, `PropsDefinition`, `InferProps`; `typeof prop` |
+| Removed types | `SchemaPropDefinition`, `PropDefinitionEntry`, `Prop` | Use `PropDefinition`, `PropsDefinition`, `InferProps`; `typeof prop` |
 | Schema classes | `import { StringSchema } from 'forgeframe'`, `new StringSchema()`, `x instanceof ObjectSchema` | `import type { StringSchema } from 'forgeframe'`; build with `prop.string()`; no `instanceof` |
 | Schema detection | `isStandardSchema(value)` | Check `'~standard' in value` yourself, or let ForgeFrame validate |
 | Context constants | `CONTEXT.POPUP` | `'popup'` (type `ContextType`) |
@@ -1492,6 +1492,8 @@ import {
   type StandardSchemaV1,
   type StringSchema,      // Schema classes are types; build schemas with prop.*
   type ObjectSchema,
+  type InferObjectShape,  // What prop.object() infers; declaration files name it
+  type InferObjectInputShape,
   type ContextType,       // 'iframe' | 'popup'
   type EventType,         // 'render' | 'rendered' | ... | 'exports'
   type ComponentEvents,

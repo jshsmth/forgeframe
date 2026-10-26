@@ -439,10 +439,6 @@ type RemovedInferPropsInput = import("../../src").InferPropsDefinitionInput<
 type RemovedForgeFrameComponent = import("../../src").ForgeFrameComponent;
 // @ts-expect-error ForgeFrameComponentInstance was renamed ComponentInstance
 type RemovedInstance = import("../../src").ForgeFrameComponentInstance;
-// @ts-expect-error InferObjectShape is internal
-type RemovedInferObjectShape = import("../../src").InferObjectShape<
-	Record<string, never>
->;
 export type RemovedDefinitionTypes = [
 	RemovedSchemaPropDefinition,
 	RemovedPropDefinitionEntry,
@@ -451,7 +447,6 @@ export type RemovedDefinitionTypes = [
 	RemovedInferPropsInput,
 	RemovedForgeFrameComponent,
 	RemovedInstance,
-	RemovedInferObjectShape,
 ];
 
 const coercedSchemaDefinition = {

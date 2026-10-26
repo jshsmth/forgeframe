@@ -158,9 +158,12 @@ export class TupleSchema<
 /**
  * Infers the output type from an object shape definition.
  *
+ * @remarks
+ * Exported so declaration files can name the type `prop.object()` returns.
+ *
  * @typeParam S - Object shape definition.
  *
- * @internal
+ * @public
  */
 export type InferObjectShape<
 	S extends Record<string, PropSchema<unknown, unknown>>,
@@ -196,8 +199,11 @@ type RequiredObjectInputKeys<
 /**
  * Infers the accepted input object from an object shape definition.
  *
+ * @remarks
+ * Exported so declaration files can name the type `prop.object()` returns.
+ *
  * @typeParam S - Object shape definition.
- * @internal
+ * @public
  */
 export type InferObjectInputShape<
 	S extends Record<string, PropSchema<unknown, unknown>>,

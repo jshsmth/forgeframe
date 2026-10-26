@@ -51,6 +51,8 @@ export {
 	type DateSchema,
 	type EnumSchema,
 	type FunctionSchema,
+	type InferObjectInputShape,
+	type InferObjectShape,
 	type LiteralSchema,
 	type NumberSchema,
 	type ObjectSchema,
