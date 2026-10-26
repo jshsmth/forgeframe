@@ -567,6 +567,8 @@ Updates run in call order across the whole lifecycle, including updates requeste
 - **While `render()` is pending:** they wait for the render to settle. The host starts with the snapshot the render began with, then receives each update as its own `onProps` notification, and each update's `props` event fires after `rendered`. An invalid update rejects on its own; the render and later updates continue. If the render fails before anything opened, the updates apply locally and the next `render()` includes them. That covers invalid props or options, a component `validate` rejection, a URL that is invalid or outside `hostOrigins`, and a missing or detached container. If it fails after that, or `close()` cancels it, they reject with a `CLOSED` [`ForgeFrameError`](#errors).
 - **After `close()` starts:** new and queued updates reject with `CLOSED`, without running validation or prop callbacks.
 
+Do not `await` an update inside code the render waits on, such as a consumer callback the host calls before it sends INIT. The update waits behind the render, so the render stalls until `initTimeout` rejects it with `INIT_TIMEOUT`. Start the update without awaiting it, or await it after `render()` resolves.
+
 ```typescript
 const instance = MyComponent({ name: 'Initial', theme: 'dark' });
 const rendering = instance.render('#container');
@@ -856,7 +858,7 @@ const MyComponent = create({
 
 ## React Integration (Optional)
 
-React support lives in its own entry point, `forgeframe/react`. It needs `react` (16.8 or later; the tests run React 19), which is an optional peer dependency, so projects without React install nothing extra. The root `forgeframe` entry contains no React code and its types reference no React types.
+React support lives in its own entry point, `forgeframe/react`. It needs `react` (16.8 or later; the tests run React 19), which is an optional peer dependency, so projects without React install nothing extra. The root `forgeframe` entry contains no React code and its types reference no React types. TypeScript resolves the subpath through the package `exports` map, so set `moduleResolution` to `bundler`, `node16` or `nodenext`; `node` (`node10`) resolution cannot find `forgeframe/react`.
 
 ### Basic Usage
 
@@ -1005,7 +1007,7 @@ const host = initHost(SecureComponent, {
 const publicHost = initHost(PublicWidget, { consumerOrigins: '*' });
 ```
 
-The host verifies the consumer by requiring a response from the expected parent or opener window at its exact origin. Verification works with `Referrer-Policy: no-referrer` and after full-page host navigation. If the origin is not allowed, `initHost()` throws `ORIGIN_REJECTED` before any props are requested, and the consumer's `render()` rejects at its `initTimeout` with `INIT_TIMEOUT`; if the consumer cannot complete the handshake, `ready` rejects. The allowlist belongs to the host that enforces it, so `create()` throws if it still receives the removed `allowedConsumerDomains` option. As defence in depth, a host can also send a `Content-Security-Policy: frame-ancestors` header; ForgeFrame does not set it.
+The host verifies the consumer by requiring a response from the expected parent or opener window at its exact origin. Verification works with `Referrer-Policy: no-referrer` and after full-page host navigation. If the origin is not allowed, `initHost()` throws `ORIGIN_REJECTED` before any props are requested, and the consumer's `render()` rejects at its `initTimeout` with `INIT_TIMEOUT`; if the consumer cannot complete the handshake, `ready` rejects. The allowlist belongs to the host that enforces it, so `create()` throws if it still receives the v1 host allowlist option. As defence in depth, a host can also send a `Content-Security-Policy: frame-ancestors` header; ForgeFrame does not set it.
 
 #### Sandbox
 
@@ -1110,254 +1112,120 @@ Codes cross windows: a prop update the host rejects arrives as `VALIDATION`, as 
 
 ## Versioning
 
-ForgeFrame 1.x follows semantic versioning for its public API. Read the [GitHub release notes](https://github.com/jshsmth/ForgeFrame/releases) before upgrading, and upgrade consumer and host bundles together when a release changes wire behavior.
+ForgeFrame follows semantic versioning for its public API. Breaking changes ship only in a new major version; minor and patch releases add features and fix bugs without breaking existing callers. Error message text is not part of the API: branch on `ForgeFrameError.code` (see [Errors](#errors)). Read the [GitHub release notes](https://github.com/jshsmth/ForgeFrame/releases) before upgrading.
 
-- **From 1.x to 2.x:** upgrade the consumer and host together; a v2 host refuses consumers on ForgeFrame 0.x or 1.x. See [Migrating from v1 to v2](#migrating-from-v1-to-v2).
-- **From 1.0.4:** review these behavior changes. Remote callbacks no longer time out after 10 seconds; add your own timer where you need one. `instance.resize()` rejects for a cross-origin popup (in 2.x it throws synchronously); resize it from the host with `hostProps.resize()`. JSON props and exports deliver a value's `toJSON()` result. Schema refinements such as `.email().pattern()` now all apply. Empty or blank `domain`, `allowedConsumerDomains`, and `peerDomains` strings throw. Query and body parameters send dates as ISO strings and skip `null`. Iframe renders require an attached container. The factory's `isHost()` and `hostProps` no longer start a host, and defining a component logs host startup errors instead of throwing them. Hosts with an opaque origin are no longer listed as peers. `attributes.sandbox: false` now keeps the default iframe sandbox instead of removing it. Event `once()` registrations follow DOM listener rules: `off()` cancels them, and registering a handler twice keeps one registration.
-- **From 1.0.1:** function prop defaults must use the factory form. Replace `.default(onCancel)` with `.default(() => onCancel)`; the types reject the direct form. Exceeding [callback capacity](#callback-capacity) rejects with an explicit error instead of silently breaking older callbacks.
+- **From 1.x:** follow [Migrating from v1 to v2](#migrating-from-v1-to-v2). Install the same 2.x version in the consumer and the host and deploy them together. A v2 host's `initHost()` throws an upgrade error when a 1.x consumer embeds it, and a v2 consumer's handshake timeout says to check that both sides run the same ForgeFrame major version when a 1.x host cannot start.
+- **From 1.0.x:** read the [1.1.0 release notes](https://github.com/jshsmth/ForgeFrame/releases/tag/v1.1.0) first; the migration guide starts from 1.1.0.
+- **From 0.x:** upgrade straight to 2.x with the migration guide. A v2 host refuses 0.x consumers the same way it refuses 1.x consumers.
 
 ---
 
 ## Migrating from v1 to v2
 
+This guide starts from ForgeFrame 1.1.0. Each section lists what changed, with the v1 form, the v2 form and what to do. TypeScript reports most of these changes at compile time, and a JavaScript caller that still passes a removed option gets a `VALIDATION` error that names its replacement.
+
 ### Upgrade consumer and host together
 
-**Upgrade consumer and host together.** ForgeFrame 2 uses bootstrap protocol 3. A v2 host accepts only v2 consumers. When a page embedded by a ForgeFrame 0.x or 1.x consumer calls `initHost()`, it throws an error that names the consumer's version and tells you to upgrade both. A 1.x host cannot start for a v2 consumer, so the v2 consumer reports its handshake timeout. The v1 staged upgrade ("deploy hosts first") no longer works. Deploy consumer and host together, or serve the v2 host at a new URL and point the v2 consumer at it while 1.x consumers keep using the old URL. `window.name` now holds only channel metadata (uid, tag, protocol, context and consumer origin). v1 never stored application data there either, so nothing needs converting.
+ForgeFrame 2 uses bootstrap protocol 3, and a v2 host accepts only v2 consumers. Install the same 2.x version in the consumer and host projects, rebuild both, and deploy them together. If you cannot deploy both at once, serve the v2 host at a new URL and point the v2 consumer at it while 1.x consumers keep using the old URL. The v1 staged upgrade ("deploy hosts first") no longer works.
+
+A mixed deploy fails fast with a clear error instead of misbehaving:
+
+| Consumer | Host | What happens |
+|---|---|---|
+| 1.x (or 0.x) | 2.x | The host's `initHost()` throws a `VALIDATION` error that names the consumer's ForgeFrame version and says to upgrade the consumer and host to ForgeFrame 2 together. Nothing is sent to the consumer, whose `render()` times out. |
+| 2.x | 1.x | The 1.x host cannot read the v2 channel metadata and never starts. The consumer's `render()` rejects with `INIT_TIMEOUT` after `initTimeout`, and the message says to check that consumer and host run the same ForgeFrame major version. |
+
+`window.name` now holds only channel metadata (uid, tag, protocol, context and consumer origin). v1 never stored application data there either, so nothing needs converting.
+
+TypeScript projects that use React support need `moduleResolution` set to `bundler`, `node16` or `nodenext`. The React adapter is published only as the `forgeframe/react` subpath export, which `node` (`node10`) resolution cannot find.
+
+After upgrading, test both sides together: create and render, prop updates, callbacks in both directions, exports, reconnecting after a host reload, teardown, popups, and React mounts if you use them.
+
+### Upgrade checklist
+
+Work through these in order. The first three affect every integration; test after each step.
+
+1. [Use named imports](#named-imports-only).
+2. [Start the host with `initHost(Component, { consumerOrigins })` and read props from `await host.ready`](#host-start-up-and-props).
+3. [List allowed origins](#secure-defaults): `consumerOrigins` on the host, and `hostOrigins` for a function `url`.
+4. [Opt peers in and move the sandbox option](#secure-defaults).
+5. [Replace `on*` lifecycle props with events](#lifecycle-events).
+6. [Let the schema decide whether a prop is required and its default](#prop-definitions), and review [prop updates](#prop-updates).
+7. [Apply the renames and switch error handling to codes](#naming-and-errors).
+8. [Import React support from `forgeframe/react`](#react-forgeframereact).
+9. [Update type imports and drop explicit type arguments](#types-and-inference).
+10. [Remove the serialization option](#props-are-always-json) and the [zoid-era APIs](#removed-zoid-era-apis).
+
+### Named imports only
+
+The default `ForgeFrame` object is gone; import each function by name.
+
+```typescript
+// v1
+import ForgeFrame from 'forgeframe';
+ForgeFrame.create({ ... });
+
+// v2
+import { create } from 'forgeframe';
+create({ ... });
+// or: import * as ForgeFrame from 'forgeframe'
+```
 
 ### Host start-up and props
 
-A host now starts only through `initHost()`, which requires a consumer allowlist, and reads its props only from `await host.ready`.
-
-**Positional `initHost(propDefinitions, allowedConsumerDomains)`.** Before:
+A host starts only through `initHost()`, which requires a consumer allowlist, and reads its props only from `await host.ready`. `create()` no longer starts or configures a host.
 
 ```typescript
+// v1: positional arguments, props read from window.hostProps
 await initHost(paymentProps, ['https://shop.example.com'])?.ready;
 const { amount, onSuccess } = window.hostProps;
-```
 
-After:
-
-```typescript
+// v2: start from the shared component and await its props
 const host = initHost(PaymentForm, { consumerOrigins: ['https://shop.example.com'] });
-if (!host) renderStandalone();
-else {
+if (!host) {
+  renderStandalone(); // not opened by ForgeFrame
+} else {
   const { amount, onSuccess } = await host.ready;
 }
 // or, without a shared component:
 // initHost({ props: paymentProps, consumerOrigins: ['https://shop.example.com'] })
 ```
 
-**A bare `initHost()`, or a host started by `create()`.** Before:
+| Area | v1 | v2 | What to do |
+|---|---|---|---|
+| Starting the host | `initHost(propDefinitions, allowedConsumerDomains)`, a bare `initHost()`, or a host started by `create()` | `initHost(Component, { consumerOrigins })`, or `initHost({ props, consumerOrigins })` without a shared component | Call `initHost()` once with the component and the allowlist |
+| Allowlist on the component | `create({ ..., allowedConsumerDomains })` | `create()` throws for it | Move the origins to `initHost(Component, { consumerOrigins })` |
+| Open widgets | `initHost(definitions)` with no allowlist | `consumerOrigins` is required | Pass `consumerOrigins: '*'` |
+| Reading props | `window.hostProps.amount`, `getHostProps()`, `Component.hostProps`, `host.getProps()` | `(await host.ready).amount`, or `host.hostProps.amount` once `ready` has resolved | Await `host.ready` before reading props |
+| `Window` augmentation | `declare global { interface Window { hostProps: HostProps<P> } }` | Not needed | Delete it; types come from `initHost(Component, ...)`, and `HostProps<P>` remains for helper parameters |
+| `hostProps` setter | `host.hostProps = replacement` | Removed; `hostProps` is a read-only, live object | Delete the assignment |
+| Host prop definitions | A definition of a reserved built-in name was silently dropped | `initHost({ props })` checks definitions as `create()` does: it throws for a reserved name such as `close` or `children`, and for `props` that are not a definitions object | Rename the prop |
+| Deferred INIT | `initHost(defs, origins, { deferInit: true })`, then `host.flushInit()` or the first read of `window.hostProps` | `initHost(Component, { consumerOrigins, autoInit: false })`, then `host.init()` | Call `host.init()` when the host is ready to show |
+| A second `initHost()` | Replaced the schema or allowlist | Throws while a host is active | Pass the final definitions to the single call; to restart, call `host.destroy()` and then `initHost(...)` |
+| Host internals | `host.event.on('props', fn)`, `host.getInitError()`, `host.flushInit()` | `hostProps.onProps(fn)` and `host.on('error', fn)`, which return an unsubscribe function, and `host.init()` | See [Lifecycle events](#lifecycle-events) |
+| Host detection | `isEmbedded()`, `Component.isHost()`, `Component.isEmbedded()` | `isHost()` | Replace the call |
+| `isHost()` | True whenever `window.name` started with the ForgeFrame prefix, even for a malformed payload | True when a host is active or `window.name` holds a decodable ForgeFrame payload of any protocol version; false for a malformed payload; stays true after `host.destroy()` | None for most hosts |
+| `canRenderTo` | `await Component.canRenderTo(win)` | Removed; it always returned `win === window` | Delete the check |
+
+Deferred INIT, before and after:
 
 ```typescript
-const PaymentForm = create({ ..., allowedConsumerDomains: ['https://shop.example.com'] });
-await initHost()?.ready;
-```
-
-After: `create()` no longer starts or configures a host, and it throws if it receives `allowedConsumerDomains`.
-
-```typescript
-const PaymentForm = create({ ... });
-const host = initHost(PaymentForm, { consumerOrigins: ['https://shop.example.com'] });
-```
-
-**Open widgets that omitted the allowlist.** Before: `initHost(definitions)`. After: `initHost(Component, { consumerOrigins: '*' })`.
-
-**Host prop definitions.** `initHost({ props })` checks its definitions as `create()` does: it throws for a definition of a reserved built-in name, such as `close` or `children`, which v1 silently dropped, and for `props` that are not a definitions object.
-
-**Reading props.** Before: `window.hostProps.amount`, `getHostProps()`, `Component.hostProps` or `host.getProps()`. After: `(await host.ready).amount`, or `host.hostProps.amount` once `ready` has resolved.
-
-**`Window` augmentation.** Before:
-
-```typescript
-declare global { interface Window { hostProps: HostProps<P> } }
-```
-
-After: delete it. Types are inferred from `initHost(Component, ...)`, and `HostProps<P>` remains for helper parameters.
-
-**The `hostProps` setter.** Before: `host.hostProps = replacement`. After: removed; `hostProps` is a read-only, live object.
-
-**Deferred INIT.** Before:
-
-```typescript
+// v1
 const host = initHost(definitions, origins, { deferInit: true });
 await host.ready;
 await host.hostProps.hide();
-host.flushInit(); // or the first read of window.hostProps
-```
+host.flushInit();
 
-After:
-
-```typescript
+// v2
 const host = initHost(Component, { consumerOrigins, autoInit: false });
 const props = await host.ready;
 await props.hide();
 host.init();
 ```
 
-**Reconfiguring with a second `initHost()`.** Before: the second call replaced the schema or allowlist. After: it throws while a host is active. Pass the final definitions to the single call; to restart, call `host.destroy()` and then `initHost(...)`.
-
-**Host internals.** Before: `host.event.on('props', fn)`, `host.getInitError()`, `host.flushInit()`. After: `hostProps.onProps(fn)` and `host.on('error', fn)`, which return an unsubscribe function, and `host.init()`. See [Lifecycle events](#lifecycle-events).
-
-**Host detection.** Before: `isEmbedded()`, `Component.isHost()`, `Component.isEmbedded()`. After: `isHost()`.
-
-**`canRenderTo`.** Before: `await Component.canRenderTo(win)`. After: removed; it always returned `win === window`.
-
-**`isHost()`.** Before: true whenever `window.name` started with the ForgeFrame prefix, even when the payload behind it was malformed. After: true when a host is active or `window.name` holds a decodable ForgeFrame payload of any protocol version; false for a malformed payload. It still stays true after `host.destroy()`.
-
-### Removed zoid-era APIs
-
-Each of these duplicated another API. TypeScript reports every removed member and option, and `create()` throws a migration error if a JavaScript caller still passes `eligible` or `children`.
-
-**`renderTo`.** Before: `await instance.renderTo(window, '#container', 'popup')`. After: `await instance.render('#container', 'popup')`.
-
-**`clone()`.** Before: `const copy = instance.clone()`. After: call the factory again with the props you want, such as `const copy = Component({ ...currentProps })`.
-
-**`destroy(instance)`.** Before: `await destroy(instance)`. After: `await instance.close()`.
-
-**`destroyByTag(tag)`.** Before: `await destroyByTag('payment-form')`. After: `await Promise.all(PaymentForm.instances.map((i) => i.close()))`.
-
-**`destroyAll()`.** Before: `await destroyAll()`. After: `await closeAll()`. It closes every live instance, resolves once all have closed, and if any close fails it rejects with an `AggregateError` after the others finish.
-
-**`eligible` and `isEligible()`.** Before:
-
-```typescript
-create({ ..., eligible: ({ props }) => ({ eligible: !!props.userId, reason: 'Log in' }) });
-if (instance.isEligible()) await instance.render('#c');
-```
-
-After:
-
-```typescript
-create({ ..., validate: ({ props }) => { if (!props.userId) throw new Error('Log in'); } });
-// check the same condition in your app before calling render()
-```
-
-**`instance.state` and `ctx.state`.** Before: `instance.state.step = 2`. After: keep per-instance state in your own code, such as a `WeakMap` keyed by the instance or a closure.
-
-**`hostProps.consumer.export()`.** Before: `await hostProps.consumer.export({ token })`, read on the consumer through a cast. After: `await hostProps.export({ token })`, read from `instance.exports`, or call a consumer callback prop. `hostProps.consumer.props` stays.
-
-**Nested `children`.** Before:
-
-```typescript
-create({ ..., children: () => ({ CardField }) });
-// host:
-hostProps.children.CardField({...}).render('#card');
-```
-
-After:
-
-```typescript
-// consumer: remove children
-// parent host:
-import { CardField } from './shared/card-field';
-CardField({...}).render('#card');
-// child host page:
-initHost(CardField, { consumerOrigins: ['https://parent-host.example'] });
-```
-
-`children` stays a reserved prop name, so `create()` still rejects a custom `children` definition.
-
-**Mutating `Component.instances`.** Before: `Component.instances.splice(0)`. After: `instances` returns a new frozen snapshot on each read. Close instances with `close()` or `closeAll()`, then read `instances` again.
-
-**Removed types.** `ChildrenDefinition`, `ConsumerNamespace`, `EligibilityResult` and `ForgeFrameComponentReference` are gone; delete their imports. `HostProps<P>['consumer']` is `{ props }`.
-
-### Lifecycle events
-
-Lifecycle runs only through typed events. Instances no longer have hidden built-in props, and ForgeFrame never calls a declared prop. TypeScript reports removed event names; JavaScript callers get an error that names the replacement.
-
-**Render events.** Before: `instance.event.on('prerender', fn)` or `on('prerendered', fn)`, then `on('display', fn)`. After: `on('render', fn)`, which fires once before any frame or placeholder exists, and `on('rendered', fn)`, which fires once.
-
-**Teardown.** Before: `instance.event.on('destroy', fn)`. After: `instance.event.on('closed', fn)`.
-
-**Removing handlers.** Before: `instance.event.off('close', fn)` or `instance.event.removeAllListeners()`. After: keep the function `on()` or `once()` returns and call it; ForgeFrame removes every listener after `closed`.
-
-**Emitting.** Before: `instance.event.emit('close')`. After: removed; call `instance.close()`.
-
-**Hidden lifecycle props.** Before:
-
-```typescript
-const instance = Checkout({ amount, onRendered, onClose, onError });
-```
-
-After:
-
-```typescript
-const instance = Checkout({ amount });
-instance.event.on('rendered', onRendered);
-instance.event.on('close', onClose);
-instance.event.on('error', onError);
-```
-
-The same applies to `onDisplay`, `onRender`, `onPrerender`, `onPrerendered`, `onDestroy`, `onResize`, `onFocus`, and `onProps`. Undeclared inputs are ignored.
-
-**A host-facing callback named `onClose`.** Before: ForgeFrame also called it on every close. After: it is an ordinary prop, called only when the host calls it.
-
-**Waiting for exports.** Before: polling `instance.exports`. After: `instance.event.once('exports', fn)`; the payload equals `instance.exports`.
-
-**CSP nonce.** Before: `Checkout({ cspNonce })`, which also sent the nonce to the host. After: `create({ ..., cspNonce })`. It is never sent to the host, and custom templates read it from `TemplateContext.cspNonce`.
-
-**`timeout` and `dimensions` as props.** Before: `Checkout({ timeout, dimensions })`, which was ignored. After: set them as component options only.
-
-**Host prop subscription.** Before: `const { cancel } = hostProps.onProps(fn); cancel();`. After: `const stop = hostProps.onProps(fn); stop();`.
-
-**Reporting a host error.** Before: `await hostProps.onError(err)`. After: `await hostProps.reportError(err)`. `onError` is now an ordinary prop name.
-
-**Host props event.** Before: `host.on('props', fn)`. After: `hostProps.onProps(fn)`.
-
-**Host error payload.** Before: an `Error` or `{ type: 'init_failed', message, error }`. After: always an `Error`; a wrapped failure is on `error.cause`.
-
-**Event constants and types.** Before: `EVENT.PRERENDER`, `EVENT.PRERENDERED`, `EVENT.DISPLAY`, `EVENT.DESTROY`, and `EventEmitterInterface`. After: plain event names such as `'render'`, `'rendered'`, `'closed'` and `'exports'` (the `EVENT` object is gone; see [Types and inference](#types-and-inference)), with `EventSubscriber<ComponentEvents<Props, Exports>>` for `instance.event` and `HostEvents` for the host.
-
-### Prop definitions
-
-The schema is now the only source of a prop's presence, default and value; the object form only adds transport options. `create()` and `initHost()` throw for a removed option and name its replacement.
-
-| Area | v1 | v2 |
-|---|---|---|
-| Required wrapped prop | `id: { schema: prop.string(), required: true }` | `id: prop.string()` |
-| Wrapped prop that was implicitly optional | `ref: { schema: prop.string(), queryParam: true }` (optional) | `ref: { schema: prop.string().optional(), queryParam: true }`. Without `.optional()` it is now required. |
-| Wrapped literal default | `{ schema: prop.string(), default: 'light' }` | `prop.string().default('light')` |
-| Wrapped callback default | `{ schema: prop.function(), default: () => onCancel }` | `prop.function().default(() => onCancel)` |
-| Computed fallback | `{ schema, value: (ctx) => ... }` or `default: (ctx) => ...` | Compute the value before calling the factory or `updateProps()` |
-| Decorator | `{ schema: prop.string(), decorate: ({ value }) => value.trim() }` | `prop.string().trim()`, or a schema transform that accepts its own output |
-| Host decorator | `{ schema, hostDecorate: ({ value }) => ... }` | Transform on the host after receipt, or pass a separate derived prop |
-| Per-prop validator | `{ schema, validate: ({ value }) => ... }` | A schema refinement (for example Zod `.refine`), or the component's `validate({ props })` for cross-prop rules |
-| Alias | `email: { schema: prop.string(), alias: 'userEmail' }` with `Widget({ userEmail })` | `email: prop.string()` with `Widget({ email: legacy.userEmail })` |
-| Alias types | `create<P, X, I, SchemaInputs>`, `ConsumerPropsInput`, `ConsumerPropsUpdate` | Removed; the factory input is inferred from schemas (`InputOf<typeof C>`) |
-| Same-origin only | `{ schema, sameDomain: true }` | `{ schema, deliverTo: 'same-origin' }` |
-| Listed host origins | `{ schema, trustedDomains: ['https://a.example'] }` | `{ schema, deliverTo: 'https://a.example' }`, or a `RegExp`, or an array |
-| Encoded query/body value | `queryParam: ({ value }) => encode(value)` | Pass the encoded string as its own prop with `queryParam: 'name'`, or build the URL in a `url(props)` function |
-| Shapeless object | `prop.object()` or `prop.object<Config>()` | `prop.object({ ... })`, `prop.record(...)` for dictionaries, or `prop.any<Config>()` when deliberately unchecked |
-| Shaped object | `prop.object().shape({ ... })` | `prop.object({ ... })` |
-| Array items | `prop.array().of(prop.string())` | `prop.array(prop.string())` |
-| Itemless array | `prop.array()` or `prop.array<T>()` | `prop.array(itemSchema)`, or `prop.any<T[]>()` |
-| Prop context | `PropContext` (`props`, `close`, `focus`, `onError`, `container`, `uid`, `tag`) | Removed |
-| Missing-value error | `Prop "id" is required but was not provided` for the object form | Always the schema's message, such as `Validation failed: id: Required` |
-| Type-changing schema | `{ schema: z.string().transform(Number), outputSchema: z.number() }` | Pass the type the host receives (`z.number()`), accept both forms (`z.coerce.number()`), or convert in the host |
-| String to `Date` | `{ schema: z.string().transform((s) => new Date(s)), outputSchema: z.date() }` | `prop.date()` and pass a `Date`; or `z.union([z.iso.datetime(), z.date()]).transform((v) => new Date(v))`; or keep `prop.string()` and call `new Date(props.startsAt)` in the host |
-| Same-type, non-idempotent transform | `{ schema: z.number().transform((n) => n * 100), outputSchema: z.number() }` | Convert before calling the factory or `updateProps()`, or in the host |
-| Required input whose output may be `undefined` | `{ schema: z.string().transform((v) => v \|\| undefined), outputSchema: z.string().optional() }` | `z.string().optional()` and pass `value \|\| undefined`, or keep `z.string()` and treat `''` as empty in the host |
-| Consumer-only transform | `{ schema: z.string().transform((href) => new URL(href)), outputSchema: z.instanceof(URL), sendToHost: false }` | `{ schema: z.url(), sendToHost: false }` and compute `new URL(props.target)` inside `url(props)` |
-| `outputSchema` option | Validation-only schema for normalized values | Removed; `create()` and `initHost()` throw for it |
-| Definition types | `PropsDefinition<P, I>`, `HostPropsDefinition<P, I>`, `PropDefinition<Output, Input>`, `ComponentOptions<P, SchemaInputs>`, `InitHostOptions<P, SchemaInputs>` | `PropsDefinition<P>`, `PropDefinition<Output>`, `ComponentOptions<P>`, `InitHostOptions<P>`; defaulted schemas fit without an input type |
-| Host typing | `initHost<P, SchemaInputs>({ props, consumerOrigins })` | `initHost(Component, { consumerOrigins })` infers the props; the tag-agnostic form infers them from `props` |
-| Component input generic | `ForgeFrameComponent<P, X, RequireProps, SchemaInputs>` | `Component<Props, Input, Exports>`; see [Types and inference](#types-and-inference) |
-| Getter-defined prop entry | Read when props were normalized | `create()` and `initHost()` throw; declare entries as plain fields |
-
-A host that shares definitions with a `deliverTo` prop no longer requires that prop when it is withheld from the host's origin, and it discards the field if a consumer sends it anyway.
-
-### Prop updates
-
-| Area | v1 | v2 | What to do |
-|---|---|---|---|
-| `updateProps()` while `render()` is pending | Rejects with "Cannot update props while the component is rendering" | Queued; applied in call order after the render settles; resolves when the host acknowledges; rejects with the closed error if the render fails and closes the instance | Remove `await render()` sequencing or catch-and-retry code written for that error |
-| Updates from `render` listeners, `url` functions and `validate` during render | Rejected | Queued like any other update | None |
-| `undefined` in an update | Reset to the fallback (undocumented; the React docs said `undefined` stays data) | The documented rule: the schema default, no value, or a validation error for a required prop | To leave a prop unchanged, leave its key out |
-| React: removing a prop vs passing `undefined` | Same host result through an internal reset marker | Same result, documented; switching between the two sends no update | None |
-| `null` in an update | A value | A value | None |
-
 ### Secure defaults
+
+Allowlists are required, peers are opt-in, and the sandbox is a first-class option.
 
 | Area | v1 | v2 | What to do |
 |---|---|---|---|
@@ -1373,42 +1241,96 @@ A host that shares definitions with a `deliverTo` prop no longer requires that p
 | Static iframe attributes | `name`, `src` and `srcdoc` in a static `attributes` object rejected `render()` | `create()` throws for them, and for `sandbox`; a computed `attributes` function is still checked at render | Remove the attribute |
 | `ComponentOptions` type | An interface | A type alias over `ComponentBaseOptions` and the `url`/`hostOrigins` union `ComponentUrlOptions`, so it can no longer be augmented by declaration merging; `Partial<ComponentOptions>` spreads over the union | Use `ComponentBaseOptions` for options other than `url` and `hostOrigins` |
 
-### Types and inference
+### Lifecycle events
 
-`create()` has one signature and takes no type arguments: props, factory input and exports are inferred from the schemas, and calling a factory without props fails to compile when a prop is required. Renamed types fail loudly instead of reinterpreting their parameters.
+Lifecycle runs only through typed events. Instances no longer have hidden built-in props, and ForgeFrame never calls a declared prop.
 
-| Area | v1 | v2 |
-|---|---|---|
-| Explicit props type | `create<LoginProps>({ ... })` | `create({ ... })`; derive the type with `type LoginProps = PropsOf<typeof LoginForm>`, or check definitions with `props: { ... } satisfies PropsDefinition<LoginProps>` |
-| Explicit exports type | `create<Props, Exports>({ ... })` | `create({ ..., exports: prop.object({ ... }) })`; `ExportsOf<typeof C>` |
-| Input and alias generics | `create<P, X, I, SchemaInputs>` | Removed; the input is inferred (`InputOf<typeof C>`) |
-| Component type | `ForgeFrameComponent<P, X, I, RequireProps, SchemaInputs>` | `Component<Props, Input, Exports>`, or `typeof C` |
-| Instance type | `ForgeFrameComponentInstance<P, X, I, SchemaInputs>` | `ComponentInstance<Props, Input, Exports>` |
-| Host props type | `HostProps<P>` with a hand-written `P` | `HostPropsOf<typeof C>` (or `host.hostProps` from `initHost(C)`) |
-| Host definitions type | `HostPropsDefinition<P>` | `PropsDefinition<P>` |
-| Definition map keys | `PropsDefinition<P>` entries were optional | Every key of `P` needs an entry, so `satisfies` reports a missing definition; declare an optional prop with an optional schema |
-| Inference types | `InferPropsDefinition<D>`, `InferPropsDefinitionInput<D>` | `InferProps<D>`, `InferInput<D>` |
-| Schema output type | `InferSchemaOutput<S>` | `StandardSchemaV1.InferOutput<S>` (and `StandardSchemaV1.InferInput<S>`) |
-| Removed types | `SchemaPropDefinition`, `PropDefinitionEntry`, `Prop` | Use `PropDefinition`, `PropsDefinition`, `InferProps`; `typeof prop` |
-| Schema classes | `import { StringSchema } from 'forgeframe'`, `new StringSchema()`, `x instanceof ObjectSchema` | `import type { StringSchema } from 'forgeframe'`; build with `prop.string()`; no `instanceof` |
-| Schema detection | `isStandardSchema(value)` | Check `'~standard' in value` yourself, or let ForgeFrame validate |
-| Context constants | `CONTEXT.POPUP` | `'popup'` (type `ContextType`) |
-| Event constants | `EVENT.RENDERED` | `'rendered'` (type `EventType`) |
-| Exports validation | Not validated | Validated against `exports`; invalid exports reject the host's `export()`, keep the previous exports and emit `error` |
-| `hostProps.export()` type | `export<X>(exports: X)` | Typed by the component's `exports` schema; any value without one |
-| React generics | `createReactComponent<P, X, E, I, RequireProps, SchemaInputs>` | `createReactComponent<typeof C>`, normally inferred; wrapper props come from `InputOf<typeof C>`; see [React](#react-forgeframereact) |
-| Enum literal types | `prop.enum(['a', 'b'])` could widen to `string` under a contextual type | Always `'a' \| 'b'` |
+```typescript
+// v1: lifecycle callbacks passed as hidden props
+const instance = Checkout({ amount, onRendered, onClose, onError });
 
-### Props are always JSON
-
-ForgeFrame 2 sends every prop as JSON through the function bridge. The `serialization` prop option and its `BASE64` and `DOTIFY` formats, `PROP_SERIALIZATION` and `SerializationType` are gone, and `create()` or `initHost()` throws if a definition still sets `serialization`. Remove the option: values that were base64- or dot-encoded now arrive as the same JSON values, callbacks at any depth are still bridged, and `Date` values still arrive as `Date`s. A host that read an encoded query parameter should read the plain value, or the consumer can pass its own encoded string as a separate prop with `queryParam: 'name'`.
-
-### Naming and errors
+// v2: events on the instance
+const instance = Checkout({ amount });
+instance.event.on('rendered', onRendered);
+instance.event.on('close', onClose);
+instance.event.on('error', onError);
+```
 
 | Area | v1 | v2 | What to do |
 |---|---|---|---|
-| Consumer host allowlist | `domain` | `hostOrigins` | Rename the option; values are origins such as `https://pay.example.com`, and a bare host such as `pay.example.com` now throws |
-| Host consumer allowlist | `initHost(defs, allowedConsumerDomains)` or `ComponentOptions.allowedConsumerDomains` | `initHost(Component, { consumerOrigins })` (required) | Move the allowlist to `initHost` and rename it |
+| Hidden lifecycle props | `onRendered`, `onClose`, `onError`, `onDisplay`, `onRender`, `onPrerender`, `onPrerendered`, `onDestroy`, `onResize`, `onFocus` and `onProps` passed to the factory | Ignored unless declared as props; ForgeFrame never calls them | Subscribe with `instance.event.on(...)` |
+| A host-facing callback named `onClose` | ForgeFrame also called it on every close | An ordinary prop, called only when the host calls it | None, unless you relied on the extra call |
+| Render events | `prerender` or `prerendered`, then `display` | `render`, which fires once before any frame or placeholder exists, and `rendered`, which fires once | Rename the event |
+| Teardown event | `destroy` | `closed` | Rename the event |
+| Unknown event names and handlers | `on()` accepted any name and handler | An unknown or removed event name, or a handler that is not a function, throws `VALIDATION`; a removed name's message names its replacement | Fix the name or the handler |
+| Removing handlers | `instance.event.off('close', fn)` or `instance.event.removeAllListeners()` | `on()` and `once()` return an unsubscribe function; ForgeFrame removes every listener after `closed` | Keep the returned function and call it |
+| Emitting | `instance.event.emit('close')` | Removed | Call `instance.close()` |
+| Waiting for exports | Polling `instance.exports` | `instance.event.once('exports', fn)`; the payload equals `instance.exports` | Subscribe to `exports` |
+| CSP nonce | `Checkout({ cspNonce })`, which also sent the nonce to the host | `create({ ..., cspNonce })`; never sent to the host; custom templates read `TemplateContext.cspNonce` | Move it to the component options |
+| `timeout` and `dimensions` as props | `Checkout({ timeout, dimensions })`, which was ignored | Component options only | Set them on `create()` |
+| Host prop subscription | `const { cancel } = hostProps.onProps(fn); cancel();` | `const stop = hostProps.onProps(fn); stop();` | Call the returned function |
+| Reporting a host error | `await hostProps.onError(err)` | `await hostProps.reportError(err)`; `onError` is now an ordinary prop name | Rename the call |
+| Host props event | `host.on('props', fn)` | `hostProps.onProps(fn)` | Subscribe through `hostProps` |
+| Event types | `EventEmitterInterface` | `EventSubscriber<ComponentEvents<Props, Exports>>` for `instance.event` and `HostEvents` for the host; the `EVENT` constants are gone (see [Types and inference](#types-and-inference)) | Use the new types and plain event names |
+
+### Prop definitions
+
+The schema is now the only source of a prop's presence, default and value; the object form only adds transport options. `create()` and `initHost()` throw for a removed option and name its replacement.
+
+| Area | v1 | v2 | What to do |
+|---|---|---|---|
+| Required wrapped prop | `id: { schema: prop.string(), required: true }` | `id: prop.string()` | Drop `required` |
+| Wrapped prop that was implicitly optional | `ref: { schema: prop.string(), queryParam: true }` (optional) | Required unless the schema accepts `undefined` | Write `ref: { schema: prop.string().optional(), queryParam: true }` |
+| Wrapped literal default | `{ schema: prop.string(), default: 'light' }` | `prop.string().default('light')` | Move the default into the schema |
+| Wrapped callback default | `{ schema: prop.function(), default: () => onCancel }` | `prop.function().default(() => onCancel)` | Move the default into the schema |
+| Computed fallback | `{ schema, value: (ctx) => ... }` or `default: (ctx) => ...` | Removed | Compute the value before calling the factory or `updateProps()` |
+| Decorator | `{ schema: prop.string(), decorate: ({ value }) => value.trim() }` | Removed | Use `prop.string().trim()`, or a schema transform that accepts its own output |
+| Host decorator | `{ schema, hostDecorate: ({ value }) => ... }` | Removed | Transform on the host after receipt, or pass a separate derived prop |
+| Per-prop validator | `{ schema, validate: ({ value }) => ... }` | Removed | Use a schema refinement (for example Zod `.refine`), or the component's `validate({ props })` for cross-prop rules |
+| Alias | `email: { schema: prop.string(), alias: 'userEmail' }` with `Widget({ userEmail })` | Removed | Declare `email: prop.string()` and call `Widget({ email: legacy.userEmail })` |
+| Same-origin only | `{ schema, sameDomain: true }` | `{ schema, deliverTo: 'same-origin' }` | Rename the option |
+| Listed host origins | `{ schema, trustedDomains: ['https://a.example'] }` | `{ schema, deliverTo: 'https://a.example' }`, a `RegExp`, or an array | Rename the option |
+| Withheld props on a shared host | A host required a `sameDomain` prop it never received | A host that shares definitions with a `deliverTo` prop does not require it when it is withheld from the host's origin, and discards the field if a consumer sends it anyway | None |
+| Encoded query or body value | `queryParam: ({ value }) => encode(value)` | `queryParam` and `bodyParam` take `true` or a parameter name | Pass the encoded string as its own prop with `queryParam: 'name'`, or build the URL in a `url(props)` function |
+| Shapeless object | `prop.object()` or `prop.object<Config>()` | `prop.object({ ... })` | Give the shape, use `prop.record(...)` for dictionaries, or `prop.any<Config>()` when deliberately unchecked |
+| Shaped object | `prop.object().shape({ ... })` | `prop.object({ ... })` | Pass the shape directly |
+| Array items | `prop.array().of(prop.string())` | `prop.array(prop.string())` | Pass the item schema directly |
+| Itemless array | `prop.array()` or `prop.array<T>()` | `prop.array(itemSchema)` | Give the item schema, or use `prop.any<T[]>()` |
+| Prop context | `PropContext` (`props`, `close`, `focus`, `onError`, `container`, `uid`, `tag`) | Removed | Compute values outside the definition |
+| Missing-value error | `Prop "id" is required but was not provided` for the object form | Always the schema's message, such as `Validation failed: id: Required` | Branch on the `VALIDATION` code, not the message |
+| Getter-defined prop entry | Read when props were normalized | `create()` and `initHost()` throw | Declare entries as plain fields |
+| `outputSchema` option | A validation-only schema for normalized values | Removed; `create()` and `initHost()` throw for it. Each prop has one schema, which must accept its own output | Rewrite type-changing schemas as below |
+| Type-changing schema | `{ schema: z.string().transform(Number), outputSchema: z.number() }` | One schema for the type the host receives | Pass `z.number()`, accept both forms with `z.coerce.number()`, or convert in the host |
+| String to `Date` | `{ schema: z.string().transform((s) => new Date(s)), outputSchema: z.date() }` | One schema | Use `prop.date()` and pass a `Date`; or `z.union([z.iso.datetime(), z.date()]).transform((v) => new Date(v))`; or keep `prop.string()` and call `new Date(props.startsAt)` in the host |
+| Same-type, non-idempotent transform | `{ schema: z.number().transform((n) => n * 100), outputSchema: z.number() }` | Rejected, because the schema changes its own output | Convert before calling the factory or `updateProps()`, or in the host |
+| Required input whose output may be `undefined` | `{ schema: z.string().transform((v) => v \|\| undefined), outputSchema: z.string().optional() }` | One schema | Use `z.string().optional()` and pass `value \|\| undefined`, or keep `z.string()` and treat `''` as empty in the host |
+| Consumer-only transform | `{ schema: z.string().transform((href) => new URL(href)), outputSchema: z.instanceof(URL), sendToHost: false }` | One schema | Use `{ schema: z.url(), sendToHost: false }` and compute `new URL(props.target)` inside `url(props)` |
+
+### Prop updates
+
+| Area | v1 | v2 | What to do |
+|---|---|---|---|
+| `updateProps()` while `render()` is pending | Rejects with "Cannot update props while the component is rendering" | Queued; applied in call order after the render settles; resolves when the host acknowledges; rejects with the closed error if the render fails and closes the instance | Remove `await render()` sequencing or catch-and-retry code written for that error |
+| Updates from `render` listeners, `url` functions and `validate` during render | Rejected | Queued like any other update | Do not `await` such an update inside code the render waits on, such as a callback the host calls before INIT: it waits behind the render and stalls until `initTimeout`. Start it without awaiting, or await it after `render()` resolves |
+| `undefined` in an update | Reset to the fallback (undocumented; the React docs said `undefined` stays data) | The documented rule: the schema default, no value, or a validation error for a required prop | To leave a prop unchanged, leave its key out |
+| React: removing a prop vs passing `undefined` | Same host result through an internal reset marker | Same result, documented; switching between the two sends no update | None |
+| `null` in an update | A value | A value | None |
+
+```typescript
+const instance = Checkout({ amount: 10, theme: 'dark' });
+const rendering = instance.render('#checkout');
+const updating = instance.updateProps({ amount: 12 }); // the host starts with 10, then receives 12
+await Promise.all([rendering, updating]);
+await instance.updateProps({ theme: undefined }); // back to the schema default
+```
+
+### Naming and errors
+
+Origins are called origins everywhere, and every error ForgeFrame raises is a `ForgeFrameError` with a `code`. See [Errors](#errors) for the codes.
+
+| Area | v1 | v2 | What to do |
+|---|---|---|---|
+| Consumer host allowlist | `domain` | `hostOrigins` | Rename the option; values are origins such as `https://pay.example.com`, and a bare host such as `pay.example.com` now throws. The host's allowlist is `consumerOrigins` on `initHost()` (see [Host start-up and props](#host-start-up-and-props)) |
 | Matcher type | `DomainMatcher` | `OriginMatcher` | Rename the type import |
 | Consumer origin in the host | `hostProps.getConsumerDomain()` | `hostProps.consumerOrigin`, a read-only property | Drop the call parentheses |
 | Handshake timeout | `timeout` | `initTimeout` | Rename; remote callbacks still have no timeout |
@@ -1416,7 +1338,7 @@ ForgeFrame 2 sends every prop as JSON through the function bridge. The `serializ
 | Removed names | Ignored or accepted | `domain`, `timeout` and `defaultContext` throw a `VALIDATION` error naming the replacement | Rename the option |
 | Popup blocked | `err instanceof PopupOpenError` | `err instanceof ForgeFrameError && err.code === 'POPUP_BLOCKED'` | Replace the check |
 | Matching messages | `err.message.includes('timed out')`, `'not allowed'`, `'closed before rendering completed'`, `'callback limit'` | `err.code === 'INIT_TIMEOUT'`, `'ORIGIN_REJECTED'`, `'CANCELLED'`, `'CAPACITY'` | Switch on `code`; message text is not a contract and now says "origin" where it said "domain" |
-| Host `error` event | Sometimes `{ type: 'init_failed', message, error }` | Always an `Error`; start-up failures are `ForgeFrameError`s with the underlying failure in `cause` | Read `err.code` and `err.cause` |
+| Host `error` event | An `Error`, or sometimes `{ type: 'init_failed', message, error }` | Always an `Error`; start-up failures are `ForgeFrameError`s with the underlying failure in `cause`, and the same error rejects `host.ready` | Read `err.code` and `err.cause` |
 | Component `validate` | Its error reached `render()` unchanged | `VALIDATION`, with your error as `cause` | Read `err.cause` for your own error |
 | DOM methods | `await instance.show()`, and the same for `hide`, `focus` and `resize`, returned promises | They return `void` and finish before they return | `await` still works; replace `.then()` and `.catch()` chains, and catch `resize()` errors with `try`/`catch` |
 | `resize` with nothing mounted | Emitted `resize` | Emits nothing, as `focus` does | Listen for `resize` only once rendered |
@@ -1427,6 +1349,7 @@ ForgeFrame 2 sends every prop as JSON through the function bridge. The `serializ
 | Area | v1 | v2 | What to do |
 |---|---|---|---|
 | Import | `import { createReactComponent } from 'forgeframe'` | `import { createReactComponent } from 'forgeframe/react'` | Change the import; `react` is an optional peer dependency that React apps already have |
+| Module resolution | Any `moduleResolution` | `bundler`, `node16` or `nodenext`, which read the package `exports` map | Update `tsconfig.json` if it uses `node` or `node10` |
 | Factory | `createReactComponent(Component, { React })` | `createReactComponent(Component)` | Drop the second argument; passing one throws a `VALIDATION` error |
 | Curried factory | `withReactComponent(React)(Component)` | Removed | Call `createReactComponent(Component)` for each component |
 | Instance access | Not available (the `ref` is the container `div`) | The `instanceRef` prop receives a handle after render and `null` when it goes away | Use it for `exports`, `resize()`, `focus()`, `show()`, `hide()`, `close()` and events |
@@ -1437,22 +1360,62 @@ ForgeFrame 2 sends every prop as JSON through the function bridge. The `serializ
 | A render failure | Could reach `onError` twice (the `error` event and the rejected render), plus a `CLOSED` error for each prop change held during that render | Reported once | None |
 | Preact | `createReactComponent(C, { React: preactCompat })` | Alias `react` to `preact/compat` in your bundler | Configure the alias |
 
-### Named exports only
+### Types and inference
 
-Before:
+`create()` has one signature and takes no type arguments: props, factory input and exports are inferred from the schemas, and calling a factory without props fails to compile when a prop is required. Renamed types fail loudly instead of reinterpreting their parameters.
 
-```typescript
-import ForgeFrame from 'forgeframe';
-ForgeFrame.create(...);
-```
+| Area | v1 | v2 | What to do |
+|---|---|---|---|
+| Explicit props type | `create<LoginProps>({ ... })` | `create({ ... })` | Derive the type with `type LoginProps = PropsOf<typeof LoginForm>`, or check definitions with `props: { ... } satisfies PropsDefinition<LoginProps>` |
+| Explicit exports type | `create<Props, Exports>({ ... })` | `create({ ..., exports: prop.object({ ... }) })` | Declare an `exports` schema; read the type with `ExportsOf<typeof C>` |
+| Input and alias generics | `create<P, X, I, SchemaInputs>`, `ConsumerPropsInput`, `ConsumerPropsUpdate` | Removed; the input is inferred | Use `InputOf<typeof C>` |
+| Component type | `ForgeFrameComponent<P, X, I, RequireProps, SchemaInputs>` | `Component<Props, Input, Exports>` | Use `typeof C`, or the new generic |
+| Instance type | `ForgeFrameComponentInstance<P, X, I, SchemaInputs>` | `ComponentInstance<Props, Input, Exports>` | Rename the type |
+| Host props type | `HostProps<P>` with a hand-written `P` | `HostPropsOf<typeof C>` | Derive it from the component, or use `host.hostProps` from `initHost(C)` |
+| Definition types | `PropsDefinition<P, I>`, `HostPropsDefinition<P, I>`, `PropDefinition<Output, Input>`, `ComponentOptions<P, SchemaInputs>`, `InitHostOptions<P, SchemaInputs>` | `PropsDefinition<P>` (for host definitions too), `PropDefinition<Output>`, `ComponentOptions<P>`, `InitHostOptions<P>` | Drop the input parameter and replace `HostPropsDefinition` with `PropsDefinition`; defaulted schemas fit without it |
+| Host typing | `initHost<P, SchemaInputs>({ props, consumerOrigins })` | `initHost(Component, { consumerOrigins })` infers the props; the tag-agnostic form infers them from `props` | Drop the type arguments |
+| Definition map keys | `PropsDefinition<P>` entries were optional | Every key of `P` needs an entry, so `satisfies` reports a missing definition | Declare an optional prop with an optional schema |
+| Inference types | `InferPropsDefinition<D>`, `InferPropsDefinitionInput<D>` | `InferProps<D>`, `InferInput<D>` | Rename the types |
+| Schema output type | `InferSchemaOutput<S>` | `StandardSchemaV1.InferOutput<S>` (and `StandardSchemaV1.InferInput<S>`) | Rename the type |
+| Removed types | `SchemaPropDefinition`, `PropDefinitionEntry`, `Prop`, `ChildrenDefinition`, `ConsumerNamespace`, `EligibilityResult`, `ForgeFrameComponentReference` | Removed | Use `PropDefinition`, `PropsDefinition`, `InferProps` and `typeof prop`; delete the others' imports |
+| Schema classes | `import { StringSchema } from 'forgeframe'`, `new StringSchema()`, `x instanceof ObjectSchema` | Exported as types only | `import type { StringSchema } from 'forgeframe'`; build with `prop.string()`; no `instanceof` |
+| Schema detection | `isStandardSchema(value)` | Removed | Check `'~standard' in value` yourself, or let ForgeFrame validate |
+| Context constants | `CONTEXT.POPUP` | `'popup'` (type `ContextType`) | Use the string |
+| Event constants | `EVENT.RENDERED` | `'rendered'` (type `EventType`) | Use the string |
+| Exports validation | Not validated | Validated against `exports`: a host started with `initHost(Component)` rejects invalid exports in `export()` before sending them; for a tag-agnostic host the consumer rejects them, keeps the previous exports and emits `error`, and the host's `export()` rejects with `VALIDATION` | Declare an `exports` schema that matches what the host exports |
+| `hostProps.export()` type | `export<X>(exports: X)` | Typed by the component's `exports` schema; any value without one | Drop the type argument |
+| React generics | `createReactComponent<P, X, E, I, RequireProps, SchemaInputs>` | `createReactComponent<typeof C>`, normally inferred; wrapper props come from `InputOf<typeof C>` | Drop the type arguments; see [React](#react-forgeframereact) |
+| Enum literal types | `prop.enum(['a', 'b'])` could widen to `string` under a contextual type | Always `'a' \| 'b'` | None |
 
-After:
+### Props are always JSON
 
-```typescript
-import { create } from 'forgeframe';
-create(...);
-// or: import * as ForgeFrame from 'forgeframe'
-```
+ForgeFrame 2 sends every prop as JSON through the function bridge. The `serialization` prop option and its `BASE64` and `DOTIFY` formats, `PROP_SERIALIZATION` and `SerializationType` are gone, and `create()` or `initHost()` throws if a definition still sets `serialization`. Callbacks at any depth are still bridged, and `Date` values still arrive as `Date`s.
+
+| Area | v1 | v2 | What to do |
+|---|---|---|---|
+| `serialization` option | `serialization: PROP_SERIALIZATION.BASE64` or `DOTIFY` | Removed; `create()` and `initHost()` throw for it | Remove the option; base64- or dot-encoded values now arrive as the same JSON values |
+| Encoded query parameter | The host read a base64- or dot-encoded parameter | The parameter carries the plain value | Read the plain value, or pass your own encoded string as a separate prop with `queryParam: 'name'` |
+| `toJSON()` with DOTIFY | Not applied to the root object or to nested plain objects, so fields a class hid were sent, and a plain object's own `toJSON` arrived as a callable field | Applied, as `JSON.stringify` does | Check what the host receives; stop reading hidden fields or calling a delivered `toJSON` |
+| An array's `toJSON()` | Called by BASE64 at any depth, and by DOTIFY for arrays inside objects | Not called; the entries are sent | Convert such arrays before passing them |
+| `JSON.rawJSON()` values | Delivered as the value their text represents in BASE64 | Delivered as the value their text represents, as native JSON does | None |
+| A prop whose `toJSON()` returns `undefined` | Omitted | Omitted | None |
+
+### Removed zoid-era APIs
+
+Each of these duplicated another API. TypeScript reports every removed member and option, and `create()` throws a migration error if a JavaScript caller still passes `eligible` or `children`.
+
+| Area | v1 | v2 | What to do |
+|---|---|---|---|
+| `renderTo` | `await instance.renderTo(window, '#container', 'popup')` | Removed | `await instance.render('#container', 'popup')` |
+| `clone()` | `const copy = instance.clone()` | Removed | Call the factory again with the props you want: `Component({ ...currentProps })` |
+| `destroy(instance)` | `await destroy(instance)` | Removed | `await instance.close()` |
+| `destroyByTag(tag)` | `await destroyByTag('payment-form')` | Removed | `await Promise.all(PaymentForm.instances.map((i) => i.close()))` |
+| `destroyAll()` | `await destroyAll()` | `await closeAll()`: closes every live instance, resolves once all have closed, and rejects with an `AggregateError` after the others finish if any close fails | Rename the call |
+| `eligible` and `isEligible()` | `create({ ..., eligible: ({ props }) => ({ eligible: !!props.userId, reason: 'Log in' }) })` | Removed | Throw from `validate: ({ props }) => { if (!props.userId) throw new Error('Log in'); }`, and check the same condition before calling `render()` |
+| `instance.state` and `ctx.state` | `instance.state.step = 2` | Removed | Keep per-instance state in your own code, such as a `WeakMap` keyed by the instance or a closure |
+| `hostProps.consumer.export()` | `await hostProps.consumer.export({ token })`, read on the consumer through a cast | Removed; `hostProps.consumer` is `{ props }` | `await hostProps.export({ token })` and read `instance.exports`, or call a consumer callback prop |
+| Nested `children` | `create({ ..., children: () => ({ CardField }) })`, then `hostProps.children.CardField({...}).render('#card')` in the host | Removed; `children` stays a reserved prop name | Import the child component in the parent host and render it there; the child host page calls `initHost(CardField, { consumerOrigins: ['https://parent-host.example'] })` |
+| Mutating `Component.instances` | `Component.instances.splice(0)` | `instances` returns a new frozen snapshot on each read | Close instances with `close()` or `closeAll()`, then read `instances` again |
 
 ---
 
@@ -1745,10 +1708,14 @@ Edit documentation in the root `README.md`. The library build copies it to `pack
 
 Version preparation and publication are separate. The Release workflow publishes from CI through [npm trusted publishing](https://docs.npmjs.com/trusted-publishers), so no npm token is stored and the package gets a provenance attestation.
 
-1. Run `npm run version:patch`, `version:minor`, or `version:major` to update workspace metadata and the lockfile only. For an explicit version, use `npm version 1.0.2 -w forgeframe --no-git-tag-version`. These commands do not commit, tag, publish, or push.
+1. Run `npm run version:patch`, `version:minor`, or `version:major` to update workspace metadata and the lockfile only. For an explicit version, use `npm version 2.0.1 -w forgeframe --no-git-tag-version`. These commands do not commit, tag, publish, or push. npm 11 re-indents `package-lock.json` with tabs; re-serialize it with 2-space indentation before committing.
 2. Run `npm run release:check` and `npm run test:browser`, review the changes, and commit the intended release source and metadata. Verify hosted CI for that commit before releasing.
-3. Create the matching Git tag, such as `v1.0.2`, on that commit. Keep the working tree clean so the published files match the tagged source.
-4. Push the release commit and its specific tag explicitly. The Release workflow checks that the tag matches the package version, runs the browser suite in all three engines, and publishes with `npm publish -w forgeframe --provenance`, whose `prepublishOnly` runs `npm run release:check` first. It then creates the GitHub release notes. Manual workflow runs must select the matching tag.
+3. Create the matching annotated Git tag, such as `v2.0.1`, on that commit. Keep the working tree clean so the published files match the tagged source.
+4. Push the release commit and its specific tag explicitly. The Release workflow checks that the tag matches the package version, runs the browser suite in all three engines, and publishes with `npm publish -w forgeframe --provenance --tag <dist-tag>`, whose `prepublishOnly` runs `npm run release:check` first. It then creates the GitHub release notes. Manual workflow runs must select the matching tag.
+
+A version with a pre-release component, such as `2.1.0-beta.1`, publishes under the `next` dist-tag and its GitHub release is marked as a pre-release, so `npm install forgeframe` keeps resolving to the latest final version; install a pre-release with `npm install forgeframe@next`. Any other version publishes under `latest`. `packages/forgeframe/scripts/release-dist-tag.mjs` makes that choice. Moving `next` after a final release (`npm dist-tag add forgeframe@<version> next`) needs the owner's npm login, because trusted publishing authenticates only the workflow's publish.
+
+If the workflow fails before anything reaches npm, fix the problem through a normal pull request, then recreate the tag on the fixed commit or use the next pre-release number. If npm published but a later step failed, do not publish again: create the GitHub release by hand from the tag. A published version number can never be reused; fix a bad release with a new patch version and deprecate the bad one if necessary.
 
 Trusted publishing needs a one-time setup on npmjs.com: in the `forgeframe` package settings, add a trusted publisher for this GitHub repository with the workflow file `release.yml`. `npm run release` still publishes from a local machine with the same checks, but that copy has no provenance.
 

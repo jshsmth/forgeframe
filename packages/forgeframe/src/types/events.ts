@@ -75,14 +75,17 @@ export type EventType = keyof ComponentEvents;
  * Lifecycle events of a consumer instance, with their payloads.
  *
  * @typeParam P - The props type for the component
- * @typeParam X - The type of exports from the host, from the `exports` schema
+ * @typeParam Exports - The type of exports from the host, from the `exports` schema
  *
  * @remarks
  * Subscribe with `instance.event.on(name, handler)`.
  *
  * @public
  */
-export interface ComponentEvents<P = Record<string, unknown>, X = unknown> {
+export interface ComponentEvents<
+	P = Record<string, unknown>,
+	Exports = unknown,
+> {
 	/**
 	 * Rendering started. Fires once per render attempt, after props are
 	 * validated and the container is resolved, and before any iframe, popup
@@ -123,7 +126,7 @@ export interface ComponentEvents<P = Record<string, unknown>, X = unknown> {
 	 * The host exported values with `hostProps.export()`. `instance.exports`
 	 * already holds them.
 	 */
-	exports: RemoteValue<X>;
+	exports: RemoteValue<Exports>;
 }
 
 /**

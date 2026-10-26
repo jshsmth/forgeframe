@@ -6,24 +6,28 @@ import { gzipSync } from "node:zlib";
 
 /**
  * Size budgets for each published, minified ESM entry, counted together with
- * the chunks it statically imports. Raise a budget only in the change that
- * needs the extra bytes, and say why in its description.
+ * the chunks it statically imports: the size measured for 2.0.0 plus about 4%,
+ * rounded up to a whole KiB. Raise a budget only in the change that needs the
+ * extra bytes, and say why in its description.
  */
 const budgets = {
-	"forgeframe.js": { minified: 130 * 1024, gzip: 33 * 1024 },
-	"react.js": { minified: 12 * 1024, gzip: 5 * 1024 },
+	"forgeframe.js": { minified: 111 * 1024, gzip: 29 * 1024 },
+	"react.js": { minified: 8 * 1024, gzip: 4 * 1024 },
 };
 
 const distDir =
 	process.argv[2] ?? fileURLToPath(new URL("../dist", import.meta.url));
 
-/** An entry's file and every chunk it statically imports, each once. */
+/**
+ * An entry's file and every chunk it statically imports, each once. Matches
+ * minified forms such as `import{a}from"./x.js"` and `export*from"./x.js"`.
+ */
 function staticGraph(file, seen = new Set()) {
 	if (seen.has(file)) return seen;
 	seen.add(file);
 	const code = readFileSync(file, "utf8");
 	for (const [, specifier] of code.matchAll(
-		/(?:^|[;\s}])(?:import|export)\s*(?:[^"'`;]*?(?:\s|\})from\s*)?["'](\.{1,2}\/[^"']+)["']/g,
+		/(?:^|[;\s}])(?:import|export)\s*(?:[^"'`;]*?[\s}*]from\s*)?["'](\.{1,2}\/[^"']+)["']/g,
 	)) {
 		staticGraph(resolve(dirname(file), specifier), seen);
 	}

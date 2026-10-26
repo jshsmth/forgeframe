@@ -8,6 +8,7 @@
  */
 
 import { EVENT } from "../../constants";
+import { ForgeFrameError } from "../../errors";
 import { EMPTY_PROP_DEFINITIONS } from "../../props/definitions";
 import {
 	createDeliveryTarget,
@@ -130,7 +131,11 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
 		return { success: true };
 	}
 
-	/** Validates and commits one wire snapshot, reporting a rejection as a host error. */
+	/**
+	 * Validates and commits one wire snapshot, reporting a rejection as a host
+	 * error. The `error` event and the thrown error (which rejects `ready` during
+	 * bootstrap) are the same `ForgeFrameError`.
+	 */
 	private commitSerializedProps(
 		serializedProps: SerializedProps,
 	): RemoteValue<P> {
@@ -149,7 +154,7 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
 			);
 			return nextProps;
 		} catch (error) {
-			const propsError = normalizeError(error);
+			const propsError = toPropsFailure(error);
 			console.error("Error deserializing props:", propsError);
 			this.options.event.emit(EVENT.ERROR, propsError);
 			throw propsError;
@@ -269,4 +274,16 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
 			delete (this.hostProps as Record<string, unknown>)[key];
 		}
 	}
+}
+
+/**
+ * Gives a rejected props snapshot a code: ForgeFrame failures keep theirs, and
+ * anything else, such as a throwing third-party schema, becomes `VALIDATION`
+ * with the original as `cause`.
+ * @internal
+ */
+function toPropsFailure(error: unknown): ForgeFrameError {
+	if (error instanceof ForgeFrameError) return error;
+	const cause = normalizeError(error);
+	return new ForgeFrameError("VALIDATION", cause.message, { cause });
 }

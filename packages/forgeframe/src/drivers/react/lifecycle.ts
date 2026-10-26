@@ -112,7 +112,7 @@ function createInstanceHandle(instance: ComponentInstance): ReactInstance {
  * cleanup is returned so that it can run in place of a `null` call.
  * @internal
  */
-function assignRef<T>(
+export function assignRef<T>(
 	target: Ref<T> | undefined,
 	value: T | null,
 ): (() => void) | undefined {
@@ -135,10 +135,13 @@ function clearRef<T>(
 	else assignRef(target, null);
 }
 
-/** Gives the target a handle. @internal */
+/** Gives the target a handle; a throwing callback ref is logged like other callbacks. @internal */
 function publishHandle(mount: ReactMountState, handle: ReactInstance): void {
 	mount.published = handle;
-	mount.targetCleanup = assignRef(mount.target, handle);
+	mount.targetCleanup = undefined;
+	callReactCallback("instanceRef", () => {
+		mount.targetCleanup = assignRef(mount.target, handle);
+	});
 }
 
 /** Clears the target if it still holds this handle. @internal */
@@ -150,7 +153,7 @@ function unpublishHandle(
 	mount.published = null;
 	const cleanup = mount.targetCleanup;
 	mount.targetCleanup = undefined;
-	clearRef(mount.target, cleanup);
+	callReactCallback("instanceRef", () => clearRef(mount.target, cleanup));
 }
 
 /**

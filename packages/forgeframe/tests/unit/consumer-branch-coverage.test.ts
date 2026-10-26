@@ -257,8 +257,16 @@ describe("Consumer branch coverage and edge paths", () => {
 		internal.resizeForHost({ width: 300, height: 200 });
 		expect(resized).not.toHaveBeenCalled();
 
-		// A popup host has already resized its own window.
+		// A popup that is not open did not resize itself.
 		internal.renderer.context = CONTEXT.POPUP;
+		internal.resizeForHost({ width: 310, height: 220 });
+		expect(resized).not.toHaveBeenCalled();
+
+		// An open popup host has already resized its own window.
+		internal.transport.attachHostWindow(
+			{ closed: false } as Window,
+			HOST_ORIGIN,
+		);
 		internal.resizeForHost({ width: 320, height: 240 });
 		expect(resized).toHaveBeenCalledExactlyOnceWith({
 			width: 320,

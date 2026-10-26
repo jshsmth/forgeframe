@@ -5,8 +5,9 @@
  * `updateProps()` settle when each test says, so stale completions, failed
  * updates and remounts can be ordered exactly. Covers stale render and update
  * results after a `context` remount, prop sync stopping after a failed render,
- * updates committed during `render()`, failed-update resync and single
- * retries, and an `onError` that throws.
+ * updates committed during `render()`, a throwing `instanceRef` callback,
+ * failed-update resync and single retries, an `onError` that throws, and a
+ * reserved wrapper name declared as `undefined`.
  */
 
 import { createReactComponent } from "forgeframe/react";
@@ -201,6 +202,46 @@ describe("React driver fault injection", () => {
 		expect(container.textContent).toBe("Error: render failed");
 		await commit({ amount: 2, onError });
 		expect(instance(0).updateProps).not.toHaveBeenCalled();
+	});
+
+	it("treats a reserved name declared as undefined as omitted, as create() does", () => {
+		const reservedTag = "react-fault-reserved-undefined";
+		const factory = vi.fn() as unknown as AnyComponent;
+		registerComponent(factory, {
+			tag: reservedTag,
+			url: "https://host.example.com",
+			props: { onClose: undefined },
+		} as unknown as ComponentOptions);
+		try {
+			expect(() => createReactComponent(factory)).not.toThrow();
+		} finally {
+			deleteRegisteredComponent(reservedTag);
+		}
+	});
+
+	it("logs a throwing instanceRef callback and still calls onRendered and onClose", async () => {
+		const refError = new Error("ref failed");
+		const log = vi.spyOn(console, "error").mockImplementation(() => {});
+		const instanceRef = vi.fn(() => {
+			throw refError;
+		});
+		const onRendered = vi.fn();
+		const onClose = vi.fn();
+		await commit({ amount: 1, instanceRef, onRendered, onClose });
+
+		await settle(() => instance(0).renderTask.resolve());
+		expect(instanceRef).toHaveBeenLastCalledWith(
+			expect.objectContaining({ uid: "fake-1" }),
+		);
+		expect(onRendered).toHaveBeenCalledOnce();
+
+		await settle(() => instance(0).emit("close"));
+		expect(instanceRef).toHaveBeenLastCalledWith(null);
+		expect(onClose).toHaveBeenCalledOnce();
+		expect(log.mock.calls).toEqual([
+			["Error in React instanceRef callback:", refError],
+			["Error in React instanceRef callback:", refError],
+		]);
 	});
 
 	describe("prop synchronization", () => {

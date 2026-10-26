@@ -31,6 +31,13 @@ const DETACHED_IFRAME_CONTAINER_ERROR =
 	"Iframe container must be attached to the document";
 
 /**
+ * What a resize did: `"resized"`, `"unmounted"` when no iframe is mounted and
+ * no popup is open, or `"denied"` when the browser refused to resize the popup.
+ * @internal
+ */
+export type ResizeOutcome = "resized" | "unmounted" | "denied";
+
+/**
  * Parameters required to open iframe/popup host content.
  * @internal
  */
@@ -469,14 +476,8 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
 
 	/**
 	 * Resizes iframe/popup context.
-	 *
-	 * @returns `"resized"`, `"unmounted"` when no iframe is mounted and no
-	 * popup is open, or `"denied"` when the browser refused to resize the popup
 	 */
-	resize(
-		dimensions: Dimensions,
-		hostWindow: Window | null,
-	): "resized" | "unmounted" | "denied" {
+	resize(dimensions: Dimensions, hostWindow: Window | null): ResizeOutcome {
 		if (this.context === CONTEXT.IFRAME && this.iframe) {
 			resizeIframe(this.iframe, dimensions);
 			if (this.ownedContainer && !this.options.containerTemplate) {

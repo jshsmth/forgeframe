@@ -51,33 +51,37 @@ describe("Exports schema integration", () => {
 		return { instance, hostProps, errors, activeHarness: harness };
 	}
 
-	it("stores valid exports and keeps exported methods callable", async () => {
-		const { instance, hostProps, errors, activeHarness } = await renderWithHost(
-			"exports-schema-valid",
-			prop.object({
-				ready: prop.boolean(),
-				total: prop.function<() => number>(),
-				createdAt: prop.date(),
-			}),
-			"tag-agnostic",
-		);
-		await activeHarness.withHostGlobalsAsync(() =>
-			hostProps.export({
-				ready: true,
-				total: () => 42,
-				createdAt: new Date("2026-10-26T00:00:00.000Z"),
-			}),
-		);
-		const exports = instance.exports as {
-			ready: boolean;
-			total: () => Promise<number>;
-			createdAt: Date;
-		};
-		expect(exports.ready).toBe(true);
-		expect(exports.createdAt).toBeInstanceOf(Date);
-		await expect(exports.total()).resolves.toBe(42);
-		expect(errors).toEqual([]);
-	});
+	it.each(["tag-agnostic", "component"] as const)(
+		"stores valid exports and keeps exported methods callable (%s host)",
+		async (hostForm) => {
+			const { instance, hostProps, errors, activeHarness } =
+				await renderWithHost(
+					`exports-schema-valid-${hostForm}`,
+					prop.object({
+						ready: prop.boolean(),
+						total: prop.function<() => number>(),
+						createdAt: prop.date(),
+					}),
+					hostForm,
+				);
+			await activeHarness.withHostGlobalsAsync(() =>
+				hostProps.export({
+					ready: true,
+					total: () => 42,
+					createdAt: new Date("2026-10-26T00:00:00.000Z"),
+				}),
+			);
+			const exports = instance.exports as {
+				ready: boolean;
+				total: () => Promise<number>;
+				createdAt: Date;
+			};
+			expect(exports.ready).toBe(true);
+			expect(exports.createdAt).toBeInstanceOf(Date);
+			await expect(exports.total()).resolves.toBe(42);
+			expect(errors).toEqual([]);
+		},
+	);
 
 	it("rejects invalid exports, keeps the previous exports and emits one error", async () => {
 		const { instance, hostProps, errors, activeHarness } = await renderWithHost(
