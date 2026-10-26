@@ -303,8 +303,10 @@ export interface ReactComponentType<P, E = unknown> {
  * set before a parent's layout effects run, and React 19 ref cleanups are honored.
  *
  * The component automatically cleans up the cross-domain connection when unmounted.
- * Committed prop changes synchronize in order after rendering. Omitted previously
- * observed props reset to their fallbacks; explicit `undefined` remains supplied data.
+ * Committed prop changes synchronize in order after rendering. Removing a prop
+ * resets it exactly as `updateProps({ key: undefined })` does, and passing
+ * `undefined` counts as leaving the prop out, so switching between the two
+ * sends no update.
  * Changing `context` remounts the instance with an independent update queue.
  *
  * @example

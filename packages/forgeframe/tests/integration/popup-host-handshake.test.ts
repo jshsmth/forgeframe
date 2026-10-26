@@ -74,6 +74,32 @@ describe("Popup host handshake integration", () => {
 		expect(instance.exports).toEqual({ ready: true });
 	});
 
+	it("delivers an update queued during a popup render after the bootstrap snapshot", async () => {
+		harness = createPopupIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+		const PopupComponent = create<PopupProps>({
+			tag: "integration-popup-held-update",
+			url: "https://host.example.com/widget",
+			props: POPUP_PROP_DEFINITIONS,
+			defaultContext: "popup",
+		});
+		const instance = PopupComponent({ amount: 1, message: "first" });
+		const rendering = instance.render(container);
+		const held = instance.updateProps({ amount: 2 });
+		const { host, hostProps } = await harness.bootstrapPopupHost(
+			POPUP_PROP_DEFINITIONS,
+		);
+		expect((await host.ready).amount).toBe(1);
+		const notified = vi.fn();
+		hostProps.onProps(notified);
+		await Promise.all([rendering, held]);
+		expect(hostProps.amount).toBe(2);
+		expect(notified).toHaveBeenLastCalledWith(
+			expect.objectContaining({ amount: 2, message: "first" }),
+		);
+	});
+
 	it("resizes a cross-origin popup from the host and rejects consumer-initiated resizing", async () => {
 		harness = createPopupIntegrationHarness();
 		const activeHarness = harness;

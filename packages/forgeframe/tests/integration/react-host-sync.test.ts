@@ -484,6 +484,75 @@ describe("React commits across the host boundary", () => {
 		expect(container.querySelector("iframe")).toBe(iframe);
 	});
 
+	it("treats an explicit undefined prop like an omitted one", async () => {
+		const definitions = {
+			title: prop.string(),
+			theme: prop.string().default("light"),
+		};
+		const Component = create({
+			tag: "react-host-explicit-undefined",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const Wrapped = createReactComponent(Component, { React });
+		await React.act(async () => {
+			root.render(React.createElement(Wrapped, { title: "a", theme: "dark" }));
+		});
+		const { hostProps, iframe } = await harness.bootstrapIframeHost(
+			container,
+			Component,
+		);
+		await vi.waitFor(() => expect(iframe.style.visibility).toBe("visible"));
+		const notifications: Record<string, unknown>[] = [];
+		hostProps.onProps((props) => notifications.push({ ...props }));
+		await React.act(async () => {
+			root.render(
+				React.createElement(Wrapped, { title: "a", theme: undefined }),
+			);
+		});
+		await vi.waitFor(() => expect(hostProps.theme).toBe("light"));
+		const afterUndefined = { ...hostProps.consumer.props };
+		await React.act(async () => {
+			root.render(React.createElement(Wrapped, { title: "a" }));
+		});
+		await React.act(async () => {
+			root.render(
+				React.createElement(Wrapped, { title: "a", theme: undefined }),
+			);
+		});
+		await harness.flushMessages();
+		expect(notifications).toEqual([{ title: "a", theme: "light" }]);
+		expect(hostProps.consumer.props).toEqual(afterUndefined);
+	});
+
+	it("resets a removed callback prop to its default through React", async () => {
+		const fallback = () => "fallback";
+		const definitions = {
+			label: prop.function<() => string>().default(() => fallback),
+		};
+		const Component = create({
+			tag: "react-host-callback-reset",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const Wrapped = createReactComponent(Component, { React });
+		await React.act(async () => {
+			root.render(React.createElement(Wrapped, { label: () => "custom" }));
+		});
+		const { hostProps, iframe } = await harness.bootstrapIframeHost(
+			container,
+			Component,
+		);
+		await vi.waitFor(() => expect(iframe.style.visibility).toBe("visible"));
+		await expect(hostProps.label()).resolves.toBe("custom");
+		await React.act(async () => {
+			root.render(React.createElement(Wrapped, {}));
+		});
+		await vi.waitFor(async () =>
+			expect(await hostProps.label()).toBe("fallback"),
+		);
+	});
+
 	it("preserves host state after a rejected React update and delivers the next valid commit", async () => {
 		const definitions = { amount: prop.number().min(0) };
 		const Component = create({

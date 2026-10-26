@@ -90,3 +90,11 @@ const InferredOptionalReact = createReactComponent(InferredOptionalComponent, {
 });
 const optionalElement: ReactElement = <InferredOptionalReact />;
 void optionalElement;
+// undefined counts as leaving an optional prop out.
+const optionalUndefinedElement: ReactElement = (
+	<InferredOptionalReact label={undefined} />
+);
+void optionalUndefinedElement;
+// @ts-expect-error a required prop still rejects undefined in JSX
+const requiredUndefinedElement = <InferredRequiredReact label={undefined} />;
+void requiredUndefinedElement;

@@ -352,6 +352,13 @@ void coercingInstance.updateProps({ amount: "42" });
 void coercingInstance.updateProps({ startsAt: new Date(), count: 1 });
 // A defaulted key stays optional in the factory input and in updates.
 void coercingInstance.updateProps({});
+// undefined resets a defaulted or optional prop; updates resolve to void.
+const resetUpdate: Promise<void> = coercingInstance.updateProps({
+	count: undefined,
+});
+void resetUpdate;
+// @ts-expect-error updates accept declared props only
+void coercingInstance.updateProps({ unknownProp: 1 });
 // @ts-expect-error coercing inputs are still typed by their schema
 void CoercingComponent({ amount: "41", startsAt: 1 });
 

@@ -79,16 +79,22 @@ async function runLifecycleScenario(
 	const instance = Component({ value: "before-render" });
 	let renderEventCount = 0;
 	let reentrantRender: Promise<void> | undefined;
-	let propUpdateError = "";
+	let heldUpdate: Promise<string> | undefined;
+	const lifecycleOrder: string[] = [];
+	instance.event.on("rendered", () => {
+		lifecycleOrder.push("rendered");
+	});
+	instance.event.on("props", (props) => {
+		lifecycleOrder.push(`props:${props.value}`);
+	});
 
 	instance.event.once("render", () => {
 		renderEventCount += 1;
 		reentrantRender = instance.render(container);
-		void instance
-			.updateProps({ value: "during-render" })
-			.catch((error: Error) => {
-				propUpdateError = error.message;
-			});
+		heldUpdate = instance.updateProps({ value: "during-render" }).then(
+			() => "acknowledged",
+			(error: Error) => error.message,
+		);
 	});
 
 	try {
@@ -97,7 +103,7 @@ async function runLifecycleScenario(
 		if (!reentrantRender)
 			throw new Error("Lifecycle callback did not re-enter render");
 		await Promise.all([firstRender, reentrantRender]);
-		await waitFor(() => propUpdateError);
+		const heldUpdateResult = await heldUpdate;
 
 		results.push(
 			assertResult(
@@ -109,10 +115,10 @@ async function runLifecycleScenario(
 		);
 		results.push(
 			assertResult(
-				"Props are locked during rendering",
-				propUpdateError ===
-					"Cannot update props while the component is rendering",
-				propUpdateError || "updateProps unexpectedly resolved",
+				"Updates during rendering reach the host after the initial props",
+				heldUpdateResult === "acknowledged" &&
+					lifecycleOrder.join(",") === "rendered,props:during-render",
+				`update: ${heldUpdateResult ?? "never requested"}; order: ${lifecycleOrder.join(",")}`,
 			),
 		);
 

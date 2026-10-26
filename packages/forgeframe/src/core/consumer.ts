@@ -37,6 +37,7 @@ import {
 	CONSUMER_EVENT_NAMES,
 	describeUnknownConsumerEvent,
 } from "./consumer/events";
+import { selectUpdateDeliveryOrigin } from "./consumer/prop-update";
 import {
 	ConsumerPropsPipeline,
 	type ConsumerPropsUpdateHooks,
@@ -205,8 +206,9 @@ export class ConsumerComponent<
 		const operation = renderTask.promise;
 		this.renderPromise = operation;
 		this.activeRenderTask = renderTask;
-		const pendingPropsUpdate = this.propsPipeline.pendingPropsUpdate;
-		void this.performRender(container, context, pendingPropsUpdate).then(
+		// Updates requested from here on wait behind this attempt.
+		const propsHold = this.propsPipeline.holdForRender();
+		void this.performRender(container, context, propsHold.earlierWork).then(
 			renderTask.resolve,
 			renderTask.reject,
 		);
@@ -214,6 +216,7 @@ export class ConsumerComponent<
 			await operation;
 		} finally {
 			this.finishRenderTask(renderTask, operation);
+			propsHold.release();
 		}
 	}
 
@@ -247,7 +250,7 @@ export class ConsumerComponent<
 	private async performRender(
 		container: string | HTMLElement,
 		context: ContextType | undefined,
-		pendingPropsUpdate: Promise<void> | null,
+		earlierPropsWork: Promise<void> | null,
 	): Promise<void> {
 		const resolvedContext = context ?? this.options.defaultContext;
 		if (
@@ -257,8 +260,8 @@ export class ConsumerComponent<
 			throw new Error('Render context must be "iframe" or "popup"');
 		}
 		this.renderer.context = resolvedContext;
-		if (pendingPropsUpdate) {
-			await pendingPropsUpdate;
+		if (earlierPropsWork) {
+			await earlierPropsWork;
 			this.assertRenderActive();
 		}
 
@@ -432,15 +435,23 @@ export class ConsumerComponent<
 	 * Updates the component props and sends them to the host.
 	 *
 	 * @remarks
-	 * Props are normalized and validated before being sent to the host window.
+	 * A key left out keeps its value. A key set to `undefined` is reset: its
+	 * schema default applies again, an optional prop loses its value, and a
+	 * required prop rejects the update. `null` is a value.
+	 *
+	 * Updates run in call order. One requested while `render()` is pending
+	 * waits for the render to settle, so the host starts with the snapshot the
+	 * render began with and then receives each update in turn.
 	 *
 	 * @param newProps - Partial props object to merge with existing props
+	 * @returns Resolves once the update is committed and, when a host is
+	 * connected, acknowledged
+	 * @throws Error with the closed message once the instance closes, or
+	 * with the schema's "Validation failed" message, an origin error or a
+	 * transport error when the update runs
 	 */
 	async updateProps(newProps: Partial<Input>): Promise<void> {
 		this.assertPropsUpdateActive();
-		if (this.renderPromise && !this.rendered) {
-			throw new Error("Cannot update props while the component is rendering");
-		}
 		return this.applyPropsUpdate(newProps);
 	}
 
@@ -460,7 +471,11 @@ export class ConsumerComponent<
 					props,
 					this.options.props,
 					createDeliveryTarget(
-						this.rendered ? this.transport.getHostDomain() : hostOrigin,
+						selectUpdateDeliveryOrigin(
+							this.rendered,
+							this.transport.getHostOrigin(),
+							hostOrigin,
+						),
 						window.location.origin,
 					),
 				);
@@ -812,7 +827,7 @@ export class ConsumerComponent<
 		if (!this.beginDestroy()) return;
 
 		this.teardownRenderResources();
-		this.propsPipeline.pendingPropsUpdate = null;
+		this.propsPipeline.abandonPending();
 
 		await this.cleanup.cleanup();
 
@@ -829,15 +844,11 @@ export class ConsumerComponent<
 		if (this.destroyed) return false;
 		this.destroyed = true;
 
-		if (this.transport.initPromise) {
-			this.transport.initPromise.reject(
-				new Error(
-					`Component "${this.options.tag}" was destroyed before initialization completed`,
-				),
-			);
-			this.transport.initPromise = null;
-		}
-		this.transport.hostInitialized = false;
+		this.transport.rejectPendingInit(
+			new Error(
+				`Component "${this.options.tag}" was destroyed before initialization completed`,
+			),
+		);
 		return true;
 	}
 }

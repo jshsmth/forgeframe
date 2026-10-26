@@ -1,27 +1,44 @@
 import { describe, expect, it } from "vitest";
-import { PROP_RESET } from "@/core/consumer/prop-update";
 import {
 	acknowledgePropUpdate,
 	buildPropUpdate,
 	enqueuePropSnapshot,
 	failPropUpdate,
 	type ReactPropQueue,
+	snapshotProps,
 } from "@/drivers/react/prop-sync";
 
 describe("React prop commit and retry policy", () => {
-	it("remembers omitted keys across commits while preserving explicit undefined", () => {
+	it("sends undefined for known keys a commit leaves out or sets to undefined", () => {
 		const known = new Set(["previous"]);
-		const desired = { cleared: undefined, count: 0 };
+		const desired = snapshotProps({ cleared: "set", count: 0 });
 		expect(buildPropUpdate(desired, known).payload).toEqual({
-			...desired,
-			previous: PROP_RESET,
+			cleared: "set",
+			count: 0,
+			previous: undefined,
 		});
-		expect(buildPropUpdate({ count: 1 }, known).payload).toEqual({
+		const next = snapshotProps({ cleared: undefined, count: 1 });
+		const update = buildPropUpdate(next, known);
+		expect(update.payload).toEqual({
 			count: 1,
-			previous: PROP_RESET,
-			cleared: PROP_RESET,
+			previous: undefined,
+			cleared: undefined,
 		});
-		expect(desired).toEqual({ cleared: undefined, count: 0 });
+		expect(Object.hasOwn(update.payload, "cleared")).toBe(true);
+		expect(next).toEqual({ count: 1 });
+		expect(desired).toEqual({ cleared: "set", count: 0 });
+	});
+	it("treats snapshots that differ only in undefined-valued keys as the same commit", () => {
+		const queue: ReactPropQueue = {
+			comparableProps: snapshotProps({ count: 0 }),
+			knownKeys: new Set(["count"]),
+			queue: [],
+		};
+		expect(
+			enqueuePropSnapshot(queue, snapshotProps({ count: 0, theme: undefined })),
+		).toBe(false);
+		expect(queue.queue).toEqual([]);
+		expect(queue.knownKeys).toEqual(new Set(["count"]));
 	});
 	it("requests one retry for an equivalent pending commit, then advances FIFO after acknowledgement", () => {
 		const queue: ReactPropQueue = {
