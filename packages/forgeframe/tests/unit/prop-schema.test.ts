@@ -818,6 +818,20 @@ describe("prop.array(item)", () => {
 		expect(1 in value.sparse).toBe(false);
 		expect(value.sparse).toHaveLength(3);
 	});
+
+	it("keeps an own __proto__ key as an own key when copying a default", () => {
+		const parsed = JSON.parse('{"__proto__":{"polluted":true},"name":"x"}');
+		const schema = prop.any<Record<string, unknown>>().default(parsed);
+		const { value } = schema["~standard"].validate(undefined) as {
+			value: Record<string, unknown>;
+		};
+		expect(Object.getPrototypeOf(value)).toBe(Object.prototype);
+		expect(Object.hasOwn(value, "__proto__")).toBe(true);
+		expect(value.polluted).toBeUndefined();
+		expect(Object.getOwnPropertyDescriptor(value, "__proto__")?.value).toEqual({
+			polluted: true,
+		});
+	});
 });
 
 // ============================================================================

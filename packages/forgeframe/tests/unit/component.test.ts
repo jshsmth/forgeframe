@@ -14,7 +14,7 @@ import {
 	getComponent,
 	unregisterComponent,
 } from "@/core/component";
-import { getSiblingInstances } from "@/core/consumer/siblings";
+import { getPeerInstances } from "@/core/consumer/peers";
 import { clearHostInstance, isHost } from "@/core/host";
 import { prop } from "@/props/prop";
 import type { ComponentOptions } from "@/types";
@@ -148,6 +148,7 @@ describe("Component Creation", () => {
 	it("should validate function URLs before rendering them", async () => {
 		const DynamicComponent = create({
 			tag: "dynamic-unsafe-url-component",
+			domain: "*",
 			url: () => "javascript:alert(1)",
 		});
 		const instance = DynamicComponent({});
@@ -169,6 +170,7 @@ describe("Component Creation", () => {
 		});
 		const DynamicComponent = create({
 			tag: "retryable-dynamic-url-component",
+			domain: "https://example.com",
 			url: resolveUrl,
 		});
 		const instance = DynamicComponent({});
@@ -275,8 +277,8 @@ describe("Component Creation", () => {
 	it.each([
 		{ option: "domain", value: "" },
 		{ option: "domain", value: " " },
-		{ option: "peerDomains", value: ["https://partner.example.com", ""] },
-		{ option: "peerDomains", value: null },
+		{ option: "peers", value: ["https://partner.example.com", ""] },
+		{ option: "peers", value: null },
 	] as const)(
 		"rejects $option values that would disable its origin policy: $value",
 		({ option, value }) => {
@@ -293,15 +295,119 @@ describe("Component Creation", () => {
 		},
 	);
 
-	it("accepts an empty allowlist array as a policy that admits no origin", () => {
+	it.each(["domain", "peers"])(
+		"rejects an empty %s array, which would match no origin",
+		(option) => {
+			expect(() =>
+				create({
+					tag: "empty-domain-matcher-component",
+					url: "https://host.example.com/widget",
+					...({ [option]: [] } as object),
+				}),
+			).toThrow(
+				`Component ${option} must list at least one origin; an empty array matches none`,
+			);
+			expect(getComponent("empty-domain-matcher-component")).toBeUndefined();
+		},
+	);
+
+	it("rejects peers: false and names the way to keep discovery off", () => {
 		expect(() =>
 			create({
-				tag: "empty-domain-matcher-component",
+				tag: "false-peers-component",
 				url: "https://host.example.com/widget",
-				peerDomains: [],
+				...({ peers: false } as object),
+			}),
+		).toThrow(
+			"Component peers must be true or an origin matcher; omit it to keep peer discovery off",
+		);
+	});
+
+	it("rejects the removed peerDomains option with its migration", () => {
+		expect(() =>
+			create({
+				tag: "removed-peer-domains-component",
+				url: "https://host.example.com/widget",
+				...({ peerDomains: "https://partner.example.com" } as object),
+			}),
+		).toThrow(
+			'Component option "peerDomains" was removed. Peer discovery is opt-in: set peers: true for same-origin peers, or peers: <origin matcher> to also admit those host origins.',
+		);
+	});
+
+	it("requires domain when url is a function", () => {
+		expect(() =>
+			create({
+				tag: "function-url-without-domain",
+				// Invalid JavaScript configuration is rejected at runtime.
+				...({ url: () => "https://host.example.com/widget" } as unknown as {
+					url: string;
+				}),
+			}),
+		).toThrow(
+			"Component domain is required when url is a function: list the host origins the function may return, or pass '*' to trust any http(s) origin.",
+		);
+		expect(getComponent("function-url-without-domain")).toBeUndefined();
+	});
+
+	it.each([
+		[
+			"a number",
+			1,
+			"Component sandbox must be a string of sandbox tokens, or false to write no sandbox attribute",
+		],
+		[
+			"true",
+			true,
+			"Component sandbox must be a string of sandbox tokens, or false to write no sandbox attribute",
+		],
+		["an empty string", "", 'Component sandbox must include "allow-scripts"'],
+		[
+			"no allow-scripts",
+			"allow-same-origin allow-forms",
+			'Component sandbox must include "allow-scripts"',
+		],
+		[
+			"no allow-same-origin",
+			"allow-scripts allow-forms",
+			'Component sandbox must include "allow-same-origin"',
+		],
+	])("rejects a sandbox with %s", (_label, sandbox, message) => {
+		expect(() =>
+			create({
+				tag: "invalid-sandbox-component",
+				url: "https://host.example.com/widget",
+				...({ sandbox } as object),
+			}),
+		).toThrow(message);
+		expect(getComponent("invalid-sandbox-component")).toBeUndefined();
+	});
+
+	it("accepts sandbox tokens in any letter case and ASCII whitespace", () => {
+		expect(() =>
+			create({
+				tag: "mixed-case-sandbox-component",
+				url: "https://host.example.com/widget",
+				sandbox: "ALLOW-SCRIPTS\tAllow-Same-Origin\nallow-modals",
 			}),
 		).not.toThrow();
 	});
+
+	it.each(["sandbox", "Sandbox", "SANDBOX"])(
+		"rejects a static %s iframe attribute and points to the sandbox option",
+		(key) => {
+			expect(() =>
+				create({
+					tag: "attribute-sandbox-component",
+					url: "https://host.example.com/widget",
+					attributes: { [key]: "allow-scripts" } as Record<string, string>,
+				}),
+			).toThrow(
+				`Iframe attribute "${key}" is not allowed; set the component's sandbox option instead`,
+			);
+			expect(getComponent("attribute-sandbox-component")).toBeUndefined();
+		},
+	);
 
 	it.each([["https://shop.example.com"], [[]], [null]])(
 		"rejects the removed allowedConsumerDomains option (%j) with its migration",
@@ -571,6 +677,7 @@ describe("Component Creation", () => {
 	it("should materialize function url options from the latest normalized props", async () => {
 		const DynamicUrlComponent = create<{ path: string }>({
 			tag: "dynamic-url-component",
+			domain: "https://example.com",
 			url: (props) => `https://example.com/${props.path}`,
 			props: {
 				path: { schema: prop.string() },
@@ -652,6 +759,7 @@ describe("Component Instance", () => {
 		const validate = vi.fn((_options: { props: { amount: number } }) => {});
 		const CoercedComponent = create({
 			tag: "coerced-callback-component",
+			domain: "https://example.com",
 			url: resolveUrl,
 			props: { amount: { schema: z.coerce.number() } },
 			validate,
@@ -798,6 +906,7 @@ describe("Component Instance", () => {
 		const allowedOrigins = new Set(["https://safe.example.com"]);
 		const PolicyComponent = create({
 			tag: "time-varying-schema-policy-component",
+			domain: "https://safe.example.com",
 			url: (props) => props.targetUrl,
 			props: {
 				targetUrl: z
@@ -825,6 +934,7 @@ describe("Component Instance", () => {
 		const sharedDefault = { href: `${safeOrigin}/component` };
 		const DefaultPolicyComponent = create({
 			tag: "mutable-default-policy-component",
+			domain: safeOrigin,
 			url: (props) => props.target.href,
 			props: {
 				target: {
@@ -855,6 +965,7 @@ describe("Component Instance", () => {
 		const safeOrigin = "https://safe.example.com";
 		const PolicyComponent = create({
 			tag: "mutable-normalized-policy-component",
+			domain: safeOrigin,
 			url: (props) => props.target.href,
 			props: {
 				target: z.object({
@@ -906,6 +1017,7 @@ describe("Component Instance", () => {
 		const safeOrigin = "https://safe.example.com";
 		const RenderComponent = create({
 			tag: "render-mutated-normalized-policy-component",
+			domain: safeOrigin,
 			url: (props) => props.target.href,
 			props: {
 				target: z.object({
@@ -974,9 +1086,10 @@ describe("Component Instance", () => {
 		container.remove();
 	});
 
-	it("should trust updated url origin before first render", async () => {
+	it("should open the updated url origin when props change before the first render", async () => {
 		const DynamicUrlComponent = create<{ targetUrl: string }>({
 			tag: "dynamic-origin-trust-component",
+			domain: ["https://origin-a.example.com", "https://origin-b.example.com"],
 			url: (props) => props.targetUrl,
 			props: {
 				targetUrl: { schema: prop.string() },
@@ -999,11 +1112,9 @@ describe("Component Instance", () => {
 		vi.spyOn(instanceInternal, "waitForHost").mockResolvedValue(undefined);
 		await instance.render(container);
 
-		const allowedOrigins = Array.from(
-			instanceInternal.transport.messenger.allowedOrigins,
+		expect(container.querySelector("iframe")?.src).toBe(
+			"https://origin-b.example.com/widget",
 		);
-		expect(allowedOrigins).toContain("https://origin-b.example.com");
-		expect(allowedOrigins).not.toContain("https://origin-a.example.com");
 
 		await instance.close();
 		container.remove();
@@ -1043,6 +1154,7 @@ describe("Component Instance", () => {
 	it("should apply idle updateProps synchronously before awaiting", async () => {
 		const DynamicUrlComponent = create<{ targetUrl: string }>({
 			tag: "dynamic-origin-sync-update-component",
+			domain: ["https://origin-a.example.com", "https://origin-b.example.com"],
 			url: (props) => props.targetUrl,
 			props: {
 				targetUrl: { schema: prop.string() },
@@ -1072,6 +1184,7 @@ describe("Component Instance", () => {
 	it("should reject url origin changes after render", async () => {
 		const DynamicUrlComponent = create<{ targetUrl: string }>({
 			tag: "dynamic-origin-after-render-component",
+			domain: ["https://origin-a.example.com", "https://origin-b.example.com"],
 			url: (props) => props.targetUrl,
 			props: {
 				targetUrl: { schema: prop.string() },
@@ -1246,13 +1359,15 @@ describe("Host Context Detection", () => {
 	});
 
 	describe("Component peer discovery", () => {
-		it("should include all registered component tags when anyConsumer is true", async () => {
+		it("should include all registered component tags when allTags is true", async () => {
 			const AlphaComponent = create({
 				tag: "peer-alpha",
+				peers: true,
 				url: "https://example.com/alpha",
 			});
 			const BetaComponent = create({
 				tag: "peer-beta",
+				peers: true,
 				url: "https://example.com/beta",
 			});
 
@@ -1266,17 +1381,19 @@ describe("Host Context Detection", () => {
 				betaSibling,
 			);
 
-			const sameTagSiblings = getSiblingInstances({
+			const sameTagSiblings = getPeerInstances({
 				uid: alphaPrimary.uid,
 				tag: "peer-alpha",
+				peers: true,
 				hostDomain: PEER_HOST_DOMAIN,
-				anyConsumer: false,
+				allTags: false,
 			});
-			const anyConsumerSiblings = getSiblingInstances({
+			const allTagsSiblings = getPeerInstances({
 				uid: alphaPrimary.uid,
 				tag: "peer-alpha",
+				peers: true,
 				hostDomain: PEER_HOST_DOMAIN,
-				anyConsumer: true,
+				allTags: true,
 			});
 
 			expect(sameTagSiblings).toEqual([
@@ -1285,7 +1402,7 @@ describe("Host Context Detection", () => {
 					tag: "peer-alpha",
 				}),
 			]);
-			expect(anyConsumerSiblings).toEqual(
+			expect(allTagsSiblings).toEqual(
 				expect.arrayContaining([
 					expect.objectContaining({
 						uid: alphaSibling.uid,
@@ -1298,7 +1415,7 @@ describe("Host Context Detection", () => {
 				]),
 			);
 			expect(
-				anyConsumerSiblings.some((sibling) => sibling.uid === alphaPrimary.uid),
+				allTagsSiblings.some((sibling) => sibling.uid === alphaPrimary.uid),
 			).toBe(false);
 
 			await Promise.all([
@@ -1311,10 +1428,12 @@ describe("Host Context Detection", () => {
 		it("should exclude peers whose verified host origin differs or is unavailable", async () => {
 			const AlphaComponent = create({
 				tag: "peer-origin-alpha",
+				peers: true,
 				url: "https://example.com/alpha",
 			});
 			const BetaComponent = create({
 				tag: "peer-origin-beta",
+				peers: true,
 				url: "https://example.com/beta",
 			});
 
@@ -1338,19 +1457,20 @@ describe("Host Context Detection", () => {
 				foreignOtherTag,
 			);
 
-			for (const anyConsumer of [false, true]) {
-				const uids = getSiblingInstances({
+			for (const allTags of [false, true]) {
+				const uids = getPeerInstances({
 					uid: requester.uid,
 					tag: "peer-origin-alpha",
+					peers: true,
 					hostDomain: PEER_HOST_DOMAIN,
-					anyConsumer,
+					allTags,
 				}).map((sibling) => sibling.uid);
 
 				expect(uids).toContain(sameOrigin.uid);
 				expect(uids).not.toContain(foreignSameTag.uid);
 				expect(uids).not.toContain(foreignOtherTag.uid);
 				expect(uids).not.toContain(unconnected.uid);
-				expect(uids.includes(sameOriginOtherTag.uid)).toBe(anyConsumer);
+				expect(uids.includes(sameOriginOtherTag.uid)).toBe(allTags);
 			}
 
 			await Promise.all(
@@ -1365,15 +1485,16 @@ describe("Host Context Detection", () => {
 			);
 		});
 
-		it("should let a component admit other host origins through peerDomains", async () => {
+		it("should let a component admit other host origins through peers", async () => {
 			const SharedComponent = create({
 				tag: "peer-domains-shared",
 				url: "https://widgets-a.myapp.example/widget",
 				domain: "https://*.myapp.example",
-				peerDomains: "https://*.myapp.example",
+				peers: "https://*.myapp.example",
 			});
 			const PrivateComponent = create({
 				tag: "peer-domains-private",
+				peers: true,
 				url: "https://widgets-a.myapp.example/private",
 				domain: "https://*.myapp.example",
 			});
@@ -1388,11 +1509,12 @@ describe("Host Context Detection", () => {
 				privatePeer,
 			);
 			const lookup = (hostDomain: string) =>
-				getSiblingInstances({
+				getPeerInstances({
 					uid: requester.uid,
 					tag: "peer-domains-shared",
+					peers: true,
 					hostDomain,
-					anyConsumer: true,
+					allTags: true,
 				}).map((sibling) => sibling.uid);
 
 			expect(lookup("https://widgets-a.myapp.example")).toEqual([
@@ -1408,11 +1530,11 @@ describe("Host Context Detection", () => {
 			);
 		});
 
-		it("never lists a peer whose own host is opaque, even when its peerDomains admit the requester", async () => {
+		it("never lists a peer whose own host is opaque, even when its peers matcher admits the requester", async () => {
 			const PartnerComponent = create({
 				tag: "peer-domains-opaque-peer",
 				url: "https://widgets.myapp.example/widget",
-				peerDomains: "https://*.myapp.example",
+				peers: "https://*.myapp.example",
 			});
 			const requester = PartnerComponent({});
 			const opaquePeer = PartnerComponent({});
@@ -1423,11 +1545,12 @@ describe("Host Context Detection", () => {
 			setVerifiedHostDomain("https://other.myapp.example", namedPeer);
 
 			expect(
-				getSiblingInstances({
+				getPeerInstances({
 					uid: requester.uid,
 					tag: "peer-domains-opaque-peer",
+					peers: true,
 					hostDomain: "https://widgets.myapp.example",
-					anyConsumer: false,
+					allTags: false,
 				}).map((sibling) => sibling.uid),
 			).toEqual([namedPeer.uid]);
 
@@ -1439,6 +1562,7 @@ describe("Host Context Detection", () => {
 		it("should list same-origin peers whose hosts are still loading without exports", async () => {
 			const LoadingComponent = create({
 				tag: "peer-loading",
+				peers: true,
 				url: "https://example.com/loading",
 			});
 
@@ -1454,11 +1578,12 @@ describe("Host Context Detection", () => {
 			);
 
 			expect(
-				getSiblingInstances({
+				getPeerInstances({
 					uid: requester.uid,
 					tag: "peer-loading",
+					peers: true,
 					hostDomain: PEER_HOST_DOMAIN,
-					anyConsumer: false,
+					allTags: false,
 				}),
 			).toEqual([
 				{ uid: loadingPeer.uid, tag: "peer-loading", exports: undefined },
@@ -1466,11 +1591,12 @@ describe("Host Context Detection", () => {
 
 			setVerifiedHostDomain(PEER_HOST_DOMAIN, loadingPeer);
 			expect(
-				getSiblingInstances({
+				getPeerInstances({
 					uid: requester.uid,
 					tag: "peer-loading",
+					peers: true,
 					hostDomain: PEER_HOST_DOMAIN,
-					anyConsumer: false,
+					allTags: false,
 				}),
 			).toEqual([
 				{
@@ -1490,6 +1616,7 @@ describe("Host Context Detection", () => {
 		it("should update indexed peers when sibling instances are destroyed", async () => {
 			const IndexedComponent = create({
 				tag: "peer-index-cleanup",
+				peers: true,
 				url: "https://example.com/peer-index-cleanup",
 			});
 
@@ -1498,11 +1625,12 @@ describe("Host Context Detection", () => {
 			setVerifiedHostDomain(PEER_HOST_DOMAIN, primary, sibling);
 
 			expect(
-				getSiblingInstances({
+				getPeerInstances({
 					uid: primary.uid,
 					tag: "peer-index-cleanup",
+					peers: true,
 					hostDomain: PEER_HOST_DOMAIN,
-					anyConsumer: false,
+					allTags: false,
 				}),
 			).toEqual([
 				expect.objectContaining({
@@ -1514,24 +1642,27 @@ describe("Host Context Detection", () => {
 			await sibling.close();
 
 			expect(
-				getSiblingInstances({
+				getPeerInstances({
 					uid: primary.uid,
 					tag: "peer-index-cleanup",
+					peers: true,
 					hostDomain: PEER_HOST_DOMAIN,
-					anyConsumer: false,
+					allTags: false,
 				}),
 			).toEqual([]);
 
 			await primary.close();
 		});
 
-		it("should exclude unregistered tags from anyConsumer sibling lookup", async () => {
+		it("should exclude unregistered tags from allTags sibling lookup", async () => {
 			const AlphaComponent = create({
 				tag: "peer-index-unregister-alpha",
+				peers: true,
 				url: "https://example.com/peer-index-unregister-alpha",
 			});
 			const BetaComponent = create({
 				tag: "peer-index-unregister-beta",
+				peers: true,
 				url: "https://example.com/peer-index-unregister-beta",
 			});
 
@@ -1539,11 +1670,12 @@ describe("Host Context Detection", () => {
 			const betaSibling = BetaComponent({});
 			setVerifiedHostDomain(PEER_HOST_DOMAIN, alphaPrimary, betaSibling);
 
-			const siblingsBeforeUnregister = getSiblingInstances({
+			const siblingsBeforeUnregister = getPeerInstances({
 				uid: alphaPrimary.uid,
 				tag: "peer-index-unregister-alpha",
+				peers: true,
 				hostDomain: PEER_HOST_DOMAIN,
-				anyConsumer: true,
+				allTags: true,
 			});
 			expect(
 				siblingsBeforeUnregister.some(
@@ -1553,11 +1685,12 @@ describe("Host Context Detection", () => {
 
 			unregisterComponent("peer-index-unregister-beta");
 
-			const siblingsAfterUnregister = getSiblingInstances({
+			const siblingsAfterUnregister = getPeerInstances({
 				uid: alphaPrimary.uid,
 				tag: "peer-index-unregister-alpha",
+				peers: true,
 				hostDomain: PEER_HOST_DOMAIN,
-				anyConsumer: true,
+				allTags: true,
 			});
 			expect(
 				siblingsAfterUnregister.some(

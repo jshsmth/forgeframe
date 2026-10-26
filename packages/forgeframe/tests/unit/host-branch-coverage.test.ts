@@ -227,7 +227,7 @@ describe("Host branch coverage and edge paths", () => {
 			.mockResolvedValue(undefined);
 
 		const siblings = await host.hostProps.getPeerInstances({
-			anyConsumer: true,
+			allTags: true,
 		});
 
 		expect(siblings).toEqual([]);
@@ -235,7 +235,7 @@ describe("Host branch coverage and edge paths", () => {
 			window,
 			window.location.origin,
 			MESSAGE_NAME.GET_SIBLINGS,
-			{ options: { anyConsumer: true } },
+			{ options: { allTags: true } },
 		);
 	});
 

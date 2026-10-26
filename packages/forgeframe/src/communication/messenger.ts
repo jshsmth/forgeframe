@@ -228,6 +228,9 @@ export class Messenger {
 	 * @internal
 	 */
 	private isOriginTrusted(origin: string): boolean {
+		// Every opaque document serializes as "null", so no matcher, including
+		// '*', can identify one.
+		if (isOpaqueOrigin(origin)) return false;
 		if (this.allowedOrigins.has(origin)) {
 			return true;
 		}

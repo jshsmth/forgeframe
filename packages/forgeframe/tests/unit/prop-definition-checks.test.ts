@@ -141,7 +141,6 @@ describe("assertPropDefinitions", () => {
 		["a wildcard origin", "https://*.example.com"],
 		["a RegExp", /^https:\/\/pay\.example\.com$/],
 		["an array", ["https://a.example", /^https:\/\/b\.example$/]],
-		["an empty array", []],
 	])("accepts deliverTo as %s", (_label, deliverTo) => {
 		expect(() =>
 			assertPropDefinitions({
@@ -162,6 +161,16 @@ describe("assertPropDefinitions", () => {
 			}),
 		).toThrow(
 			'Prop "secret" deliverTo must be a non-empty origin string, a RegExp, or an array of them',
+		);
+	});
+
+	it("rejects deliverTo as an empty array, which no host could receive", () => {
+		expect(() =>
+			assertPropDefinitions({
+				secret: { schema: prop.string(), deliverTo: [] },
+			}),
+		).toThrow(
+			'Prop "secret" deliverTo must list at least one origin; an empty array matches none',
 		);
 	});
 

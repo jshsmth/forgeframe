@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+	DEFAULT_IFRAME_SANDBOX,
 	encodeIframeAttribute,
 	encodeIframeStyle,
+	resolveIframeSandbox,
 } from "../../src/render/iframe-configuration";
 
 describe("iframe configuration encoding", () => {
@@ -51,5 +53,24 @@ describe("iframe configuration encoding", () => {
 		expect(encodeIframeAttribute(undefined)).toBeUndefined();
 		expect(encodeIframeAttribute("")).toBe("");
 		expect(encodeIframeAttribute("allow-scripts")).toBe("allow-scripts");
+	});
+});
+
+describe("resolveIframeSandbox", () => {
+	it("uses the default tokens when the option is omitted", () => {
+		expect(resolveIframeSandbox(undefined)).toBe(DEFAULT_IFRAME_SANDBOX);
+		expect(DEFAULT_IFRAME_SANDBOX).toBe(
+			"allow-scripts allow-same-origin allow-forms allow-popups",
+		);
+	});
+
+	it("keeps a custom string exactly as given", () => {
+		expect(resolveIframeSandbox(" allow-scripts  allow-same-origin ")).toBe(
+			" allow-scripts  allow-same-origin ",
+		);
+	});
+
+	it("writes no sandbox for false", () => {
+		expect(resolveIframeSandbox(false)).toBeNull();
 	});
 });

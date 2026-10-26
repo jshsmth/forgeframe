@@ -6,6 +6,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { unregisterComponent } from "@/core/component";
 import { getHost } from "@/core/host/bootstrap";
 import { create, EVENT, prop } from "@/index";
 import type { PropsDefinition } from "@/types";
@@ -107,7 +108,7 @@ describe("Props sync integration", () => {
 		expect(container.querySelector("iframe")).toBeNull();
 	});
 
-	it("discards consumer-only fields from a stale consumer's bootstrap and updates", async () => {
+	it("discards consumer-only and undeclared fields from a stale consumer's bootstrap and updates", async () => {
 		harness = createIframeIntegrationHarness();
 		const container = document.createElement("div");
 		document.body.append(container);
@@ -142,11 +143,8 @@ describe("Props sync integration", () => {
 			definitions,
 		);
 		await rendering;
-		expect(hostProps.consumer.props).toEqual({
-			title: "initial",
-			extra: "undeclared initial",
-		});
-		for (const key of ["local", "constructor"]) {
+		expect(hostProps.consumer.props).toEqual({ title: "initial" });
+		for (const key of ["local", "constructor", "extra"]) {
 			expect(Object.hasOwn(hostProps, key)).toBe(false);
 		}
 		const snapshots: unknown[] = [];
@@ -160,14 +158,9 @@ describe("Props sync integration", () => {
 			extra: "undeclared update",
 		});
 		expect(hostProps.title).toBe("updated");
-		expect(hostProps.consumer.props).toEqual({
-			title: "updated",
-			extra: "undeclared update",
-		});
-		expect(snapshots).toEqual([
-			{ title: "updated", extra: "undeclared update" },
-		]);
-		for (const key of ["local", "constructor"]) {
+		expect(hostProps.consumer.props).toEqual({ title: "updated" });
+		expect(snapshots).toEqual([{ title: "updated" }]);
+		for (const key of ["local", "constructor", "extra"]) {
 			expect(Object.hasOwn(hostProps, key)).toBe(false);
 		}
 	});
@@ -574,7 +567,7 @@ describe("Props sync integration", () => {
 		expect(container.querySelector("iframe")).toBeNull();
 	});
 
-	it("keeps a delivered value whose host definition entry is undefined, like an undeclared one", async () => {
+	it("drops a delivered value whose host definition entry is undefined, like an undeclared one", async () => {
 		harness = createIframeIntegrationHarness();
 		const consumerDefinitions = { beta: prop.string(), title: prop.string() };
 		const hostDefinitions: PropsDefinition<{ beta: string; title: string }> = {
@@ -595,9 +588,48 @@ describe("Props sync integration", () => {
 			hostDefinitions,
 		);
 		await rendering;
-		expect(hostProps.beta).toBe("on");
-		await instance.updateProps({ beta: "off" });
-		expect(hostProps.beta).toBe("off");
+		expect(Object.hasOwn(hostProps, "beta")).toBe(false);
+		expect(hostProps.consumer.props).toEqual({ title: "initial" });
+		await instance.updateProps({ beta: "off", title: "updated" });
+		expect(hostProps.title).toBe("updated");
+		expect(Object.hasOwn(hostProps, "beta")).toBe(false);
+		expect(hostProps.consumer.props).toEqual({ title: "updated" });
+	});
+
+	it("keeps every field unchecked only for a tag-agnostic host without props", async () => {
+		harness = createIframeIntegrationHarness();
+		const Component = create({
+			tag: "integration-host-without-definitions",
+			url: "https://host.example.com/widget",
+			props: { title: prop.string() },
+		});
+		const container = document.createElement("div");
+		document.body.append(container);
+		const rendering = Component({ title: "raw" }).render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(container);
+		await rendering;
+		expect(hostProps.consumer.props).toEqual({ title: "raw" });
+	});
+
+	it("drops every field for the host of a component that declares no props", async () => {
+		harness = createIframeIntegrationHarness();
+		const tag = "integration-host-no-props";
+		const Declared = create({
+			tag,
+			url: "https://host.example.com/widget",
+			props: { title: prop.string() },
+		});
+		const container = document.createElement("div");
+		document.body.append(container);
+		const rendering = Declared({ title: "unexpected" }).render(container);
+		// The host page defines the same tag without props, as a consumer with
+		// different definitions would see it.
+		unregisterComponent(tag);
+		const Bare = create({ tag, url: "https://host.example.com/widget" });
+		const { hostProps } = await harness.bootstrapIframeHost(container, Bare);
+		await rendering;
+		expect(hostProps.consumer.props).toEqual({});
+		expect(Object.hasOwn(hostProps, "title")).toBe(false);
 	});
 
 	it("prevents stale cancellation handles from removing a new subscription for the same callback", async () => {

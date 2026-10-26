@@ -52,7 +52,7 @@ function createHost({
 	payload = createPayload(),
 	autoInit = false,
 	consumerWindow = window,
-	propDefinitions = {},
+	propDefinitions = { amount: prop.any() },
 }: {
 	payload?: WindowNamePayload;
 	autoInit?: boolean;
@@ -274,7 +274,9 @@ describe("Host lifecycle behavior", () => {
 			.mockResolvedValueOnce({ props: { amount: 42 } })
 			.mockResolvedValue(undefined);
 
-		const host = requireValue(initHost({ consumerOrigins: "*" }));
+		const host = requireValue(
+			initHost({ props: { amount: prop.number() }, consumerOrigins: "*" }),
+		);
 
 		expect(window.name).toBe(bootstrapWindowName);
 		expect(isHost()).toBe(true);

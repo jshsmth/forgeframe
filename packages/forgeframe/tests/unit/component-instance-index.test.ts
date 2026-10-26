@@ -30,7 +30,7 @@ function createInstance(uid: string): TestInstance {
 		event: {} as TestInstance["event"],
 		getVerifiedHostDomain: vi.fn(() => null),
 		getOpenedHostDomain: vi.fn(() => null),
-		getPeerDomains: vi.fn(() => undefined),
+		getPeers: vi.fn(() => undefined),
 	} as TestInstance;
 
 	return instance;

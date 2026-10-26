@@ -168,6 +168,7 @@ describe("Host security", () => {
 				consumer: "spoofed-consumer",
 				title: "Visible title",
 			},
+			{ title: prop.string() },
 		);
 
 		expect(host.hostProps.uid).toBe("host-uid-reserved-bootstrap");
@@ -175,12 +176,8 @@ describe("Host security", () => {
 		expect(typeof host.hostProps.close).toBe("function");
 		expect(Object.keys(host.hostProps.consumer)).toEqual(["props"]);
 		expect(host.hostProps.title).toBe("Visible title");
-		expect(host.hostProps.consumer.props).toEqual({
-			uid: "spoofed-uid",
-			close: "spoofed-close",
-			consumer: "spoofed-consumer",
-			title: "Visible title",
-		});
+		// Reserved names can never be declared, so they never arrive.
+		expect(host.hostProps.consumer.props).toEqual({ title: "Visible title" });
 	});
 
 	it("should ignore reserved names during prop sync without deleting built-ins", async () => {
@@ -192,6 +189,10 @@ describe("Host security", () => {
 				tag: "secure-component-reserved-sync",
 			}),
 			{ amount: 10, close: "initial-close" },
+			{
+				amount: prop.number().optional(),
+				status: prop.string().optional(),
+			},
 		);
 		expect(host.hostProps.amount).toBe(10);
 
@@ -218,12 +219,7 @@ describe("Host security", () => {
 		expect(typeof host.hostProps.close).toBe("function");
 		expect(Object.keys(host.hostProps.consumer)).toEqual(["props"]);
 		expect(host.hostProps.status).toBe("updated");
-		expect(host.hostProps.consumer.props).toEqual({
-			uid: "spoofed-uid",
-			close: "spoofed-close",
-			consumer: "spoofed-consumer",
-			status: "updated",
-		});
+		expect(host.hostProps.consumer.props).toEqual({ status: "updated" });
 	});
 
 	it("should ignore spoofed PROPS from a different trusted window and accept the resolved consumer window", async () => {

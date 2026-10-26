@@ -210,6 +210,7 @@ describe("Host controls and routing integration", () => {
 		document.body.append(container);
 		const Component = create({
 			tag: "integration-peer-message-encoding",
+			peers: true,
 			url: "https://host.example.com/widget",
 		});
 		const requester = Component();
@@ -245,10 +246,12 @@ describe("Host controls and routing integration", () => {
 		document.body.append(container);
 		const Component = create({
 			tag: "integration-peer-origin-scope",
+			peers: true,
 			url: "https://host.example.com/widget",
 		});
 		const Other = create({
 			tag: "integration-peer-origin-scope-other",
+			peers: true,
 			url: "https://other.example.com/widget",
 		});
 		const requester = Component();
@@ -270,7 +273,7 @@ describe("Host controls and routing integration", () => {
 			foreignOtherTag,
 		);
 
-		for (const options of [undefined, { anyConsumer: true }]) {
+		for (const options of [undefined, { allTags: true }]) {
 			await expect(
 				harness.withHostGlobalsAsync(() => hostProps.getPeerInstances(options)),
 			).resolves.toEqual([
@@ -283,21 +286,23 @@ describe("Host controls and routing integration", () => {
 		}
 	});
 
-	it("admits peers on other host origins that list the requester in peerDomains", async () => {
+	it("admits peers on other host origins whose peers matcher lists the requester", async () => {
 		harness = createIframeIntegrationHarness();
 		const container = document.createElement("div");
 		document.body.append(container);
 		const Requester = create({
 			tag: "integration-peer-domains-requester",
+			peers: true,
 			url: "https://host.example.com/widget",
 		});
 		const Shared = create({
 			tag: "integration-peer-domains-shared",
 			url: "https://partner.example.com/widget",
-			peerDomains: "https://host.example.com",
+			peers: "https://host.example.com",
 		});
 		const Private = create({
 			tag: "integration-peer-domains-private",
+			peers: true,
 			url: "https://partner.example.com/private",
 		});
 		const requester = Requester();
@@ -311,7 +316,7 @@ describe("Host controls and routing integration", () => {
 		setVerifiedHostDomain("https://partner.example.com", shared, privatePeer);
 
 		const peers = await harness.withHostGlobalsAsync(() =>
-			hostProps.getPeerInstances({ anyConsumer: true }),
+			hostProps.getPeerInstances({ allTags: true }),
 		);
 		expect(peers.map(({ uid, tag }) => ({ uid, tag }))).toEqual([
 			{ uid: shared.uid, tag: "integration-peer-domains-shared" },
@@ -320,6 +325,88 @@ describe("Host controls and routing integration", () => {
 		await expect(
 			harness.withHostGlobalsAsync(() => exports.run()),
 		).resolves.toBe("shared-partner");
+	});
+
+	it("rejects discovery from a host whose component has not enabled peers", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const Private = create({
+			tag: "integration-peers-disabled",
+			url: "https://host.example.com/widget",
+		});
+		const requester = Private();
+		const other = Private();
+		other.exports = { secret: () => "private" };
+		const rendering = requester.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(container);
+		await rendering;
+		setVerifiedHostDomain(getVerifiedHostDomain(requester), other);
+
+		await expect(
+			harness.withHostGlobalsAsync(() => hostProps.getPeerInstances()),
+		).rejects.toThrow(
+			'Peer discovery is not enabled for component "integration-peers-disabled". Set peers: true, or an origin matcher, in its create() options.',
+		);
+	});
+
+	it("never lists components without peers, even with allTags", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const Requester = create({
+			tag: "integration-peers-opted-in",
+			peers: true,
+			url: "https://host.example.com/widget",
+		});
+		const Private = create({
+			tag: "integration-peers-opted-out",
+			url: "https://host.example.com/private",
+		});
+		const requester = Requester();
+		const listed = Requester();
+		const hidden = Private();
+		listed.exports = { id: "listed" };
+		hidden.exports = { secret: () => "hidden" };
+		const rendering = requester.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(container);
+		await rendering;
+		setVerifiedHostDomain(getVerifiedHostDomain(requester), listed, hidden);
+
+		for (const options of [undefined, { allTags: true }]) {
+			await expect(
+				harness.withHostGlobalsAsync(() => hostProps.getPeerInstances(options)),
+			).resolves.toEqual([
+				{
+					uid: listed.uid,
+					tag: "integration-peers-opted-in",
+					exports: { id: "listed" },
+				},
+			]);
+		}
+	});
+
+	it("rejects the renamed anyConsumer option without asking the consumer", async () => {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const Component = create({
+			tag: "integration-peers-any-consumer",
+			peers: true,
+			url: "https://host.example.com/widget",
+		});
+		const requester = Component();
+		const rendering = requester.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(container);
+		await rendering;
+
+		await expect(
+			harness.withHostGlobalsAsync(() =>
+				hostProps.getPeerInstances({ anyConsumer: true } as never),
+			),
+		).rejects.toThrow(
+			'getPeerInstances() option "anyConsumer" was renamed. Use { allTags: true } to include other component tags.',
+		);
 	});
 
 	it("recovers export callback capacity after final message encoding fails", async () => {
@@ -370,6 +457,7 @@ describe("Host controls and routing integration", () => {
 		const definitions = { label: prop.string() };
 		const Component = create({
 			tag: "integration-peer-capacity",
+			peers: true,
 			url: "https://host.example.com/widget",
 			props: definitions,
 		});
@@ -425,6 +513,7 @@ describe("Host controls and routing integration", () => {
 
 		const ControlsComponent = create<ControlProps>({
 			tag: "integration-host-controls-component",
+			peers: true,
 			url: "https://host.example.com/widget",
 			props: CONTROL_PROP_DEFINITIONS,
 		});

@@ -15,7 +15,7 @@ import type { EventEmitter } from "../../events/emitter";
 import type { SerializedProps } from "../../props/types";
 import type { HostEvents } from "../../types/events";
 import type { HostPropsDefinition } from "../../types/props";
-import type { GetPeerInstancesOptions, SiblingInfo } from "../../types/runtime";
+import type { GetPeerInstancesOptions, PeerInfo } from "../../types/runtime";
 import type { Dimensions, DomainMatcher } from "../../types/utility";
 
 export type VerifiedMessageSource = Parameters<MessageHandler>[1];
@@ -39,7 +39,7 @@ export interface HostPropsRuntimeControls {
 	hide(): Promise<void>;
 	reportError(error: Error): Promise<void>;
 	exportData<T>(exports: T): Promise<void>;
-	getPeerInstances(options?: GetPeerInstancesOptions): Promise<SiblingInfo[]>;
+	getPeerInstances(options?: GetPeerInstancesOptions): Promise<PeerInfo[]>;
 }
 
 export interface HostPropsRuntimeOptions {

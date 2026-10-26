@@ -60,8 +60,8 @@ export interface IframeAttributes {
 	loading?: "lazy" | "eager";
 	/** Referrer policy */
 	referrerPolicy?: ReferrerPolicy;
-	/** Sandbox restrictions */
-	sandbox?: string;
+	/** Not allowed: set the sandbox with the component's `sandbox` option. */
+	sandbox?: never;
 	/** Additional custom attributes */
 	[key: string]: string | boolean | undefined;
 }

@@ -104,3 +104,84 @@ export function encodeIframeAttribute(
 	if (value === undefined || value === false) return undefined;
 	return value === true ? "" : value;
 }
+
+/** Attributes ForgeFrame writes itself, so `attributes` may not set them. */
+const MANAGED_IFRAME_ATTRIBUTES = new Set(["name", "src", "srcdoc"]);
+
+/**
+ * Checks iframe attribute names in any letter case, as HTML folds them:
+ * ForgeFrame manages `name`, `src` and `srcdoc`, and the sandbox has its own
+ * component option. Anything but an attributes object, such as a computed
+ * `attributes` function before it runs, has no names to check yet.
+ * @throws Error naming the attribute
+ * @internal
+ */
+export function assertIframeAttributeNames(attributes: unknown): void {
+	if (typeof attributes !== "object" || attributes === null) return;
+	for (const key of Object.keys(attributes)) {
+		const name = key.toLowerCase();
+		if (name === "sandbox") {
+			throw new Error(
+				`Iframe attribute "${key}" is not allowed; set the component's sandbox option instead`,
+			);
+		}
+		if (MANAGED_IFRAME_ATTRIBUTES.has(name)) {
+			throw new Error(`Iframe attribute "${key}" is managed by ForgeFrame`);
+		}
+	}
+}
+
+/**
+ * Sandbox tokens an iframe gets when its component sets no `sandbox`.
+ * @internal
+ */
+export const DEFAULT_IFRAME_SANDBOX =
+	"allow-scripts allow-same-origin allow-forms allow-popups";
+
+/**
+ * Tokens every custom sandbox needs, each with the reason. The host runs
+ * script to call `initHost()`, and without `allow-same-origin` its document
+ * has an opaque origin, which no allowlist matches.
+ */
+const REQUIRED_SANDBOX_TOKENS: ReadonlyArray<readonly [string, string]> = [
+	["allow-scripts", "the host runs script to call initHost()"],
+	[
+		"allow-same-origin",
+		"without it the host has an opaque origin, which ForgeFrame never trusts",
+	],
+];
+
+/**
+ * Checks a `sandbox` component option: omitted, `false`, or a token string
+ * that keeps the tokens a host needs. Tokens are split on ASCII whitespace and
+ * compared case-insensitively, as HTML does; unknown tokens are left to the
+ * browser.
+ * @throws Error naming the option or the missing token
+ * @internal
+ */
+export function assertSandboxOption(value: unknown): void {
+	if (value === undefined || value === false) return;
+	if (typeof value !== "string") {
+		throw new Error(
+			"Component sandbox must be a string of sandbox tokens, or false to write no sandbox attribute",
+		);
+	}
+	const tokens = new Set(value.toLowerCase().split(/[\t\n\f\r ]+/));
+	for (const [token, reason] of REQUIRED_SANDBOX_TOKENS) {
+		if (!tokens.has(token)) {
+			throw new Error(`Component sandbox must include "${token}": ${reason}`);
+		}
+	}
+}
+
+/**
+ * Resolves the sandbox attribute an iframe gets from its component option:
+ * the default tokens when omitted, the given tokens, or `null` for none.
+ * @internal
+ */
+export function resolveIframeSandbox(
+	option: string | false | undefined,
+): string | null {
+	if (option === false) return null;
+	return option ?? DEFAULT_IFRAME_SANDBOX;
+}

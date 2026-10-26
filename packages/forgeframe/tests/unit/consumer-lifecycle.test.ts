@@ -13,7 +13,7 @@ import {
 import { CONTEXT, EVENT, MESSAGE_NAME } from "@/constants";
 import { clearComponents, closeAll, create } from "@/core/component";
 import { ConsumerComponent } from "@/core/consumer";
-import { getSiblingInstances } from "@/core/consumer/siblings";
+import { getPeerInstances } from "@/core/consumer/peers";
 import { prop } from "@/props/prop";
 import * as popupRender from "@/render/popup";
 import { CleanupManager } from "@/utils/cleanup";
@@ -655,6 +655,7 @@ describe("Consumer lifecycle behavior", () => {
 	it("should ignore spoofed GET_SIBLINGS from a different trusted window and accept the opened host window", async () => {
 		const PeerComponent = create<{ amount: number }>({
 			tag: "peer-siblings-component",
+			peers: true,
 			url: "https://host.example.com/peer",
 			props: {
 				amount: { schema: prop.number() },
@@ -704,10 +705,12 @@ describe("Consumer lifecycle behavior", () => {
 	it("should scope GET_SIBLINGS to the requester's own identity and verified host origin", async () => {
 		const RequesterComponent = create({
 			tag: "peer-scope-requester",
+			peers: true,
 			url: "https://host.example.com/requester",
 		});
 		const VictimComponent = create({
 			tag: "peer-scope-victim",
+			peers: true,
 			url: "https://victim.example.com/widget",
 		});
 
@@ -748,7 +751,7 @@ describe("Consumer lifecycle behavior", () => {
 			data: {
 				uid: victim.uid,
 				tag: "peer-scope-victim",
-				options: { anyConsumer: true },
+				options: { allTags: true },
 			},
 			claimedUid: requester.uid,
 		});
@@ -763,9 +766,10 @@ describe("Consumer lifecycle behavior", () => {
 		]);
 	});
 
-	it("should give opaque-origin hosts no peers even when both report the null origin", async () => {
+	it("should drop GET_SIBLINGS from opaque-origin hosts even when domain is '*'", async () => {
 		const OpaqueComponent = create({
 			tag: "peer-scope-opaque",
+			peers: true,
 			url: "https://host.example.com/opaque",
 			domain: "*",
 		});
@@ -778,7 +782,7 @@ describe("Consumer lifecycle behavior", () => {
 		setVerifiedHostDomain("null", requester, otherProvider);
 		const hostWindow = connectHostWindow(requester);
 
-		for (const options of [undefined, { anyConsumer: true }]) {
+		for (const options of [undefined, { allTags: true }]) {
 			dispatchHostMessage(MESSAGE_NAME.GET_SIBLINGS, hostWindow, {
 				data: { options },
 				origin: "null",
@@ -786,17 +790,50 @@ describe("Consumer lifecycle behavior", () => {
 			});
 			await flushMessages();
 
-			expect(readResponseData(hostWindow)).toEqual([]);
+			expect(readResponseData(hostWindow)).toBeUndefined();
 		}
+	});
+
+	it("should refuse GET_SIBLINGS for a component that has not enabled peers", async () => {
+		const PrivateComponent = create({
+			tag: "peer-scope-disabled",
+			url: "https://host.example.com/private",
+		});
+		const [requester, other] = trackInstances(
+			PrivateComponent(),
+			PrivateComponent(),
+		);
+		other.exports = { secret: "private" };
+		setVerifiedHostDomain("https://host.example.com", requester, other);
+		const hostWindow = connectHostWindow(requester);
+
+		dispatchHostMessage(MESSAGE_NAME.GET_SIBLINGS, hostWindow, {
+			data: {},
+			claimedUid: requester.uid,
+		});
+		await flushMessages();
+
+		const calls = (
+			hostWindow as unknown as { postMessage: ReturnType<typeof vi.fn> }
+		).postMessage.mock.calls;
+		const response = JSON.parse(
+			String(calls.at(-1)?.[0]).slice("forgeframe:".length),
+		);
+		expect(response.data).toBeUndefined();
+		expect(response.error.message).toBe(
+			'Peer discovery is not enabled for component "peer-scope-disabled". Set peers: true, or an origin matcher, in its create() options.',
+		);
 	});
 
 	it("should treat malformed GET_SIBLINGS data as a same-tag lookup", async () => {
 		const PeerComponent = create({
 			tag: "peer-scope-malformed",
+			peers: true,
 			url: "https://host.example.com/peer",
 		});
 		const OtherComponent = create({
 			tag: "peer-scope-malformed-other",
+			peers: true,
 			url: "https://host.example.com/other",
 		});
 		const [requester, sibling, otherTag] = trackInstances(
@@ -826,7 +863,7 @@ describe("Consumer lifecycle behavior", () => {
 			"options",
 			42,
 			{ options: null },
-			{ options: { anyConsumer: "yes" } },
+			{ options: { allTags: "yes" } },
 		]) {
 			await expect(
 				Promise.resolve(handler(data, createMessageSource(hostWindow))),
@@ -1530,6 +1567,7 @@ describe("Factory instance close and teardown", () => {
 		const tag = "listener-free-deregistration";
 		const Component = create({
 			tag,
+			peers: true,
 			url: "https://example.com/tracked",
 		});
 		const first = Component();
@@ -1551,22 +1589,24 @@ describe("Factory instance close and teardown", () => {
 		await first.close();
 		expect(Component.instances).toEqual([second]);
 		expect(
-			getSiblingInstances({
+			getPeerInstances({
 				uid: second.uid,
 				tag,
+				peers: true,
 				hostDomain: PEER_HOST_DOMAIN,
-				anyConsumer: false,
+				allTags: false,
 			}),
 		).toEqual([]);
 		await second.close();
 		await second.close();
 		expect(Component.instances).toEqual([]);
 		expect(
-			getSiblingInstances({
+			getPeerInstances({
 				uid: "outside",
 				tag,
+				peers: true,
 				hostDomain: PEER_HOST_DOMAIN,
-				anyConsumer: false,
+				allTags: false,
 			}),
 		).toEqual([]);
 		expect(events).toEqual([

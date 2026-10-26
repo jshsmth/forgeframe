@@ -52,8 +52,9 @@ describe("Consumer navigation admission", () => {
 		async (dynamic) => {
 			const consumer = new ConsumerComponent<Record<string, unknown>>({
 				tag: "changed-base-policy",
-				url: dynamic ? () => "/widget" : "/widget",
-				domain: window.location.origin,
+				...(dynamic
+					? { url: () => "/widget", domain: window.location.origin }
+					: { url: "/widget", domain: window.location.origin }),
 			});
 			const { container } = mount(consumer);
 			setBase("https://untrusted.example/");

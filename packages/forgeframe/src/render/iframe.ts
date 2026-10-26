@@ -4,6 +4,7 @@ import type {
 	IframeStyles,
 } from "../types/utility";
 import {
+	assertIframeAttributeNames,
 	encodeIframeAttribute,
 	encodeIframeStyle,
 } from "./iframe-configuration";
@@ -34,16 +35,12 @@ interface IframeElementOptions {
 	 * Optional CSS styles to apply to the iframe element.
 	 */
 	style?: IframeStyles;
-}
 
-const RESERVED_IFRAME_ATTRIBUTES = new Set(["name", "src", "srcdoc"]);
-
-function assertSafeIframeAttributes(attributes: IframeAttributes): void {
-	for (const key of Object.keys(attributes)) {
-		if (RESERVED_IFRAME_ATTRIBUTES.has(key.toLowerCase())) {
-			throw new Error(`Iframe attribute "${key}" is managed by ForgeFrame`);
-		}
-	}
+	/**
+	 * The sandbox attribute to write, as `resolveIframeSandbox` decided it, or
+	 * `null` to write none.
+	 */
+	sandbox: string | null;
 }
 
 /**
@@ -54,8 +51,8 @@ function assertSafeIframeAttributes(attributes: IframeAttributes): void {
 export function createIframeElement(
 	options: IframeElementOptions,
 ): HTMLIFrameElement {
-	const { name, dimensions, attributes = {}, style = {} } = options;
-	assertSafeIframeAttributes(attributes);
+	const { name, dimensions, attributes = {}, style = {}, sandbox } = options;
+	assertIframeAttributeNames(attributes);
 	const iframe = document.createElement("iframe");
 
 	iframe.name = name;
@@ -66,7 +63,7 @@ export function createIframeElement(
 	applyDimensions(iframe, dimensions);
 	applyAttributes(iframe, attributes);
 	applyStyles(iframe, style);
-	applyDefaultSandbox(iframe);
+	applySandbox(iframe, sandbox);
 
 	return iframe;
 }
@@ -236,19 +233,10 @@ function applyAttributes(
 }
 
 /**
- * Applies the default security sandbox when one was not explicitly provided.
+ * Writes the resolved sandbox attribute, or none for `null`.
  *
  * @internal
  */
-function applyDefaultSandbox(iframe: HTMLIFrameElement): void {
-	// Decide from the written attribute: HTML folds `Sandbox` to `sandbox`, and
-	// values that encode to nothing, such as `false`, leave the default in place.
-	if (iframe.hasAttribute("sandbox")) {
-		return;
-	}
-
-	iframe.setAttribute(
-		"sandbox",
-		"allow-scripts allow-same-origin allow-forms allow-popups",
-	);
+function applySandbox(iframe: HTMLIFrameElement, sandbox: string | null): void {
+	if (sandbox !== null) iframe.setAttribute("sandbox", sandbox);
 }

@@ -3,11 +3,11 @@ import { z } from "zod";
 import { ConsumerComponent } from "@/core/consumer";
 import { ConsumerPropsPipeline } from "@/core/consumer/props-pipeline";
 import { prop } from "@/props/prop";
-import type { ComponentOptions } from "@/types";
+import type { ComponentBaseOptions } from "@/types";
 
 const consumers: ConsumerComponent<Record<string, unknown>>[] = [];
 function consumerWith(
-	options: Partial<ComponentOptions<Record<string, unknown>>>,
+	options: Partial<ComponentBaseOptions<Record<string, unknown>>>,
 	props: Record<string, unknown>,
 ) {
 	const consumer = new ConsumerComponent<Record<string, unknown>>(
@@ -205,8 +205,6 @@ describe("Disconnected consumer prop queue", () => {
 			resolveUrlOrigin: () => "https://host.example",
 			assertStableRenderedOrigin: () => {},
 			validateTransportProps: () => {},
-			isRendered: () => true,
-			syncTrustedDomainForUrl: () => {},
 			shouldSendPropsToHost: () => true,
 			sendPropsUpdateToHost: (props: Record<string, unknown>) => {
 				sent.push(props.amount as number);

@@ -88,18 +88,26 @@ export function testDomainRegExpStateless(
  *
  * @param value - Configured matcher.
  * @param option - Option name used in the error message.
+ * @param emptyArray - Whether an empty array, which matches no origin, is a
+ * valid setting. Only allowlists that fail closed accept it.
  * @throws If the value is not a non-empty string, a `RegExp`, or an array of
- * them. An empty array is valid and matches no origin.
+ * them, or is an empty array where `emptyArray` is `"rejected"`.
  *
  * @internal
  */
 export function assertDomainMatcher(
 	value: unknown,
 	option: string,
+	emptyArray: "allowed" | "rejected" = "rejected",
 ): asserts value is DomainMatcher {
 	const isPattern = (entry: unknown): boolean =>
 		entry instanceof RegExp ||
 		(typeof entry === "string" && entry.trim() !== "");
+	if (Array.isArray(value) && value.length === 0 && emptyArray === "rejected") {
+		throw new Error(
+			`${option} must list at least one origin; an empty array matches none`,
+		);
+	}
 	if (Array.isArray(value) ? value.every(isPattern) : isPattern(value)) return;
 	throw new Error(
 		`${option} must be a non-empty origin string, a RegExp, or an array of them`,

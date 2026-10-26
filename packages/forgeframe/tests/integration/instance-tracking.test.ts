@@ -131,6 +131,7 @@ describe("Component.instances", () => {
 		const definitions = { amount: prop.number() };
 		const Component = create({
 			tag: "instances-snapshot",
+			peers: true,
 			url: "https://host.example.com/widget",
 			props: definitions,
 		});

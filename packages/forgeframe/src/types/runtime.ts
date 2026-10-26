@@ -157,11 +157,12 @@ type ContextualPropsDefinition<S extends ContextualSchemaMap> = {
 export type InferredComponentOptions<
 	D extends InferablePropsDefinition,
 	ContextualSchemas extends ContextualSchemaMap = InferContextualSchemas<D>,
-> = Omit<ComponentOptions<InferPropsDefinition<D>>, "props"> & {
-	props: D &
-		ContextualPropsDefinition<ContextualSchemas> &
-		SelfAcceptingPropsDefinition<D>;
-};
+> = Omit<ComponentBaseOptions<InferPropsDefinition<D>>, "props"> &
+	ComponentUrlOptions<InferPropsDefinition<D>> & {
+		props: D &
+			ContextualPropsDefinition<ContextualSchemas> &
+			SelfAcceptingPropsDefinition<D>;
+	};
 
 /** Arguments accepted by a component factory based on required input keys. @internal */
 type ComponentFactoryArguments<
@@ -193,7 +194,50 @@ type ComponentFactoryArguments<
  *
  * @public
  */
-export interface ComponentOptions<P = Record<string, unknown>> {
+export type ComponentOptions<P = Record<string, unknown>> =
+	ComponentBaseOptions<P> & ComponentUrlOptions<P>;
+
+/**
+ * Where a component's host lives and which host origins it trusts.
+ *
+ * @typeParam P - The normalized props type for the component
+ *
+ * @remarks
+ * A static `url` may omit `domain`; its own origin is then trusted. A
+ * function `url` requires `domain`, so a URL computed from props or
+ * configuration never makes an unlisted origin trusted.
+ *
+ * @public
+ */
+export type ComponentUrlOptions<P = Record<string, unknown>> =
+	| {
+			/** URL of the host component page. */
+			url: string;
+			/**
+			 * Host origins this component trusts and may open. Defaults to the
+			 * origin of `url`. An empty array is rejected.
+			 */
+			domain?: DomainMatcher;
+	  }
+	| {
+			/** Function that returns the host URL from the props. */
+			url: (props: P) => string;
+			/**
+			 * Host origins this component trusts and may open. Every URL the
+			 * function returns must match; `'*'` trusts any http(s) origin. An
+			 * empty array is rejected.
+			 */
+			domain: DomainMatcher;
+	  };
+
+/**
+ * Component options other than `url` and `domain`.
+ *
+ * @typeParam P - The normalized props type for the component
+ *
+ * @public
+ */
+export interface ComponentBaseOptions<P = Record<string, unknown>> {
 	/**
 	 * Unique tag name for the component.
 	 *
@@ -202,11 +246,6 @@ export interface ComponentOptions<P = Record<string, unknown>> {
 	 * numbers, and hyphens.
 	 */
 	tag: string;
-
-	/**
-	 * URL of the host component page, or function that returns URL based on props.
-	 */
-	url: string | ((props: P) => string);
 
 	/**
 	 * Prop definitions for validation and delivery to the host.
@@ -225,19 +264,31 @@ export interface ComponentOptions<P = Record<string, unknown>> {
 	defaultContext?: ContextType;
 
 	/**
-	 * Allowed host domains for security validation.
-	 */
-	domain?: DomainMatcher;
-
-	/**
-	 * Other host origins whose instances may discover this component's instances
-	 * and call their exports through `getPeerInstances()`.
+	 * Opts this component in to peer discovery through `getPeerInstances()`.
 	 *
 	 * @remarks
-	 * Without this option, only hosts verified at the same origin are peers.
-	 * Hosts with an opaque (`"null"`) origin never discover peers.
+	 * Omitted, this component's instances are never listed to other hosts, and
+	 * its hosts cannot discover peers. `true` lists its instances to hosts
+	 * verified at the same origin as their own host. A matcher also admits
+	 * requesting hosts verified at a matching origin. Hosts with an opaque
+	 * (`"null"`) origin never discover peers and are never listed.
 	 */
-	peerDomains?: DomainMatcher;
+	peers?: true | DomainMatcher;
+
+	/**
+	 * The iframe's sandbox attribute.
+	 *
+	 * @remarks
+	 * Omitted, the iframe gets `allow-scripts allow-same-origin allow-forms
+	 * allow-popups`. A string is written as given and must include
+	 * `allow-scripts` and `allow-same-origin`, because the host runs script and
+	 * an opaque origin is never trusted. `false` writes no sandbox attribute.
+	 * Popups are never sandboxed: `window.open()` cannot apply one. The default
+	 * protects only against a cross-origin host, since a same-origin host with
+	 * `allow-scripts` and `allow-same-origin` can remove its own sandbox.
+	 * @defaultValue `'allow-scripts allow-same-origin allow-forms allow-popups'`
+	 */
+	sandbox?: string | false;
 
 	/**
 	 * Custom container template function.
@@ -255,7 +306,8 @@ export interface ComponentOptions<P = Record<string, unknown>> {
 	validate?: (opts: { props: P }) => void;
 
 	/**
-	 * Additional HTML attributes for the iframe. Popups ignore them.
+	 * Additional HTML attributes for the iframe. Popups ignore them. Set the
+	 * sandbox with the `sandbox` option; `attributes` may not include it.
 	 */
 	attributes?: IframeAttributes | ((props: P) => IframeAttributes);
 
@@ -449,16 +501,16 @@ export interface ForgeFrameComponent<
 }
 
 /**
- * Information about a sibling component instance.
+ * A peer component instance that `getPeerInstances()` lists.
  *
  * @public
  */
-export interface SiblingInfo {
+export interface PeerInfo {
 	/** Unique instance ID */
 	uid: string;
 	/** Component tag name */
 	tag: string;
-	/** Exported data and promise-returning methods from the sibling, if any. */
+	/** Exported data and promise-returning methods from the peer, if any. */
 	exports?: unknown;
 }
 
@@ -469,12 +521,13 @@ export interface SiblingInfo {
  */
 export interface GetPeerInstancesOptions {
 	/**
-	 * If true, include peers from all registered component tags in the current
-	 * consumer context. Peers must still be hosted at the requester's verified
-	 * origin unless their component's `peerDomains` admit it.
+	 * If true, include peers from every component tag on the consumer page,
+	 * not only this host's tag. Only components that set `peers` are listed,
+	 * and a peer hosted at another origin is listed only when its `peers`
+	 * matcher admits the requester's verified origin.
 	 * @defaultValue false
 	 */
-	anyConsumer?: boolean;
+	allTags?: boolean;
 }
 
 /**
@@ -592,8 +645,10 @@ export interface HostPropsBuiltins<P = Record<string, unknown>> {
 	 * @remarks
 	 * Peer instances are other ForgeFrame component instances that share the same
 	 * consumer window. This enables communication between multiple embedded components.
-	 * Only peers whose hosts the consumer verified at this host's origin are
-	 * returned, unless a peer's component lists this origin in `peerDomains`.
+	 * Discovery is opt-in: this host's component and every listed peer's
+	 * component set `peers`. Without it on this host's component, the call
+	 * rejects. Only peers whose hosts the consumer verified at this host's
+	 * origin are returned, unless a peer's `peers` matcher admits this origin.
 	 * Peers whose hosts are still loading are listed without exports until rediscovery.
 	 * Exported methods are relayed through the consumer and return promises.
 	 * Rediscover peers after a sibling replaces its exports or reconnects; retired
@@ -602,9 +657,7 @@ export interface HostPropsBuiltins<P = Record<string, unknown>> {
 	 * @param options - Options for peer discovery
 	 * @returns Promise resolving to array of peer info
 	 */
-	getPeerInstances: (
-		options?: GetPeerInstancesOptions,
-	) => Promise<SiblingInfo[]>;
+	getPeerInstances: (options?: GetPeerInstancesOptions) => Promise<PeerInfo[]>;
 }
 
 /**

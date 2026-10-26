@@ -34,35 +34,6 @@ export function getDomain(win: Window = window): string {
 }
 
 /**
- * Checks if a window is from the same domain as a reference window.
- *
- * @param win - The window to check.
- * @param reference - The reference window to compare against. Defaults to the current window.
- * @returns `true` if both windows share the same origin, `false` otherwise.
- *
- * @remarks
- * This function compares the origin of both windows. If cross-origin access
- * throws a security exception, it returns `false`.
- *
- * @example
- * ```typescript
- * // Check if an iframe is same-origin
- * if (isSameDomain(iframe.contentWindow)) {
- *   // Safe to access iframe's DOM directly
- * }
- * ```
- *
- * @internal
- */
-export function isSameDomain(win: Window, reference: Window = window): boolean {
-	try {
-		return win.location.origin === reference.location.origin;
-	} catch {
-		return false;
-	}
-}
-
-/**
  * Checks if a domain matches a given pattern.
  *
  * @param pattern - The pattern to match against. Can be a string (exact match or `"*"` wildcard),

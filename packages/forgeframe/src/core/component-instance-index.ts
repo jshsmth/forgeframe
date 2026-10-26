@@ -11,7 +11,7 @@ import type {
 	AnyFactoryInput,
 	ForgeFrameComponentInstance,
 } from "../types/runtime";
-import type { DomainMatcher } from "../types/utility";
+import type { PeersOption } from "./consumer/peers";
 
 /** Internal accessors the index requires in addition to the public instance API. @internal */
 export interface IndexedInstanceAccess {
@@ -19,8 +19,8 @@ export interface IndexedInstanceAccess {
 	getVerifiedHostDomain(): string | null;
 	/** Origin the instance opened its host at, before verification. */
 	getOpenedHostDomain(): string | null;
-	/** Other host origins allowed to discover this instance as a peer. */
-	getPeerDomains(): DomainMatcher | undefined;
+	/** The component's `peers` option: whether, and to whom, this instance is listed. */
+	getPeers(): PeersOption;
 }
 
 export type IndexedComponentInstance = ForgeFrameComponentInstance<

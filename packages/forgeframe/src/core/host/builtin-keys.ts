@@ -1,4 +1,7 @@
-import { hasOwnDeclaredField } from "../../props/definition-checks";
+import {
+	assertPropDefinitions,
+	hasOwnDeclaredField,
+} from "../../props/definition-checks";
 
 /**
  * Host-side built-in keys that are reserved on `hostProps`.
@@ -46,4 +49,16 @@ export function assertNoReservedPropDefinitions(definitions: object): void {
 			);
 		}
 	}
+}
+
+/**
+ * Checks a prop definitions object as `create()` and `initHost()` both
+ * declare it: no reserved built-in names, then every entry's own rules.
+ *
+ * @throws Error naming the first invalid prop
+ * @internal
+ */
+export function assertPropDefinitionsObject(definitions: object): void {
+	assertNoReservedPropDefinitions(definitions);
+	assertPropDefinitions(definitions);
 }
