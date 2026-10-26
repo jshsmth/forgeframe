@@ -9,7 +9,7 @@
  *
  * @packageDocumentation
  */
-import { create, type ForgeFrameComponentInstance } from "forgeframe";
+import { type ComponentInstance, create } from "forgeframe";
 import {
 	type DemoOutcome,
 	type DemoReceipt,
@@ -48,7 +48,7 @@ const providerUrl = new URL(
 ).href;
 /** Defines the provider origin and schema once for each render context. */
 const createPayment = (context: "iframe" | "popup") =>
-	create<PaymentProps>({
+	create({
 		tag: `harbor-pay-${context}`,
 		url: providerUrl,
 		domain: new URL(providerUrl).origin,
@@ -75,7 +75,7 @@ const paymentComponents = {
 
 /** Captures the invoice identity so late results cannot affect a newer session. */
 interface PaymentSession extends PaymentSessionState {
-	instance: ForgeFrameComponentInstance<PaymentProps>;
+	instance: ComponentInstance<PaymentProps>;
 	failed: boolean;
 }
 

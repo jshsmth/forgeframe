@@ -59,7 +59,7 @@ try {
 import * as entrypoint from 'forgeframe';
 import { VERSION, create, isHost, initHost, prop, createReactComponent } from 'forgeframe';
 assert.equal(VERSION, ${JSON.stringify(version)});
-for (const removed of ['default', 'ForgeFrame', 'getHostProps', 'isEmbedded'])
+for (const removed of ['default', 'ForgeFrame', 'getHostProps', 'isEmbedded', 'CONTEXT', 'EVENT', 'isStandardSchema', 'StringSchema'])
 	assert.equal(removed in entrypoint, false, removed + ' was removed in ForgeFrame 2');
 assert.equal(typeof createReactComponent, 'function');
 assert.equal(isHost(), false);
@@ -75,13 +75,22 @@ assert.throws(() => initHost(), (error) => error.message.includes('initHost(Comp
 	run(process.execPath, ["smoke.mjs"]);
 	writeFileSync(
 		resolve(directory, "consumer.mts"),
-		`import { create, initHost, prop, type HostProps, type RemoteValue } from 'forgeframe';
+		`import { create, initHost, prop, type ExportsOf, type HostProps, type HostPropsOf, type PropsOf, type RemoteValue, type StandardSchemaV1, type StringSchema } from 'forgeframe';
 const Component = create({
  tag: 'typed-package', url: 'https://example.com/widget',
  props: { count: prop.number().default(1), callback: prop.function<(n: number) => string>(), defaultedCallback: prop.function<() => number>().default(() => () => 42) },
+ exports: prop.object({ reset: prop.function<() => void>() }),
 });
 const instance = Component({ callback: n => String(n) });
 void instance.updateProps({ count: 2 });
+const reset: Promise<void> | undefined = instance.exports?.reset();
+const propsCount: PropsOf<typeof Component>['count'] = 1;
+const localExports: ExportsOf<typeof Component> = { reset: () => undefined };
+const label: StringSchema = prop.string();
+const parsed: StandardSchemaV1.InferOutput<typeof label> = 'value';
+declare const typedHost: HostPropsOf<typeof Component>;
+void typedHost.export(localExports);
+void reset; void propsCount; void parsed;
 declare const host: HostProps<{ callback: (n: number) => string }>;
 const result: Promise<string> = host.callback(1);
 declare const exports: RemoteValue<{ nested: { method: () => number } }>;

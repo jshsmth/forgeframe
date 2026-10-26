@@ -17,6 +17,7 @@ import {
 	propsToQueryParams,
 } from "../props";
 import { EMPTY_PROP_DEFINITIONS } from "../props/definitions";
+import { validateExports } from "../props/exports";
 import {
 	createDeliveryTarget,
 	validatePropsForHostTransport,
@@ -24,8 +25,9 @@ import {
 import type { ComponentEvents, EventSubscriber } from "../types/events";
 import type { PropsDefinition } from "../types/props";
 import type {
+	ComponentInstance,
 	ComponentOptions,
-	ForgeFrameComponentInstance,
+	PeersOption,
 	RemoteValue,
 } from "../types/runtime";
 import type { Dimensions } from "../types/utility";
@@ -37,7 +39,6 @@ import {
 	CONSUMER_EVENT_NAMES,
 	describeUnknownConsumerEvent,
 } from "./consumer/events";
-import type { PeersOption } from "./consumer/peers";
 import { getPeerInstances } from "./consumer/peers";
 import { selectUpdateDeliveryOrigin } from "./consumer/prop-update";
 import {
@@ -56,16 +57,16 @@ import type { NormalizedOptions } from "./consumer/types";
  * prop synchronization while preserving the existing public API.
  *
  * @typeParam P - The props type passed to the component
- * @typeParam X - The exports type that the host can expose to the consumer
  * @typeParam Input - The factory input, inferred from the prop schemas
+ * @typeParam X - The exports type that the host can expose to the consumer
  *
  * @internal
  */
 export class ConsumerComponent<
 	P extends Record<string, unknown>,
-	X = unknown,
 	Input = P,
-> implements ForgeFrameComponentInstance<P, X, Input>
+	X = unknown,
+> implements ComponentInstance<P, Input, X>
 {
 	/** Subscribe-only view of this instance's lifecycle events. */
 	public readonly event: EventSubscriber<ComponentEvents<P, X>>;
@@ -137,7 +138,7 @@ export class ConsumerComponent<
 		options: ComponentOptions<P>,
 		props?: Input,
 		private untrackInstance?: (
-			instance: ConsumerComponent<P, X, Input>,
+			instance: ConsumerComponent<P, Input, X>,
 		) => void,
 	) {
 		this._uid = generateUID();
@@ -781,12 +782,26 @@ export class ConsumerComponent<
 			onShow: async () => this.show(),
 			onHide: async () => this.hide(),
 			onError: (error) => this.#emitter.emit(EVENT.ERROR, error),
-			onExport: (exports) => {
-				this.exports = exports;
-				this.#emitter.emit(EVENT.EXPORTS, exports);
-			},
+			onExport: (exports) => this.acceptExports(exports),
 			onGetPeers: (request) => getPeerInstances(request),
 		});
+	}
+
+	/**
+	 * Replaces `exports` with a verified host's export once it passes the
+	 * `exports` schema. An invalid export keeps the previous exports, emits
+	 * `error`, and rethrows so the host's `export()` rejects.
+	 * @internal
+	 */
+	private acceptExports(exports: RemoteValue<X>): void {
+		try {
+			validateExports(this.options.exports, exports);
+		} catch (error) {
+			this.#emitter.emit(EVENT.ERROR, error as Error);
+			throw error;
+		}
+		this.exports = exports;
+		this.#emitter.emit(EVENT.EXPORTS, exports);
 	}
 
 	/**

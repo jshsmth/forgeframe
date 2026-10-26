@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { getComponent } from "@/core/component";
 import { getHost } from "@/core/host/bootstrap";
-import { create, EVENT, prop } from "@/index";
+import { create, prop } from "@/index";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
@@ -209,7 +209,7 @@ describe("One schema per prop", () => {
 		});
 		const instance = Component({ profile: { name: "Ada", role: "admin" } });
 		const errors: string[] = [];
-		instance.event.on(EVENT.ERROR, (error) => {
+		instance.event.on("error", (error) => {
 			errors.push((error as Error).message);
 		});
 		vi.spyOn(console, "error").mockImplementation(() => {});

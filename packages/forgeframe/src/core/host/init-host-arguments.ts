@@ -10,8 +10,8 @@
  */
 
 import { EMPTY_PROP_DEFINITIONS } from "../../props/definitions";
-import type { HostPropsDefinition } from "../../types/props";
-import type { ForgeFrameComponent } from "../../types/runtime";
+import type { StandardSchemaV1 } from "../../props/schema";
+import type { PropsDefinition } from "../../types/props";
 import type { DomainMatcher } from "../../types/utility";
 import { assertDomainMatcher } from "../../utils/domain-pattern";
 import { getComponentOptions } from "../component-registry";
@@ -29,7 +29,12 @@ export interface HostStartOptions {
 	 * The definitions the host validates with; absent only for a tag-agnostic
 	 * host without `props`, which accepts every field unchecked.
 	 */
-	props?: HostPropsDefinition<Record<string, unknown>>;
+	props?: PropsDefinition<Record<string, unknown>>;
+	/**
+	 * The component's `exports` schema, checked before each export is sent;
+	 * absent for the tag-agnostic form.
+	 */
+	exports?: StandardSchemaV1;
 	consumerOrigins: DomainMatcher;
 	autoInit: boolean;
 }
@@ -50,7 +55,7 @@ export function readInitHostArguments(
 ): HostStartOptions {
 	const [first, second] = args;
 	if (typeof first === "function") {
-		const componentOptions = getComponentOptions(first as ForgeFrameComponent);
+		const componentOptions = getComponentOptions(first);
 		if (!componentOptions) {
 			throw callShapeError(
 				"initHost() expects a component returned by create() as its first argument.",
@@ -67,7 +72,8 @@ export function readInitHostArguments(
 			componentTag: componentOptions.tag,
 			// A component without props declares none, so its host accepts none.
 			props: (componentOptions.props ??
-				EMPTY_PROP_DEFINITIONS) as HostPropsDefinition<Record<string, unknown>>,
+				EMPTY_PROP_DEFINITIONS) as PropsDefinition<Record<string, unknown>>,
+			exports: componentOptions.exports,
 		};
 	}
 	if (args.length > 1) {
@@ -127,6 +133,6 @@ function readInitHostOptions(
 	return {
 		consumerOrigins: consumerOrigins as DomainMatcher,
 		autoInit: autoInit ?? true,
-		props: props as HostPropsDefinition<Record<string, unknown>> | undefined,
+		props: props as PropsDefinition<Record<string, unknown>> | undefined,
 	};
 }

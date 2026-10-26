@@ -34,7 +34,7 @@ describe("company payment amount contract", () => {
 		"rejects consumer invoice cents %s before opening a payment window",
 		async (amount) => {
 			harness = createIframeIntegrationHarness();
-			const Payment = create<PaymentProps>({
+			const Payment = create({
 				tag: "payment-consumer-amount-contract",
 				url: "https://host.example.com/widget",
 				props: paymentProps,
@@ -52,7 +52,7 @@ describe("company payment amount contract", () => {
 		"rejects host invoice cents %s from a permissive consumer",
 		async (amount) => {
 			harness = createIframeIntegrationHarness();
-			const instance = create<PaymentProps>({
+			const instance = create({
 				tag: "payment-host-amount-contract",
 				url: "https://host.example.com/widget",
 				props: { ...paymentProps, amountCents: prop.number() },
@@ -63,7 +63,7 @@ describe("company payment amount contract", () => {
 			void rendering.catch(() => {});
 			const iframe = await harness.waitForIframe(container);
 			harness.attachHostToIframe(iframe);
-			const host = harness.bootstrapHost<PaymentProps>(paymentProps);
+			const host = harness.bootstrapHost(paymentProps);
 			if (!host) throw new Error("Missing payment host");
 			await expect(host.ready).rejects.toThrow(/amountCents/);
 		},
@@ -73,7 +73,7 @@ describe("company payment amount contract", () => {
 		"delivers valid cents %s and rejects invalid consumer updates",
 		async (amount) => {
 			harness = createIframeIntegrationHarness();
-			const instance = create<PaymentProps>({
+			const instance = create({
 				tag: "payment-valid-amount-contract",
 				url: "https://host.example.com/widget",
 				props: paymentProps,
@@ -81,7 +81,7 @@ describe("company payment amount contract", () => {
 			const container = document.createElement("div");
 			document.body.append(container);
 			const rendering = instance.render(container);
-			const { hostProps } = await harness.bootstrapIframeHost<PaymentProps>(
+			const { hostProps } = await harness.bootstrapIframeHost(
 				container,
 				paymentProps,
 			);
@@ -100,7 +100,7 @@ describe("company payment amount contract", () => {
 
 	it("preserves the host amount after invalid remote updates and accepts a valid retry", async () => {
 		harness = createIframeIntegrationHarness();
-		const instance = create<PaymentProps>({
+		const instance = create({
 			tag: "payment-host-update-amount-contract",
 			url: "https://host.example.com/widget",
 			props: { ...paymentProps, amountCents: prop.number() },
@@ -108,7 +108,7 @@ describe("company payment amount contract", () => {
 		const container = document.createElement("div");
 		document.body.append(container);
 		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost<PaymentProps>(
+		const { hostProps } = await harness.bootstrapIframeHost(
 			container,
 			paymentProps,
 		);

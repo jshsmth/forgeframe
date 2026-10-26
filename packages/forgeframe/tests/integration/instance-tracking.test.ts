@@ -9,7 +9,7 @@
  * `eligible` and `children` options.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { closeAll, create, EVENT, prop } from "@/index";
+import { closeAll, create, prop } from "@/index";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
@@ -56,15 +56,15 @@ describe("closeAll()", () => {
 			["checkout", checkout],
 			["card", card],
 		] as const) {
-			instance.event.on(EVENT.CLOSE, () => {
+			instance.event.on("close", () => {
 				events.push(`${name}:close`);
 			});
-			instance.event.on(EVENT.CLOSED, () => {
+			instance.event.on("closed", () => {
 				events.push(`${name}:closed`);
 			});
 		}
 		let late: ReturnType<typeof Checkout> | undefined;
-		checkout.event.on(EVENT.CLOSE, () => {
+		checkout.event.on("close", () => {
 			late = Checkout({ amount: 3 });
 		});
 

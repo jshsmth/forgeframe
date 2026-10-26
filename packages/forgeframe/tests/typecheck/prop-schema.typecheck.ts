@@ -5,7 +5,10 @@
  * record, and union schemas, including nested optional/default values.
  */
 import { prop } from "@/props/prop";
-import type { InferInput, InferOutput } from "@/props/schema";
+import type { StandardSchemaV1 } from "@/props/schema";
+
+type InferInput<S extends StandardSchemaV1> = StandardSchemaV1.InferInput<S>;
+type InferOutput<S extends StandardSchemaV1> = StandardSchemaV1.InferOutput<S>;
 
 type IsEqual<A, B> =
 	(<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2

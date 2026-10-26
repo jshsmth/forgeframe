@@ -426,7 +426,7 @@ describe("React commits across the host boundary", () => {
 		expect(onRendered).not.toHaveBeenCalled();
 		expect(onError).not.toHaveBeenCalled();
 
-		const host = harness.bootstrapHost<{ title: string }>(definitions);
+		const host = harness.bootstrapHost(definitions);
 		expect(host).not.toBeNull();
 		if (!host) throw new Error("Expected an initialized host");
 		const snapshots: string[] = [];
@@ -565,9 +565,10 @@ describe("React commits across the host boundary", () => {
 		await React.act(async () => {
 			root.render(React.createElement(Wrapped, { amount: 1, onError }));
 		});
-		const { hostProps, iframe } = await harness.bootstrapIframeHost<{
-			amount: number;
-		}>(container, definitions);
+		const { hostProps, iframe } = await harness.bootstrapIframeHost(
+			container,
+			definitions,
+		);
 		await vi.waitFor(() => expect(iframe.style.visibility).toBe("visible"));
 		const snapshots: number[] = [];
 		hostProps.onProps(({ amount }) => {

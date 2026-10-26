@@ -2,7 +2,12 @@
  * Component rendering for ForgeFrame Playground
  */
 
-import { create, type PropSchema, prop } from "forgeframe";
+import {
+	create,
+	type PropSchema,
+	type PropsDefinition,
+	prop,
+} from "forgeframe";
 import { requireValue } from "../require-value";
 import { getComponentDimensions } from "./config";
 import { updateConfigurationStatus } from "./configuration-status";
@@ -72,7 +77,13 @@ function createPropSchema(
 	return schema;
 }
 
-function buildPropsSchema(config: PlaygroundConfig) {
+/**
+ * Builds the editor's definitions at runtime. Typing the map as
+ * `PropsDefinition<DynamicProps>` lets `create()` infer `DynamicProps`.
+ */
+function buildPropsSchema(
+	config: PlaygroundConfig,
+): PropsDefinition<DynamicProps> {
 	const schema: Record<string, PropSchema<unknown>> = {};
 
 	// Add user-defined props from config
@@ -87,9 +98,10 @@ function buildPropsSchema(config: PlaygroundConfig) {
 	}
 
 	// Always add the host-facing callback prop
-	schema.onGreet = prop.function().optional();
-
-	return schema;
+	return {
+		...schema,
+		onGreet: prop.function<(message: string) => void>().optional(),
+	};
 }
 
 export function createModalTemplate(config: PlaygroundConfig) {
@@ -102,7 +114,7 @@ export function createModalTemplate(config: PlaygroundConfig) {
 	const modalWidth = ms.width || 500;
 	const modalHeight = ms.height || 400;
 
-	const component = create<DynamicProps>({
+	const component = create({
 		tag: `${config.tag}-modal-${++componentSequence}`,
 		url: config.url,
 		dimensions: { width: modalWidth, height: modalHeight },
@@ -209,7 +221,7 @@ export function createComponent(
 
 	const dimensions = getComponentDimensions(config, context);
 
-	const component = create<DynamicProps>({
+	const component = create({
 		tag: uniqueTag,
 		url: config.url,
 		dimensions,

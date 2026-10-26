@@ -1,4 +1,4 @@
-import { prop } from "forgeframe";
+import { type PropsDefinition, prop } from "forgeframe";
 
 /** Receipt metadata returned by Harbor Pay; full card inputs stay in the host. */
 export interface DemoReceipt {
@@ -37,7 +37,7 @@ export interface PaymentAcknowledgement {
  * and closing.
  * No card number, expiry or CVC is delivered to the consumer.
  */
-export interface PaymentProps extends Record<string, unknown> {
+export interface PaymentProps {
 	invoiceId: string;
 	/** Invoice total in nonnegative safe-integer AUD cents; validated on both sides. */
 	amountCents: number;
@@ -60,7 +60,7 @@ export const paymentProps = {
 	outcome: prop.enum(["success", "decline"]),
 	onReady: prop.function<PaymentProps["onReady"]>(),
 	onResult: prop.function<PaymentProps["onResult"]>(),
-};
+} satisfies PropsDefinition<PaymentProps>;
 
 /** Formats a supplied cent amount for the AUD invoices and payment form. */
 export function formatMoney(cents: number): string {

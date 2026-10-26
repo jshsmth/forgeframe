@@ -9,6 +9,8 @@
  */
 
 import { EventEmitter } from "../../events/emitter";
+import { validateExports } from "../../props/exports";
+import type { StandardSchemaV1 } from "../../props/schema";
 import type { HostEvents } from "../../types/events";
 import type { HostProps } from "../../types/runtime";
 import type { DomainMatcher } from "../../types/utility";
@@ -45,6 +47,8 @@ export class HostComponent<P extends Record<string, unknown>> {
 
 	private readonly consumerOrigins: DomainMatcher;
 
+	private readonly exportsSchema?: StandardSchemaV1;
+
 	private readonly onDestroy?: () => void;
 
 	/** Selects and checks the consumer origin, then requests BOOTSTRAP. */
@@ -53,6 +57,7 @@ export class HostComponent<P extends Record<string, unknown>> {
 		this.tag = payload.tag;
 		this.event = new EventEmitter();
 		this.consumerOrigins = options.consumerOrigins;
+		this.exportsSchema = options.exports;
 		this.onDestroy = options.onDestroy;
 
 		let transport: HostTransport | null = null;
@@ -91,7 +96,7 @@ export class HostComponent<P extends Record<string, unknown>> {
 					show: () => this.transport.show(),
 					hide: () => this.transport.hide(),
 					reportError: (error) => this.transport.reportError(error),
-					exportData: <T>(exports: T) => this.transport.exportData(exports),
+					exportData: (exports) => this.exportData(exports),
 					getPeerInstances: (options) =>
 						this.transport.getPeerInstances(options),
 				},
@@ -181,6 +186,15 @@ export class HostComponent<P extends Record<string, unknown>> {
 				this.transport.emitInitFailure(normalizeError(error));
 			throw error;
 		}
+	}
+
+	/**
+	 * Checks exports against the component's `exports` schema, then queues
+	 * them, so an invalid export rejects here without being sent.
+	 */
+	private async exportData(exports: unknown): Promise<void> {
+		validateExports(this.exportsSchema, exports);
+		return this.transport.exportData(exports);
 	}
 
 	public get hostProps(): HostProps<P> {

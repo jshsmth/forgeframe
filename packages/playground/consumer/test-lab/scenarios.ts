@@ -242,23 +242,19 @@ async function runSecurityScenario(
 	return results;
 }
 
-interface BridgeProps extends Record<string, unknown> {
-	scenario: string;
-	onCalculate: (left: number, right: number) => number;
-}
-
-interface BridgeExports {
-	ready: boolean;
-	callbackResult: number;
-	multiply: (left: number, right: number) => Promise<number>;
-	exportedAt: Date;
-}
+const bridgeExports = prop.object({
+	ready: prop.boolean(),
+	callbackResult: prop.number(),
+	multiply: prop.function<(left: number, right: number) => Promise<number>>(),
+	exportedAt: prop.date(),
+});
 
 async function runBridgeScenario(sandbox: HTMLElement): Promise<TestResult[]> {
 	const results: TestResult[] = [];
 	const container = createContainer(sandbox);
 	let callbackArgs: [number, number] | undefined;
-	const Component = create<BridgeProps, BridgeExports>({
+	const Component = create({
+		exports: bridgeExports,
 		tag: uniqueTag("bridge"),
 		url: HOST_URL,
 		dimensions: { width: "100%", height: 420 },
@@ -315,20 +311,11 @@ async function runBridgeScenario(sandbox: HTMLElement): Promise<TestResult[]> {
 	return results;
 }
 
-interface PropsScenario extends Record<string, unknown> {
-	scenario: string;
-	publicQuery: string;
-	privateQuery: string;
-	sameOriginQuery: string;
-	value: string;
-	onObservedProps: (props: Record<string, unknown>) => void;
-}
-
 async function runPropsScenario(sandbox: HTMLElement): Promise<TestResult[]> {
 	const results: TestResult[] = [];
 	const container = createContainer(sandbox);
 	let observedProps: Record<string, unknown> | undefined;
-	const Component = create<PropsScenario>({
+	const Component = create({
 		tag: uniqueTag("props"),
 		url: `${HOST_URL}?existing=kept`,
 		dimensions: { width: "100%", height: 420 },
@@ -466,20 +453,17 @@ async function runControlsScenario(
 	return results;
 }
 
-interface NestedParentProps extends Record<string, unknown> {
-	scenario: string;
-}
-
-interface NestedParentExports {
-	nestedReady: boolean;
-	childTag: string;
-	childExportReady: boolean;
-}
+const nestedParentExports = prop.object({
+	nestedReady: prop.boolean(),
+	childTag: prop.string(),
+	childExportReady: prop.boolean(),
+});
 
 async function runNestedScenario(sandbox: HTMLElement): Promise<TestResult[]> {
 	const results: TestResult[] = [];
 	const container = createContainer(sandbox);
-	const ParentComponent = create<NestedParentProps, NestedParentExports>({
+	const ParentComponent = create({
+		exports: nestedParentExports,
 		tag: uniqueTag("nested-parent"),
 		url: HOST_URL,
 		dimensions: { width: "100%", height: 620 },
@@ -520,18 +504,15 @@ async function runNestedScenario(sandbox: HTMLElement): Promise<TestResult[]> {
 	return results;
 }
 
-interface ErrorScenarioProps extends Record<string, unknown> {
-	scenario: string;
-}
-
-interface ErrorScenarioExports {
-	explode: () => Promise<void>;
-}
+const errorScenarioExports = prop.object({
+	explode: prop.function<() => Promise<void>>(),
+});
 
 async function runErrorsScenario(sandbox: HTMLElement): Promise<TestResult[]> {
 	const results: TestResult[] = [];
 	const container = createContainer(sandbox);
-	const Component = create<ErrorScenarioProps, ErrorScenarioExports>({
+	const Component = create({
+		exports: errorScenarioExports,
 		tag: uniqueTag("errors"),
 		url: HOST_URL,
 		dimensions: { width: "100%", height: 420 },

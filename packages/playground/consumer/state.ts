@@ -1,10 +1,7 @@
 /**
  * State management for ForgeFrame Playground
  */
-import type {
-	ForgeFrameComponent,
-	ForgeFrameComponentInstance,
-} from "forgeframe";
+import type { Component, ComponentInstance } from "forgeframe";
 import { DEFAULT_CONFIG } from "./config";
 import type {
 	DynamicProps,
@@ -17,7 +14,7 @@ import type {
 export let currentContext: RenderContext = "iframe";
 export let currentIframeStyle: IframeStyle = "embedded";
 export let currentConfig: PlaygroundConfig = { ...DEFAULT_CONFIG };
-export let instance: ForgeFrameComponentInstance<DynamicProps> | null = null;
+export let instance: ComponentInstance<DynamicProps> | null = null;
 export let modalOverlay: HTMLElement | null = null;
 export let modalBody: HTMLElement | null = null;
 export let currentPropValues: Record<string, unknown> = {};
@@ -71,10 +68,7 @@ export function recordAppliedProp(key: string, value: unknown) {
 }
 
 // Cache created components to avoid re-registration errors
-export const componentCache = new Map<
-	string,
-	ForgeFrameComponent<DynamicProps>
->();
+export const componentCache = new Map<string, Component<DynamicProps>>();
 
 // State setters
 export function setCurrentContext(context: RenderContext) {
@@ -90,9 +84,7 @@ export function setCurrentConfig(config: PlaygroundConfig) {
 	currentConfig = config;
 }
 
-export function setInstance(
-	inst: ForgeFrameComponentInstance<DynamicProps> | null,
-) {
+export function setInstance(inst: ComponentInstance<DynamicProps> | null) {
 	instance = inst;
 	if (!inst) runningConfiguration = null;
 }

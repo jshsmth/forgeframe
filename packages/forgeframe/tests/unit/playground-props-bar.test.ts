@@ -24,7 +24,6 @@ import {
 	setCurrentConfig,
 	setInstance,
 } from "../../../playground/consumer/state";
-import type { DynamicProps } from "../../../playground/consumer/types";
 import { checkRenderValidation } from "../render-validation";
 
 vi.mock("../../../playground/consumer/logger", () => ({
@@ -174,7 +173,7 @@ describe("playground prop editor", () => {
 				props: { count: { type: "number", default: 0 } },
 			};
 			setCurrentConfig(config);
-			const target = create<DynamicProps>({
+			const target = create({
 				tag: config.tag,
 				url: config.url,
 			})({ count: 0, onGreet: () => {} });
@@ -226,7 +225,7 @@ describe("playground prop editor", () => {
 			props: { count: { type: "number", default: 0 } },
 		};
 		setCurrentConfig(config);
-		const target = create<DynamicProps>({
+		const target = create({
 			tag: config.tag,
 			url: config.url,
 		})({ count: 0, onGreet: () => {} });
@@ -277,7 +276,7 @@ describe("playground prop editor", () => {
 			props: { count: { type: "number", default: 0 } },
 		};
 		setCurrentConfig(config);
-		const target = create<DynamicProps>({
+		const target = create({
 			tag: config.tag,
 			url: config.url,
 		})({ count: 0, onGreet: () => {} });

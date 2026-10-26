@@ -6,7 +6,11 @@ const hostRuntime = vi.hoisted(() => ({
 }));
 vi.mock("forgeframe", () => ({
 	...hostRuntime,
-	prop: { string: () => ({ optional: () => ({}) }) },
+	prop: {
+		string: () => ({ optional: () => ({}) }),
+		boolean: () => ({}),
+		object: () => ({}),
+	},
 }));
 vi.mock("../../../playground/consumer/elements", () => ({
 	elements: {

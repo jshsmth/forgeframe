@@ -6,6 +6,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createReactComponent } from "@/drivers/react";
 import {
+	asComponent,
 	createDeferredPromise,
 	createForgeFrameComponentMock,
 	createReactHarness,
@@ -32,7 +33,7 @@ describe("createReactComponent prop synchronization", () => {
 				localProps = { ...props };
 			});
 
-		const ReactComponent = createReactComponent(component as never, {
+		const ReactComponent = createReactComponent(asComponent(component), {
 			React: React as never,
 		});
 		ReactComponent({ amount: 1, onError });
@@ -85,7 +86,7 @@ describe("createReactComponent prop synchronization", () => {
 			.mockReturnValueOnce(deferredFirstUpdate.promise)
 			.mockResolvedValueOnce(undefined);
 
-		const ReactComponent = createReactComponent(component as never, {
+		const ReactComponent = createReactComponent(asComponent(component), {
 			React: React as never,
 		});
 		ReactComponent({ amount: 1, onError });
@@ -126,7 +127,7 @@ describe("createReactComponent prop synchronization", () => {
 			.mockReturnValueOnce(deferredFirstUpdate.promise)
 			.mockResolvedValueOnce(undefined);
 
-		const ReactComponent = createReactComponent(component as never, {
+		const ReactComponent = createReactComponent(asComponent(component), {
 			React: React as never,
 		});
 		ReactComponent({ amount: 1, onError });
@@ -173,7 +174,7 @@ describe("createReactComponent prop synchronization", () => {
 			.mockRejectedValueOnce(queuedUpdateError)
 			.mockResolvedValueOnce(undefined);
 
-		const ReactComponent = createReactComponent(component as never, {
+		const ReactComponent = createReactComponent(asComponent(component), {
 			React: React as never,
 		});
 		ReactComponent({ amount: 1, onError });
@@ -222,7 +223,7 @@ describe("createReactComponent prop synchronization", () => {
 			.mockRejectedValueOnce(updateError)
 			.mockResolvedValueOnce(undefined);
 
-		const ReactComponent = createReactComponent(component as never, {
+		const ReactComponent = createReactComponent(asComponent(component), {
 			React: React as never,
 		});
 		ReactComponent({ amount: 1, onError });

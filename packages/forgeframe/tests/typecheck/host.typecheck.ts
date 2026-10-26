@@ -1,14 +1,16 @@
 /**
  * Type-level assertions for the public host runtime surface.
  *
- * Pins prop inference through `initHost(Component, ...)`, the narrow `Host`
- * object it returns, and the v1 start-up and read paths that no longer exist.
+ * Pins prop and exports inference through `initHost(Component, ...)` and
+ * `HostPropsOf`, the narrow `Host` object it returns, the tag-agnostic form's
+ * inferred props, and the v1 start-up and read paths that no longer exist.
  */
 // @ts-expect-error ForgeFrame 2 has no default export; use named imports.
 import ForgeFrame, {
 	create,
 	type Host,
 	type HostProps,
+	type HostPropsOf,
 	type InitHostOptions,
 	initHost,
 	prop,
@@ -90,6 +92,38 @@ const label: string | undefined = tagAgnosticHost?.hostProps.label;
 void label;
 const untypedHost: Host | null = initHost({ consumerOrigins: "*" });
 void untypedHost;
+// Without definitions, props are untyped and exports accept any value.
+void untypedHost?.hostProps.export({ anything: true });
+
+// HostPropsOf and initHost(Component) share one contract with the consumer.
+const ExportingForm = create({
+	tag: "typed-exporting-form",
+	url: "https://pay.example.com/exporting",
+	props: { amount: prop.number() },
+	exports: prop.object({
+		submit: prop.function<() => string>(),
+		valid: prop.boolean(),
+	}),
+});
+function submitFrom(props: HostPropsOf<typeof ExportingForm>) {
+	const total: number = props.amount;
+	void total;
+	return props.export({ submit: () => "ok", valid: true });
+}
+void submitFrom;
+const exportingHost = initHost(ExportingForm, { consumerOrigins: "*" });
+if (exportingHost) {
+	const typedProps: HostPropsOf<typeof ExportingForm> = exportingHost.hostProps;
+	void typedProps;
+	void exportingHost.hostProps.export({ submit: () => "ok", valid: true });
+	// @ts-expect-error export() takes the exports schema's type
+	void exportingHost.hostProps.export({ submit: () => "ok", valid: "yes" });
+	// @ts-expect-error export() requires every exported field
+	void exportingHost.hostProps.export({ valid: true });
+	// A typed host still fits helpers that take untyped exports.
+	const loose: HostProps<{ amount: number }> = exportingHost.hostProps;
+	void loose;
+}
 
 const options: InitHostOptions<{ label: string }> = {
 	consumerOrigins: "https://app.example.com",

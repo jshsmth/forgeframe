@@ -1,6 +1,7 @@
 /** Public cross-window values preserve data shapes and expose asynchronous callbacks. */
 import {
 	create,
+	type ExportsOf,
 	type HostProps,
 	initHost,
 	prop,
@@ -36,11 +37,29 @@ host.nested.callbacks[0] = () => Promise.resolve(true);
 const localWindow: Window = host.getConsumer();
 const unsubscribe: () => void = host.onProps(() => {});
 
-const Component = create<Props, { getCount: () => number; createdAt: Date }>({
+const Component = create({
 	tag: "remote-value-types",
 	url: "https://example.com/widget",
-	props: { count: prop.function<() => number>() },
+	props: {
+		count: prop.function<() => number>(),
+		nested: prop.object({
+			callbacks: prop.tuple(prop.function<(value: number) => boolean>()),
+		}),
+		createdAt: prop.date(),
+	},
+	exports: prop.object({
+		getCount: prop.function<() => number>(),
+		createdAt: prop.date(),
+		nested: prop.object({ reset: prop.function<() => void>() }),
+	}),
 });
+// ExportsOf is the exports schema's output; instance.exports is its remote form.
+const localExports: ExportsOf<typeof Component> = {
+	getCount: () => 1,
+	createdAt: new Date(),
+	nested: { reset: () => undefined },
+};
+void localExports;
 const instance = Component({
 	count: () => 42,
 	nested: { callbacks: [(value) => value > 0] },
@@ -51,6 +70,8 @@ const exportedCount: Promise<number> | undefined = instance.exports?.getCount();
 const exportedDate: Date | undefined = instance.exports?.createdAt;
 // @ts-expect-error Exported methods are asynchronous on the consumer.
 const synchronousExport: number | undefined = instance.exports?.getCount();
+const nestedReset: Promise<void> | undefined = instance.exports?.nested.reset();
+void nestedReset;
 
 declare const remoteVoid: RemoteValue<() => void>;
 const voidResult: Promise<void> = remoteVoid();

@@ -17,7 +17,7 @@ import {
 } from "@/core/host";
 import * as hostSecurity from "@/core/host/security";
 import { prop } from "@/props/prop";
-import type { HostPropsDefinition } from "@/types";
+import type { PropsDefinition } from "@/types";
 import { createDeferred } from "@/utils/promise";
 import * as helpers from "@/window/helpers";
 import { buildWindowName } from "@/window/name-payload";
@@ -57,7 +57,7 @@ function createHost({
 	payload?: WindowNamePayload;
 	autoInit?: boolean;
 	consumerWindow?: Window;
-	propDefinitions?: HostPropsDefinition<Record<string, unknown>>;
+	propDefinitions?: PropsDefinition<Record<string, unknown>>;
 } = {}): HostComponent<Record<string, unknown>> {
 	vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
 		consumerWindow,

@@ -23,4 +23,5 @@ export interface NormalizedOptions<P extends Record<string, unknown>> {
 	attributes?: ComponentOptions<P>["attributes"];
 	style?: ComponentOptions<P>["style"];
 	cspNonce?: string;
+	exports?: ComponentOptions<P>["exports"];
 }

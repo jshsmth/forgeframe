@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { deserializeMessage } from "@/communication/protocol";
 import { getHost } from "@/core/host/bootstrap";
-import { create, EVENT, prop } from "@/index";
+import { create, prop } from "@/index";
 import type {
 	ComponentBaseOptions,
 	ComponentOptions,
@@ -150,7 +150,7 @@ describe("Consumer/host handshake integration", () => {
 		document.body.append(container);
 		const instance = Component({ amount: 5 });
 		const errors: string[] = [];
-		instance.event.on(EVENT.ERROR, (error) => {
+		instance.event.on("error", (error) => {
 			errors.push((error as Error).message);
 		});
 		vi.spyOn(console, "error").mockImplementation(() => {});
@@ -185,7 +185,7 @@ describe("Consumer/host handshake integration", () => {
 		document.body.append(container);
 		const instance = Component({ amount: 5 });
 		const errors = vi.fn();
-		instance.event.on(EVENT.ERROR, errors);
+		instance.event.on("error", errors);
 		vi.spyOn(console, "error").mockImplementation(() => {});
 		const rendering = instance.render(container);
 		activeHarness.attachHostToIframe(
@@ -231,7 +231,7 @@ describe("Consumer/host handshake integration", () => {
 		);
 		expect(getHost()).toBeNull();
 
-		const host = harness.bootstrapHost<{ profile: Record<string, unknown> }>({
+		const host = harness.bootstrapHost({
 			profile: prop.any<Record<string, unknown>>(),
 		});
 		if (!host) throw new Error("Expected the corrected host to initialize");
@@ -271,7 +271,7 @@ describe("Consumer/host handshake integration", () => {
 		expect(harness.bootstrapHost({ title: prop.string() })).toBeNull();
 		expect(getHost()).toBeNull();
 		harness.hostWindow.name = validName;
-		const host = harness.bootstrapHost<{ title: string }>({
+		const host = harness.bootstrapHost({
 			title: prop.string(),
 		});
 		if (!host)
@@ -288,7 +288,7 @@ describe("Consumer/host handshake integration", () => {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 
-		const HandshakeComponent = create<HandshakeProps>({
+		const HandshakeComponent = create({
 			tag: "integration-handshake-component",
 			url: "https://host.example.com/widget",
 			props: HANDSHAKE_PROP_DEFINITIONS,
@@ -299,7 +299,7 @@ describe("Consumer/host handshake integration", () => {
 			message: "ForgeFrame ready",
 		});
 		const renderedSpy = vi.fn();
-		instance.event.once(EVENT.RENDERED, renderedSpy);
+		instance.event.once("rendered", renderedSpy);
 
 		const renderPromise = instance.render(container);
 		const { host, hostProps } = await harness.bootstrapIframeHost(
@@ -385,7 +385,7 @@ describe("Prop updates requested during render", () => {
 		harness = createIframeIntegrationHarness();
 		const container = document.createElement("div");
 		document.body.append(container);
-		const Component = create<Props>({
+		const Component = create({
 			tag: `render-hold-${Math.random().toString(36).slice(2)}`,
 			url: "https://host.example.com/widget",
 			props: definitions,
@@ -398,10 +398,10 @@ describe("Prop updates requested during render", () => {
 		const { Component, container } = setup();
 		const instance = Component({ amount: 1 });
 		const order: string[] = [];
-		instance.event.on(EVENT.RENDERED, () => {
+		instance.event.on("rendered", () => {
 			order.push("rendered");
 		});
-		instance.event.on(EVENT.PROPS, (props) => {
+		instance.event.on("props", (props) => {
 			order.push(`props ${props.amount}`);
 		});
 
@@ -442,7 +442,7 @@ describe("Prop updates requested during render", () => {
 			},
 		});
 		instance = Component({ amount: 1 });
-		instance.event.once(EVENT.RENDER, () => queueOnce(4));
+		instance.event.once("render", () => queueOnce(4));
 		rendering = true;
 
 		const render = instance.render(container);
@@ -505,7 +505,7 @@ describe("Prop updates requested during render", () => {
 		const { Component, container } = setup();
 		const instance = Component({ amount: 1 });
 		let fromRendered: Promise<void> | undefined;
-		instance.event.once(EVENT.RENDERED, () => {
+		instance.event.once("rendered", () => {
 			fromRendered = instance.updateProps({ amount: 3 });
 		});
 		const rendering = instance.render(container);

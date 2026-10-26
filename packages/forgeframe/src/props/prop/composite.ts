@@ -160,7 +160,7 @@ export class TupleSchema<
  *
  * @typeParam S - Object shape definition.
  *
- * @public
+ * @internal
  */
 export type InferObjectShape<
 	S extends Record<string, PropSchema<unknown, unknown>>,
@@ -197,7 +197,7 @@ type RequiredObjectInputKeys<
  * Infers the accepted input object from an object shape definition.
  *
  * @typeParam S - Object shape definition.
- * @public
+ * @internal
  */
 export type InferObjectInputShape<
 	S extends Record<string, PropSchema<unknown, unknown>>,

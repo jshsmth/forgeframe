@@ -42,7 +42,7 @@ describe("Body param bootstrap integration", () => {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 
-		const BodyParamComponent = create<BodyParamProps>({
+		const BodyParamComponent = create({
 			tag: "integration-iframe-body-param-component",
 			url: "https://host.example.com/widget",
 			props: BODY_PARAM_PROP_DEFINITIONS,
@@ -83,7 +83,7 @@ describe("Body param bootstrap integration", () => {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 
-		const BodyParamComponent = create<BodyParamProps>({
+		const BodyParamComponent = create({
 			tag: "integration-popup-body-param-component",
 			url: "https://host.example.com/widget",
 			props: BODY_PARAM_PROP_DEFINITIONS,
@@ -121,7 +121,7 @@ describe("Body param bootstrap integration", () => {
 
 	it("rejects a detached iframe container before posting body params, and renders once attached", async () => {
 		iframeHarness = createIframeIntegrationHarness();
-		const BodyParamComponent = create<BodyParamProps>({
+		const BodyParamComponent = create({
 			tag: "integration-detached-body-param-component",
 			url: "https://host.example.com/widget",
 			props: BODY_PARAM_PROP_DEFINITIONS,
@@ -192,7 +192,7 @@ describe("Body param bootstrap integration", () => {
 		iframeHarness = createIframeIntegrationHarness();
 		const container = document.createElement("div");
 		document.body.appendChild(container);
-		const Component = create<BodyParamProps>({
+		const Component = create({
 			tag: "integration-body-param-admitted-updates",
 			url: "https://host.example.com/widget",
 			props: BODY_PARAM_PROP_DEFINITIONS,
@@ -225,7 +225,7 @@ describe("Body param bootstrap integration", () => {
 		iframeHarness = createIframeIntegrationHarness();
 		const container = document.createElement("div");
 		document.body.appendChild(container);
-		const Component = create<BodyParamProps>({
+		const Component = create({
 			tag: "integration-body-param-held-update",
 			url: "https://host.example.com/widget",
 			props: BODY_PARAM_PROP_DEFINITIONS,

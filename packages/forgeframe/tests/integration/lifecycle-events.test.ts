@@ -8,7 +8,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Messenger } from "@/communication/messenger";
 import { getHost } from "@/core/host/bootstrap";
-import { create, EVENT, prop } from "@/index";
+import { create, prop } from "@/index";
 import {
 	createIframeIntegrationHarness,
 	createPopupIntegrationHarness,
@@ -38,11 +38,11 @@ describe("Lifecycle events integration", () => {
 		})();
 		const events: string[] = [];
 		for (const name of [
-			EVENT.RENDER,
-			EVENT.RENDERED,
-			EVENT.FOCUS,
-			EVENT.CLOSE,
-			EVENT.CLOSED,
+			"render",
+			"rendered",
+			"focus",
+			"close",
+			"closed",
 		] as const) {
 			instance.event.on(name, () => {
 				events.push(name);
@@ -55,13 +55,7 @@ describe("Lifecycle events integration", () => {
 		await popupHarness.withHostGlobalsAsync(() => hostProps.focus());
 		await instance.close();
 
-		expect(events).toEqual([
-			EVENT.RENDER,
-			EVENT.RENDERED,
-			EVENT.FOCUS,
-			EVENT.CLOSE,
-			EVENT.CLOSED,
-		]);
+		expect(events).toEqual(["render", "rendered", "focus", "close", "closed"]);
 	});
 
 	it("emits closed without close when a failed render tears the instance down", async () => {
@@ -77,7 +71,7 @@ describe("Lifecycle events integration", () => {
 			},
 		})();
 		const events: string[] = [];
-		for (const name of [EVENT.RENDER, EVENT.CLOSE, EVENT.CLOSED] as const) {
+		for (const name of ["render", "close", "closed"] as const) {
 			instance.event.on(name, () => {
 				events.push(name);
 			});
@@ -85,7 +79,7 @@ describe("Lifecycle events integration", () => {
 
 		await expect(instance.render(container)).rejects.toBe(failure);
 
-		expect(events).toEqual([EVENT.RENDER, EVENT.CLOSED]);
+		expect(events).toEqual(["render", "closed"]);
 		expect(container.querySelector("iframe")).toBeNull();
 	});
 
@@ -94,12 +88,12 @@ describe("Lifecycle events integration", () => {
 		harness = iframeHarness;
 		const container = document.createElement("div");
 		document.body.append(container);
-		const instance = create<Record<string, never>, { version: number }>({
+		const instance = create({
 			tag: "integration-exports-event",
 			url: HOST_URL,
 		})();
 		const received: Array<{ payload: unknown; current: unknown }> = [];
-		instance.event.on(EVENT.EXPORTS, (payload) => {
+		instance.event.on("exports", (payload) => {
 			received.push({ payload, current: instance.exports });
 		});
 		const rendering = instance.render(container);

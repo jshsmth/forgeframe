@@ -90,6 +90,13 @@ create({
 	// @ts-expect-error set the sandbox with the sandbox option.
 	attributes: { sandbox: "allow-scripts" },
 });
+// Attribute names are case-insensitive in HTML, but the types check only the
+// lowercase key; create() rejects "Sandbox" and an explicit undefined at runtime.
+create({
+	tag: "typed-sandbox-attribute-case",
+	url: "https://a.example.com",
+	attributes: { Sandbox: "allow-scripts" },
+});
 
 const allTags: GetPeerInstancesOptions = { allTags: true };
 // @ts-expect-error anyConsumer was renamed allTags.

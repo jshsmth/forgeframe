@@ -351,6 +351,24 @@ describe("Component Creation", () => {
 	});
 
 	it.each([
+		["a plain object", { ready: true }],
+		["a function", () => true],
+		["a string", "object"],
+	])("rejects %s as the exports schema", (_label, exports) => {
+		expect(() =>
+			create({
+				tag: "invalid-exports-schema",
+				url: "https://host.example.com/widget",
+				// Invalid JavaScript configuration is rejected at runtime.
+				exports: exports as never,
+			}),
+		).toThrow(
+			"Component exports must be a Standard Schema, such as prop.object({ ... }) or a Zod object",
+		);
+		expect(getComponent("invalid-exports-schema")).toBeUndefined();
+	});
+
+	it.each([
 		[
 			"a number",
 			1,
@@ -429,10 +447,11 @@ describe("Component Creation", () => {
 	it.each(["onError", "close", "children"])(
 		"omits an undefined reserved definition for %s during declaration",
 		(key) => {
-			const Component = create<Record<string, unknown>>({
+			const Component = create({
 				tag: `undefined-reserved-${key.toLowerCase()}`,
 				url: "https://example.com",
-				props: { [key]: undefined },
+				// JavaScript callers may leave an entry undefined.
+				props: { [key]: undefined } as unknown as Record<string, never>,
 			});
 			expect(() => Component()).not.toThrow();
 		},
@@ -675,7 +694,7 @@ describe("Component Creation", () => {
 	});
 
 	it("should materialize function url options from the latest normalized props", async () => {
-		const DynamicUrlComponent = create<{ path: string }>({
+		const DynamicUrlComponent = create({
 			tag: "dynamic-url-component",
 			domain: "https://example.com",
 			url: (props) => `https://example.com/${props.path}`,
@@ -696,7 +715,7 @@ describe("Component Creation", () => {
 	});
 
 	it("should materialize function dimensions options from the latest normalized props", async () => {
-		const DynamicDimensionsComponent = create<{ height: number }>({
+		const DynamicDimensionsComponent = create({
 			tag: "dynamic-dimensions-component",
 			url: "https://example.com",
 			props: {
@@ -1053,7 +1072,7 @@ describe("Component Instance", () => {
 
 	it("should call component validate on render and updateProps", async () => {
 		const validate = vi.fn();
-		const MyComponent = create<{ amount: number }>({
+		const MyComponent = create({
 			tag: "validate-option-component",
 			url: "https://example.com",
 			props: {
@@ -1087,7 +1106,7 @@ describe("Component Instance", () => {
 	});
 
 	it("should open the updated url origin when props change before the first render", async () => {
-		const DynamicUrlComponent = create<{ targetUrl: string }>({
+		const DynamicUrlComponent = create({
 			tag: "dynamic-origin-trust-component",
 			domain: ["https://origin-a.example.com", "https://origin-b.example.com"],
 			url: (props) => props.targetUrl,
@@ -1152,7 +1171,7 @@ describe("Component Instance", () => {
 	});
 
 	it("should apply idle updateProps synchronously before awaiting", async () => {
-		const DynamicUrlComponent = create<{ targetUrl: string }>({
+		const DynamicUrlComponent = create({
 			tag: "dynamic-origin-sync-update-component",
 			domain: ["https://origin-a.example.com", "https://origin-b.example.com"],
 			url: (props) => props.targetUrl,
@@ -1182,7 +1201,7 @@ describe("Component Instance", () => {
 	});
 
 	it("should reject url origin changes after render", async () => {
-		const DynamicUrlComponent = create<{ targetUrl: string }>({
+		const DynamicUrlComponent = create({
 			tag: "dynamic-origin-after-render-component",
 			domain: ["https://origin-a.example.com", "https://origin-b.example.com"],
 			url: (props) => props.targetUrl,
@@ -1249,12 +1268,8 @@ describe("Component Registry", () => {
 			expect(retrieved).toBeUndefined();
 		});
 
-		it("should work with typed components", () => {
-			type MyProps = {
-				name: string;
-			};
-
-			create<MyProps>({
+		it("should return a component with typed props", () => {
+			create({
 				tag: "typed-component",
 				url: "https://example.com",
 				props: {
@@ -1262,7 +1277,7 @@ describe("Component Registry", () => {
 				},
 			});
 
-			const retrieved = getComponent<MyProps>("typed-component");
+			const retrieved = getComponent("typed-component");
 
 			expect(retrieved).toBeDefined();
 		});

@@ -5,7 +5,7 @@
  * through the real popup messaging pipeline.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { create, EVENT, PopupOpenError, prop } from "@/index";
+import { create, PopupOpenError, prop } from "@/index";
 import type { PropsDefinition } from "@/types";
 import {
 	createPopupIntegrationHarness,
@@ -37,7 +37,7 @@ describe("Popup host handshake integration", () => {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 
-		const PopupComponent = create<PopupProps>({
+		const PopupComponent = create({
 			tag: "integration-popup-handshake-component",
 			url: "https://host.example.com/widget",
 			props: POPUP_PROP_DEFINITIONS,
@@ -78,7 +78,7 @@ describe("Popup host handshake integration", () => {
 		harness = createPopupIntegrationHarness();
 		const container = document.createElement("div");
 		document.body.appendChild(container);
-		const PopupComponent = create<PopupProps>({
+		const PopupComponent = create({
 			tag: "integration-popup-held-update",
 			url: "https://host.example.com/widget",
 			props: POPUP_PROP_DEFINITIONS,
@@ -105,7 +105,7 @@ describe("Popup host handshake integration", () => {
 		const activeHarness = harness;
 		const container = document.createElement("div");
 		document.body.appendChild(container);
-		const PopupComponent = create<PopupProps>({
+		const PopupComponent = create({
 			tag: "integration-popup-resize-component",
 			url: "https://host.example.com/widget",
 			props: POPUP_PROP_DEFINITIONS,
@@ -144,7 +144,7 @@ describe("Popup host handshake integration", () => {
 			},
 		});
 		const resized = vi.fn();
-		instance.event.on(EVENT.RESIZE, resized);
+		instance.event.on("resize", resized);
 
 		await expect(instance.resize({ width: 600, height: 400 })).rejects.toThrow(
 			'Cannot resize the popup for component "integration-popup-resize-component"',

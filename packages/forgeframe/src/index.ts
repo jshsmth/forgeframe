@@ -30,8 +30,8 @@
  * ```
  */
 
-export type { ContextType, EventType } from "./constants";
-export { CONTEXT, EVENT, VERSION } from "./constants";
+export type { ContextType } from "./constants";
+export { VERSION } from "./constants";
 
 // Named exports for tree-shaking
 export { closeAll, create, initHost, isHost } from "./core";
@@ -43,36 +43,32 @@ export {
 	type ReactDriverOptions,
 	withReactComponent,
 } from "./drivers/react";
-
-// Prop schema builders
+// Prop schema builders; the schema classes are types, built with prop.*
 export {
-	AnySchema,
-	ArraySchema,
-	BooleanSchema,
-	DateSchema,
-	EnumSchema,
-	FunctionSchema,
-	type InferObjectInputShape,
-	type InferObjectShape,
-	LiteralSchema,
-	NumberSchema,
-	ObjectSchema,
-	type Prop,
-	PropSchema,
+	type AnySchema,
+	type ArraySchema,
+	type BooleanSchema,
+	type DateSchema,
+	type EnumSchema,
+	type FunctionSchema,
+	type LiteralSchema,
+	type NumberSchema,
+	type ObjectSchema,
+	type PropSchema,
 	prop,
-	RecordSchema,
-	StringSchema,
-	TupleSchema,
-	UnionSchema,
+	type RecordSchema,
+	type StringSchema,
+	type TupleSchema,
+	type UnionSchema,
 } from "./props/prop";
-// Schema utilities
-export { isStandardSchema } from "./props/schema";
 export { PopupOpenError } from "./render/popup";
 // Type exports
 export type {
 	// Component types
+	Component,
 	ComponentBaseOptions,
 	ComponentEvents,
+	ComponentInstance,
 	ComponentOptions,
 	ComponentUrlOptions,
 	ContainerTemplate,
@@ -82,29 +78,28 @@ export type {
 	// Event types
 	EventHandler,
 	EventSubscriber,
-	ForgeFrameComponent,
-	ForgeFrameComponentInstance,
+	EventType,
+	ExportsOf,
 	GetPeerInstancesOptions,
 	Host,
 	HostEvents,
 	HostProps,
 	HostPropsBuiltins,
-	HostPropsDefinition,
+	HostPropsOf,
 	IframeAttributes,
 	IframeStyles,
-	InferPropsDefinition,
-	InferPropsDefinitionInput,
-	InferSchemaOutput,
+	InferInput,
+	InferProps,
 	InitHostOptions,
+	InputOf,
 	PeerInfo,
 	PrerenderTemplate,
 	// Props types
 	PropDefinition,
-	PropDefinitionEntry,
 	PropDelivery,
 	PropsDefinition,
+	PropsOf,
 	RemoteValue,
-	SchemaPropDefinition,
 	// Standard Schema types
 	StandardSchemaV1,
 	// Template types

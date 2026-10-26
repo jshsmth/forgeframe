@@ -7,8 +7,7 @@
  * peer consumer instances without keeping that logic inside the façade.
  */
 
-import type { PeerInfo } from "../../types/runtime";
-import type { DomainMatcher } from "../../types/utility";
+import type { PeerInfo, PeersOption } from "../../types/runtime";
 import { isOpaqueOrigin } from "../../utils/origin";
 import { matchDomain } from "../../window/helpers";
 import {
@@ -16,12 +15,6 @@ import {
 	getIndexedComponentInstances,
 	type IndexedComponentInstance,
 } from "../component-instance-index";
-
-/**
- * A component's `peers` option: omitted, `true`, or an origin matcher.
- * @internal
- */
-export type PeersOption = true | DomainMatcher | undefined;
 
 /**
  * Request shape used for consumer peer lookups.

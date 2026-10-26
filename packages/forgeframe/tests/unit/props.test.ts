@@ -25,9 +25,10 @@ const crossOriginHost = {
 
 describe("Props Normalization", () => {
 	it("omits a prop whose definition is undefined", () => {
-		const definitions: PropsDefinition<{ timeout: number }> = {
+		// JavaScript callers may leave an entry undefined.
+		const definitions = {
 			timeout: undefined,
-		};
+		} as unknown as PropsDefinition<{ timeout: number }>;
 		expect(normalizeProps({ timeout: 1 }, definitions)).toEqual({});
 		expect(
 			getPropsForHost({ timeout: 1 }, definitions, crossOriginHost),

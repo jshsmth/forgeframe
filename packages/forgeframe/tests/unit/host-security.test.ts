@@ -19,7 +19,7 @@ import {
 } from "@/core/host";
 import * as hostSecurity from "@/core/host/security";
 import { prop } from "@/props/prop";
-import type { HostPropsDefinition } from "@/types";
+import type { PropsDefinition } from "@/types";
 import { buildWindowName } from "@/window/name-payload";
 import type { WindowNamePayload } from "@/window/types";
 import { requireValue } from "../require-value";
@@ -54,7 +54,7 @@ async function startBootstrappedHost(
 	consumerWindow: Window,
 	payload: WindowNamePayload,
 	props: Record<string, unknown> = {},
-	propDefinitions?: HostPropsDefinition<Record<string, unknown>>,
+	propDefinitions?: PropsDefinition<Record<string, unknown>>,
 ): Promise<{ host: HostComponent<Record<string, unknown>> }> {
 	vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
 		consumerWindow,

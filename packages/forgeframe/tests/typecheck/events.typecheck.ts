@@ -1,15 +1,19 @@
 /** Typed lifecycle subscriptions through the public instance event API. */
-import type {
-	ComponentEvents,
-	Dimensions,
-	EventSubscriber,
-	ForgeFrameComponentInstance,
+import {
+	type ComponentEvents,
+	type ComponentInstance,
+	type ContextType,
+	create,
+	type Dimensions,
+	type EventSubscriber,
+	type EventType,
+	prop,
 } from "@/index";
 
 type Props = { amount: number };
 type Exports = { submit: () => Promise<string> };
 
-declare const instance: ForgeFrameComponentInstance<Props, Exports>;
+declare const instance: ComponentInstance<Props, Props, Exports>;
 
 const stopResize: () => void = instance.event.on("resize", (dimensions) => {
 	const size: Dimensions = dimensions;
@@ -62,3 +66,41 @@ instance.event.removeAllListeners();
 const subscriber: EventSubscriber<ComponentEvents<Props, Exports>> =
 	instance.event;
 void subscriber;
+
+// Event payloads are typed from the component's schemas.
+const Checkout = create({
+	tag: "typed-events-checkout",
+	url: "https://example.com/checkout",
+	props: { amount: prop.number(), note: prop.string().optional() },
+	exports: prop.object({
+		submit: prop.function<() => string>(),
+		createdAt: prop.date(),
+	}),
+});
+const checkout = Checkout({ amount: 1 });
+checkout.event.on("props", (props) => {
+	const amount: number = props.amount;
+	const note: string | undefined = props.note;
+	void amount;
+	void note;
+	// @ts-expect-error props payloads only carry declared props
+	void props.missing;
+});
+checkout.event.on("exports", (exports) => {
+	const submitted: Promise<string> = exports.submit();
+	const createdAt: Date = exports.createdAt;
+	void submitted;
+	void createdAt;
+});
+
+// Contexts and event names are plain string literals.
+const contexts: ContextType[] = ["iframe", "popup"];
+const names: EventType[] = ["render", "rendered", "exports"];
+void contexts;
+void names;
+// @ts-expect-error "modal" is not a rendering context
+const invalidContext: ContextType = "modal";
+// @ts-expect-error "prerendered" was merged into "render"
+const invalidEvent: EventType = "prerendered";
+void invalidContext;
+void invalidEvent;

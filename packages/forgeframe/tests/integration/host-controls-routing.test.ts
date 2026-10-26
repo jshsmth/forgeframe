@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MESSAGE_NAME } from "@/constants";
-import { create, EVENT, prop } from "@/index";
+import { create, prop } from "@/index";
 import type { Dimensions, PropsDefinition } from "@/types";
 import {
 	getVerifiedHostDomain,
@@ -53,7 +53,7 @@ describe("Host controls and routing integration", () => {
 				attributes: { loading: "lazy" },
 				style,
 			})();
-			instance.event.on(EVENT.RENDER, () => instance.show());
+			instance.event.on("render", () => instance.show());
 			const rendering = instance.render(container);
 			const { iframe } = await harness.bootstrapIframeHost(container);
 			await rendering;
@@ -84,7 +84,7 @@ describe("Host controls and routing integration", () => {
 					transition: "opacity 2s",
 				},
 			})();
-			instance.event.on(EVENT.RENDER, () => {
+			instance.event.on("render", () => {
 				for (const control of controls) void instance[control]();
 			});
 			const rendering = instance.render(container);
@@ -107,7 +107,7 @@ describe("Host controls and routing integration", () => {
 		});
 		const instance = Component();
 		const rendered = vi.fn();
-		instance.event.on(EVENT.RENDERED, rendered);
+		instance.event.on("rendered", rendered);
 		const rendering = instance.render(container);
 		const { host, iframe } = await harness.bootstrapIframeHost(container);
 		await host.ready;
@@ -169,12 +169,10 @@ describe("Host controls and routing integration", () => {
 		harness = createIframeIntegrationHarness();
 		const container = document.createElement("div");
 		document.body.append(container);
-		const Component = create<
-			Record<string, unknown>,
-			{ values: string[]; run: () => number }
-		>({
+		const Component = create({
 			tag: "integration-export-array-accessors",
 			url: "https://host.example.com/widget",
+			exports: prop.any<{ values: string[]; run: () => number }>(),
 		});
 		const instance = Component();
 		const rendering = instance.render(container);
@@ -413,12 +411,10 @@ describe("Host controls and routing integration", () => {
 		harness = createIframeIntegrationHarness();
 		const container = document.createElement("div");
 		document.body.append(container);
-		const Component = create<
-			Record<string, unknown>,
-			Record<string, () => number>
-		>({
+		const Component = create({
 			tag: "integration-export-message-encoding",
 			url: "https://host.example.com/widget",
+			exports: prop.record(prop.function<() => number>()),
 		});
 		const instance = Component();
 		const rendering = instance.render(container);
@@ -511,7 +507,7 @@ describe("Host controls and routing integration", () => {
 		const errorEvent = vi.fn();
 		const onExports = vi.fn();
 
-		const ControlsComponent = create<ControlProps>({
+		const ControlsComponent = create({
 			tag: "integration-host-controls-component",
 			peers: true,
 			url: "https://host.example.com/widget",
@@ -519,16 +515,11 @@ describe("Host controls and routing integration", () => {
 		});
 
 		const instance = ControlsComponent({ label: "Primary" });
-		instance.event.on(EVENT.ERROR, errorEvent);
-		instance.event.on(EVENT.RESIZE, onResize);
-		instance.event.on(EVENT.FOCUS, onFocus);
-		instance.event.on(EVENT.EXPORTS, onExports);
-		for (const name of [
-			EVENT.RENDER,
-			EVENT.RENDERED,
-			EVENT.CLOSE,
-			EVENT.CLOSED,
-		] as const) {
+		instance.event.on("error", errorEvent);
+		instance.event.on("resize", onResize);
+		instance.event.on("focus", onFocus);
+		instance.event.on("exports", onExports);
+		for (const name of ["render", "rendered", "close", "closed"] as const) {
 			instance.event.on(name, () => {
 				lifecycle.push(name);
 			});
@@ -600,12 +591,7 @@ describe("Host controls and routing integration", () => {
 
 		await harness.withHostGlobalsAsync(() => hostProps.close());
 
-		expect(lifecycle).toEqual([
-			EVENT.RENDER,
-			EVENT.RENDERED,
-			EVENT.CLOSE,
-			EVENT.CLOSED,
-		]);
+		expect(lifecycle).toEqual(["render", "rendered", "close", "closed"]);
 		expect(container.querySelector("iframe")).toBeNull();
 	});
 
@@ -615,7 +601,7 @@ describe("Host controls and routing integration", () => {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 
-		const ControlsComponent = create<ControlProps>({
+		const ControlsComponent = create({
 			tag: "integration-routing-guards-component",
 			url: "https://host.example.com/widget",
 			props: CONTROL_PROP_DEFINITIONS,

@@ -1,23 +1,20 @@
 import type { ContextType } from "../../constants";
-import type {
-	AnyFactoryInput,
-	ForgeFrameComponentInstance,
-} from "../../types/runtime";
+import type { ComponentInstance } from "../../types/runtime";
 import { normalizeError } from "../../utils/error";
 import { deactivatePropSyncState, type ReactPropSyncState } from "./prop-sync";
 
 /** Mutable refs remain owned by the React wrapper. @internal */
-export interface ReactInstanceRefs<P extends Record<string, unknown>, X> {
+export interface ReactInstanceRefs {
 	instanceRef: {
-		current: ForgeFrameComponentInstance<P, X, AnyFactoryInput> | null;
+		current: ComponentInstance | null;
 	};
-	propSyncRef: { current: ReactPropSyncState<P, X> | null };
+	propSyncRef: { current: ReactPropSyncState | null };
 }
 
 /** Rejects completed work from an obsolete, closed, or unmounted instance. @internal */
-export function isCurrentSyncState<P extends Record<string, unknown>, X>(
-	state: ReactPropSyncState<P, X>,
-	refs: ReactInstanceRefs<P, X>,
+export function isCurrentSyncState(
+	state: ReactPropSyncState,
+	refs: ReactInstanceRefs,
 ): boolean {
 	return (
 		state.active &&
@@ -27,10 +24,10 @@ export function isCurrentSyncState<P extends Record<string, unknown>, X>(
 }
 
 /** Creates isolated state for one mounted instance without performing lifecycle work. */
-function createPropSyncState<P extends Record<string, unknown>, X>(
-	instance: ForgeFrameComponentInstance<P, X, AnyFactoryInput>,
+function createPropSyncState(
+	instance: ComponentInstance,
 	initialProps: Record<string, unknown>,
-): ReactPropSyncState<P, X> {
+): ReactPropSyncState {
 	return {
 		instance,
 		comparableProps: initialProps,
@@ -43,9 +40,9 @@ function createPropSyncState<P extends Record<string, unknown>, X>(
 }
 
 /** Clears only refs still owned by the completing instance. */
-function releaseInstanceRefs<P extends Record<string, unknown>, X>(
-	refs: ReactInstanceRefs<P, X>,
-	state: ReactPropSyncState<P, X>,
+function releaseInstanceRefs(
+	refs: ReactInstanceRefs,
+	state: ReactPropSyncState,
 ): void {
 	if (refs.instanceRef.current === state.instance)
 		refs.instanceRef.current = null;
@@ -64,26 +61,24 @@ function releaseInstanceRefs<P extends Record<string, unknown>, X>(
  * @returns Effect cleanup, or `undefined` after a reported construction failure.
  * @internal
  */
-export function mountReactInstance<P extends Record<string, unknown>, X>(
-	createInstance: (
-		props: Record<string, unknown>,
-	) => ForgeFrameComponentInstance<P, X, AnyFactoryInput>,
+export function mountReactInstance(
+	createInstance: (props: Record<string, unknown>) => ComponentInstance,
 	initialProps: Record<string, unknown>,
 	container: HTMLDivElement,
 	context: ContextType | undefined,
-	refs: ReactInstanceRefs<P, X>,
+	refs: ReactInstanceRefs,
 	observers: {
 		onRendered: () => void | Promise<void>;
 		onClose: () => void | Promise<void>;
 		onError: (error: Error) => void;
 		setError: (error: Error) => void;
 	},
-	onReady: (state: ReactPropSyncState<P, X>) => void,
+	onReady: (state: ReactPropSyncState) => void,
 ): (() => void) | undefined {
 	const { instanceRef, propSyncRef } = refs;
-	const isCurrent = (state: ReactPropSyncState<P, X>) =>
+	const isCurrent = (state: ReactPropSyncState) =>
 		isCurrentSyncState(state, refs);
-	let instance: ForgeFrameComponentInstance<P, X, AnyFactoryInput>;
+	let instance: ComponentInstance;
 	try {
 		instance = createInstance(initialProps);
 	} catch (err) {

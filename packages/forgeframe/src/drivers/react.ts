@@ -1,8 +1,9 @@
 import type { ContextType } from "../constants";
 import type {
-	AnyFactoryInput,
-	ForgeFrameComponent,
-	ForgeFrameComponentInstance,
+	AnyComponent,
+	ComponentInstance,
+	InputOf,
+	PropsOf,
 } from "../types/runtime";
 import { isCurrentSyncState, mountReactInstance } from "./react/lifecycle";
 import {
@@ -126,23 +127,18 @@ export interface ReactComponentProps<_P = unknown> {
 /**
  * Full props type combining driver props with component-specific props.
  *
- * @typeParam P - The component-specific props type from the ForgeFrame component
- * @typeParam RequireProps - Whether the wrapped factory requires initial props
- * @typeParam Input - The factory input, inferred from the prop schemas
+ * @typeParam C - The wrapped ForgeFrame component
  *
  * @remarks
- * This type merges {@link ReactComponentProps} with the component's initial
- * input shape. Components whose factories require props preserve those
- * requirements, while optional factories continue to accept partial props.
+ * This type merges {@link ReactComponentProps} with the component's factory
+ * input, so props whose schemas reject `undefined` stay required in JSX.
  *
  * @internal
  */
-type FullReactComponentProps<
-	P,
-	RequireProps extends boolean = false,
-	Input = P,
-> = ReactComponentProps<P> &
-	(RequireProps extends true ? Input : Partial<Input>);
+type FullReactComponentProps<C extends AnyComponent> = ReactComponentProps<
+	PropsOf<C>
+> &
+	InputOf<C>;
 
 /** Attaches the container element and forwards it to one forwarded ref. @internal */
 type ContainerRefCallback = (
@@ -283,11 +279,9 @@ export interface ReactComponentType<P, E = unknown> {
  *
  * @param Component - The ForgeFrame component to wrap
  * @param options - Configuration options including the React instance
- * @typeParam P - The canonical props type defined by the ForgeFrame component
- * @typeParam X - The export type for data shared from the host component
+ * @typeParam C - The wrapped ForgeFrame component; its factory input types the
+ * wrapper's props
  * @typeParam E - The React element return type
- * @typeParam RequireProps - Whether the wrapped factory requires props
- * @typeParam Input - The factory input, inferred from the prop schemas
  *
  * @returns A React component that renders the ForgeFrame component
  *
@@ -330,118 +324,107 @@ export interface ReactComponentType<P, E = unknown> {
  *
  * @public
  */
-export function createReactComponent<
-	P extends Record<string, unknown>,
-	X = unknown,
-	E = unknown,
-	RequireProps extends boolean = false,
-	Input extends Record<string, unknown> = P,
->(
-	Component: ForgeFrameComponent<P, X, RequireProps, Input>,
+export function createReactComponent<C extends AnyComponent, E = unknown>(
+	Component: C,
 	options: ReactDriverOptions<E>,
-): ReactComponentType<FullReactComponentProps<P, RequireProps, Input>, E> {
+): ReactComponentType<FullReactComponentProps<C>, E> {
 	const { createElement, useRef, useEffect, useState, forwardRef } =
 		options.React as unknown as ReactRuntime<E>;
 	const createInstance = Component as unknown as (
 		props: Record<string, unknown>,
-	) => ForgeFrameComponentInstance<P, X, AnyFactoryInput>;
+	) => ComponentInstance;
 
-	const ReactComponent = forwardRef<
-		HTMLDivElement,
-		FullReactComponentProps<P, RequireProps, Input>
-	>(function ForgeFrameComponent(props, ref) {
-		const {
-			onRendered,
-			onError,
-			onClose,
-			context,
-			className,
-			style,
-			...componentProps
-		} = props;
-
-		const containerRef = useRef<HTMLDivElement>(null);
-		const instanceRef = useRef<ForgeFrameComponentInstance<
-			P,
-			X,
-			AnyFactoryInput
-		> | null>(null);
-		const propSyncRef = useRef<ReactPropSyncState<P, X> | null>(null);
-		const onRenderedRef = useRef<typeof onRendered>(onRendered);
-		const onErrorRef = useRef<typeof onError>(onError);
-		const onCloseRef = useRef<typeof onClose>(onClose);
-		const containerRefCache =
-			useRef<ReturnType<typeof createContainerRefCache>>(null);
-		const [error, setError] = useState<Error | null>(null);
-		// Lazily created once; React re-attaches only when the forwarded ref changes.
-		containerRefCache.current ??= createContainerRefCache(containerRef);
-		const attachContainer = containerRefCache.current(ref);
-
-		const refs = { instanceRef, propSyncRef };
-		const isCurrent = (state: ReactPropSyncState<P, X>) =>
-			isCurrentSyncState(state, refs);
-		const onDriverError = (err: Error) =>
-			reportReactError(onErrorRef.current ?? undefined, err);
-		const drain = (state: ReactPropSyncState<P, X>) =>
-			drainPropUpdates(state, isCurrent, onDriverError);
-
-		useEffect(() => {
-			onRenderedRef.current = onRendered;
-			onErrorRef.current = onError;
-			onCloseRef.current = onClose;
-		}, [onRendered, onError, onClose]);
-
-		useEffect(() => {
-			const container = containerRef.current;
-			if (!container) return;
-
-			setError(null);
-
-			const initialProps = snapshotProps(
-				componentProps as Record<string, unknown>,
-			);
-			return mountReactInstance(
-				createInstance,
-				initialProps,
-				container,
+	const ReactComponent = forwardRef<HTMLDivElement, FullReactComponentProps<C>>(
+		function ForgeFrameComponent(props, ref) {
+			const {
+				onRendered,
+				onError,
+				onClose,
 				context,
-				refs,
-				{
-					onRendered: () => onRenderedRef.current?.(),
-					onClose: () => onCloseRef.current?.(),
-					onError: onDriverError,
-					setError,
-				},
-				(state) => {
-					void drain(state);
-				},
-			);
-		}, [context]);
-
-		useEffect(() => {
-			const syncState = propSyncRef.current;
-			if (!syncState || !isCurrent(syncState)) return;
-
-			const nextProps = snapshotProps(
-				componentProps as Record<string, unknown>,
-			);
-			if (enqueuePropSnapshot(syncState, nextProps)) void drain(syncState);
-		});
-
-		return createElement(
-			"div",
-			{
-				ref: attachContainer,
 				className,
-				style: error
-					? { color: "red", padding: "16px", ...style }
-					: { display: "inline-block", ...style },
-			},
-			// Keep error content in its own node so recovery cannot clear an iframe
-			// inserted into this container by the new instance's render call.
-			error ? createElement("span", null, `Error: ${error.message}`) : null,
-		);
-	});
+				style,
+				...componentProps
+			} = props;
+
+			const containerRef = useRef<HTMLDivElement>(null);
+			const instanceRef = useRef<ComponentInstance | null>(null);
+			const propSyncRef = useRef<ReactPropSyncState | null>(null);
+			const onRenderedRef = useRef<typeof onRendered>(onRendered);
+			const onErrorRef = useRef<typeof onError>(onError);
+			const onCloseRef = useRef<typeof onClose>(onClose);
+			const containerRefCache =
+				useRef<ReturnType<typeof createContainerRefCache>>(null);
+			const [error, setError] = useState<Error | null>(null);
+			// Lazily created once; React re-attaches only when the forwarded ref changes.
+			containerRefCache.current ??= createContainerRefCache(containerRef);
+			const attachContainer = containerRefCache.current(ref);
+
+			const refs = { instanceRef, propSyncRef };
+			const isCurrent = (state: ReactPropSyncState) =>
+				isCurrentSyncState(state, refs);
+			const onDriverError = (err: Error) =>
+				reportReactError(onErrorRef.current ?? undefined, err);
+			const drain = (state: ReactPropSyncState) =>
+				drainPropUpdates(state, isCurrent, onDriverError);
+
+			useEffect(() => {
+				onRenderedRef.current = onRendered;
+				onErrorRef.current = onError;
+				onCloseRef.current = onClose;
+			}, [onRendered, onError, onClose]);
+
+			useEffect(() => {
+				const container = containerRef.current;
+				if (!container) return;
+
+				setError(null);
+
+				const initialProps = snapshotProps(
+					componentProps as Record<string, unknown>,
+				);
+				return mountReactInstance(
+					createInstance,
+					initialProps,
+					container,
+					context,
+					refs,
+					{
+						onRendered: () => onRenderedRef.current?.(),
+						onClose: () => onCloseRef.current?.(),
+						onError: onDriverError,
+						setError,
+					},
+					(state) => {
+						void drain(state);
+					},
+				);
+			}, [context]);
+
+			useEffect(() => {
+				const syncState = propSyncRef.current;
+				if (!syncState || !isCurrent(syncState)) return;
+
+				const nextProps = snapshotProps(
+					componentProps as Record<string, unknown>,
+				);
+				if (enqueuePropSnapshot(syncState, nextProps)) void drain(syncState);
+			});
+
+			return createElement(
+				"div",
+				{
+					ref: attachContainer,
+					className,
+					style: error
+						? { color: "red", padding: "16px", ...style }
+						: { display: "inline-block", ...style },
+				},
+				// Keep error content in its own node so recovery cannot clear an iframe
+				// inserted into this container by the new instance's render call.
+				error ? createElement("span", null, `Error: ${error.message}`) : null,
+			);
+		},
+	);
 
 	const displayName = `ForgeFrame(${(Component as { name?: string }).name || "Component"})`;
 	ReactComponent.displayName = displayName;
@@ -486,24 +469,16 @@ export function withReactComponent<E>(React: ReactLike<E>) {
 	/**
 	 * Factory function that wraps a ForgeFrame component as a React component.
 	 *
-	 * @typeParam P - The props type defined in the ForgeFrame component
-	 * @typeParam X - The export type for data shared from the host component
-	 * @typeParam RequireProps - Whether the wrapped factory requires props
-	 * @typeParam Input - The factory input, inferred from the prop schemas
+	 * @typeParam C - The wrapped ForgeFrame component
 	 *
 	 * @param Component - The ForgeFrame component to wrap
 	 * @returns A React component that renders the ForgeFrame component
 	 *
 	 * @internal
 	 */
-	return function createComponent<
-		P extends Record<string, unknown>,
-		X = unknown,
-		RequireProps extends boolean = false,
-		Input extends Record<string, unknown> = P,
-	>(
-		Component: ForgeFrameComponent<P, X, RequireProps, Input>,
-	): ReactComponentType<FullReactComponentProps<P, RequireProps, Input>, E> {
+	return function createComponent<C extends AnyComponent>(
+		Component: C,
+	): ReactComponentType<FullReactComponentProps<C>, E> {
 		return createReactComponent(Component, { React });
 	};
 }

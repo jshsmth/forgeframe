@@ -14,11 +14,14 @@ import { clearComponents, closeAll } from "@/core/component";
 import { clearHostInstance, getHost } from "@/core/host";
 import { initHost } from "@/index";
 import type {
+	AnyComponent,
 	DomainMatcher,
-	ForgeFrameComponent,
 	Host,
 	HostProps,
+	InferablePropsDefinition,
+	InferProps,
 	PropsDefinition,
+	PropsOf,
 } from "@/types";
 
 const DEFAULT_HOST_URL = "https://host.example.com/widget";
@@ -100,10 +103,16 @@ function shouldDispatchMessage(
  * What a harness host starts from: a component for `initHost(Component, ...)`,
  * or prop definitions (or nothing) for the tag-agnostic form.
  */
-export type HarnessHostDefinition<P extends Record<string, unknown>> =
-	| PropsDefinition<P>
-	// biome-ignore lint/suspicious/noExplicitAny: Accepts every component's export, input and requirement types.
-	| ForgeFrameComponent<P, any, any, any>;
+export type HarnessHostDefinition = InferablePropsDefinition | AnyComponent;
+
+/** The props of a harness host started from `D`, as `initHost()` infers them. */
+export type HarnessHostProps<D> = [D] extends [never]
+	? Record<string, unknown>
+	: D extends AnyComponent
+		? PropsOf<D>
+		: D extends InferablePropsDefinition
+			? InferProps<D>
+			: never;
 
 /** Overrides for the options the harness passes to `initHost()`. */
 export interface HarnessHostOptions {
@@ -112,10 +121,10 @@ export interface HarnessHostOptions {
 	autoInit?: boolean;
 }
 
-type BootstrapHost = <P extends Record<string, unknown>>(
-	definition?: HarnessHostDefinition<P>,
+type BootstrapHost = <const D extends HarnessHostDefinition = never>(
+	definition?: D,
 	options?: HarnessHostOptions,
-) => Host<P> | null;
+) => Host<HarnessHostProps<D>> | null;
 
 type BootstrappedHost<P extends Record<string, unknown>> = {
 	host: Host<P>;
@@ -223,21 +232,23 @@ interface BaseIntegrationHarness {
 export interface IframeIntegrationHarness extends BaseIntegrationHarness {
 	waitForIframe: (container?: ParentNode) => Promise<HTMLIFrameElement>;
 	attachHostToIframe: (iframe: HTMLIFrameElement) => void;
-	bootstrapIframeHost: <P extends Record<string, unknown>>(
+	bootstrapIframeHost: <const D extends HarnessHostDefinition = never>(
 		container: ParentNode,
-		definition?: HarnessHostDefinition<P>,
+		definition?: D,
 		options?: HarnessHostOptions,
-	) => Promise<BootstrappedHost<P> & { iframe: HTMLIFrameElement }>;
+	) => Promise<
+		BootstrappedHost<HarnessHostProps<D>> & { iframe: HTMLIFrameElement }
+	>;
 }
 
 export interface PopupIntegrationHarness extends BaseIntegrationHarness {
 	waitForPopupOpen: () => Promise<PopupOpenRecord>;
 	getLastPopupOpen: () => PopupOpenRecord | null;
 	blockNextPopup: () => void;
-	bootstrapPopupHost: <P extends Record<string, unknown>>(
-		definition?: HarnessHostDefinition<P>,
+	bootstrapPopupHost: <const D extends HarnessHostDefinition = never>(
+		definition?: D,
 		options?: HarnessHostOptions,
-	) => Promise<BootstrappedHost<P>>;
+	) => Promise<BootstrappedHost<HarnessHostProps<D>>>;
 }
 
 /**
@@ -502,19 +513,27 @@ function createBaseIntegrationHarness(options?: {
 		return popupOpenPromise;
 	};
 
-	const bootstrapHost: BootstrapHost = (definition, options = {}) => {
+	const bootstrapHost: BootstrapHost = <D extends HarnessHostDefinition>(
+		definition?: D,
+		options: HarnessHostOptions = {},
+	) => {
 		const hostOptions = {
 			consumerOrigins: options.consumerOrigins ?? consumerOrigin,
 			...(options.autoInit === undefined ? {} : { autoInit: options.autoInit }),
 		};
+		// initHost() infers the same props type from the definition.
 		return withHostGlobals(() =>
 			typeof definition === "function"
 				? initHost(definition, hostOptions)
 				: initHost({
 						...hostOptions,
-						...(definition === undefined ? {} : { props: definition }),
+						...(definition === undefined
+							? {}
+							: {
+									props: definition as PropsDefinition<Record<string, unknown>>,
+								}),
 					}),
-		);
+		) as Host<HarnessHostProps<D>> | null;
 	};
 
 	/** Reads the active host's props, however that host was started. */
@@ -529,11 +548,11 @@ function createBaseIntegrationHarness(options?: {
 	};
 
 	/** Starts a host and waits for `ready`, which resolves to its props. */
-	const startReadyHost = async <P extends Record<string, unknown>>(
-		definition?: HarnessHostDefinition<P>,
+	const startReadyHost = async <const D extends HarnessHostDefinition = never>(
+		definition?: D,
 		options?: HarnessHostOptions,
-	): Promise<BootstrappedHost<P>> => {
-		const host = bootstrapHost<P>(definition, options);
+	): Promise<BootstrappedHost<HarnessHostProps<D>>> => {
+		const host = bootstrapHost<D>(definition, options);
 		if (!host) {
 			throw new Error("Expected initHost() to create a host instance");
 		}

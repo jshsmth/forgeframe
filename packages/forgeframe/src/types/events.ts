@@ -58,10 +58,24 @@ export interface EventSubscriber<Events extends object> {
 }
 
 /**
+ * Names of the lifecycle events a consumer instance emits.
+ *
+ * @example
+ * ```typescript
+ * instance.event.on('rendered', () => {
+ *   console.log('Component is ready!');
+ * });
+ * ```
+ *
+ * @public
+ */
+export type EventType = keyof ComponentEvents;
+
+/**
  * Lifecycle events of a consumer instance, with their payloads.
  *
  * @typeParam P - The props type for the component
- * @typeParam X - The type of exports from the host
+ * @typeParam X - The type of exports from the host, from the `exports` schema
  *
  * @remarks
  * Subscribe with `instance.event.on(name, handler)`.
