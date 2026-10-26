@@ -855,7 +855,7 @@ test("initial rendering preserves a host hide and configured CSS values", async 
 			display: iframe.style.display,
 			visibility: iframe.style.visibility,
 		};
-		await instance.show();
+		instance.show();
 		return {
 			hidden,
 			shown: {
@@ -1684,7 +1684,7 @@ test("growing a widget also grows its clipping container", async ({ page }) => {
 		(
 			window as unknown as {
 				instance: {
-					resize(dimensions: { width: number; height: number }): Promise<void>;
+					resize(dimensions: { width: number; height: number }): void;
 				};
 			}
 		).instance.resize({ width: 600, height: 500 }),
@@ -1719,22 +1719,25 @@ test("a cross-origin popup host resizes itself and consumer resizing reports the
 		resizes: unknown[];
 		instance: {
 			event: { on(event: string, handler: (data: unknown) => void): void };
-			resize(dimensions: { width: number; height: number }): Promise<void>;
+			resize(dimensions: { width: number; height: number }): void;
 		};
 	};
-	const consumerResult = await page.evaluate(async () => {
+	const consumerResult = await page.evaluate(() => {
 		const state = window as unknown as ResizeWindow;
 		state.resizes = [];
 		state.instance.event.on("resize", (dimensions) => {
 			state.resizes.push(dimensions);
 		});
-		return state.instance.resize({ width: 600, height: 500 }).then(
-			() => "resolved",
-			(error: Error) => error.message,
-		);
+		// The refusal throws synchronously, at the call.
+		try {
+			state.instance.resize({ width: 600, height: 500 });
+			return "returned";
+		} catch (error) {
+			return `${(error as { code?: string }).code}: ${(error as Error).message}`;
+		}
 	});
 	expect(consumerResult).toContain(
-		'Cannot resize the popup for component "browser-navigation-review"',
+		'VALIDATION: Cannot resize the popup for component "browser-navigation-review"',
 	);
 	expect(
 		await page.evaluate(() => (window as unknown as ResizeWindow).resizes),

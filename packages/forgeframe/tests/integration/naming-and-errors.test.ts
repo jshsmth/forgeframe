@@ -353,4 +353,59 @@ describe("Origin naming and error codes", () => {
 		expect(instance.exports).toMatchObject({ ready: true });
 		expect(bridge.localFunctions.size).toBe(retained);
 	});
+
+	it("rejects a URL outside hostOrigins with ORIGIN_REJECTED and keeps the instance open for a retry", async () => {
+		harness = createIframeIntegrationHarness();
+		const Component = create({
+			tag: "url-origin-retry",
+			url: (props) => `https://${props.tenant}.example.com/widget`,
+			hostOrigins: "https://host.example.com",
+			props: { tenant: prop.string() },
+		});
+		const container = createContainer();
+		const instance = Component({ tenant: "attacker" });
+
+		expectCode(
+			await instance.render(container).catch((caught: unknown) => caught),
+			"ORIGIN_REJECTED",
+			"https://attacker.example.com",
+		);
+		expect(container.querySelector("iframe")).toBeNull();
+		expect(Component.instances).toEqual([instance]);
+
+		await instance.updateProps({ tenant: "host" });
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			Component,
+		);
+		await expect(rendering).resolves.toBeUndefined();
+		expect(hostProps.tenant).toBe("host");
+	});
+
+	it("applies show, hide, focus and resize before they return", async () => {
+		harness = createIframeIntegrationHarness();
+		const Component = create({ tag: "sync-dom-methods", url: HOST_URL });
+		const container = createContainer();
+		const instance = Component();
+		const rendering = instance.render(container);
+		const { iframe } = await harness.bootstrapIframeHost(container, Component);
+		await rendering;
+		const events: string[] = [];
+		instance.event.on("focus", () => {
+			events.push("focus");
+		});
+		instance.event.on("resize", (size) => {
+			events.push(`resize:${size.width}`);
+		});
+
+		expect(instance.hide()).toBeUndefined();
+		expect(iframe.style.display).toBe("none");
+		expect(instance.show()).toBeUndefined();
+		expect(iframe.style.display).not.toBe("none");
+		expect(instance.resize({ width: 321 })).toBeUndefined();
+		expect(iframe.style.width).toBe("321px");
+		expect(instance.focus()).toBeUndefined();
+		expect(events).toEqual(["resize:321", "focus"]);
+	});
 });

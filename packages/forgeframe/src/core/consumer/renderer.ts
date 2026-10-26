@@ -91,7 +91,7 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
 		private resolveDimensions: () => Dimensions,
 		private callbacks: {
 			close: () => Promise<void>;
-			focus: () => Promise<void>;
+			focus: () => void;
 		},
 	) {
 		this.context = this.options.context;
@@ -470,9 +470,13 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
 	/**
 	 * Resizes iframe/popup context.
 	 *
-	 * @returns `false` when the browser denied resizing the popup window.
+	 * @returns `"resized"`, `"unmounted"` when no iframe is mounted and no
+	 * popup is open, or `"denied"` when the browser refused to resize the popup
 	 */
-	resize(dimensions: Dimensions, hostWindow: Window | null): boolean {
+	resize(
+		dimensions: Dimensions,
+		hostWindow: Window | null,
+	): "resized" | "unmounted" | "denied" {
 		if (this.context === CONTEXT.IFRAME && this.iframe) {
 			resizeIframe(this.iframe, dimensions);
 			if (this.ownedContainer && !this.options.containerTemplate) {
@@ -481,10 +485,12 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
 			if (this.prerenderElement && !this.options.prerenderTemplate) {
 				applyDimensions(this.prerenderElement, dimensions);
 			}
-		} else if (this.context === CONTEXT.POPUP && hostWindow) {
-			return resizePopup(hostWindow, dimensions);
+			return "resized";
 		}
-		return true;
+		if (this.context === CONTEXT.POPUP && hostWindow) {
+			return resizePopup(hostWindow, dimensions) ? "resized" : "denied";
+		}
+		return "unmounted";
 	}
 
 	/**

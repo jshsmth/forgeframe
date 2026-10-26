@@ -155,8 +155,12 @@ describe("Component Creation", () => {
 
 		await expect(
 			instance.render(document.createElement("div")),
-		).rejects.toThrow("Only http: and https: are supported");
-		expect(DynamicComponent.instances).toEqual([]);
+		).rejects.toMatchObject({
+			code: "VALIDATION",
+			message: expect.stringContaining("Only http: and https: are supported"),
+		});
+		// Nothing opened, so the instance stays open and can render again.
+		expect(DynamicComponent.instances).toEqual([instance]);
 	});
 
 	it("should retry rendering after a transient function URL failure", async () => {

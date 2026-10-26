@@ -24,9 +24,16 @@ function createInstance() {
 	return Component();
 }
 
-/** Emits one `resize` event through the public API; nothing is mounted to resize. */
+/**
+ * Emits one `resize` event through the public API. The renderer reports a
+ * mounted frame, because an instance with nothing mounted emits no `resize`.
+ */
 function emitResize(instance: ReturnType<typeof createInstance>): void {
-	void instance.resize(SIZE);
+	const { renderer } = instance as unknown as {
+		renderer: { resize(): "resized" | "unmounted" | "denied" };
+	};
+	vi.spyOn(renderer, "resize").mockReturnValue("resized");
+	instance.resize(SIZE);
 }
 
 afterEach(() => {
@@ -243,14 +250,18 @@ describe("instance.event", () => {
 		);
 	});
 
-	it("emits focus only when a frame is mounted or a popup is open", async () => {
+	it("emits focus and resize only when a frame is mounted or a popup is open", () => {
 		const instance = createInstance();
 		const focus = vi.fn();
+		const resize = vi.fn();
 		instance.event.on("focus", focus);
+		instance.event.on("resize", resize);
 
-		await instance.focus();
+		expect(instance.focus()).toBeUndefined();
+		expect(instance.resize(SIZE)).toBeUndefined();
 
 		expect(focus).not.toHaveBeenCalled();
+		expect(resize).not.toHaveBeenCalled();
 	});
 
 	it("accepts subscriptions after closed and never calls them", async () => {

@@ -49,10 +49,10 @@ export interface ConsumerTransportHandlers<X> {
 	) => Promise<HostBootstrapData>;
 	onReconnect: () => void;
 	onClose: () => Promise<void>;
-	onResize: (dimensions: Dimensions) => Promise<void>;
-	onFocus: () => Promise<void>;
-	onShow: () => Promise<void>;
-	onHide: () => Promise<void>;
+	onResize: (dimensions: Dimensions) => void;
+	onFocus: () => void;
+	onShow: () => void;
+	onHide: () => void;
 	onError: (error: Error) => void;
 	onExport: (exports: RemoteValue<X>) => void;
 	onGetPeers: (
@@ -383,23 +383,23 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 		});
 
 		this.onHostControl<Dimensions>(MESSAGE_NAME.RESIZE, async (dimensions) => {
-			await handlers.onResize(dimensions);
+			handlers.onResize(dimensions);
 			return { success: true };
 		});
 
 		this.onHostControl(MESSAGE_NAME.FOCUS, async () => {
-			await handlers.onFocus();
+			handlers.onFocus();
 			// An unfocused page cannot pass focus on, so the host need not wait for it.
 			return { success: true, focused: document.hasFocus() };
 		});
 
 		this.onHostControl(MESSAGE_NAME.SHOW, async () => {
-			await handlers.onShow();
+			handlers.onShow();
 			return { success: true };
 		});
 
 		this.onHostControl(MESSAGE_NAME.HIDE, async () => {
-			await handlers.onHide();
+			handlers.onHide();
 			return { success: true };
 		});
 

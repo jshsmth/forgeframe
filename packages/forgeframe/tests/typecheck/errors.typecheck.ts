@@ -73,3 +73,21 @@ instance.event.on("error", (error) => {
 	const asError: Error = error;
 	void asError;
 });
+
+// The local DOM methods finish synchronously and return void.
+// @ts-expect-error show() does not return a promise
+const shown: Promise<void> = instance.show();
+// @ts-expect-error hide() does not return a promise
+const hidden: Promise<void> = instance.hide();
+// @ts-expect-error focus() does not return a promise
+const focused: Promise<void> = instance.focus();
+// @ts-expect-error resize() does not return a promise
+const resized: Promise<void> = instance.resize({ width: 100 });
+void [shown, hidden, focused, resized];
+// @ts-expect-error show() returns void, so it cannot be chained
+instance.show().then(() => {});
+// @ts-expect-error resize() throws synchronously instead of rejecting
+instance.resize({ width: 1 }).catch(() => {});
+// I/O methods stay async.
+const io: Promise<void>[] = [instance.render("#root"), instance.close()];
+void io;

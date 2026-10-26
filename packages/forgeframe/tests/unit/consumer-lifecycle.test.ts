@@ -1472,10 +1472,15 @@ describe("Factory instance close and teardown", () => {
 			if (sizes.length < 3) instance.event.once("resize", rearm);
 		};
 		instance.event.once("resize", rearm);
+		// Stand in for a mounted frame; with nothing mounted resize emits nothing.
+		vi.spyOn(
+			(instance as unknown as { renderer: { resize(): string } }).renderer,
+			"resize",
+		).mockReturnValue("resized");
 
-		await instance.resize({ width: 401 });
+		instance.resize({ width: 401 });
 		expect(sizes).toEqual([{ width: 401 }]);
-		await instance.resize({ width: 402 });
+		instance.resize({ width: 402 });
 		expect(sizes).toEqual([{ width: 401 }, { width: 402 }]);
 		expect(persistent).toHaveBeenCalledTimes(2);
 	});

@@ -272,21 +272,15 @@ export class ConsumerComponent<
 		const rawUrl = this.resolveUrl();
 		this.assertRenderActive();
 
-		let baseUrl: string;
-		try {
-			baseUrl = resolveComponentHostUrl(
-				rawUrl,
-				document.baseURI,
-				this.options.hostOrigins,
-			).href;
-			this.transport.syncTrustedOriginForUrl(baseUrl);
-		} catch (error) {
-			await this.destroy().catch(() => undefined);
-			throw error;
-		}
+		// URL, configuration and container failures happen before anything opens,
+		// so they reject without closing the instance and a later render can retry.
+		const baseUrl = resolveComponentHostUrl(
+			rawUrl,
+			document.baseURI,
+			this.options.hostOrigins,
+		).href;
+		this.transport.syncTrustedOriginForUrl(baseUrl);
 
-		// Configuration/container guard failures remain retryable until rendering
-		// has begun and resources may need lifecycle cleanup.
 		validatePropsForHostTransport(
 			this.propsPipeline.props,
 			this.options.props,
@@ -366,8 +360,9 @@ export class ConsumerComponent<
 	 * @remarks
 	 * For iframes, focuses the iframe element. For popups, brings the window to
 	 * front. Emits `focus` only when an iframe is mounted or a popup is open.
+	 * It changes only this page, so it finishes before it returns.
 	 */
-	async focus(): Promise<void> {
+	focus(): void {
 		if (this.renderer.focus(this.transport.hostWindow)) {
 			this.#emitter.emit(EVENT.FOCUS, undefined);
 		}
@@ -378,24 +373,26 @@ export class ConsumerComponent<
 	 *
 	 * @remarks
 	 * Browsers do not let the consumer resize a cross-origin popup. That call
-	 * rejects without emitting `resize`; the host can resize its own popup with
+	 * throws without emitting `resize`; the host can resize its own popup with
 	 * `hostProps.resize()`.
 	 *
-	 * A popup that is not open has nothing to resize, so the call does nothing.
+	 * With no iframe mounted and no popup open there is nothing to resize, so
+	 * the call does nothing and emits no `resize`, as `focus()` does. The
+	 * resize and its event happen before the call returns.
 	 *
 	 * @param dimensions - New width and height for the component
-	 * @throws Error if the browser denies resizing the popup window
+	 * @throws ForgeFrameError `VALIDATION` if the browser denies resizing the
+	 * popup window
 	 */
-	async resize(dimensions: Dimensions): Promise<void> {
-		const hostWindow = this.transport.hostWindow;
-		if (this.renderer.context === CONTEXT.POPUP && !hostWindow) return;
-		if (!this.renderer.resize(dimensions, hostWindow)) {
+	resize(dimensions: Dimensions): void {
+		const outcome = this.renderer.resize(dimensions, this.transport.hostWindow);
+		if (outcome === "denied") {
 			throw new ForgeFrameError(
 				"VALIDATION",
 				`Cannot resize the popup for component "${this.options.tag}": the browser blocks resizing a cross-origin window. Call hostProps.resize() from the host instead.`,
 			);
 		}
-		this.emitResize(dimensions);
+		if (outcome === "resized") this.emitResize(dimensions);
 	}
 
 	/**
@@ -418,9 +415,10 @@ export class ConsumerComponent<
 	 * Shows the component if hidden.
 	 *
 	 * @remarks
-	 * Only applicable to iframe context.
+	 * Only applicable to iframe context. Before the frame exists, the request
+	 * applies once it is created.
 	 */
-	async show(): Promise<void> {
+	show(): void {
 		this.renderer.show();
 	}
 
@@ -428,9 +426,10 @@ export class ConsumerComponent<
 	 * Hides the component.
 	 *
 	 * @remarks
-	 * Only applicable to iframe context.
+	 * Only applicable to iframe context. Before the frame exists, the request
+	 * applies once it is created.
 	 */
-	async hide(): Promise<void> {
+	hide(): void {
 		this.renderer.hide();
 	}
 
@@ -791,10 +790,10 @@ export class ConsumerComponent<
 				this.exports = undefined;
 			},
 			onClose: async () => this.close(),
-			onResize: async (dimensions) => this.resizeForHost(dimensions),
-			onFocus: async () => this.focus(),
-			onShow: async () => this.show(),
-			onHide: async () => this.hide(),
+			onResize: (dimensions) => this.resizeForHost(dimensions),
+			onFocus: () => this.focus(),
+			onShow: () => this.show(),
+			onHide: () => this.hide(),
 			onError: (error) => this.#emitter.emit(EVENT.ERROR, error),
 			onExport: (exports) => this.acceptExports(exports),
 			onGetPeers: (request) => getPeerInstances(request),

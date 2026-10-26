@@ -699,7 +699,7 @@ export async function runCommonActionsScenario(
 			),
 		);
 
-		await instance.resize({ width: "92%", height: 360 });
+		instance.resize({ width: "92%", height: 360 });
 		results.push(
 			assertResult(
 				"A consumer can resize the active iframe",
@@ -708,11 +708,11 @@ export async function runCommonActionsScenario(
 			),
 		);
 
-		await instance.hide();
+		instance.hide();
 		const hidden =
 			iframe.style.display === "none" && iframe.style.visibility === "hidden";
-		await instance.show();
-		await instance.focus();
+		instance.show();
+		instance.focus();
 		results.push(
 			assertResult(
 				"Show, hide, and focus remain usable during the session",
@@ -1087,14 +1087,14 @@ export async function runPopupScenario(
 			),
 		);
 
-		await instance.focus();
+		instance.focus();
 		// Browsers block resizing another origin's window, so the consumer call
-		// is refused and the host resizes its own popup instead.
+		// throws at once and the host resizes its own popup instead.
 		results.push(
-			await expectFailure(
-				"Consumer resize of a cross-origin popup is refused",
+			expectSyncFailure(
+				"Consumer resize of a cross-origin popup throws VALIDATION",
 				() => instance.resize({ width: 540, height: 440 }),
-				"Cannot resize the popup",
+				"VALIDATION",
 			),
 		);
 		await requireValue(instance.exports).resizeSelf({
@@ -1288,6 +1288,22 @@ async function expectFailure(
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		return assertResult(name, message.includes(expectedMessage), message);
+	}
+}
+
+/** Runs a call that must throw synchronously with a ForgeFrameError code. */
+function expectSyncFailure(
+	name: string,
+	action: () => unknown,
+	expectedCode: string,
+): TestResult {
+	try {
+		action();
+		return assertResult(name, false, "operation unexpectedly succeeded");
+	} catch (error) {
+		const code = (error as { code?: unknown }).code;
+		const message = error instanceof Error ? error.message : String(error);
+		return assertResult(name, code === expectedCode, `${code}: ${message}`);
 	}
 }
 

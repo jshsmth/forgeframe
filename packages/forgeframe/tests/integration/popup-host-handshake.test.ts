@@ -100,7 +100,7 @@ describe("Popup host handshake integration", () => {
 		);
 	});
 
-	it("resizes a cross-origin popup from the host and rejects consumer-initiated resizing", async () => {
+	it("resizes a cross-origin popup from the host and throws for consumer-initiated resizing", async () => {
 		harness = createPopupIntegrationHarness();
 		const activeHarness = harness;
 		const container = document.createElement("div");
@@ -146,8 +146,15 @@ describe("Popup host handshake integration", () => {
 		const resized = vi.fn();
 		instance.event.on("resize", resized);
 
-		await expect(instance.resize({ width: 600, height: 400 })).rejects.toThrow(
-			'Cannot resize the popup for component "integration-popup-resize-component"',
+		// The refusal is synchronous, at the line that asked for it.
+		expect(() => instance.resize({ width: 600, height: 400 })).toThrow(
+			expect.objectContaining({
+				name: "ForgeFrameError",
+				code: "VALIDATION",
+				message: expect.stringContaining(
+					'Cannot resize the popup for component "integration-popup-resize-component"',
+				),
+			}),
 		);
 		expect(resized).not.toHaveBeenCalled();
 

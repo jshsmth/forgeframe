@@ -421,33 +421,29 @@ export interface ComponentInstance<
 	close(): Promise<void>;
 
 	/**
-	 * Focus the component window.
-	 *
-	 * @returns Promise that resolves when focused
+	 * Focus the component window. It changes only this page, so the focus
+	 * and the `focus` event happen before it returns.
 	 */
-	focus(): Promise<void>;
+	focus(): void;
 
 	/**
-	 * Resize the component to new dimensions.
+	 * Resize the component to new dimensions, before it returns.
+	 *
+	 * @remarks
+	 * With nothing mounted it does nothing and emits no `resize`.
 	 *
 	 * @param dimensions - New dimensions
-	 * @returns Promise that resolves when resized
+	 * @throws ForgeFrameError `VALIDATION` for a cross-origin popup, which the
+	 * browser does not let the consumer resize; call `hostProps.resize()` from
+	 * the host instead
 	 */
-	resize(dimensions: Dimensions): Promise<void>;
+	resize(dimensions: Dimensions): void;
 
-	/**
-	 * Show the component (if hidden).
-	 *
-	 * @returns Promise that resolves when shown
-	 */
-	show(): Promise<void>;
+	/** Show the component (if hidden), before it returns. */
+	show(): void;
 
-	/**
-	 * Hide the component.
-	 *
-	 * @returns Promise that resolves when hidden
-	 */
-	hide(): Promise<void>;
+	/** Hide the component, before it returns. */
+	hide(): void;
 
 	/**
 	 * Update the component's props.
