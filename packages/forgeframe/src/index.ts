@@ -41,6 +41,7 @@ export {
 	type ArraySchema,
 	type BooleanSchema,
 	type DateSchema,
+	type DefaultedSchemaOutput,
 	type EnumSchema,
 	type FunctionSchema,
 	type InferObjectInputShape,
@@ -80,7 +81,7 @@ export type {
 	HostPropsOf,
 	IframeAttributes,
 	IframeStyles,
-	InferInput,
+	InferPropsInput,
 	InferProps,
 	InitHostOptions,
 	InputOf,
@@ -95,6 +96,7 @@ export type {
 	RemoteValue,
 	// Standard Schema types
 	StandardSchemaV1,
+	StandardSchemaV1Props,
 	// Template types
 	TemplateContext,
 } from "./types";

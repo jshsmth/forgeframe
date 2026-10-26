@@ -671,8 +671,8 @@ describe("Consumer lifecycle behavior", () => {
 			PeerComponent({ amount: 1 }),
 			PeerComponent({ amount: 2 }),
 		);
-		requester.exports = { id: "a" };
-		sibling.exports = { id: "b" };
+		(requester as { exports?: unknown }).exports = { id: "a" };
+		(sibling as { exports?: unknown }).exports = { id: "b" };
 		setVerifiedHostOrigin("https://host.example.com", requester, sibling);
 
 		const hostWindow = connectHostWindow(requester);
@@ -726,9 +726,13 @@ describe("Consumer lifecycle behavior", () => {
 				VictimComponent(),
 				VictimComponent(),
 			);
-		sameOriginSibling.exports = { id: "same-origin" };
-		victim.exports = { secret: "victim" };
-		victimSibling.exports = { secret: "victim-sibling" };
+		(sameOriginSibling as { exports?: unknown }).exports = {
+			id: "same-origin",
+		};
+		(victim as { exports?: unknown }).exports = { secret: "victim" };
+		(victimSibling as { exports?: unknown }).exports = {
+			secret: "victim-sibling",
+		};
 		setVerifiedHostOrigin(
 			"https://host.example.com",
 			requester,
@@ -782,7 +786,9 @@ describe("Consumer lifecycle behavior", () => {
 			OpaqueComponent(),
 			OpaqueComponent(),
 		);
-		otherProvider.exports = { secret: "other-provider" };
+		(otherProvider as { exports?: unknown }).exports = {
+			secret: "other-provider",
+		};
 		// Sandboxed frames without allow-same-origin all serialize as "null".
 		setVerifiedHostOrigin("null", requester, otherProvider);
 		const hostWindow = connectHostWindow(requester);
@@ -808,7 +814,7 @@ describe("Consumer lifecycle behavior", () => {
 			PrivateComponent(),
 			PrivateComponent(),
 		);
-		other.exports = { secret: "private" };
+		(other as { exports?: unknown }).exports = { secret: "private" };
 		setVerifiedHostOrigin("https://host.example.com", requester, other);
 		const hostWindow = connectHostWindow(requester);
 
@@ -846,8 +852,8 @@ describe("Consumer lifecycle behavior", () => {
 			PeerComponent(),
 			OtherComponent(),
 		);
-		sibling.exports = { id: "sibling" };
-		otherTag.exports = { id: "other-tag" };
+		(sibling as { exports?: unknown }).exports = { id: "sibling" };
+		(otherTag as { exports?: unknown }).exports = { id: "other-tag" };
 		setVerifiedHostOrigin(
 			"https://host.example.com",
 			requester,

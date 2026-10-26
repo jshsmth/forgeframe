@@ -9,7 +9,7 @@
  * libraries.
  */
 
-export { PropSchema } from "./prop/base";
+export { type DefaultedSchemaOutput, PropSchema } from "./prop/base";
 export {
 	ArraySchema,
 	type InferObjectInputShape,

@@ -1520,8 +1520,12 @@ describe("Host Context Detection", () => {
 			const foreignOtherTag = BetaComponent({});
 			const unconnected = AlphaComponent({});
 			const sameOriginOtherTag = BetaComponent({});
-			foreignSameTag.exports = { secret: "foreign-same-tag" };
-			foreignOtherTag.exports = { secret: "foreign-other-tag" };
+			(foreignSameTag as { exports?: unknown }).exports = {
+				secret: "foreign-same-tag",
+			};
+			(foreignOtherTag as { exports?: unknown }).exports = {
+				secret: "foreign-other-tag",
+			};
 			setVerifiedHostOrigin(
 				PEER_HOST_ORIGIN,
 				requester,
@@ -1616,7 +1620,9 @@ describe("Host Context Detection", () => {
 			const requester = PartnerComponent({});
 			const opaquePeer = PartnerComponent({});
 			const namedPeer = PartnerComponent({});
-			opaquePeer.exports = { secret: "sandboxed document" };
+			(opaquePeer as { exports?: unknown }).exports = {
+				secret: "sandboxed document",
+			};
 			setVerifiedHostOrigin("https://widgets.myapp.example", requester);
 			setVerifiedHostOrigin("null", opaquePeer);
 			setVerifiedHostOrigin("https://other.myapp.example", namedPeer);
@@ -1646,7 +1652,9 @@ describe("Host Context Detection", () => {
 			const requester = LoadingComponent({});
 			const loadingPeer = LoadingComponent({});
 			const foreignLoadingPeer = LoadingComponent({});
-			loadingPeer.exports = { early: "not yet verified" };
+			(loadingPeer as { exports?: unknown }).exports = {
+				early: "not yet verified",
+			};
 			setVerifiedHostOrigin(PEER_HOST_ORIGIN, requester);
 			setOpenedHostOrigin(PEER_HOST_ORIGIN, loadingPeer);
 			setOpenedHostOrigin(

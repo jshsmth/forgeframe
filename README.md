@@ -1375,7 +1375,7 @@ Origins are called origins everywhere, and every error ForgeFrame raises is a `F
 | Definition types | `PropsDefinition<P, I>`, `HostPropsDefinition<P, I>`, `PropDefinition<Output, Input>`, `ComponentOptions<P, SchemaInputs>`, `InitHostOptions<P, SchemaInputs>` | `PropsDefinition<P>` (for host definitions too), `PropDefinition<Output>`, `ComponentOptions<P>`, `InitHostOptions<P>` | Drop the input parameter and replace `HostPropsDefinition` with `PropsDefinition`; defaulted schemas fit without it |
 | Host typing | `initHost<P, SchemaInputs>({ props, consumerOrigins })` | `initHost(Component, { consumerOrigins })` infers the props; the tag-agnostic form infers them from `props` | Drop the type arguments |
 | Definition map keys | `PropsDefinition<P>` entries were optional | Every key of `P` needs an entry, so `satisfies` reports a missing definition | Declare an optional prop with an optional schema |
-| Inference types | `InferPropsDefinition<D>`, `InferPropsDefinitionInput<D>` | `InferProps<D>`, `InferInput<D>` | Rename the types |
+| Inference types | `InferPropsDefinition<D>`, `InferPropsDefinitionInput<D>` | `InferProps<D>`, `InferPropsInput<D>` | Rename the types |
 | Schema output type | `InferSchemaOutput<S>` | `StandardSchemaV1.InferOutput<S>` (and `StandardSchemaV1.InferInput<S>`) | Rename the type |
 | Removed types | `SchemaPropDefinition`, `PropDefinitionEntry`, `Prop`, `ChildrenDefinition`, `ConsumerNamespace`, `EligibilityResult`, `ForgeFrameComponentReference` | Removed | Use `PropDefinition`, `PropsDefinition`, `InferProps` and `typeof prop`; delete the others' imports |
 | Schema classes | `import { StringSchema } from 'forgeframe'`, `new StringSchema()`, `x instanceof ObjectSchema` | Exported as types only | `import type { StringSchema } from 'forgeframe'`; build with `prop.string()`; no `instanceof` |
@@ -1518,7 +1518,7 @@ import {
   type PropsDefinition,
   type PropDefinition,
   type InferProps,
-  type InferInput,
+  type InferPropsInput,
   type ComponentOptions,
   type ComponentBaseOptions,
   type ComponentUrlOptions,

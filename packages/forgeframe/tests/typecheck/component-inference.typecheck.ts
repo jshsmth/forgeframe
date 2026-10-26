@@ -429,10 +429,12 @@ type RemovedHostPropsDefinition = import("../../src").HostPropsDefinition<{
 type RemovedInferPropsDefinition = import("../../src").InferPropsDefinition<
 	Record<string, never>
 >;
-// @ts-expect-error InferPropsDefinitionInput was renamed InferInput
+// @ts-expect-error InferPropsDefinitionInput was renamed InferPropsInput
 type RemovedInferPropsInput = import("../../src").InferPropsDefinitionInput<
 	Record<string, never>
 >;
+// @ts-expect-error InferInput was renamed InferPropsInput
+type RemovedInferInput = import("../../src").InferInput<Record<string, never>>;
 // @ts-expect-error ForgeFrameComponent was renamed Component
 type RemovedForgeFrameComponent = import("../../src").ForgeFrameComponent;
 // @ts-expect-error ForgeFrameComponentInstance was renamed ComponentInstance
@@ -443,6 +445,7 @@ export type RemovedDefinitionTypes = [
 	RemovedHostPropsDefinition,
 	RemovedInferPropsDefinition,
 	RemovedInferPropsInput,
+	RemovedInferInput,
 	RemovedForgeFrameComponent,
 	RemovedInstance,
 ];
@@ -827,3 +830,31 @@ initHost({
 		children: prop.string(),
 	},
 });
+
+// A runtime-built map typed with PropsDefinition<P> keeps P as the input.
+type AnnotatedProps = { name: string; count?: number };
+const annotatedDefinitions: PropsDefinition<AnnotatedProps> = {
+	name: prop.string(),
+	count: { schema: prop.number().optional(), queryParam: true },
+};
+const AnnotatedComponent = create({
+	tag: "typed-annotated-definitions",
+	url: "https://example.com",
+	props: annotatedDefinitions,
+});
+void AnnotatedComponent({ name: "a" });
+void AnnotatedComponent({ name: "a", count: 1 });
+// @ts-expect-error an annotated map still requires its required props
+void AnnotatedComponent({});
+// @ts-expect-error an annotated map keeps each prop's type
+void AnnotatedComponent({ name: 1 });
+const annotatedInput: InputOf<typeof AnnotatedComponent> = { name: "a" };
+void annotatedInput;
+
+declare const readonlyExportsInstance: ComponentInstance<
+	Record<string, never>,
+	Record<string, never>,
+	{ ready: boolean }
+>;
+// @ts-expect-error exports is read-only; only the host's export() sets it
+readonlyExportsInstance.exports = { ready: true };

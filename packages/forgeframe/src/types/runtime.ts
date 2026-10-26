@@ -499,7 +499,7 @@ export interface ComponentInstance<
 	 * Data exported from the host component via `host.export()`, once
 	 * it has passed the component's `exports` schema.
 	 */
-	exports?: RemoteValue<Exports>;
+	readonly exports?: RemoteValue<Exports>;
 }
 
 /**

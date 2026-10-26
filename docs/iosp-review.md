@@ -655,7 +655,7 @@ Evidence: [contract](#evidence-contract); typecheck.
 
 ### [types/props.ts](../packages/forgeframe/src/types/props.ts)
 
-**Contract only:** types, re-exports, or immutable declarations; no runtime callables. The public definition types are `PropsDefinition`, `PropDefinition`, `InferProps` and `InferInput`.
+**Contract only:** types, re-exports, or immutable declarations; no runtime callables. The public definition types are `PropsDefinition`, `PropDefinition`, `InferProps` and `InferPropsInput`.
 
 Evidence: [contract](#evidence-contract); typecheck.
 

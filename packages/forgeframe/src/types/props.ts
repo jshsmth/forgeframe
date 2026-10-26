@@ -146,11 +146,31 @@ type InferPropDefinitionValue<D> =
 		? Output
 		: unknown;
 
-/** Infers the value accepted by a prop-definition entry. @internal */
-type InferPropDefinitionInput<D> =
-	PropDefinitionSchema<D> extends StandardSchemaV1<infer Input, unknown>
+/**
+ * The output type of an entry typed by a {@link PropsDefinition} annotation,
+ * wrapped in a tuple, or `never` for any other entry. Such an entry is the
+ * union `PropsDefinition` declares, whose input is `unknown`.
+ * @internal
+ */
+type AnnotatedEntryOutput<D> = [D] extends [
+	PropDefinition<infer Output> | StandardSchemaV1<unknown, infer Output>,
+]
+	? [PropDefinition<Output> | StandardSchemaV1<unknown, Output>] extends [D]
+		? [Output]
+		: never
+	: never;
+
+/**
+ * Infers the value accepted by a prop-definition entry. An entry typed by a
+ * `PropsDefinition<P>` annotation accepts `P[K]`, since the annotation keeps
+ * no input type.
+ * @internal
+ */
+type InferPropDefinitionInput<D> = [AnnotatedEntryOutput<D>] extends [never]
+	? PropDefinitionSchema<D> extends StandardSchemaV1<infer Input, unknown>
 		? Input
-		: unknown;
+		: unknown
+	: AnnotatedEntryOutput<D>[0];
 
 /** Keys whose schemas can produce `undefined`. @internal */
 type OptionalPropDefinitionKeys<D extends Record<string, unknown>> = {
@@ -202,11 +222,11 @@ type RequiredPropDefinitionInputKeys<D extends Record<string, unknown>> =
  * @typeParam D - A map of prop names to schema-backed definitions.
  * @public
  */
-export type InferInput<D extends Record<string, unknown>> = {
+export type InferPropsInput<D extends Record<string, unknown>> = {
 	[K in RequiredPropDefinitionInputKeys<D>]: InferPropDefinitionInput<D[K]>;
 } & {
 	[K in OptionalPropDefinitionInputKeys<D>]?: InferPropDefinitionInput<D[K]>;
 };
 
 // Re-export StandardSchemaV1 for convenience
-export type { StandardSchemaV1 } from "../props/schema";
+export type { StandardSchemaV1, StandardSchemaV1Props } from "../props/schema";

@@ -15,7 +15,7 @@ import {
 	assertIframeAttributeNames,
 	assertSandboxOption,
 } from "../render/iframe-configuration";
-import type { InferInput, InferProps } from "../types/props";
+import type { InferPropsInput, InferProps } from "../types/props";
 import type {
 	Component,
 	ComponentInstance,
@@ -291,7 +291,7 @@ export function create<
 	const S = undefined,
 >(
 	options: InferredComponentOptions<D, S>,
-): Component<InferProps<D>, InferInput<D>, InferExports<S>>;
+): Component<InferProps<D>, InferPropsInput<D>, InferExports<S>>;
 export function create(
 	options: ComponentOptions<Record<string, unknown>>,
 ): Component<Record<string, unknown>> {

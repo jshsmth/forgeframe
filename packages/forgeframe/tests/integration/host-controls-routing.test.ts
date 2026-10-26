@@ -212,7 +212,7 @@ describe("Host controls and routing integration", () => {
 		const requester = Component();
 		const sibling = Component();
 		const initial = () => 42;
-		sibling.exports = { initial };
+		(sibling as { exports?: unknown }).exports = { initial };
 		const rendering = requester.render(container);
 		const { host } = await harness.bootstrapIframeHost(container);
 		await rendering;
@@ -222,10 +222,14 @@ describe("Host controls and routing integration", () => {
 		const failedMethods = Object.fromEntries(
 			Array.from({ length: 499 }, (_, index) => [`m${index}`, () => index]),
 		);
-		sibling.exports = { initial, ...failedMethods, metadata: 1n };
+		(sibling as { exports?: unknown }).exports = {
+			initial,
+			...failedMethods,
+			metadata: 1n,
+		};
 		await expect(host.getPeerInstances()).rejects.toThrow(/serializ/i);
 		await expect(held.initial()).resolves.toBe(42);
-		sibling.exports = { initial, fresh: () => 7 };
+		(sibling as { exports?: unknown }).exports = { initial, fresh: () => 7 };
 		const recovered = await host.getPeerInstances();
 		const methods = recovered[0]?.exports as {
 			initial: () => Promise<number>;
@@ -254,9 +258,13 @@ describe("Host controls and routing integration", () => {
 		const sameOrigin = Component();
 		const foreignSameTag = Component();
 		const foreignOtherTag = Other();
-		sameOrigin.exports = { id: "same-origin" };
-		foreignSameTag.exports = { secret: () => "foreign-same-tag" };
-		foreignOtherTag.exports = { secret: () => "foreign-other-tag" };
+		(sameOrigin as { exports?: unknown }).exports = { id: "same-origin" };
+		(foreignSameTag as { exports?: unknown }).exports = {
+			secret: () => "foreign-same-tag",
+		};
+		(foreignOtherTag as { exports?: unknown }).exports = {
+			secret: () => "foreign-other-tag",
+		};
 		const rendering = requester.render(container);
 		const { host } = await harness.bootstrapIframeHost(container);
 		await rendering;
@@ -304,8 +312,10 @@ describe("Host controls and routing integration", () => {
 		const requester = Requester();
 		const shared = Shared();
 		const privatePeer = Private();
-		shared.exports = { run: () => "shared-partner" };
-		privatePeer.exports = { run: () => "private-partner" };
+		(shared as { exports?: unknown }).exports = { run: () => "shared-partner" };
+		(privatePeer as { exports?: unknown }).exports = {
+			run: () => "private-partner",
+		};
 		const rendering = requester.render(container);
 		const { host } = await harness.bootstrapIframeHost(container);
 		await rendering;
@@ -333,7 +343,7 @@ describe("Host controls and routing integration", () => {
 		});
 		const requester = Private();
 		const other = Private();
-		other.exports = { secret: () => "private" };
+		(other as { exports?: unknown }).exports = { secret: () => "private" };
 		const rendering = requester.render(container);
 		const { host } = await harness.bootstrapIframeHost(container);
 		await rendering;
@@ -362,8 +372,8 @@ describe("Host controls and routing integration", () => {
 		const requester = Requester();
 		const listed = Requester();
 		const hidden = Private();
-		listed.exports = { id: "listed" };
-		hidden.exports = { secret: () => "hidden" };
+		(listed as { exports?: unknown }).exports = { id: "listed" };
+		(hidden as { exports?: unknown }).exports = { secret: () => "hidden" };
 		const rendering = requester.render(container);
 		const { host } = await harness.bootstrapIframeHost(container);
 		await rendering;
@@ -468,7 +478,7 @@ describe("Host controls and routing integration", () => {
 		const requester = Component({ label: "requester" });
 		const sibling = Component({ label: "sibling" });
 		const initial = () => 42;
-		sibling.exports = { initial };
+		(sibling as { exports?: unknown }).exports = { initial };
 		const rendering = requester.render(container);
 		const { host } = await harness.bootstrapIframeHost(container, definitions);
 		await rendering;
@@ -478,7 +488,7 @@ describe("Host controls and routing integration", () => {
 		);
 		const held = peers[0]?.exports as { initial: () => Promise<number> };
 		await expect(held.initial()).resolves.toBe(42);
-		sibling.exports = {
+		(sibling as { exports?: unknown }).exports = {
 			initial,
 			...Object.fromEntries(
 				Array.from({ length: 500 }, (_, index) => [`m${index}`, () => index]),
@@ -491,7 +501,7 @@ describe("Host controls and routing integration", () => {
 			message: expect.stringContaining("500 distinct callback limit"),
 		});
 		await expect(held.initial()).resolves.toBe(42);
-		sibling.exports = { initial, next: () => 7 };
+		(sibling as { exports?: unknown }).exports = { initial, next: () => 7 };
 		const recovered = await harness.withHostGlobalsAsync(() =>
 			host.getPeerInstances(),
 		);
@@ -534,7 +544,7 @@ describe("Host controls and routing integration", () => {
 		}
 
 		const sibling = ControlsComponent({ label: "Sibling" });
-		sibling.exports = { peer: "sibling" };
+		(sibling as { exports?: unknown }).exports = { peer: "sibling" };
 
 		const renderPromise = instance.render(container);
 		const { host, iframe } = await harness.bootstrapIframeHost(
