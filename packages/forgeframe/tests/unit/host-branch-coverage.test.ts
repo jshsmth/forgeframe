@@ -286,9 +286,11 @@ describe("Host branch coverage and edge paths", () => {
 		window.name = buildWindowName(createPayload());
 		const addEventListenerSpy = vi.spyOn(window, "addEventListener");
 		const removeEventListenerSpy = vi.spyOn(window, "removeEventListener");
-		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockImplementation(() => {
-			throw new ForgeFrameError("CLOSED", "Could not resolve consumer window");
-		});
+		const resolveConsumerWindow = hostSecurity.resolveConsumerWindow;
+		// A window with neither a parent nor an opener has no consumer.
+		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockImplementation(() =>
+			resolveConsumerWindow({} as Window),
+		);
 
 		const host = initHost({ consumerOrigins: "*" });
 		const messageAddCount = addEventListenerSpy.mock.calls.filter(
@@ -315,6 +317,17 @@ describe("Host branch coverage and edge paths", () => {
 		});
 
 		expect(() => initHost({ consumerOrigins: "*" })).toThrow(unexpected);
+		expect(getHost()).toBeNull();
+	});
+
+	it("should rethrow another CLOSED error raised while resolving the consumer", () => {
+		window.name = buildWindowName(createPayload());
+		const unrelated = new ForgeFrameError("CLOSED", "Something else closed");
+		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockImplementation(() => {
+			throw unrelated;
+		});
+
+		expect(() => initHost({ consumerOrigins: "*" })).toThrow(unrelated);
 		expect(getHost()).toBeNull();
 	});
 

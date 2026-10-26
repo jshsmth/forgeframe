@@ -56,9 +56,23 @@ export default defineConfig(({ command }) => {
 			__FORGEFRAME_VERSION__: JSON.stringify(forgeframePackageJson.version),
 		},
 		resolve: {
-			alias: {
-				forgeframe: resolve(import.meta.dirname, "../forgeframe/src/index.ts"),
-			},
+			// Exact matches, so the bare `forgeframe` alias cannot capture `forgeframe/react`.
+			alias: [
+				{
+					find: /^forgeframe$/,
+					replacement: resolve(
+						import.meta.dirname,
+						"../forgeframe/src/index.ts",
+					),
+				},
+				{
+					find: /^forgeframe\/react$/,
+					replacement: resolve(
+						import.meta.dirname,
+						"../forgeframe/src/react.ts",
+					),
+				},
+			],
 		},
 		server: {
 			port: 5173,

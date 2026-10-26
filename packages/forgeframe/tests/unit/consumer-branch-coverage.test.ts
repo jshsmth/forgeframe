@@ -245,6 +245,27 @@ describe("Consumer branch coverage and edge paths", () => {
 		expect(resized).not.toHaveBeenCalled();
 	});
 
+	it("emits resize for a host request only when something was resized", () => {
+		const consumer = createConsumer();
+		const internal = getInternals(consumer) as ConsumerInternals & {
+			resizeForHost(dimensions: { width: number; height: number }): void;
+		};
+		const resized = vi.fn();
+		consumer.event.on(EVENT.RESIZE, resized);
+
+		// An iframe context with nothing mounted applies nothing.
+		internal.resizeForHost({ width: 300, height: 200 });
+		expect(resized).not.toHaveBeenCalled();
+
+		// A popup host has already resized its own window.
+		internal.renderer.context = CONTEXT.POPUP;
+		internal.resizeForHost({ width: 320, height: 240 });
+		expect(resized).toHaveBeenCalledExactlyOnceWith({
+			width: 320,
+			height: 240,
+		});
+	});
+
 	it("should reject invalid origins when resolving URL origin", () => {
 		const consumer = createConsumer();
 		expect(() => getInternals(consumer).resolveUrlOrigin("http://%")).toThrow(

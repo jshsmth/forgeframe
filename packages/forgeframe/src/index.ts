@@ -34,14 +34,6 @@ export type { ContextType } from "./constants";
 export { VERSION } from "./constants";
 // Named exports for tree-shaking
 export { closeAll, create, initHost, isHost } from "./core";
-// React integration exports
-export {
-	createReactComponent,
-	type ReactComponentProps,
-	type ReactComponentType,
-	type ReactDriverOptions,
-	withReactComponent,
-} from "./drivers/react";
 export { ForgeFrameError, type ForgeFrameErrorCode } from "./errors";
 // Prop schema builders; the schema classes are types, built with prop.*
 export {
@@ -66,6 +58,7 @@ export {
 // Type exports
 export type {
 	// Component types
+	AnyComponent,
 	Component,
 	ComponentBaseOptions,
 	ComponentEvents,

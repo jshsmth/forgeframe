@@ -15,7 +15,6 @@ import {
 	type ComponentOptions,
 	closeAll,
 	create,
-	createReactComponent,
 	type ExportsOf,
 	type InputOf,
 	initHost,
@@ -23,7 +22,6 @@ import {
 	type PropsDefinition,
 	type PropsOf,
 	prop,
-	withReactComponent,
 } from "../../src";
 
 /** Whether each type is assignable to the other. */
@@ -554,18 +552,6 @@ const typedCoercingComponent: Component<
 > = CoercingComponent;
 void typedCoercingComponent({ amount: 2, startsAt: new Date() });
 
-const CoercingReactComponent = createReactComponent(CoercingComponent, {
-	React: {} as never,
-});
-void CoercingReactComponent({ amount: "4", startsAt: "2026-11-01T09:00:00Z" });
-const createBoundReactComponent = withReactComponent({} as never);
-const BoundCoercedReactComponent = createBoundReactComponent(CoercingComponent);
-void BoundCoercedReactComponent({ amount: "4", startsAt: new Date() });
-// @ts-expect-error React wrappers preserve the factory input type
-void CoercingReactComponent({ amount: 4, startsAt: 1 });
-// @ts-expect-error curried React wrappers preserve the factory input type
-void BoundCoercedReactComponent({ amount: 4, startsAt: 1 });
-
 void CoercingComponent({
 	amount: "2",
 	startsAt: new Date(),
@@ -644,9 +630,6 @@ void CompositeInputComponent({
 	arrayValue: [],
 	recordValue: {},
 });
-
-createReactComponent(InferredComponent, { React: {} as never });
-withReactComponent({} as never)(InferredComponent);
 
 // @ts-expect-error factories with required inferred inputs reject zero arguments
 void InferredComponent();

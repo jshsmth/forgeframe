@@ -554,6 +554,11 @@ describe("Consumer lifecycle behavior", () => {
 		const closeSpy = vi.spyOn(consumer, "close").mockResolvedValue(undefined);
 		const resized = vi.fn();
 		consumer.event.on(EVENT.RESIZE, resized);
+		// Stand in for a mounted frame; with nothing mounted a host resize emits nothing.
+		vi.spyOn(
+			(consumer as unknown as { renderer: { resize(): string } }).renderer,
+			"resize",
+		).mockReturnValue("resized");
 		const focusSpy = vi.spyOn(consumer, "focus").mockResolvedValue(undefined);
 		const showSpy = vi.spyOn(consumer, "show").mockResolvedValue(undefined);
 		const hideSpy = vi.spyOn(consumer, "hide").mockResolvedValue(undefined);

@@ -107,7 +107,11 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 		private options: NormalizedOptions<P>,
 		private resolveUrlOrigin: (url: string) => string,
 	) {
-		const trustedOrigins = this.buildTrustedOrigins();
+		this.staticUrlTrustedOrigin = this.resolveStaticUrlOrigin();
+		const trustedOrigins = selectInitialTrustedOrigins(
+			this.options.hostOrigins,
+			this.staticUrlTrustedOrigin,
+		);
 		// Unrendered instances never receive host messages, so listening waits
 		// until host content opens.
 		this.messenger = new Messenger(
@@ -127,18 +131,10 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 		);
 	}
 
-	/**
-	 * Builds the origins the messenger trusts first: `hostOrigins`, or else
-	 * the static URL's origin, which {@link syncTrustedOriginForUrl} tracks.
-	 */
-	private buildTrustedOrigins(): OriginMatcher | undefined {
-		if (this.options.hostOrigins !== undefined) return this.options.hostOrigins;
-		const hostOrigin =
-			typeof this.options.url === "string"
-				? this.resolveUrlOrigin(this.options.url)
-				: null;
-		this.staticUrlTrustedOrigin = hostOrigin;
-		return hostOrigin ?? undefined;
+	/** Resolves the origin of the static URL trusted without `hostOrigins`. */
+	private resolveStaticUrlOrigin(): string | null {
+		const url = staticTrustedUrl(this.options);
+		return url === null ? null : this.resolveUrlOrigin(url);
 	}
 
 	/**
@@ -287,7 +283,7 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 							(this.hostInitFailure?.message ??
 								"Check that the host page loads correctly and calls the initialization code, " +
 									"and that consumer and host run the same ForgeFrame major version."),
-						{ cause: this.hostInitFailure ?? undefined },
+						this.hostInitFailure ? { cause: this.hostInitFailure } : undefined,
 					),
 			);
 		} catch (err) {
@@ -552,4 +548,30 @@ function readHostError(data: {
 	return data.initFailed === true
 		? errorFromWire(data.message, data.code)
 		: new Error(data.message);
+}
+
+/**
+ * The static URL whose origin the messenger trusts when no `hostOrigins` is
+ * configured, which {@link ConsumerTransport.syncTrustedOriginForUrl} then tracks.
+ * @internal
+ */
+function staticTrustedUrl(options: {
+	readonly hostOrigins?: OriginMatcher;
+	readonly url: unknown;
+}): string | null {
+	return options.hostOrigins === undefined && typeof options.url === "string"
+		? options.url
+		: null;
+}
+
+/**
+ * Selects the origins the messenger trusts first: `hostOrigins`, or else the
+ * static URL's origin.
+ * @internal
+ */
+function selectInitialTrustedOrigins(
+	hostOrigins: OriginMatcher | undefined,
+	staticUrlOrigin: string | null,
+): OriginMatcher | undefined {
+	return hostOrigins ?? staticUrlOrigin ?? undefined;
 }

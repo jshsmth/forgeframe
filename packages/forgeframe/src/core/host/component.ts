@@ -15,7 +15,6 @@ import type { StandardSchemaV1 } from "../../props/schema";
 import type { HostEvents } from "../../types/events";
 import type { HostProps } from "../../types/runtime";
 import type { OriginMatcher } from "../../types/utility";
-import { normalizeError } from "../../utils/error";
 import type { HostBootstrapData, WindowNamePayload } from "../../window/types";
 import { assertAllowedConsumerOrigin } from "./consumer-origin-policy";
 import { toHandshakeFailure } from "./handshake-failure";
@@ -159,9 +158,10 @@ export class HostComponent<P extends Record<string, unknown>> {
 		try {
 			this.propsRuntime.applyBootstrap(data);
 		} catch (error) {
+			const failure = toHandshakeFailure(error);
 			// Only the verified, allowed consumer learns why its props were rejected.
-			this.transport.reportInitFailure(normalizeError(error));
-			throw error;
+			this.transport.reportInitFailure(failure);
+			throw failure;
 		}
 		if (this.destroyed)
 			throw new ForgeFrameError(

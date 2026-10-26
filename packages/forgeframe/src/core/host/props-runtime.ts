@@ -76,7 +76,7 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
 
 	/** Constructs the host API surface; callbacks defer control work until invoked. */
 	private createHostProps(): HostProps<P> {
-		return {
+		const hostProps = {
 			uid: this.options.uid,
 			tag: this.options.tag,
 			close: () => this.options.controls.close(),
@@ -88,14 +88,18 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
 				this.onProps(handler),
 			reportError: (error: Error) => this.options.controls.reportError(error),
 			getConsumer: () => this.options.getConsumerWindow(),
-			consumerOrigin: this.options.getConsumerOrigin(),
 			export: <T>(exports: T) => this.options.controls.exportData(exports),
 			consumer: {
 				props: this.consumerProps,
 			},
 			getPeerInstances: (options) =>
 				this.options.controls.getPeerInstances(options),
-		} as HostProps<P>;
+		} as Omit<HostProps<P>, "consumerOrigin">;
+		Object.defineProperty(hostProps, "consumerOrigin", {
+			value: this.options.getConsumerOrigin(),
+			enumerable: true,
+		});
+		return hostProps as HostProps<P>;
 	}
 
 	/**

@@ -11,6 +11,7 @@ import {
 } from "@/communication/bridge";
 import type { Messenger } from "@/communication/messenger";
 import { MESSAGE_NAME } from "@/constants";
+import { ForgeFrameError } from "@/errors";
 import { createDeferred } from "@/utils/promise";
 
 type GenericFunction = (...args: unknown[]) => unknown;
@@ -328,6 +329,37 @@ describe("FunctionBridge", () => {
 			await expect(messenger.simulateCall("unknown-id", [])).rejects.toThrow(
 				'Function with id "unknown-id" not found',
 			);
+		});
+
+		it("strips the code from an application callback's ForgeFrameError", async () => {
+			const ref = bridge.serialize(() => {
+				throw new ForgeFrameError("CAPACITY", "app failure");
+			});
+
+			const error = await messenger
+				.simulateCall(ref.__id__, [])
+				.catch((caught: unknown) => caught);
+
+			expect(error).not.toBeInstanceOf(ForgeFrameError);
+			expect((error as Error).message).toBe("app failure");
+		});
+
+		it("keeps the code of a relayed remote wrapper's own failure", async () => {
+			const peerWindow = {} as Window;
+			const relayed = bridge.deserialize(
+				{ __type__: "function", __id__: "peer-fn", __name__: "reset" },
+				peerWindow,
+				"https://peer.example",
+			);
+			bridge.endRemoteSession(peerWindow, "Peer closed");
+			const ref = bridge.serialize(relayed);
+
+			const error = await messenger
+				.simulateCall(ref.__id__, [])
+				.catch((caught: unknown) => caught);
+
+			expect(error).toBeInstanceOf(ForgeFrameError);
+			expect((error as ForgeFrameError).code).toBe("CLOSED");
 		});
 	});
 

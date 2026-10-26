@@ -1,9 +1,9 @@
+import { createReactComponent } from "forgeframe/react";
 import * as React from "react";
 import type { Root } from "react-dom/client";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeAll, create } from "@/core/component";
-import { createReactComponent } from "@/drivers/react";
 import { prop } from "@/props/prop";
 
 describe("React driver with React DOM", () => {
@@ -34,7 +34,7 @@ describe("React driver with React DOM", () => {
 		const FailingComponent = Object.assign(() => {
 			throw failure;
 		}, Component) as unknown as typeof Component;
-		const Wrapped = createReactComponent(FailingComponent, { React });
+		const Wrapped = createReactComponent(FailingComponent);
 		const onError = vi.fn();
 
 		await React.act(async () => {

@@ -1,7 +1,8 @@
 import { createServer, type Server } from "node:http";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
-import { build } from "vite";
+import { build, type Plugin } from "vite";
+import { buildLibrary } from "./library-build";
 
 const servers: Server[] = [];
 let consumerOrigin: string;
@@ -16,6 +17,31 @@ async function listen(server: Server): Promise<string> {
 	return `http://127.0.0.1:${address.port}`;
 }
 
+/**
+ * Resolves `forgeframe` and `forgeframe/react` to the production build's
+ * entries, and their relative imports to its shared chunks.
+ */
+function productionLibrary(files: ReadonlyMap<string, string>): Plugin {
+	const prefix = "\0forgeframe-build:";
+	const entries: Record<string, string> = {
+		forgeframe: "/library.js",
+		"forgeframe/react": "/react.js",
+	};
+	return {
+		name: "forgeframe-production-library",
+		resolveId(source, importer) {
+			const entry = entries[source];
+			if (entry) return prefix + entry;
+			if (importer?.startsWith(prefix) && source.startsWith("./"))
+				return `${prefix}/${source.slice(2)}`;
+			return null;
+		},
+		load(id) {
+			return id.startsWith(prefix) ? files.get(id.slice(prefix.length)) : null;
+		},
+	};
+}
+
 function bundle(result: Awaited<ReturnType<typeof build>>): string {
 	const built = Array.isArray(result) ? result[0] : result;
 	if (!("output" in built)) throw new Error("Unexpected watch build");
@@ -25,34 +51,26 @@ function bundle(result: Awaited<ReturnType<typeof build>>): string {
 }
 
 test.beforeAll(async () => {
-	const [library, consumer] = await Promise.all([
-		build({
-			configFile: fileURLToPath(
-				new URL("../../vite.config.ts", import.meta.url),
-			),
-			logLevel: "silent",
-			build: { write: false },
-		}),
-		build({
-			configFile: false,
-			logLevel: "silent",
-			define: {
-				"process.env.NODE_ENV": JSON.stringify("development"),
-				__FORGEFRAME_VERSION__: JSON.stringify("browser-fixture"),
+	const library = await buildLibrary();
+	const consumer = await build({
+		configFile: false,
+		logLevel: "silent",
+		plugins: [productionLibrary(library)],
+		define: {
+			"process.env.NODE_ENV": JSON.stringify("development"),
+			__FORGEFRAME_VERSION__: JSON.stringify("browser-fixture"),
+		},
+		build: {
+			write: false,
+			lib: {
+				entry: fileURLToPath(
+					new URL("./react-journey-fixture.ts", import.meta.url),
+				),
+				formats: ["es"],
+				fileName: "react-journey",
 			},
-			build: {
-				write: false,
-				lib: {
-					entry: fileURLToPath(
-						new URL("./react-journey-fixture.ts", import.meta.url),
-					),
-					formats: ["es"],
-					fileName: "react-journey",
-				},
-			},
-		}),
-	]);
-	const libraryCode = bundle(library);
+		},
+	});
 	const consumerCode = bundle(consumer);
 	consumerOrigin = await listen(
 		createServer((req, res) => {
@@ -66,15 +84,17 @@ test.beforeAll(async () => {
 		<button id="start">Mount</button><button id="update">Update</button>
 		<button id="invalid">Invalid</button><button id="recover">Recover</button>
 		<button id="default-theme">Default theme</button>
+		<button id="use-instance">Use instance</button><output id="instance-result"></output>
 		<button id="unmount">Unmount</button><output id="callback"></output>
 		<div id="mount"></div><script type="module" src="/journey.js"></script>`);
 		}),
 	);
 	hostOrigin = await listen(
 		createServer((req, res) => {
-			if (req.url === "/library.js") {
+			const libraryFile = library.get(req.url ?? "");
+			if (libraryFile !== undefined) {
 				res.setHeader("Content-Type", "text/javascript");
-				res.end(libraryCode);
+				res.end(libraryFile);
 				return;
 			}
 			res.setHeader("Content-Type", "text/html");
@@ -88,6 +108,7 @@ test.beforeAll(async () => {
 		const host = initHost({props:{label:prop.string(), count:prop.number().min(0), theme:prop.string(), onAction:prop.function()}, consumerOrigins:['${consumerOrigin}']});
 		await host.ready;
 		const props = host.hostProps;
+		await props.export({ greet: (name) => 'hello ' + name + ' from ' + props.label });
 		const history = [];
 		const show = () => {
 			const snapshot = props.label + ':' + props.count + ':' + props.theme;
@@ -134,6 +155,7 @@ for (const strict of [false, true]) {
 				rendered: 1,
 				errors: [],
 				hasRef: true,
+				hasInstance: true,
 				setups: strict ? 2 : 1,
 				cleanups: strict ? 1 : 0,
 			});
@@ -143,6 +165,12 @@ for (const strict of [false, true]) {
 		)?.contentFrame();
 		if (!frame) throw new Error("Missing React host iframe");
 		await expect(frame.locator("#snapshot")).toHaveText("initial:1:dark");
+		await page.locator("#use-instance").click();
+		await expect(page.locator("#instance-result")).toHaveText(
+			"hello react from initial",
+		);
+		await expect(page.locator("#mount iframe")).toHaveCSS("width", "320px");
+		await expect(page.locator("#mount iframe")).toHaveCSS("height", "180px");
 		await frame.locator("#invoke").click();
 		await expect(frame.locator("#result")).toHaveText("initial:host-click-1");
 		await expect(page.locator("#callback")).toHaveText("initial:host-click-1");
@@ -180,6 +208,7 @@ for (const strict of [false, true]) {
 				instances: 0,
 				rendered: 1,
 				hasRef: false,
+				hasInstance: false,
 				cleanups: strict ? 2 : 1,
 				errors: [expect.stringMatching(/count/)],
 			});

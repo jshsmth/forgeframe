@@ -15,16 +15,8 @@ describe("Index node smoke", () => {
 		expect("window" in globalThis).toBe(false);
 
 		const publicEntrypoint = await import("@/index");
-		const {
-			ForgeFrameError,
-			VERSION,
-			create,
-			createReactComponent,
-			initHost,
-			isHost,
-			prop,
-			withReactComponent,
-		} = publicEntrypoint;
+		const { ForgeFrameError, VERSION, create, initHost, isHost, prop } =
+			publicEntrypoint;
 
 		for (const removed of [
 			"default",
@@ -40,6 +32,9 @@ describe("Index node smoke", () => {
 			"StringSchema",
 			"ObjectSchema",
 			"PopupOpenError",
+			// React moved to forgeframe/react.
+			"createReactComponent",
+			"withReactComponent",
 		]) {
 			expect(publicEntrypoint).not.toHaveProperty(removed);
 		}
@@ -49,8 +44,6 @@ describe("Index node smoke", () => {
 		});
 		expect(typeof VERSION).toBe("string");
 		expect(typeof prop.string).toBe("function");
-		expect(typeof createReactComponent).toBe("function");
-		expect(typeof withReactComponent).toBe("function");
 		expect(isHost()).toBe(false);
 
 		const AbsoluteUrlComponent = create({
@@ -75,6 +68,26 @@ describe("Index node smoke", () => {
 		expect(() =>
 			initHost(AbsoluteUrlComponent, {} as { consumerOrigins: string }),
 		).toThrow("consumerOrigins");
+	});
+
+	it("should import the React entry without browser globals and server-render only the container", async () => {
+		expect("window" in globalThis).toBe(false);
+
+		const reactEntrypoint = await import("@/react");
+		expect(Object.keys(reactEntrypoint)).toEqual(["createReactComponent"]);
+		const { create } = await import("@/index");
+		const { createElement } = await import("react");
+		const { renderToString } = await import("react-dom/server");
+		const Component = create({
+			tag: "node-react-ssr",
+			url: "https://example.com/host.html",
+		});
+		const Wrapped = reactEntrypoint.createReactComponent(Component);
+
+		const html = renderToString(createElement(Wrapped, { className: "embed" }));
+
+		expect(html).toBe('<div class="embed" style="display:inline-block"></div>');
+		expect(Component.instances).toHaveLength(0);
 	});
 
 	it("should reject malformed string urls without browser globals", async () => {

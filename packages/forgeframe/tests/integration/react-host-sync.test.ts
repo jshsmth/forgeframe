@@ -1,14 +1,11 @@
 /** React commits synchronize through the real consumer/host messaging pipeline. */
+
+import { create, ForgeFrameError, prop } from "forgeframe";
+import { createReactComponent, type ReactInstance } from "forgeframe/react";
 import * as React from "react";
 import type { Root } from "react-dom/client";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-	create,
-	createReactComponent,
-	prop,
-	withReactComponent,
-} from "@/index";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
@@ -47,8 +44,10 @@ describe("React commits across the host boundary", () => {
 			url: "https://host.example.com/widget",
 			props: definitions,
 		});
-		const Wrapped = withReactComponent(React)(Component);
-		expect(Wrapped.displayName).toBe("ForgeFrame(Component)");
+		const Wrapped = createReactComponent(Component);
+		expect(Wrapped.displayName).toBe(
+			"ForgeFrame(react-driver-container-contract)",
+		);
 		const ref = React.createRef<HTMLDivElement>();
 		await React.act(async () => {
 			root.render(
@@ -82,7 +81,7 @@ describe("React commits across the host boundary", () => {
 			url: "https://host.example.com/widget",
 			props: definitions,
 		});
-		const Wrapped = createReactComponent(Component, { React });
+		const Wrapped = createReactComponent(Component);
 		const observed: Array<HTMLDivElement | null> = [];
 		const attached: HTMLDivElement[] = [];
 		const cleanup = vi.fn();
@@ -123,7 +122,7 @@ describe("React commits across the host boundary", () => {
 			url: "https://host.example.com/widget",
 			props: definitions,
 		});
-		const Wrapped = createReactComponent(Component, { React });
+		const Wrapped = createReactComponent(Component);
 		const oldRendered = vi.fn();
 		const oldClose = vi.fn();
 		const oldError = vi.fn();
@@ -223,7 +222,7 @@ describe("React commits across the host boundary", () => {
 			url: "https://host.example.com/widget",
 			props: definitions,
 		});
-		const Wrapped = createReactComponent(Component, { React });
+		const Wrapped = createReactComponent(Component);
 		const ref = React.createRef<HTMLDivElement>();
 		const onError = vi.fn();
 		const onRendered = vi.fn();
@@ -274,7 +273,7 @@ describe("React commits across the host boundary", () => {
 			url: "https://host.example.com/widget",
 			props: definitions,
 		});
-		const Wrapped = createReactComponent(Component, { React });
+		const Wrapped = createReactComponent(Component);
 		const onError = vi.fn();
 		const onRendered = vi.fn();
 		await React.act(async () =>
@@ -309,7 +308,7 @@ describe("React commits across the host boundary", () => {
 			url: "https://host.example.com/widget",
 			props: definitions,
 		});
-		const Wrapped = createReactComponent(Component, { React });
+		const Wrapped = createReactComponent(Component);
 		const renderedError = new Error("rendered observer failed");
 		const closedError = new Error("close observer failed");
 		const log = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -334,7 +333,7 @@ describe("React commits across the host boundary", () => {
 		);
 		await vi.waitFor(() =>
 			expect(log).toHaveBeenCalledWith(
-				'Error in async event handler for "rendered":',
+				"Error in React onRendered callback:",
 				renderedError,
 			),
 		);
@@ -359,7 +358,7 @@ describe("React commits across the host boundary", () => {
 			url: "https://host.example.com/widget",
 			props: definitions,
 		});
-		const Wrapped = createReactComponent(Component, { React });
+		const Wrapped = createReactComponent(Component);
 		const observerError = new Error("error observer rejected");
 		const log = vi.spyOn(console, "error").mockImplementation(() => {});
 		const onError = vi.fn(async (_error: Error) => {
@@ -403,7 +402,7 @@ describe("React commits across the host boundary", () => {
 			url: "https://host.example.com/widget",
 			props: definitions,
 		});
-		const Wrapped = createReactComponent(Component, { React });
+		const Wrapped = createReactComponent(Component);
 		const onError = vi.fn();
 		const onRendered = vi.fn();
 		await React.act(async () => {
@@ -454,7 +453,7 @@ describe("React commits across the host boundary", () => {
 			url: "https://host.example.com/widget",
 			props: definitions,
 		});
-		const Wrapped = createReactComponent(Component, { React });
+		const Wrapped = createReactComponent(Component);
 		await React.act(async () => {
 			root.render(
 				React.createElement(Wrapped, {
@@ -494,7 +493,7 @@ describe("React commits across the host boundary", () => {
 			url: "https://host.example.com/widget",
 			props: definitions,
 		});
-		const Wrapped = createReactComponent(Component, { React });
+		const Wrapped = createReactComponent(Component);
 		await React.act(async () => {
 			root.render(React.createElement(Wrapped, { title: "a", theme: "dark" }));
 		});
@@ -535,7 +534,7 @@ describe("React commits across the host boundary", () => {
 			url: "https://host.example.com/widget",
 			props: definitions,
 		});
-		const Wrapped = createReactComponent(Component, { React });
+		const Wrapped = createReactComponent(Component);
 		await React.act(async () => {
 			root.render(React.createElement(Wrapped, { label: () => "custom" }));
 		});
@@ -560,7 +559,7 @@ describe("React commits across the host boundary", () => {
 			url: "https://host.example.com/widget",
 			props: definitions,
 		});
-		const Wrapped = createReactComponent(Component, { React });
+		const Wrapped = createReactComponent(Component);
 		const onError = vi.fn();
 		await React.act(async () => {
 			root.render(React.createElement(Wrapped, { amount: 1, onError }));
@@ -600,7 +599,7 @@ describe("React commits across the host boundary", () => {
 			url: "https://host.example.com/widget",
 			props: { title: prop.string() },
 		});
-		const Wrapped = createReactComponent(Component, { React });
+		const Wrapped = createReactComponent(Component);
 		const ref = React.createRef<HTMLDivElement>();
 		const onError = vi.fn();
 		const onRendered = vi.fn();
@@ -626,4 +625,325 @@ describe("React commits across the host boundary", () => {
 		expect(onRendered).not.toHaveBeenCalled();
 		expect(onError).not.toHaveBeenCalled();
 	});
+	it("reports only the render failure when a commit was held during that render", async () => {
+		const Component = create({
+			tag: "react-held-update-render-failure",
+			url: "https://host.example.com/widget",
+			props: { title: prop.string() },
+			initTimeout: 50,
+		});
+		const Wrapped = createReactComponent(Component);
+		const onError = vi.fn();
+		await React.act(async () =>
+			root.render(React.createElement(Wrapped, { title: "first", onError })),
+		);
+		await React.act(async () =>
+			root.render(React.createElement(Wrapped, { title: "second", onError })),
+		);
+
+		await vi.waitFor(() => expect(onError).toHaveBeenCalled());
+		await harness.flushMessages();
+		expect(onError).toHaveBeenCalledOnce();
+		expectCode(onError.mock.calls[0]?.[0], "INIT_TIMEOUT");
+	});
+
+	it("sets instanceRef after render resolves, before onRendered, and exposes exports, resize and events", async () => {
+		const definitions = { title: prop.string() };
+		const Component = create({
+			tag: "react-instance-ref",
+			url: "https://host.example.com/widget",
+			props: definitions,
+			exports: prop.object({
+				ready: prop.boolean(),
+				total: prop.function<() => number>(),
+			}),
+		});
+		const Wrapped = createReactComponent(Component);
+		const instanceRef =
+			React.createRef<ReactInstance<{ ready: boolean; total: () => number }>>();
+		const seenByOnRendered: unknown[] = [];
+		const onRendered = vi.fn(() => {
+			seenByOnRendered.push(instanceRef.current);
+		});
+		await React.act(async () =>
+			root.render(
+				React.createElement(Wrapped, {
+					title: "hello",
+					instanceRef,
+					onRendered,
+				}),
+			),
+		);
+		expect(instanceRef.current).toBeNull();
+
+		const { hostProps, iframe } = await harness.bootstrapIframeHost(
+			container,
+			Component,
+		);
+		await vi.waitFor(() => expect(onRendered).toHaveBeenCalledOnce());
+		const handle = instanceRef.current;
+		if (!handle) throw new Error("Expected an instance handle");
+		expect(seenByOnRendered).toEqual([handle]);
+		expect(handle.uid).toBe(Component.instances[0]?.uid);
+		expect(handle).not.toHaveProperty("render");
+		expect(handle).not.toHaveProperty("updateProps");
+
+		const exported = vi.fn();
+		handle.event.on("exports", exported);
+		await harness.withHostGlobalsAsync(() =>
+			hostProps.export({ ready: true, total: () => 42 }),
+		);
+		await vi.waitFor(() => expect(exported).toHaveBeenCalledOnce());
+		expect(handle.exports?.ready).toBe(true);
+		await expect(handle.exports?.total()).resolves.toBe(42);
+
+		handle.resize({ width: 320, height: 180 });
+		expect(iframe.style.width).toBe("320px");
+		expect(iframe.style.height).toBe("180px");
+		handle.hide();
+		expect(iframe.style.display).toBe("none");
+		handle.show();
+		expect(iframe.style.visibility).toBe("visible");
+		const focus = vi.spyOn(iframe, "focus");
+		handle.focus();
+		expect(focus).toHaveBeenCalled();
+
+		await React.act(async () => root.render(null));
+		expect(instanceRef.current).toBeNull();
+	});
+
+	it("clears instanceRef when the host closes, then calls onClose", async () => {
+		const definitions = { title: prop.string() };
+		const Component = create({
+			tag: "react-instance-ref-host-close",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const Wrapped = createReactComponent(Component);
+		const instanceRef = React.createRef<ReactInstance>();
+		const onRendered = vi.fn();
+		const refAtClose: unknown[] = [];
+		const onClose = vi.fn(() => {
+			refAtClose.push(instanceRef.current);
+		});
+		await React.act(async () =>
+			root.render(
+				React.createElement(Wrapped, {
+					title: "hello",
+					instanceRef,
+					onRendered,
+					onClose,
+				}),
+			),
+		);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			definitions,
+		);
+		await vi.waitFor(() => expect(onRendered).toHaveBeenCalledOnce());
+		expect(instanceRef.current).not.toBeNull();
+
+		await React.act(async () => {
+			await harness.withHostGlobalsAsync(() => hostProps.close());
+		});
+		await vi.waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+		expect(refAtClose).toEqual([null]);
+		expect(instanceRef.current).toBeNull();
+	});
+
+	it("gives a callback instanceRef the handle, then null, and moves it to a new ref", async () => {
+		const definitions = { title: prop.string() };
+		const Component = create({
+			tag: "react-instance-ref-callback",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const Wrapped = createReactComponent(Component);
+		const first = vi.fn();
+		const second = React.createRef<ReactInstance>();
+		const onRendered = vi.fn();
+		await React.act(async () =>
+			root.render(
+				React.createElement(Wrapped, {
+					title: "hello",
+					instanceRef: first,
+					onRendered,
+				}),
+			),
+		);
+		await harness.bootstrapIframeHost(container, definitions);
+		await vi.waitFor(() => expect(onRendered).toHaveBeenCalledOnce());
+		const handle = first.mock.calls[0]?.[0] as ReactInstance;
+		expect(first).toHaveBeenCalledExactlyOnceWith(handle);
+		expect(handle).not.toBeNull();
+
+		await React.act(async () =>
+			root.render(
+				React.createElement(Wrapped, {
+					title: "hello",
+					instanceRef: second,
+					onRendered,
+				}),
+			),
+		);
+		expect(first.mock.calls).toEqual([[handle], [null]]);
+		expect(second.current).toBe(handle);
+
+		await React.act(async () => root.render(null));
+		expect(second.current).toBeNull();
+		expect(first).toHaveBeenCalledTimes(2);
+	});
+
+	it("clears instanceRef on a context change and after a failed render", async () => {
+		const definitions = { title: prop.string() };
+		const Component = create({
+			tag: "react-instance-ref-context",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const Wrapped = createReactComponent(Component);
+		const instanceRef = vi.fn();
+		const onRendered = vi.fn();
+		const onError = vi.fn();
+		const props = { title: "hello", instanceRef, onRendered, onError };
+		await React.act(async () =>
+			root.render(React.createElement(Wrapped, props)),
+		);
+		await harness.bootstrapIframeHost(container, definitions);
+		await vi.waitFor(() => expect(onRendered).toHaveBeenCalledOnce());
+		const iframeHandle = instanceRef.mock.calls[0]?.[0];
+		expect(iframeHandle).not.toBeNull();
+
+		// The popup is blocked in jsdom, so the new instance's render fails.
+		await React.act(async () =>
+			root.render(React.createElement(Wrapped, { ...props, context: "popup" })),
+		);
+		await vi.waitFor(() => expect(onError).toHaveBeenCalledOnce());
+		expectCode(onError.mock.calls[0]?.[0], "POPUP_BLOCKED");
+		expect(instanceRef.mock.calls).toEqual([[iframeHandle], [null]]);
+		expect(onRendered).toHaveBeenCalledOnce();
+	});
+
+	it("leaves no stale handle after a StrictMode replay", async () => {
+		const definitions = { title: prop.string() };
+		const Component = create({
+			tag: "react-instance-ref-strictmode",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const Wrapped = createReactComponent(Component);
+		const instanceRef = vi.fn();
+		const onRendered = vi.fn();
+		await React.act(async () =>
+			root.render(
+				React.createElement(
+					React.StrictMode,
+					null,
+					React.createElement(Wrapped, {
+						title: "hello",
+						instanceRef,
+						onRendered,
+					}),
+				),
+			),
+		);
+		await harness.bootstrapIframeHost(container, definitions);
+		await vi.waitFor(() => expect(onRendered).toHaveBeenCalledOnce());
+		expect(instanceRef).toHaveBeenCalledOnce();
+		const handle = instanceRef.mock.calls[0]?.[0] as ReactInstance;
+		expect(handle.uid).toBe(Component.instances[0]?.uid);
+
+		await React.act(async () => root.render(null));
+		expect(instanceRef.mock.calls).toEqual([[handle], [null]]);
+	});
+
+	it("closes through the handle, which clears instanceRef and calls onClose", async () => {
+		const definitions = { title: prop.string() };
+		const Component = create({
+			tag: "react-instance-ref-close",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const Wrapped = createReactComponent(Component);
+		const instanceRef = React.createRef<ReactInstance>();
+		const onRendered = vi.fn();
+		const onClose = vi.fn();
+		await React.act(async () =>
+			root.render(
+				React.createElement(Wrapped, {
+					title: "hello",
+					instanceRef,
+					onRendered,
+					onClose,
+				}),
+			),
+		);
+		await harness.bootstrapIframeHost(container, definitions);
+		await vi.waitFor(() => expect(onRendered).toHaveBeenCalledOnce());
+
+		await React.act(async () => instanceRef.current?.close());
+		expect(onClose).toHaveBeenCalledOnce();
+		expect(instanceRef.current).toBeNull();
+		expect(Component.instances).toHaveLength(0);
+	});
+
+	it("rejects a v1 second argument, a non-component and reserved prop names", () => {
+		const Component = create({
+			tag: "react-factory-arguments",
+			url: "https://host.example.com/widget",
+		});
+		const call = createReactComponent as unknown as (
+			...args: unknown[]
+		) => unknown;
+		expectCode(
+			catchError(() => call(Component, { React })),
+			"VALIDATION",
+			"`react` peer dependency",
+		);
+		expectCode(
+			catchError(() => call(() => null)),
+			"VALIDATION",
+			"component returned by create()",
+		);
+		const Reserved = create({
+			tag: "react-reserved-props",
+			url: "https://host.example.com/widget",
+			props: {
+				onClose: prop.function<() => void>().optional(),
+				instanceRef: prop.string().optional(),
+			},
+		});
+		expectCode(
+			catchError(() => createReactComponent(Reserved)),
+			"VALIDATION",
+			'"onClose", "instanceRef"',
+		);
+		// React consumes `key` itself, so the wrapper could never forward it.
+		const KeyProp = create({
+			tag: "react-reserved-key",
+			url: "https://host.example.com/widget",
+			props: { key: prop.string() },
+		});
+		expectCode(
+			catchError(() => createReactComponent(KeyProp)),
+			"VALIDATION",
+			'"key"',
+		);
+	});
 });
+
+/** Asserts a ForgeFrameError with the code and, optionally, message text. */
+function expectCode(error: unknown, code: string, text?: string): void {
+	expect(error).toBeInstanceOf(ForgeFrameError);
+	expect(error).toMatchObject({ code });
+	if (text) expect((error as Error).message).toContain(text);
+}
+
+function catchError(run: () => unknown): unknown {
+	try {
+		run();
+	} catch (error) {
+		return error;
+	}
+	throw new Error("Expected a throw");
+}

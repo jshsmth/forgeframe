@@ -65,6 +65,12 @@ describe("Origin naming and error codes", () => {
 		);
 		await expect(rendering).resolves.toBeUndefined();
 		expect(hostProps.consumerOrigin).toBe(harness.consumerOrigin);
+		// Read-only at runtime too, not only in the types.
+		expect(() => {
+			(hostProps as { consumerOrigin: string }).consumerOrigin =
+				"https://x.test";
+		}).toThrow(TypeError);
+		expect(hostProps.consumerOrigin).toBe(harness.consumerOrigin);
 		expect(hostProps.id).toBe("a");
 	});
 
@@ -218,6 +224,42 @@ describe("Origin naming and error codes", () => {
 			"CLOSED",
 			"closed by its host or the user",
 		);
+	});
+
+	it("rejects host.ready with VALIDATION when a host schema throws instead of returning issues", async () => {
+		harness = createIframeIntegrationHarness();
+		const activeHarness = harness;
+		const Component = create({
+			tag: "host-throwing-schema",
+			url: HOST_URL,
+			props: { amount: prop.number() },
+			initTimeout: 300,
+		});
+		const container = createContainer();
+		vi.spyOn(console, "error").mockImplementation(() => {});
+		const rendering = Component({ amount: 5 }).render(container);
+		void rendering.catch(() => {});
+		activeHarness.attachHostToIframe(
+			await activeHarness.waitForIframe(container),
+		);
+		const thrown = new Error("schema exploded");
+		const host = activeHarness.bootstrapHost({
+			amount: {
+				"~standard": {
+					version: 1,
+					vendor: "test",
+					validate: () => {
+						throw thrown;
+					},
+				},
+			},
+		});
+		if (!host) throw new Error("Expected a host");
+		host.on("error", () => {});
+
+		const error = await host.ready.catch((caught: unknown) => caught);
+		expectCode(error, "VALIDATION", "schema exploded");
+		await rendering.catch(() => {});
 	});
 
 	it("reports a host schema rejection as INIT_TIMEOUT whose cause carries the host's VALIDATION", async () => {

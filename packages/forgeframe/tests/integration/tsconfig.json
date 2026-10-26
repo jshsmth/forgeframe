@@ -5,7 +5,8 @@
 		/* Check shared playground contracts against the library source. */
 		"paths": {
 			"@/*": ["../../src/*"],
-			"forgeframe": ["../../src/index.ts"]
+			"forgeframe": ["../../src/index.ts"],
+			"forgeframe/react": ["../../src/react.ts"]
 		}
 	},
 	"include": ["./**/*.ts"]

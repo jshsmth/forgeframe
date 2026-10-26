@@ -1,6 +1,6 @@
 import type { ContextType } from "../constants";
 import { CONTEXT, PROTOCOL_VERSION, WINDOW_NAME_PREFIX } from "../constants";
-import { ForgeFrameError } from "../errors";
+import { ForgeFrameError, hasErrorCode } from "../errors";
 import type { WindowNamePayload } from "./types";
 
 /**
@@ -191,9 +191,7 @@ function encodePayload(payload: WindowNamePayload): string {
 
 		return encoded;
 	} catch (err) {
-		if (err instanceof Error && err.message.includes("Payload size")) {
-			throw err;
-		}
+		if (hasErrorCode(err, "CAPACITY")) throw err;
 		throw new ForgeFrameError("VALIDATION", `Failed to encode payload: ${err}`);
 	}
 }

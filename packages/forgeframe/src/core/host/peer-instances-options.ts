@@ -13,7 +13,7 @@ import type { GetPeerInstancesOptions } from "../../types/runtime";
 /**
  * Checks `getPeerInstances()` options before anything is sent, so a renamed
  * or mistyped option rejects instead of silently narrowing discovery.
- * @throws Error naming the option
+ * @throws {@link ForgeFrameError} `VALIDATION` naming the option
  * @internal
  */
 export function assertPeerInstancesOptions(options: unknown): void {

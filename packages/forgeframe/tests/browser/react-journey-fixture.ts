@@ -1,6 +1,9 @@
+// The public specifiers resolve to the production build, so both entries
+// share one core instance as they do for package users.
+import { create, prop } from "forgeframe";
+import { createReactComponent, type ReactInstance } from "forgeframe/react";
 import * as React from "react";
 import { createRoot } from "react-dom/client";
-import { create, createReactComponent, prop } from "../../src/index";
 
 /** Browser-owned observations exposed to the Playwright consumer. */
 interface ReactJourneySnapshot {
@@ -10,6 +13,7 @@ interface ReactJourneySnapshot {
 	setups: number;
 	cleanups: number;
 	hasRef: boolean;
+	hasInstance: boolean;
 }
 
 declare global {
@@ -34,10 +38,13 @@ const Component = create({
 		theme: prop.string().default("light"),
 		onAction: prop.function<(message: string) => string>(),
 	},
+	exports: prop.object({ greet: prop.function<(name: string) => string>() }),
 });
-const Wrapped = createReactComponent(Component, { React });
+const Wrapped = createReactComponent(Component);
 const root = createRoot(mount);
 const ref = React.createRef<HTMLDivElement>();
+const instanceRef =
+	React.createRef<ReactInstance<{ greet: (name: string) => string }>>();
 let rendered = 0;
 let setups = 0;
 let cleanups = 0;
@@ -64,6 +71,7 @@ function render(label: string, count: number, theme?: string): void {
 			count,
 			theme,
 			ref,
+			instanceRef,
 			onAction: (message: string) => {
 				const result = `${label}:${message}`;
 				const output = document.getElementById("callback");
@@ -100,6 +108,15 @@ document
 document
 	.getElementById("default-theme")
 	?.addEventListener("click", () => render("recovered", 3));
+// Reaches the rendered instance through instanceRef: an exported method, then resize.
+document.getElementById("use-instance")?.addEventListener("click", async () => {
+	const handle = instanceRef.current;
+	const output = document.getElementById("instance-result");
+	if (!handle || !output) return;
+	const greeting = await handle.exports?.greet("react");
+	handle.resize({ width: 320, height: 180 });
+	output.textContent = `${greeting}`;
+});
 document
 	.getElementById("unmount")
 	?.addEventListener("click", () => root.unmount());
@@ -111,5 +128,6 @@ window.reactJourney = {
 		setups,
 		cleanups,
 		hasRef: ref.current !== null,
+		hasInstance: instanceRef.current !== null,
 	}),
 };

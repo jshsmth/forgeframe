@@ -415,8 +415,9 @@ export class ConsumerComponent<
 	 */
 	private resizeForHost(dimensions: Dimensions): void {
 		// Without a host window the renderer resizes only an iframe.
-		this.renderer.resize(dimensions, null);
-		this.emitResize(dimensions);
+		const outcome = this.renderer.resize(dimensions, null);
+		if (hostResizeApplied(outcome, this.renderer.context))
+			this.emitResize(dimensions);
 	}
 
 	/** Notifies resize observers. @internal */
@@ -891,4 +892,16 @@ export class ConsumerComponent<
 		);
 		return true;
 	}
+}
+
+/**
+ * Whether a host's resize request took effect: a popup host resized its own
+ * window, and an iframe only when one was mounted.
+ * @internal
+ */
+function hostResizeApplied(
+	outcome: "resized" | "unmounted" | "denied",
+	context: ContextType,
+): boolean {
+	return outcome === "resized" || context === CONTEXT.POPUP;
 }
