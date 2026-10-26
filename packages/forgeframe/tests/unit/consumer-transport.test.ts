@@ -49,9 +49,9 @@ function createOptions(
 			onReady: { schema: prop.function().optional() },
 			payload: { schema: prop.any<Record<string, unknown>>().optional() },
 		},
-		defaultContext: CONTEXT.IFRAME,
+		context: CONTEXT.IFRAME,
 		dimensions: { width: 320, height: 240 },
-		timeout: 50,
+		initTimeout: 50,
 		...overrides,
 	};
 }
@@ -259,7 +259,7 @@ describe("ConsumerTransport", () => {
 	it("should rely exclusively on an explicit domain policy when configured", () => {
 		const transport = createTransport({
 			options: createOptions({
-				domain: ["https://explicit.example.com"],
+				hostOrigins: ["https://explicit.example.com"],
 			}),
 			resolveUrl: () => "https://dynamic-old.example.com/widget",
 		});
@@ -417,7 +417,7 @@ describe("ConsumerTransport", () => {
 		const redirectedOrigin = "https://redirected-host.example.com";
 		const transport = createTransport({
 			options: createOptions({
-				domain: [configuredOrigin, redirectedOrigin],
+				hostOrigins: [configuredOrigin, redirectedOrigin],
 			}),
 		});
 		const handlers = createHandlers();

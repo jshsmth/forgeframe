@@ -191,7 +191,7 @@ async function runSecurityScenario(
 					create({
 						tag: uniqueTag("domain"),
 						url: HOST_URL,
-						domain: "https://blocked.example.com",
+						hostOrigins: "https://blocked.example.com",
 					}),
 				),
 			"is not allowed by the configured domain policy",
@@ -220,7 +220,7 @@ async function runSecurityScenario(
 	const AllowedComponent = create({
 		tag: uniqueTag("allowed-domain"),
 		url: HOST_URL,
-		domain: new URL(HOST_URL).origin,
+		hostOrigins: new URL(HOST_URL).origin,
 		dimensions: { width: "100%", height: 420 },
 	});
 	const allowedInstance = AllowedComponent();

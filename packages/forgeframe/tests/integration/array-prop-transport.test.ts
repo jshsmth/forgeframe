@@ -59,7 +59,7 @@ describe("Array prop transport", () => {
 			const Component = create({
 				tag: "redirect-array-transport",
 				url: `${original}/redirect`,
-				domain: [original, redirected],
+				hostOrigins: [original, redirected],
 				props: definitions,
 			});
 			const instance = Component({
@@ -154,7 +154,7 @@ describe("Array prop transport", () => {
 				tag: "array-transport-admission",
 				url: "https://host.example.com/widget",
 				props: definitions,
-				timeout: 100,
+				initTimeout: 100,
 			});
 			const instance = Component({
 				items: kind === "hole" ? new Array<string | undefined>(1) : [undefined],

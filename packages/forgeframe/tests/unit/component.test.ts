@@ -57,11 +57,11 @@ describe("Component Creation", () => {
 		{ url: 123 },
 		{ url: {} },
 		{ tag: ["valid-tag"] },
-		{ defaultContext: "unsupported" },
-		{ timeout: Infinity },
-		{ timeout: NaN },
-		{ timeout: -1 },
-		{ timeout: "1000" },
+		{ context: "unsupported" },
+		{ initTimeout: Infinity },
+		{ initTimeout: NaN },
+		{ initTimeout: -1 },
+		{ initTimeout: "1000" },
 		{ timeout: 2147483648 },
 	])(
 		"rejects invalid JavaScript configuration before registration: %j",
@@ -140,7 +140,7 @@ describe("Component Creation", () => {
 			create({
 				tag: "domain-policy-component",
 				url: "https://attacker.example.com/widget",
-				domain: "https://trusted.example.com",
+				hostOrigins: "https://trusted.example.com",
 			}),
 		).toThrow("is not allowed by the configured domain policy");
 	});
@@ -148,7 +148,7 @@ describe("Component Creation", () => {
 	it("should validate function URLs before rendering them", async () => {
 		const DynamicComponent = create({
 			tag: "dynamic-unsafe-url-component",
-			domain: "*",
+			hostOrigins: "*",
 			url: () => "javascript:alert(1)",
 		});
 		const instance = DynamicComponent({});
@@ -170,7 +170,7 @@ describe("Component Creation", () => {
 		});
 		const DynamicComponent = create({
 			tag: "retryable-dynamic-url-component",
-			domain: "https://example.com",
+			hostOrigins: "https://example.com",
 			url: resolveUrl,
 		});
 		const instance = DynamicComponent({});
@@ -275,8 +275,8 @@ describe("Component Creation", () => {
 	});
 
 	it.each([
-		{ option: "domain", value: "" },
-		{ option: "domain", value: " " },
+		{ option: "hostOrigins", value: "" },
+		{ option: "hostOrigins", value: " " },
 		{ option: "peers", value: ["https://partner.example.com", ""] },
 		{ option: "peers", value: null },
 	] as const)(
@@ -295,7 +295,7 @@ describe("Component Creation", () => {
 		},
 	);
 
-	it.each(["domain", "peers"])(
+	it.each(["hostOrigins", "peers"])(
 		"rejects an empty %s array, which would match no origin",
 		(option) => {
 			expect(() =>
@@ -345,7 +345,7 @@ describe("Component Creation", () => {
 				}),
 			}),
 		).toThrow(
-			"Component domain is required when url is a function: list the host origins the function may return, or pass '*' to trust any http(s) origin.",
+			"Component hostOrigins is required when url is a function: list the host origins the function may return, or pass '*' to trust any http(s) origin.",
 		);
 		expect(getComponent("function-url-without-domain")).toBeUndefined();
 	});
@@ -685,7 +685,7 @@ describe("Component Creation", () => {
 		const PopupComponent = create({
 			tag: "popup-component",
 			url: "https://example.com",
-			defaultContext: CONTEXT.POPUP,
+			context: CONTEXT.POPUP,
 		});
 		const instance = PopupComponent({});
 
@@ -696,7 +696,7 @@ describe("Component Creation", () => {
 	it("should materialize function url options from the latest normalized props", async () => {
 		const DynamicUrlComponent = create({
 			tag: "dynamic-url-component",
-			domain: "https://example.com",
+			hostOrigins: "https://example.com",
 			url: (props) => `https://example.com/${props.path}`,
 			props: {
 				path: { schema: prop.string() },
@@ -750,7 +750,7 @@ describe("Component Instance", () => {
 		const Component = create({
 			tag: "lazy-message-listener-component",
 			url: "https://host.example.com/widget",
-			timeout: 50,
+			initTimeout: 50,
 		});
 
 		const unrendered = Component();
@@ -778,7 +778,7 @@ describe("Component Instance", () => {
 		const validate = vi.fn((_options: { props: { amount: number } }) => {});
 		const CoercedComponent = create({
 			tag: "coerced-callback-component",
-			domain: "https://example.com",
+			hostOrigins: "https://example.com",
 			url: resolveUrl,
 			props: { amount: { schema: z.coerce.number() } },
 			validate,
@@ -904,7 +904,7 @@ describe("Component Instance", () => {
 		const MutableUrlComponent = create({
 			tag: "mutable-url-schema-component",
 			url: (props) => props.target.href,
-			domain: safeOrigin,
+			hostOrigins: safeOrigin,
 			props: {
 				target: z
 					.instanceof(URL)
@@ -925,7 +925,7 @@ describe("Component Instance", () => {
 		const allowedOrigins = new Set(["https://safe.example.com"]);
 		const PolicyComponent = create({
 			tag: "time-varying-schema-policy-component",
-			domain: "https://safe.example.com",
+			hostOrigins: "https://safe.example.com",
 			url: (props) => props.targetUrl,
 			props: {
 				targetUrl: z
@@ -953,7 +953,7 @@ describe("Component Instance", () => {
 		const sharedDefault = { href: `${safeOrigin}/component` };
 		const DefaultPolicyComponent = create({
 			tag: "mutable-default-policy-component",
-			domain: safeOrigin,
+			hostOrigins: safeOrigin,
 			url: (props) => props.target.href,
 			props: {
 				target: {
@@ -984,7 +984,7 @@ describe("Component Instance", () => {
 		const safeOrigin = "https://safe.example.com";
 		const PolicyComponent = create({
 			tag: "mutable-normalized-policy-component",
-			domain: safeOrigin,
+			hostOrigins: safeOrigin,
 			url: (props) => props.target.href,
 			props: {
 				target: z.object({
@@ -1036,7 +1036,7 @@ describe("Component Instance", () => {
 		const safeOrigin = "https://safe.example.com";
 		const RenderComponent = create({
 			tag: "render-mutated-normalized-policy-component",
-			domain: safeOrigin,
+			hostOrigins: safeOrigin,
 			url: (props) => props.target.href,
 			props: {
 				target: z.object({
@@ -1108,7 +1108,10 @@ describe("Component Instance", () => {
 	it("should open the updated url origin when props change before the first render", async () => {
 		const DynamicUrlComponent = create({
 			tag: "dynamic-origin-trust-component",
-			domain: ["https://origin-a.example.com", "https://origin-b.example.com"],
+			hostOrigins: [
+				"https://origin-a.example.com",
+				"https://origin-b.example.com",
+			],
 			url: (props) => props.targetUrl,
 			props: {
 				targetUrl: { schema: prop.string() },
@@ -1146,7 +1149,7 @@ describe("Component Instance", () => {
 		const DynamicUrlComponent = create({
 			tag: "dynamic-url-render-snapshot-component",
 			url: resolveDynamicUrl,
-			domain: [firstOrigin, secondOrigin],
+			hostOrigins: [firstOrigin, secondOrigin],
 		});
 		const instance = DynamicUrlComponent({});
 		const container = document.createElement("div");
@@ -1173,7 +1176,10 @@ describe("Component Instance", () => {
 	it("should apply idle updateProps synchronously before awaiting", async () => {
 		const DynamicUrlComponent = create({
 			tag: "dynamic-origin-sync-update-component",
-			domain: ["https://origin-a.example.com", "https://origin-b.example.com"],
+			hostOrigins: [
+				"https://origin-a.example.com",
+				"https://origin-b.example.com",
+			],
 			url: (props) => props.targetUrl,
 			props: {
 				targetUrl: { schema: prop.string() },
@@ -1203,7 +1209,10 @@ describe("Component Instance", () => {
 	it("should reject url origin changes after render", async () => {
 		const DynamicUrlComponent = create({
 			tag: "dynamic-origin-after-render-component",
-			domain: ["https://origin-a.example.com", "https://origin-b.example.com"],
+			hostOrigins: [
+				"https://origin-a.example.com",
+				"https://origin-b.example.com",
+			],
 			url: (props) => props.targetUrl,
 			props: {
 				targetUrl: { schema: prop.string() },
@@ -1504,14 +1513,14 @@ describe("Host Context Detection", () => {
 			const SharedComponent = create({
 				tag: "peer-domains-shared",
 				url: "https://widgets-a.myapp.example/widget",
-				domain: "https://*.myapp.example",
+				hostOrigins: "https://*.myapp.example",
 				peers: "https://*.myapp.example",
 			});
 			const PrivateComponent = create({
 				tag: "peer-domains-private",
 				peers: true,
 				url: "https://widgets-a.myapp.example/private",
-				domain: "https://*.myapp.example",
+				hostOrigins: "https://*.myapp.example",
 			});
 
 			const requester = SharedComponent({});

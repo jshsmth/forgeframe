@@ -707,7 +707,7 @@ await props.reportError(new Error('Something failed'));
 await props.export({ validate: () => true });
 
 props.getConsumer();
-props.getConsumerDomain();
+props.consumerOrigin;
 props.consumer.props;
 
 const peers = await props.getPeerInstances();

@@ -221,7 +221,7 @@ describe("Consumer lifecycle behavior", () => {
 	it("should surface waitForHost timeout on the error event", async () => {
 		vi.useFakeTimers();
 		const onError = vi.fn();
-		const consumer = createConsumer({ timeout: 5 });
+		const consumer = createConsumer({ initTimeout: 5 });
 		consumer.event.on("error", onError);
 		const waitForHost = (
 			consumer as unknown as {
@@ -245,7 +245,7 @@ describe("Consumer lifecycle behavior", () => {
 
 	it("should resolve waitForHost when INIT handler runs", async () => {
 		vi.useFakeTimers();
-		const consumer = createConsumer({ timeout: 50 });
+		const consumer = createConsumer({ initTimeout: 50 });
 		const internal = getInternals(consumer);
 		const waitForHost = internal.waitForHost;
 		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
@@ -266,7 +266,7 @@ describe("Consumer lifecycle behavior", () => {
 
 	it("should resolve waitForHost when INIT arrives before waiting starts", async () => {
 		vi.useFakeTimers();
-		const consumer = createConsumer({ timeout: 50 });
+		const consumer = createConsumer({ initTimeout: 50 });
 		const internal = getInternals(consumer);
 		const waitForHost = internal.waitForHost;
 		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
@@ -314,7 +314,7 @@ describe("Consumer lifecycle behavior", () => {
 		const redirectedOrigin = "https://redirected-host.example.com";
 		const consumer = createConsumer(
 			{
-				domain: [configuredOrigin, redirectedOrigin],
+				hostOrigins: [configuredOrigin, redirectedOrigin],
 				props: {
 					amount: { schema: prop.number() },
 				},
@@ -488,7 +488,7 @@ describe("Consumer lifecycle behavior", () => {
 
 	it("should ignore spoofed INIT from a different trusted window and accept the opened host window", async () => {
 		vi.useFakeTimers();
-		const consumer = createConsumer({ timeout: 50 });
+		const consumer = createConsumer({ initTimeout: 50 });
 		const internal = getInternals(consumer);
 		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
 		const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
@@ -771,7 +771,7 @@ describe("Consumer lifecycle behavior", () => {
 			tag: "peer-scope-opaque",
 			peers: true,
 			url: "https://host.example.com/opaque",
-			domain: "*",
+			hostOrigins: "*",
 		});
 		const [requester, otherProvider] = trackInstances(
 			OpaqueComponent(),
@@ -964,7 +964,7 @@ describe("Consumer lifecycle behavior", () => {
 		);
 
 		const consumer = createConsumer({
-			defaultContext: CONTEXT.POPUP,
+			context: CONTEXT.POPUP,
 		});
 		const closeSpy = vi.spyOn(consumer, "close");
 
@@ -1176,7 +1176,7 @@ describe("Consumer lifecycle behavior", () => {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 		const onError = vi.fn();
-		const consumer = createConsumer({ timeout: 1000 });
+		const consumer = createConsumer({ initTimeout: 1000 });
 		consumer.event.on("error", onError);
 		const internal = getInternals(consumer);
 
@@ -1277,7 +1277,7 @@ describe("Consumer lifecycle behavior", () => {
 			closed: false,
 			close: vi.fn(),
 		} as unknown as Window;
-		const consumer = createConsumer({ defaultContext: CONTEXT.POPUP });
+		const consumer = createConsumer({ context: CONTEXT.POPUP });
 
 		vi.spyOn(popupRender, "openPopup").mockImplementation(() => {
 			void consumer.close();
@@ -1304,7 +1304,7 @@ describe("Consumer lifecycle behavior", () => {
 		document.body.appendChild(container);
 		let dimensionCalls = 0;
 		const consumer = createConsumer({
-			defaultContext: CONTEXT.POPUP,
+			context: CONTEXT.POPUP,
 			dimensions: () => {
 				dimensionCalls += 1;
 				if (dimensionCalls === 2) {

@@ -11,10 +11,10 @@ export interface NormalizedOptions<P extends Record<string, unknown>> {
 	tag: string;
 	url: string | ((props: P) => string);
 	props: PropsDefinition<P>;
-	defaultContext: ContextType;
+	context: ContextType;
 	dimensions: Dimensions | ((props: P) => Dimensions);
-	timeout: number;
-	domain?: ComponentOptions<P>["domain"];
+	initTimeout: number;
+	hostOrigins?: ComponentOptions<P>["hostOrigins"];
 	peers?: ComponentOptions<P>["peers"];
 	sandbox?: ComponentOptions<P>["sandbox"];
 	containerTemplate?: ComponentOptions<P>["containerTemplate"];
@@ -23,5 +23,6 @@ export interface NormalizedOptions<P extends Record<string, unknown>> {
 	attributes?: ComponentOptions<P>["attributes"];
 	style?: ComponentOptions<P>["style"];
 	cspNonce?: string;
-	exports?: ComponentOptions<P>["exports"];
+	/** The component's `exports` option: a schema, not exported values. */
+	exportsSchema?: ComponentOptions<P>["exports"];
 }

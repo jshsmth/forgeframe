@@ -3,28 +3,30 @@
  */
 
 /**
- * Pattern for matching domains in security configurations.
+ * Pattern for matching origins in security configurations.
  *
  * @remarks
- * Can be a single domain string, a RegExp pattern, or an array of string/RegExp patterns.
- * String patterns support `*` wildcards (for example, `'https://*.example.com'`).
+ * An origin is a scheme, host and port, such as `https://app.example.com`;
+ * a bare host such as `example.com` never matches. Can be a single origin
+ * string, a RegExp pattern, or an array of string/RegExp patterns. String
+ * patterns support `*` wildcards (for example, `'https://*.example.com'`).
  *
  * @example
  * ```typescript
- * // Single domain
- * const domain: DomainMatcher = 'https://example.com';
+ * // Single origin
+ * const origin: OriginMatcher = 'https://example.com';
  *
  * // RegExp pattern
- * const pattern: DomainMatcher = /^https:\/\/.*\.example\.com$/;
+ * const pattern: OriginMatcher = /^https:\/\/.*\.example\.com$/;
  *
  * // Multiple patterns (can mix strings and RegExp)
- * const domains: DomainMatcher = ['https://*.example.com', /^https:\/\/api\d+\.example\.com$/];
+ * const origins: OriginMatcher = ['https://*.example.com', /^https:\/\/api\d+\.example\.com$/];
  * ```
  *
  * @public
  */
-type DomainPattern = string | RegExp;
-export type DomainMatcher = DomainPattern | DomainPattern[];
+type OriginPattern = string | RegExp;
+export type OriginMatcher = OriginPattern | OriginPattern[];
 
 /**
  * Component dimension specification.

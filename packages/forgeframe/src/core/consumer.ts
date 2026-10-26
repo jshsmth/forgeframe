@@ -48,6 +48,7 @@ import {
 import { ConsumerRenderer } from "./consumer/renderer";
 import { ConsumerTransport } from "./consumer/transport";
 import type { NormalizedOptions } from "./consumer/types";
+import { resolveRenderContext } from "./render-context";
 
 /**
  * Consumer-side component implementation.
@@ -254,14 +255,11 @@ export class ConsumerComponent<
 		context: ContextType | undefined,
 		earlierPropsWork: Promise<void> | null,
 	): Promise<void> {
-		const resolvedContext = context ?? this.options.defaultContext;
-		if (
-			resolvedContext !== CONTEXT.IFRAME &&
-			resolvedContext !== CONTEXT.POPUP
-		) {
-			throw new Error('Render context must be "iframe" or "popup"');
-		}
-		this.renderer.context = resolvedContext;
+		this.renderer.context = resolveRenderContext(
+			context,
+			this.options.context,
+			"Render context",
+		);
 		if (earlierPropsWork) {
 			await earlierPropsWork;
 			this.assertRenderActive();
@@ -277,7 +275,7 @@ export class ConsumerComponent<
 			baseUrl = resolveComponentHostUrl(
 				rawUrl,
 				document.baseURI,
-				this.options.domain,
+				this.options.hostOrigins,
 			).href;
 			this.transport.syncTrustedDomainForUrl(baseUrl);
 		} catch (error) {
@@ -551,12 +549,14 @@ export class ConsumerComponent<
 	 * @internal
 	 */
 	private normalizeOptions(options: ComponentOptions<P>): NormalizedOptions<P> {
+		const { exports: exportsSchema, ...rest } = options;
 		return {
-			...options,
+			...rest,
 			props: options.props ?? (EMPTY_PROP_DEFINITIONS as PropsDefinition<P>),
-			defaultContext: options.defaultContext ?? CONTEXT.IFRAME,
+			context: options.context ?? CONTEXT.IFRAME,
 			dimensions: options.dimensions ?? { width: "100%", height: "100%" },
-			timeout: options.timeout ?? 10000,
+			initTimeout: options.initTimeout ?? 10000,
+			exportsSchema,
 		};
 	}
 
@@ -590,8 +590,11 @@ export class ConsumerComponent<
 	 * @internal
 	 */
 	private resolveUrlOrigin(url: string): string {
-		return resolveComponentHostUrl(url, document.baseURI, this.options.domain)
-			.origin;
+		return resolveComponentHostUrl(
+			url,
+			document.baseURI,
+			this.options.hostOrigins,
+		).origin;
 	}
 
 	/**
@@ -720,7 +723,7 @@ export class ConsumerComponent<
 	 */
 	private async waitForHost(): Promise<void> {
 		await this.transport.waitForHost(
-			this.options.timeout,
+			this.options.initTimeout,
 			this.options.tag,
 			(error) => {
 				if (!this.isRenderCancelled()) {
@@ -795,7 +798,7 @@ export class ConsumerComponent<
 	 */
 	private acceptExports(exports: RemoteValue<X>): void {
 		try {
-			validateExports(this.options.exports, exports);
+			validateExports(this.options.exportsSchema, exports);
 		} catch (error) {
 			this.#emitter.emit(EVENT.ERROR, error as Error);
 			throw error;

@@ -1,4 +1,4 @@
-import type { DomainMatcher } from "../types/utility";
+import type { OriginMatcher } from "../types/utility";
 import {
 	compileWildcardDomainPattern,
 	testDomainRegExpStateless,
@@ -69,7 +69,7 @@ export function getDomain(win: Window = window): string {
  *
  * @internal
  */
-export function matchDomain(pattern: DomainMatcher, domain: string): boolean {
+export function matchDomain(pattern: OriginMatcher, domain: string): boolean {
 	if (typeof pattern === "string") {
 		if (pattern === "*") return true;
 		const wildcardPattern = compileWildcardDomainPattern(pattern);

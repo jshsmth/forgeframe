@@ -1,4 +1,4 @@
-import type { DomainMatcher } from "../../types/utility";
+import type { OriginMatcher } from "../../types/utility";
 import { matchDomain } from "../../window/helpers";
 
 export const CONSUMER_ORIGIN_VERIFICATION_ERROR =
@@ -10,7 +10,7 @@ export const CONSUMER_ORIGIN_VERIFICATION_ERROR =
  * @internal
  */
 export function assertAllowedConsumerDomain(
-	consumerOrigins: DomainMatcher,
+	consumerOrigins: OriginMatcher,
 	consumerDomain: string,
 	tag: string,
 ): void {
@@ -36,7 +36,7 @@ export function assertAllowedConsumerDomain(
  */
 export function validateMessagingConsumerContext(
 	consumerDomain: string,
-	consumerOrigins: DomainMatcher,
+	consumerOrigins: OriginMatcher,
 	tag: string,
 ): string {
 	let origin: URL;

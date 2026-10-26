@@ -8,7 +8,7 @@
  * pure policy in `consumer-origin-policy.ts` to select the messaging target.
  */
 
-import type { DomainMatcher } from "../../types/utility";
+import type { OriginMatcher } from "../../types/utility";
 import {
 	getConsumer,
 	getOpener,
@@ -65,7 +65,7 @@ export function getAccessibleConsumerOrigin(
 export function resolveMessagingConsumerContext(options: {
 	consumerWindow: Window;
 	claimedConsumerDomain: string;
-	consumerOrigins: DomainMatcher;
+	consumerOrigins: OriginMatcher;
 	tag: string;
 }): string {
 	const consumerDomain =

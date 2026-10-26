@@ -655,9 +655,9 @@ Evidence: [utilities](#evidence-utilities), [dimension.test](../packages/forgefr
 
 ### [utils/domain-pattern.ts](../packages/forgeframe/src/utils/domain-pattern.ts)
 
-Wildcard compilation and stateless regex testing are cohesive algorithms. Keep the compile cache and the `lastIndex` protection. `assertDomainMatcher` rejects configured matchers that would silently disable or widen an origin policy: values other than non-empty strings, `RegExp`s, or arrays of them. An empty array matches nothing, so it is rejected unless the caller passes `"allowed"`, which only the `consumerOrigins` allowlist does, to fail closed.
+Wildcard compilation and stateless regex testing are cohesive algorithms. Keep the compile cache and the `lastIndex` protection. `assertOriginMatcher` rejects configured matchers that would silently disable or widen an origin policy: values other than non-empty strings, `RegExp`s, or arrays of them. An empty array matches nothing, so it is rejected unless the caller passes `"allowed"`, which only the `consumerOrigins` allowlist does, to fail closed.
 
-- **O:** `escapeRegExp`, `compileWildcardDomainPattern`, `testDomainRegExpStateless`, `assertDomainMatcher`, `assertDomainMatcher.isPattern`.
+- **O:** `escapeRegExp`, `compileWildcardDomainPattern`, `testDomainRegExpStateless`, `assertOriginMatcher`, `assertOriginMatcher.isPattern`.
 - **O callbacks:** ``compileWildcardDomainPattern.callback@43``.
 
 Evidence: [utilities](#evidence-utilities); typecheck.

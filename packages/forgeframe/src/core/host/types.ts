@@ -17,7 +17,7 @@ import type { SerializedProps } from "../../props/types";
 import type { HostEvents } from "../../types/events";
 import type { PropsDefinition } from "../../types/props";
 import type { GetPeerInstancesOptions, PeerInfo } from "../../types/runtime";
-import type { Dimensions, DomainMatcher } from "../../types/utility";
+import type { Dimensions, OriginMatcher } from "../../types/utility";
 
 export type VerifiedMessageSource = Parameters<MessageHandler>[1];
 
@@ -27,7 +27,7 @@ export interface HostRuntimeOptions<P> {
 	/** Checks each export before it is sent; without it, exports are sent unchecked. */
 	exports?: StandardSchemaV1;
 	/** Checked against the selected consumer origin before BOOTSTRAP is sent. */
-	consumerOrigins: DomainMatcher;
+	consumerOrigins: OriginMatcher;
 	/** Sends INIT as soon as `ready` resolves; otherwise INIT waits for `init()`. */
 	autoInit?: boolean;
 	/** Runs first in `destroy()`, before resources are released. */

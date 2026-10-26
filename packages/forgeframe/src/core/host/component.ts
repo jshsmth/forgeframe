@@ -13,7 +13,7 @@ import { validateExports } from "../../props/exports";
 import type { StandardSchemaV1 } from "../../props/schema";
 import type { HostEvents } from "../../types/events";
 import type { HostProps } from "../../types/runtime";
-import type { DomainMatcher } from "../../types/utility";
+import type { OriginMatcher } from "../../types/utility";
 import { normalizeError } from "../../utils/error";
 import type { HostBootstrapData, WindowNamePayload } from "../../window/types";
 import { assertAllowedConsumerDomain } from "./consumer-origin-policy";
@@ -45,7 +45,7 @@ export class HostComponent<P extends Record<string, unknown>> {
 
 	private destroyed = false;
 
-	private readonly consumerOrigins: DomainMatcher;
+	private readonly consumerOrigins: OriginMatcher;
 
 	private readonly exportsSchema?: StandardSchemaV1;
 

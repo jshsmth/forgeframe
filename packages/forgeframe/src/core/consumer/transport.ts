@@ -24,7 +24,7 @@ import type {
 	PeerInfo,
 	RemoteValue,
 } from "../../types/runtime";
-import type { Dimensions, DomainMatcher } from "../../types/utility";
+import type { Dimensions, OriginMatcher } from "../../types/utility";
 import { createDeferred, promiseTimeout } from "../../utils/promise";
 import { getDomain, isWindowClosed, matchDomain } from "../../window/helpers";
 import {
@@ -127,13 +127,13 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 	/**
 	 * Builds trusted domains used to initialize messenger security checks.
 	 */
-	private buildTrustedDomains(): DomainMatcher | undefined {
+	private buildTrustedDomains(): OriginMatcher | undefined {
 		const hostOrigin =
 			typeof this.options.url === "string"
 				? this.resolveUrlOrigin(this.options.url)
 				: null;
 		if (hostOrigin) this.staticUrlTrustedOrigin = hostOrigin;
-		return collectTrustedDomains(this.options.domain, hostOrigin);
+		return collectTrustedDomains(this.options.hostOrigins, hostOrigin);
 	}
 
 	/**
@@ -146,7 +146,7 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 	 * follows the document base, so the trusted origin moves with it.
 	 */
 	syncTrustedDomainForUrl(url: string): void {
-		if (this.options.domain !== undefined) return;
+		if (this.options.hostOrigins !== undefined) return;
 		const origin = this.resolveUrlOrigin(url);
 		const previousOrigin = this.staticUrlTrustedOrigin;
 		if (previousOrigin && previousOrigin !== origin) {
@@ -480,7 +480,7 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 				this.openedHostDomain &&
 				source.window === this.hostWindow &&
 				matchDomain(
-					this.options.domain ?? this.openedHostDomain,
+					this.options.hostOrigins ?? this.openedHostDomain,
 					source.domain,
 				),
 		);
@@ -529,9 +529,9 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 
 /** Selects configured matchers or the static URL origin from supplied data. */
 function collectTrustedDomains(
-	configuredDomain: DomainMatcher | undefined,
+	configuredDomain: OriginMatcher | undefined,
 	hostOrigin: string | null,
-): DomainMatcher | undefined {
+): OriginMatcher | undefined {
 	const domains: Array<string | RegExp> = [];
 	if (hostOrigin && !configuredDomain) domains.push(hostOrigin);
 

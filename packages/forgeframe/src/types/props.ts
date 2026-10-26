@@ -3,7 +3,7 @@
  */
 
 import type { StandardSchemaV1 } from "../props/schema";
-import type { DomainMatcher } from "./utility";
+import type { OriginMatcher } from "./utility";
 
 /**
  * Host origins a prop is delivered to.
@@ -11,11 +11,11 @@ import type { DomainMatcher } from "./utility";
  * @remarks
  * `'same-origin'` delivers only to a host verified to share the consumer's
  * origin, so the prop never appears in the initial URL or POST body. A
- * {@link DomainMatcher} delivers to the host origins it admits.
+ * {@link OriginMatcher} delivers to the host origins it admits.
  *
  * @public
  */
-export type PropDelivery = "same-origin" | DomainMatcher;
+export type PropDelivery = "same-origin" | OriginMatcher;
 
 /**
  * Definition for a single component prop: its schema plus transport options.

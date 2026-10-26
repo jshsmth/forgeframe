@@ -41,7 +41,7 @@ describe("playground cross-window text", () => {
 			[key]: markup,
 			tag: markup,
 			uid: markup,
-			getConsumerDomain: () => markup,
+			consumerOrigin: markup,
 			onProps,
 			onGreet,
 			export: exported,

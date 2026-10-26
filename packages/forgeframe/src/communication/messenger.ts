@@ -7,7 +7,7 @@
  */
 
 import { MESSAGE_TYPE } from "../constants";
-import type { DomainMatcher } from "../types/utility";
+import type { OriginMatcher } from "../types/utility";
 import {
 	compileWildcardDomainPattern,
 	testDomainRegExpStateless,
@@ -148,7 +148,7 @@ export class Messenger {
 		private channelUid: string,
 		private win: Window = window,
 		private domain: string = window.location.origin,
-		trustedDomains?: DomainMatcher,
+		trustedDomains?: OriginMatcher,
 		listenImmediately = true,
 	) {
 		if (!isOpaqueOrigin(domain)) this.allowedOrigins.add(domain);
@@ -174,7 +174,7 @@ export class Messenger {
 	 *
 	 * @param domain - Domain pattern to trust (string, RegExp, or array)
 	 */
-	addTrustedDomain(domain: DomainMatcher): void {
+	addTrustedDomain(domain: OriginMatcher): void {
 		if (Array.isArray(domain)) {
 			for (const d of domain) {
 				this.addTrustedDomain(d);
@@ -199,7 +199,7 @@ export class Messenger {
 	 *
 	 * @param domain - Domain pattern to remove (string, RegExp, or array)
 	 */
-	removeTrustedDomain(domain: DomainMatcher): void {
+	removeTrustedDomain(domain: OriginMatcher): void {
 		if (Array.isArray(domain)) {
 			for (const d of domain) {
 				this.removeTrustedDomain(d);

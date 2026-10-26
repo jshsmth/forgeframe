@@ -45,14 +45,14 @@ create({
 create({
 	tag: "typed-function-url-with-domain",
 	url: (props) => `https://widgets.example.com/${props.path}`,
-	domain: "https://widgets.example.com",
+	hostOrigins: "https://widgets.example.com",
 	props: { path: prop.string() },
 });
 
 create({
 	tag: "typed-function-url-any-origin",
 	url: () => "https://tenant.example.com/widget",
-	domain: "*",
+	hostOrigins: "*",
 });
 
 create({ tag: "typed-peers-true", url: "https://a.example.com", peers: true });

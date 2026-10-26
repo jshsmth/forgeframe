@@ -12,8 +12,8 @@
 import { EMPTY_PROP_DEFINITIONS } from "../../props/definitions";
 import type { StandardSchemaV1 } from "../../props/schema";
 import type { PropsDefinition } from "../../types/props";
-import type { DomainMatcher } from "../../types/utility";
-import { assertDomainMatcher } from "../../utils/domain-pattern";
+import type { OriginMatcher } from "../../types/utility";
+import { assertOriginMatcher } from "../../utils/domain-pattern";
 import { getComponentOptions } from "../component-registry";
 import { assertPropDefinitionsObject } from "./builtin-keys";
 
@@ -35,7 +35,7 @@ export interface HostStartOptions {
 	 * absent for the tag-agnostic form.
 	 */
 	exports?: StandardSchemaV1;
-	consumerOrigins: DomainMatcher;
+	consumerOrigins: OriginMatcher;
 	autoInit: boolean;
 }
 
@@ -100,6 +100,11 @@ function readInitHostOptions(
 				"initHost(Component, options) does not take props; the component supplies its own prop definitions.",
 			);
 		}
+		if (key === "allowedConsumerDomains") {
+			throw callShapeError(
+				'initHost() option "allowedConsumerDomains" was renamed to consumerOrigins.',
+			);
+		}
 		if (key !== "consumerOrigins" && key !== "autoInit" && key !== "props") {
 			throw callShapeError(`initHost() does not accept the "${key}" option.`);
 		}
@@ -107,11 +112,11 @@ function readInitHostOptions(
 	const { consumerOrigins, autoInit, props } = value as Record<string, unknown>;
 	if (consumerOrigins === undefined) {
 		throw callShapeError(
-			"initHost() requires consumerOrigins, the consumer origins allowed to embed this host; pass '*' to allow any origin. See https://github.com/jshsmth/forgeframe#domain-security.",
+			"initHost() requires consumerOrigins, the consumer origins allowed to embed this host; pass '*' to allow any origin. See https://github.com/jshsmth/forgeframe#origin-security.",
 		);
 	}
 	try {
-		assertDomainMatcher(
+		assertOriginMatcher(
 			consumerOrigins,
 			"initHost() consumerOrigins",
 			"allowed",
@@ -131,7 +136,7 @@ function readInitHostOptions(
 		assertPropDefinitionsObject(props);
 	}
 	return {
-		consumerOrigins: consumerOrigins as DomainMatcher,
+		consumerOrigins: consumerOrigins as OriginMatcher,
 		autoInit: autoInit ?? true,
 		props: props as PropsDefinition<Record<string, unknown>> | undefined,
 	};

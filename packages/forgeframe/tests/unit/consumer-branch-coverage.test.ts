@@ -110,7 +110,7 @@ describe("Consumer branch coverage and edge paths", () => {
 	it("should trust domain option when configured as string", () => {
 		const consumer = createConsumer({
 			url: "https://trusted.example.com/widget",
-			domain: "https://trusted.example.com",
+			hostOrigins: "https://trusted.example.com",
 		});
 		const allowedOrigins = Array.from(
 			getInternals(consumer).transport.messenger.allowedOrigins,
@@ -122,7 +122,7 @@ describe("Consumer branch coverage and edge paths", () => {
 	it("should trust domain option when configured as array", () => {
 		const consumer = createConsumer({
 			url: "https://trusted-a.example.com/widget",
-			domain: [
+			hostOrigins: [
 				"https://trusted-a.example.com",
 				"https://trusted-b.example.com",
 			],
@@ -138,7 +138,7 @@ describe("Consumer branch coverage and edge paths", () => {
 	it("should trust mixed array domain option entries including RegExp", () => {
 		const consumer = createConsumer({
 			url: "https://api.trusted.example.com/widget",
-			domain: [
+			hostOrigins: [
 				"https://trusted-a.example.com",
 				/^https:\/\/.*\.trusted\.example\.com$/,
 			],
@@ -159,7 +159,7 @@ describe("Consumer branch coverage and edge paths", () => {
 	it("should trust domain option when configured as RegExp", () => {
 		const consumer = createConsumer({
 			url: "https://api.trusted.example.com/widget",
-			domain: /^https:\/\/.*\.trusted\.example\.com$/,
+			hostOrigins: /^https:\/\/.*\.trusted\.example\.com$/,
 		});
 		const patterns =
 			getInternals(consumer).transport.messenger.allowedOriginPatterns;
@@ -254,7 +254,7 @@ describe("Consumer branch coverage and edge paths", () => {
 
 	it("should reject a URL origin outside the configured domain policy", () => {
 		expect(() =>
-			createConsumer({ domain: "https://trusted.example.com" }),
+			createConsumer({ hostOrigins: "https://trusted.example.com" }),
 		).toThrow("is not allowed by the configured domain policy");
 	});
 

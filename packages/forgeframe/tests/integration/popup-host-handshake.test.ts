@@ -65,7 +65,7 @@ describe("Popup host handshake integration", () => {
 			message: "Popup ready",
 		});
 		expect(hostProps.getConsumer()).toBe(harness.consumerWindow);
-		expect(hostProps.getConsumerDomain()).toBe(harness.consumerOrigin);
+		expect(hostProps.consumerOrigin).toBe(harness.consumerOrigin);
 		expect(container.childElementCount).toBe(0);
 		expect(container.isConnected).toBe(true);
 
@@ -82,7 +82,7 @@ describe("Popup host handshake integration", () => {
 			tag: "integration-popup-held-update",
 			url: "https://host.example.com/widget",
 			props: POPUP_PROP_DEFINITIONS,
-			defaultContext: "popup",
+			context: "popup",
 		});
 		const instance = PopupComponent({ amount: 1, message: "first" });
 		const rendering = instance.render(container);
@@ -172,7 +172,7 @@ describe("Popup host handshake integration", () => {
 		const PopupComponent = create({
 			tag: "integration-popup-timeout",
 			url: "https://host.example.com/widget",
-			timeout: 10,
+			initTimeout: 10,
 		});
 		const instance = PopupComponent({});
 		const closeSpy = vi.spyOn(harness.hostWindow, "close");

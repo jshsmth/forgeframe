@@ -282,7 +282,7 @@ void defaultedHostValue;
 
 const WrappedPresenceComponent = create({
 	tag: "wrapped-presence-component",
-	domain: "https://example.com",
+	hostOrigins: "https://example.com",
 	url: (props) => {
 		const requiredValue: string = props.requiredWrapper;
 		const optionalValue: string | undefined = props.optionalWrapper;
@@ -461,7 +461,7 @@ const dateInput = z
 	.transform((value) => new Date(value));
 const CoercingComponent = create({
 	tag: "coercing-component",
-	domain: "https://example.com",
+	hostOrigins: "https://example.com",
 	url: (props) => {
 		const amount: number = props.amount;
 		const startsAt: Date = props.startsAt;

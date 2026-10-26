@@ -40,7 +40,7 @@ describe("Consumer navigation admission", () => {
 			create({
 				tag: "relative-origin-policy",
 				url: "/widget",
-				domain: window.location.origin,
+				hostOrigins: window.location.origin,
 			}),
 		).toThrow(
 			'Component URL origin "https://untrusted.example" is not allowed',
@@ -53,8 +53,8 @@ describe("Consumer navigation admission", () => {
 			const consumer = new ConsumerComponent<Record<string, unknown>>({
 				tag: "changed-base-policy",
 				...(dynamic
-					? { url: () => "/widget", domain: window.location.origin }
-					: { url: "/widget", domain: window.location.origin }),
+					? { url: () => "/widget", hostOrigins: window.location.origin }
+					: { url: "/widget", hostOrigins: window.location.origin }),
 			});
 			const { container } = mount(consumer);
 			setBase("https://untrusted.example/");
@@ -71,7 +71,7 @@ describe("Consumer navigation admission", () => {
 			{
 				tag: "pinned-base-navigation",
 				url: () => "widget#checkout?step=2",
-				domain: "https://host.example",
+				hostOrigins: "https://host.example",
 				props: {
 					order: {
 						schema: prop.string(),

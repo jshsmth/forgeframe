@@ -34,7 +34,7 @@ export async function runConfigurationScenario(
 			width: props.variant === "wide" ? 480 : 320,
 			height: 320,
 		}),
-		domain: HOST_ORIGIN,
+		hostOrigins: HOST_ORIGIN,
 		props: {
 			scenario: prop.string(),
 			variant: prop.string(),
@@ -476,7 +476,7 @@ export async function runReliabilityScenario(
 			const snapshot = renderUrlCalls === 1 ? "first" : "unexpected-repeat";
 			return `${HOST_URL}?scenario=reliability&snapshot=${snapshot}`;
 		},
-		domain: HOST_ORIGIN,
+		hostOrigins: HOST_ORIGIN,
 		dimensions: { width: "100%", height: 300 },
 		props: {
 			scenario: prop.string(),
@@ -755,7 +755,7 @@ export async function runRedirectScenario(
 		exports: commonActionsExports,
 		tag: uniqueTag("redirect"),
 		url: redirectUrl.toString(),
-		domain: [window.location.origin, HOST_ORIGIN],
+		hostOrigins: [window.location.origin, HOST_ORIGIN],
 		dimensions: { width: "100%", height: 320 },
 		props: {
 			scenario: prop.string(),
@@ -834,7 +834,7 @@ export async function runTimeoutRecoveryScenario(
 		exports: reliabilityExports,
 		tag: uniqueTag("timeout"),
 		url: `${HOST_URL}?scenario=reliability&initDelay=300`,
-		timeout: 100,
+		initTimeout: 100,
 		dimensions: { width: "100%", height: 260 },
 		props: {
 			scenario: prop.string(),
@@ -1047,7 +1047,7 @@ export async function runPopupScenario(
 		exports: popupExports,
 		tag: uniqueTag("popup"),
 		url: `${HOST_URL}?scenario=popup`,
-		defaultContext: "popup",
+		context: "popup",
 		dimensions: { width: 520, height: 420 },
 		props: { scenario: prop.string() },
 	});

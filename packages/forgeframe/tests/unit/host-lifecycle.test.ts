@@ -328,7 +328,7 @@ describe("Host lifecycle behavior", () => {
 		await expect(host.ready).rejects.toThrow(
 			"Validation failed: secret: Required",
 		);
-		expect(host.hostProps.getConsumerDomain()).toBe(window.location.origin);
+		expect(host.hostProps.consumerOrigin).toBe(window.location.origin);
 		expect(getHost()).toBeNull();
 	});
 

@@ -14,9 +14,9 @@ import type {
 import type { ContainerTemplate, PrerenderTemplate } from "./templates";
 import type {
 	Dimensions,
-	DomainMatcher,
 	IframeAttributes,
 	IframeStyles,
+	OriginMatcher,
 } from "./utility";
 
 /**
@@ -198,8 +198,8 @@ export type ComponentOptions<P = Record<string, unknown>> =
  * @typeParam P - The normalized props type for the component
  *
  * @remarks
- * A static `url` may omit `domain`; its own origin is then trusted. A
- * function `url` requires `domain`, so a URL computed from props or
+ * A static `url` may omit `hostOrigins`; its own origin is then trusted. A
+ * function `url` requires `hostOrigins`, so a URL computed from props or
  * configuration never makes an unlisted origin trusted.
  *
  * @public
@@ -212,7 +212,7 @@ export type ComponentUrlOptions<P = Record<string, unknown>> =
 			 * Host origins this component trusts and may open. Defaults to the
 			 * origin of `url`. An empty array is rejected.
 			 */
-			domain?: DomainMatcher;
+			hostOrigins?: OriginMatcher;
 	  }
 	| {
 			/** Function that returns the host URL from the props. */
@@ -222,11 +222,11 @@ export type ComponentUrlOptions<P = Record<string, unknown>> =
 			 * function returns must match; `'*'` trusts any http(s) origin. An
 			 * empty array is rejected.
 			 */
-			domain: DomainMatcher;
+			hostOrigins: OriginMatcher;
 	  };
 
 /**
- * Component options other than `url` and `domain`.
+ * Component options other than `url` and `hostOrigins`.
  *
  * @typeParam P - The normalized props type for the component
  *
@@ -275,10 +275,11 @@ export interface ComponentBaseOptions<P = Record<string, unknown>> {
 	dimensions?: Dimensions | ((props: P) => Dimensions);
 
 	/**
-	 * Default rendering context (iframe or popup).
+	 * Default rendering context (iframe or popup); `render(container, context)`
+	 * overrides it per call.
 	 * @defaultValue 'iframe'
 	 */
-	defaultContext?: ContextType;
+	context?: ContextType;
 
 	/**
 	 * Opts this component in to peer discovery through `getPeerInstances()`.
@@ -290,7 +291,7 @@ export interface ComponentBaseOptions<P = Record<string, unknown>> {
 	 * requesting hosts verified at a matching origin. Hosts with an opaque
 	 * (`"null"`) origin never discover peers and are never listed.
 	 */
-	peers?: true | DomainMatcher;
+	peers?: true | OriginMatcher;
 
 	/**
 	 * The iframe's sandbox attribute.
@@ -343,10 +344,14 @@ export interface ComponentBaseOptions<P = Record<string, unknown>> {
 	style?: IframeStyles | ((props: P) => IframeStyles);
 
 	/**
-	 * Timeout in milliseconds for host initialization.
+	 * Milliseconds the initial handshake may take before `render()` rejects
+	 * with `INIT_TIMEOUT`.
+	 *
+	 * @remarks
+	 * It bounds only the handshake. Remote callbacks have no timeout.
 	 * @defaultValue 10000
 	 */
-	timeout?: number;
+	initTimeout?: number;
 
 	/**
 	 * Content Security Policy nonce for the inline `<style>` of the default
@@ -704,11 +709,10 @@ export interface HostPropsBuiltins<
 	getConsumer: () => Window;
 
 	/**
-	 * Get the consumer window's domain.
-	 *
-	 * @returns Consumer domain string
+	 * The consumer window's origin, verified by the bootstrap exchange and
+	 * matched against `consumerOrigins`.
 	 */
-	getConsumerDomain: () => string;
+	readonly consumerOrigin: string;
 
 	/**
 	 * Export data/methods to the consumer.
@@ -821,7 +825,7 @@ export interface InitHostOptions<P = Record<string, unknown>> {
 	 * before it requests any props. An empty array admits no consumer, and
 	 * `'*'` admits any consumer.
 	 */
-	consumerOrigins: DomainMatcher;
+	consumerOrigins: OriginMatcher;
 
 	/**
 	 * Sends INIT as soon as `ready` resolves.

@@ -312,7 +312,7 @@ test.beforeAll(async () => {
 				import {initHost,prop} from "/library.js";
 				const consumerOrigins = ${JSON.stringify(req.url === "/any-consumer" ? "*" : ["https://excluded.example"])};
 				const host = initHost({props:{label:prop.string()}, consumerOrigins});
-				host.ready.then(props => { window.consumerDomain = props.getConsumerDomain(); window.label = props.label; window.ready = true; },
+				host.ready.then(props => { window.consumerDomain = props.consumerOrigin; window.label = props.label; window.ready = true; },
 					error => { window.failure = error.message; });
 				</script>`,
 				);
@@ -366,8 +366,8 @@ async function mount(
 			reviewWindow.instance = create({
 				tag: "browser-navigation-review",
 				url: hostOrigin + path,
-				domain: allowRedirect ? [hostOrigin, attackerOrigin] : hostOrigin,
-				timeout: 1500,
+				hostOrigins: allowRedirect ? [hostOrigin, attackerOrigin] : hostOrigin,
+				initTimeout: 1500,
 				dimensions: { width: 300, height: 200 },
 				props: {
 					count: prop.number(),
@@ -424,8 +424,8 @@ async function prepareDelivery(
 				reviewWindow.instance = create({
 					tag: "browser-delivery-regression",
 					url: "delivery?existing=a%20b#checkout?step=2",
-					domain: [hostOrigin, attackerOrigin],
-					timeout: 3000,
+					hostOrigins: [hostOrigin, attackerOrigin],
+					initTimeout: 3000,
 					validate: ({ props }: { props: { count: number } }) => {
 						if (scenario === "queued" && props.count === 2 && !queuedFollowUp) {
 							queuedFollowUp = true;
@@ -567,7 +567,7 @@ for (const loading of [undefined, "eager"] as const) {
 				const instance = create({
 					tag: "eager-loading-layout",
 					url: `${hostOrigin}/delivery`,
-					timeout: 5000,
+					initTimeout: 5000,
 					dimensions: { width: 320, height: 180 },
 					attributes: { loading },
 					style: { display: "block" },
@@ -634,7 +634,7 @@ for (const method of ["GET", "POST"] as const) {
 					const instance = create({
 						tag: "lazy-iframe-styles",
 						url: `${hostOrigin}/delivery`,
-						timeout: 3000,
+						initTimeout: 3000,
 						dimensions: { width: 320, height: 180 },
 						attributes: {
 							loading: "lazy",
@@ -716,7 +716,7 @@ test("lazy iframe applies a show requested before frame creation", async ({
 			const instance = create({
 				tag: "lazy-iframe-early-show",
 				url: `${hostOrigin}/delivery`,
-				timeout: 3000,
+				initTimeout: 3000,
 				attributes: { loading: "lazy" },
 				style: {
 					display: "none",
@@ -755,7 +755,7 @@ for (const control of ["hide", "show"] as const) {
 				const instance = create({
 					tag: "lazy-loading-control",
 					url: `${hostOrigin}/delivery`,
-					timeout: 3000,
+					initTimeout: 3000,
 					dimensions: { width: 320, height: 180 },
 					attributes: { loading: "lazy" },
 					style: {
@@ -1055,8 +1055,8 @@ for (const context of ["iframe", "popup"] as const) {
 				const instance = create({
 					tag: "browser-named-form-controls",
 					url: `${hostOrigin}/delivery`,
-					domain: hostOrigin,
-					timeout: 3000,
+					hostOrigins: hostOrigin,
+					initTimeout: 3000,
 					props: {
 						count: { schema: prop.number(), bodyParam: "submit" },
 						allowed: { schema: prop.string(), bodyParam: "appendChild" },
@@ -1142,8 +1142,8 @@ for (const context of ["iframe", "popup"] as const) {
 				const instance = create({
 					tag: "browser-nested-functions",
 					url: `${hostOrigin}/encoded-props`,
-					domain: hostOrigin,
-					timeout: 3000,
+					hostOrigins: hostOrigin,
+					initTimeout: 3000,
 					props: {
 						config: prop.any(),
 						label: prop.string().optional(),
@@ -1371,7 +1371,7 @@ for (const context of ["iframe", "popup"] as const) {
 				const component = create({
 					tag: "browser-base-rejection",
 					url: "/delivery",
-					domain: consumerOrigin,
+					hostOrigins: consumerOrigin,
 					props: {
 						order: {
 							schema: prop.string(),
@@ -2009,7 +2009,7 @@ for (const context of ["iframe", "popup"] as const) {
 				reviewWindow.instance = create({
 					tag: "reconnect-queued-update",
 					url: `${hostOrigin}/host`,
-					domain: hostOrigin,
+					hostOrigins: hostOrigin,
 					props: {
 						count: prop.number(),
 						// Its toJSON() runs when a snapshot is delivered, so it can queue
@@ -2540,7 +2540,7 @@ test("a host whose allowlist excludes the consumer refuses it and the render tim
 			tag: "browser-excluded-consumer",
 			url: `${hostOrigin}/excluded-consumer`,
 			props: { label: prop.string() },
-			timeout: 1500,
+			initTimeout: 1500,
 		})({ label: "blocked" })
 			.render("#mount")
 			.then(
@@ -2607,9 +2607,9 @@ test("'*' on the consumer never admits a host with an opaque origin", async ({
 		return create({
 			tag: "browser-opaque-host",
 			url: () => `${hostOrigin}/opaque-host`,
-			domain: "*",
+			hostOrigins: "*",
 			props: { label: prop.string() },
-			timeout: 1500,
+			initTimeout: 1500,
 		})({ label: "opaque" })
 			.render("#mount")
 			.then(

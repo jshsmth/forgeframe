@@ -8,7 +8,7 @@
  * declaration checks read fields through the same own-field rule.
  */
 
-import { assertDomainMatcher } from "../utils/domain-pattern";
+import { assertOriginMatcher } from "../utils/domain-pattern";
 import { isStandardSchema } from "./schema";
 
 /**
@@ -144,7 +144,7 @@ function assertWrappedPropDefinition(key: string, definition: object): void {
 				`Prop "${key}" deliverTo cannot list 'same-origin' in an array; pass deliverTo: 'same-origin' on its own, or list origins only`,
 			);
 		}
-		assertDomainMatcher(deliverTo, `Prop "${key}" deliverTo`);
+		assertOriginMatcher(deliverTo, `Prop "${key}" deliverTo`);
 	}
 	for (const option of ["queryParam", "bodyParam"] as const) {
 		const parameter = readDeclaredField(definition, option);

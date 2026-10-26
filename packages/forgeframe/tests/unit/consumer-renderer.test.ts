@@ -11,9 +11,9 @@ function createRenderer(
 		tag: "consumer-renderer-test",
 		url: "https://host.example.com/widget",
 		props: {},
-		defaultContext: CONTEXT.IFRAME,
+		context: CONTEXT.IFRAME,
 		dimensions,
-		timeout: 1000,
+		initTimeout: 1000,
 		...options,
 	};
 
@@ -101,7 +101,7 @@ describe("ConsumerRenderer popup loading completion", () => {
 			const control = document.createElement("button");
 			shell.appendChild(control);
 			const renderer = createRenderer({
-				defaultContext: CONTEXT.POPUP,
+				context: CONTEXT.POPUP,
 				...(template === "custom"
 					? {
 							containerTemplate: ({ prerenderFrame }) => {
@@ -144,7 +144,7 @@ describe("ConsumerRenderer popup loading completion", () => {
 	it("should keep completion safe when removing the loader triggers teardown", async () => {
 		const mount = document.createElement("div");
 		document.body.appendChild(mount);
-		const renderer = createRenderer({ defaultContext: CONTEXT.POPUP });
+		const renderer = createRenderer({ context: CONTEXT.POPUP });
 		renderer.container = mount;
 		await renderer.prerender(
 			() => {

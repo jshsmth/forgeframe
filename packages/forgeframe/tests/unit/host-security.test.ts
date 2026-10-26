@@ -365,9 +365,7 @@ describe("Host security", () => {
 		});
 
 		expect(host).not.toBeNull();
-		expect(host?.hostProps.getConsumerDomain()).toBe(
-			"https://evil.example.com",
-		);
+		expect(host?.hostProps.consumerOrigin).toBe("https://evil.example.com");
 		expect(window.name).toBe(bootstrapWindowName);
 	});
 
@@ -391,7 +389,7 @@ describe("Host security", () => {
 		});
 
 		expect(host).not.toBeNull();
-		expect(host?.hostProps.getConsumerDomain()).toBe(
+		expect(host?.hostProps.consumerOrigin).toBe(
 			"https://api.trusted.example.com",
 		);
 		expect(Object.hasOwn(window, "hostProps")).toBe(false);
@@ -430,9 +428,7 @@ describe("Host security", () => {
 
 		const host = initHost({ consumerOrigins: "*", autoInit: false });
 
-		expect(host?.hostProps.getConsumerDomain()).toBe(
-			"https://verified.example.com",
-		);
+		expect(host?.hostProps.consumerOrigin).toBe("https://verified.example.com");
 	});
 
 	it("should request bootstrap from an inaccessible consumer only at its exact allowlisted claimed origin", () => {
@@ -480,9 +476,7 @@ describe("Host security", () => {
 			autoInit: false,
 		});
 
-		expect(host?.hostProps.getConsumerDomain()).toBe(
-			"https://trusted.example.com",
-		);
+		expect(host?.hostProps.consumerOrigin).toBe("https://trusted.example.com");
 		expect(postMessage).toHaveBeenCalledOnce();
 		expect(postMessage).toHaveBeenCalledWith(
 			expect.stringContaining(MESSAGE_NAME.BOOTSTRAP),

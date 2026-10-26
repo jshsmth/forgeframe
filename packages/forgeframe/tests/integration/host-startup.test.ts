@@ -38,14 +38,14 @@ describe("Explicit host start-up", () => {
 	 */
 	async function renderConsumer(
 		activeHarness: IframeIntegrationHarness,
-		options: { tag: string; timeout?: number },
+		options: { tag: string; initTimeout?: number },
 		props: Record<string, unknown> = { amount: 10 },
 	) {
 		const Component = create({
 			tag: options.tag,
 			url: HOST_URL,
 			props: { amount: prop.number() },
-			timeout: options.timeout,
+			initTimeout: options.initTimeout,
 		});
 		const container = document.createElement("div");
 		document.body.append(container);
@@ -363,7 +363,7 @@ describe("Explicit host start-up", () => {
 			const tag = "component-form-validation";
 			const { instance, rendering } = await renderConsumer(activeHarness, {
 				tag,
-				timeout: 300,
+				initTimeout: 300,
 			});
 			const errors: string[] = [];
 			instance.event.on("error", (error) => {
@@ -523,7 +523,7 @@ describe("Explicit host start-up", () => {
 			const activeHarness = harness;
 			const { Component, rendering } = await renderConsumer(activeHarness, {
 				tag: "auto-init-never",
-				timeout: 200,
+				initTimeout: 200,
 			});
 
 			const host = activeHarness.bootstrapHost(Component, { autoInit: false });

@@ -191,9 +191,9 @@ describe("Disconnected consumer prop queue", () => {
 				tag: "hold-release-order",
 				url: "https://host.example/widget",
 				props: { amount: prop.number() },
-				defaultContext: "iframe",
+				context: "iframe",
 				dimensions: { width: 1, height: 1 },
-				timeout: 1,
+				initTimeout: 1,
 			},
 			{ amount: 1 },
 		);

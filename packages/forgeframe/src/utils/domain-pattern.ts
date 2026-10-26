@@ -7,7 +7,7 @@
  * window helpers and the messenger preserve identical domain-matching behavior.
  */
 
-import type { DomainMatcher } from "../types/utility";
+import type { OriginMatcher } from "../types/utility";
 
 const wildcardPatternCache = new Map<string, RegExp>();
 const WILDCARD_CACHE_LIMIT = 200;
@@ -91,15 +91,16 @@ export function testDomainRegExpStateless(
  * @param emptyArray - Whether an empty array, which matches no origin, is a
  * valid setting. Only allowlists that fail closed accept it.
  * @throws If the value is not a non-empty string, a `RegExp`, or an array of
- * them, or is an empty array where `emptyArray` is `"rejected"`.
+ * them, is an empty array where `emptyArray` is `"rejected"`, or lists a
+ * string without a scheme, such as `example.com`.
  *
  * @internal
  */
-export function assertDomainMatcher(
+export function assertOriginMatcher(
 	value: unknown,
 	option: string,
 	emptyArray: "allowed" | "rejected" = "rejected",
-): asserts value is DomainMatcher {
+): asserts value is OriginMatcher {
 	const isPattern = (entry: unknown): boolean =>
 		entry instanceof RegExp ||
 		(typeof entry === "string" && entry.trim() !== "");
@@ -108,8 +109,29 @@ export function assertDomainMatcher(
 			`${option} must list at least one origin; an empty array matches none`,
 		);
 	}
-	if (Array.isArray(value) ? value.every(isPattern) : isPattern(value)) return;
-	throw new Error(
-		`${option} must be a non-empty origin string, a RegExp, or an array of them`,
+	const entries = Array.isArray(value) ? value : [value];
+	if (!entries.every(isPattern)) {
+		throw new Error(
+			`${option} must be a non-empty origin string, a RegExp, or an array of them`,
+		);
+	}
+	const bareHost = entries.find(isBareHostPattern);
+	if (bareHost !== undefined) {
+		throw new Error(
+			`${option} lists "${bareHost}", which is not an origin and can never match one; write the scheme too, such as "https://${bareHost}"`,
+		);
+	}
+}
+
+/**
+ * Whether a string pattern lacks the scheme every origin starts with, such as
+ * `example.com` or `"true"`. `'*'` and patterns that start with a wildcard can
+ * still match an origin.
+ */
+function isBareHostPattern(entry: unknown): entry is string {
+	return (
+		typeof entry === "string" &&
+		!entry.startsWith("*") &&
+		!entry.includes("://")
 	);
 }

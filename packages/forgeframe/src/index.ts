@@ -76,7 +76,6 @@ export type {
 	ContainerTemplate,
 	// Utility types
 	Dimensions,
-	DomainMatcher,
 	// Event types
 	EventHandler,
 	EventSubscriber,
@@ -94,6 +93,7 @@ export type {
 	InferProps,
 	InitHostOptions,
 	InputOf,
+	OriginMatcher,
 	PeerInfo,
 	PrerenderTemplate,
 	// Props types

@@ -51,7 +51,7 @@ const createPayment = (context: "iframe" | "popup") =>
 	create({
 		tag: `harbor-pay-${context}`,
 		url: providerUrl,
-		domain: new URL(providerUrl).origin,
+		hostOrigins: new URL(providerUrl).origin,
 		dimensions:
 			context === "popup"
 				? { width: 480, height: 740 }
@@ -66,7 +66,7 @@ const createPayment = (context: "iframe" | "popup") =>
 			loading.setAttribute("role", "status");
 			return loading;
 		},
-		timeout: 10000,
+		initTimeout: 10000,
 	});
 const paymentComponents = {
 	iframe: createPayment("iframe"),

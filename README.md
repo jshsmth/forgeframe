@@ -586,7 +586,7 @@ stop();
 
 Subscribers run in registration order after props are committed. A subscriber added or re-registered during a notification waits for the next update, and a subscription cancelled before its turn is skipped. A stale cancellation handle cannot cancel a later registration of the same callback. Thrown errors and rejected promises are caught and logged. Async subscribers are not awaited, so they do not delay other subscribers or the update acknowledgement.
 
-Built-in `hostProps` names are reserved: `create()` and `initHost()` reject a definition named `uid`, `tag`, `close`, `focus`, `resize`, `show`, `hide`, `onProps`, `reportError`, `getConsumer`, `getConsumerDomain`, `export`, `consumer`, `getPeerInstances`, or `children`. A field with one of these names never replaces the built-in on `hostProps`; only a host without `props` sees it, in `hostProps.consumer.props`. `children` is no longer a built-in, but it stays reserved so React JSX children never reach a host.
+Built-in `hostProps` names are reserved: `create()` and `initHost()` reject a definition named `uid`, `tag`, `close`, `focus`, `resize`, `show`, `hide`, `onProps`, `reportError`, `getConsumer`, `consumerOrigin`, `export`, `consumer`, `getPeerInstances`, or `children`. A field with one of these names never replaces the built-in on `hostProps`; only a host without `props` sees it, in `hostProps.consumer.props`. `children` is no longer a built-in, but it stays reserved so React JSX children never reach a host.
 
 ### Cross-Window Callback Values
 
@@ -707,7 +707,7 @@ await props.reportError(new Error('Something failed'));
 await props.export({ validate: () => true });
 
 props.getConsumer();
-props.getConsumerDomain();
+props.consumerOrigin;
 props.consumer.props;
 
 const peers = await props.getPeerInstances();
@@ -731,7 +731,7 @@ Peer discovery is opt-in. A component that sets `peers: true` in `create()` lets
 | `reportError()` | Report an error to the consumer, which emits it on its `error` event |
 | `export()` | Export methods/data to consumer |
 | `getConsumer()` | Get consumer window reference |
-| `getConsumerDomain()` | Get consumer origin |
+| `consumerOrigin` | The verified consumer origin (a read-only string) |
 | `consumer.props` | The consumer's full prop snapshot, replaced on every update |
 | `getPeerInstances()` | Get peer component instances from the same consumer and host origin; requires `peers` on this host's component |
 
@@ -933,7 +933,7 @@ const ProfileReact = createComponent(ProfileComponent);
 
 ### Popup Windows
 
-Pass `'popup'` to `render()`, or set `defaultContext: 'popup'` on the component.
+Pass `'popup'` to `render()`, or set `context: 'popup'` on the component.
 
 ```typescript
 await instance.render('#container', 'popup');
@@ -941,7 +941,7 @@ await instance.render('#container', 'popup');
 const PopupComponent = create({
   tag: 'popup-component',
   url: 'https://widgets.example.com/popup',
-  defaultContext: 'popup',
+  context: 'popup',
 });
 ```
 
@@ -949,16 +949,18 @@ After the popup initializes, ForgeFrame removes the loading content, including c
 
 Browsers do not let one origin resize another origin's window. For a popup that is not open, `instance.resize()` does nothing. For a cross-origin popup, `instance.resize()` rejects without emitting `resize`; call `hostProps.resize()` from the host instead, which resizes the popup's own window and then notifies the consumer. Browsers can still ignore resize requests, for example for a popup opened as a tab.
 
-### Domain Security
+### Origin Security
 
 Every trust decision is explicit, and `'*'` is the visible opt-in for "any origin".
 
-- `domain` is consumer-side trust: the host origins the consumer will render and message. A static `url` trusts its own origin when `domain` is omitted. A function `url` requires `domain`, and every URL it returns must match; `create()` throws without it, so a URL built from props, a query string or tenant data can never point the consumer at an unlisted origin. `domain: '*'` with a function `url` trusts any http(s) origin the function returns.
-- `consumerOrigins`, passed to `initHost()`, is host-side trust: the consumer origins that may embed and initialize the host. It is required; `'*'` admits any http(s) consumer, and the host still binds the exact origin the browser verified, so `getConsumerDomain()` and outbound messages use that origin.
-- `peers` decides whether, and to which host origins, a component's instances are listed for peer discovery.
-- Use `domain` and `consumerOrigins` together for payment, auth, account, and other sensitive workflows.
+Each option takes origins: a scheme, host and port, such as `https://app.example.com`. A bare host such as `example.com` never matches an origin, so it is rejected.
 
-Each accepts a string, a `RegExp`, or an array mixing them. Strings support `*` wildcards, such as `'https://*.example.com'`, and `'*'` alone matches any origin. Empty or blank strings, `null`, and other values throw, so a missing setting such as `process.env.CONSUMER_ORIGIN || ''` cannot silently trust every origin. An empty array throws for `domain`, `peers`, and `deliverTo`, where it could never match; for `consumerOrigins` it is valid and admits no consumer, so configuration that resolves to nothing fails closed.
+- `hostOrigins` is consumer-side trust: the host origins the consumer will render and message. A static `url` trusts its own origin when `hostOrigins` is omitted. A function `url` requires `hostOrigins`, and every URL it returns must match; `create()` throws without it, so a URL built from props, a query string or tenant data can never point the consumer at an unlisted origin. `hostOrigins: '*'` with a function `url` trusts any http(s) origin the function returns.
+- `consumerOrigins`, passed to `initHost()`, is host-side trust: the consumer origins that may embed and initialize the host. It is required; `'*'` admits any http(s) consumer, and the host still binds the exact origin the browser verified, so `hostProps.consumerOrigin` and outbound messages use that origin.
+- `peers` decides whether, and to which host origins, a component's instances are listed for peer discovery.
+- Use `hostOrigins` and `consumerOrigins` together for payment, auth, account, and other sensitive workflows.
+
+Each accepts a string, a `RegExp`, or an array mixing them. Strings support `*` wildcards, such as `'https://*.example.com'`, and `'*'` alone matches any origin. Empty or blank strings, `null`, and other values throw, so a missing setting such as `process.env.CONSUMER_ORIGIN || ''` cannot silently trust every origin. An empty array throws for `hostOrigins`, `peers`, and `deliverTo`, where it could never match; for `consumerOrigins` it is valid and admits no consumer, so configuration that resolves to nothing fails closed.
 
 No matcher, including `'*'` or a match-all `RegExp`, ever admits an opaque (`"null"`) origin, such as a document sandboxed without `allow-same-origin`. Every opaque document serializes the same way, so the origin cannot identify a peer.
 
@@ -971,14 +973,14 @@ export const SecureComponent = create({
     accountId: prop.string(),
     onComplete: prop.function<(result: { ok: true }) => void>(),
   },
-  domain: 'https://secure.example.com',
+  hostOrigins: 'https://secure.example.com',
 });
 
 // A URL computed from props needs the host origins it may return
 export const TenantWidget = create({
   tag: 'tenant-widget',
   url: (props) => `https://${props.tenant}.widgets.example.com/embed`,
-  domain: 'https://*.widgets.example.com',
+  hostOrigins: 'https://*.widgets.example.com',
   props: { tenant: prop.string().regex(/^[a-z0-9-]+$/) },
 });
 ```
@@ -1323,16 +1325,16 @@ A host that shares definitions with a `deliverTo` prop no longer requires that p
 | Area | v1 | v2 | What to do |
 |---|---|---|---|
 | Host allowlist | `initHost` accepted any http(s) consumer when no allowlist was passed | `consumerOrigins` is required in every `initHost` form; `'*'` admits any http(s) consumer | Pass your consumer origins; pass `'*'` only for hosts meant to be embedded anywhere |
-| Function URLs | `url: (props) => ...` without `domain` trusted any http(s) origin it returned | `create()` throws unless `domain` is set when `url` is a function | Add the host origins the function may return, or `'*'` to keep the v1 behaviour |
+| Function URLs | `url: (props) => ...` without `domain` trusted any http(s) origin it returned | `create()` throws unless `hostOrigins` (v1 `domain`) is set when `url` is a function | Add the host origins the function may return, or `'*'` to keep the v1 behaviour |
 | Peer discovery | On for every component at the same verified origin; `peerDomains` admitted other origins | Off unless the component sets `peers: true` or `peers: <matcher>`; `peerDomains` throws; a host whose component lacks `peers` gets a rejection from `getPeerInstances()` | Add `peers` to every component whose hosts call `getPeerInstances()` and to every component they should find; move `peerDomains` values into `peers` |
 | Cross-tag discovery | `getPeerInstances({ anyConsumer: true })` | `getPeerInstances({ allTags: true })`; `anyConsumer` rejects | Rename the option |
 | Peer type | `SiblingInfo` | `PeerInfo` | Rename the import |
 | Sandbox | `attributes.sandbox`; `false` kept the default | Top-level `sandbox: string \| false`; a string must include `allow-scripts` and `allow-same-origin`; `false` writes no sandbox attribute; `attributes.sandbox` throws | Move a string value from `attributes.sandbox` to `sandbox`. Delete `attributes.sandbox: false`, which kept the default in 1.1; `sandbox: false` now removes the sandbox, so use it only to opt out |
 | Opaque origins | A `'*'` or match-all `domain` matched a sandboxed host's `"null"` origin before the handshake failed | No matcher admits an opaque origin | Keep `allow-same-origin` in any custom sandbox |
 | Undeclared host fields | A host kept fields it did not declare, and fields of `undefined` definition entries, unvalidated | A host with `props` keeps only the props it declares; only a tag-agnostic host without `props` keeps every field | Declare every prop the host reads, with `prop.any()` for a deliberately unchecked one |
-| Empty matchers | `domain: []`, `peerDomains: []` and `deliverTo: []` were accepted and matched nothing | They throw; `consumerOrigins: []` still admits no consumer | Remove the option, or list the origins |
+| Empty matchers | `domain: []`, `peerDomains: []` and `deliverTo: []` were accepted and matched nothing | `hostOrigins: []`, `peers: []` and `deliverTo: []` throw; `consumerOrigins: []` still admits no consumer | Remove the option, or list the origins |
 | Static iframe attributes | `name`, `src` and `srcdoc` in a static `attributes` object rejected `render()` | `create()` throws for them, and for `sandbox`; a computed `attributes` function is still checked at render | Remove the attribute |
-| `ComponentOptions` type | An interface | A type alias over `ComponentBaseOptions` and the `url`/`domain` union `ComponentUrlOptions`, so it can no longer be augmented by declaration merging; `Partial<ComponentOptions>` spreads over the union | Use `ComponentBaseOptions` for options other than `url` and `domain` |
+| `ComponentOptions` type | An interface | A type alias over `ComponentBaseOptions` and the `url`/`hostOrigins` union `ComponentUrlOptions`, so it can no longer be augmented by declaration merging; `Partial<ComponentOptions>` spreads over the union | Use `ComponentBaseOptions` for options other than `url` and `hostOrigins` |
 
 ### Types and inference
 
@@ -1414,16 +1416,16 @@ interface ComponentOptions<P> {
   dimensions?: { width?: number | string; height?: number | string } | ((props: P) => { width?: number | string; height?: number | string });
   props?: PropsDefinition<P>;
   exports?: StandardSchemaV1;  // What the host exports; types instance.exports and is validated
-  defaultContext?: 'iframe' | 'popup';
+  context?: 'iframe' | 'popup'; // Default context; render(container, context) overrides it
   containerTemplate?: (ctx: TemplateContext<P>) => HTMLElement | null;
   prerenderTemplate?: (ctx: TemplateContext<P>) => HTMLElement | null;
-  domain?: DomainMatcher;      // Consumer-side trusted host origins; required when url is a function
-  peers?: true | DomainMatcher; // Opt in to peer discovery; a matcher also admits those host origins
+  hostOrigins?: OriginMatcher; // Consumer-side trusted host origins; required when url is a function
+  peers?: true | OriginMatcher; // Opt in to peer discovery; a matcher also admits those host origins
   sandbox?: string | false;    // Iframe sandbox; omitted keeps the default, false writes none
   validate?: (opts: { props: P }) => void;
   attributes?: IframeAttributes | ((props: P) => IframeAttributes); // never sandbox
   style?: IframeStyles | ((props: P) => IframeStyles);
-  timeout?: number;
+  initTimeout?: number;        // Handshake bound in ms (default 10000); remote callbacks have no timeout
   cspNonce?: string;           // Nonce for the default spinner's <style>; never sent to the host
 }
 ```

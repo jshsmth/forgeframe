@@ -19,7 +19,7 @@ export const HOST_PROPS_BUILTIN_KEYS = new Set([
 	"onProps",
 	"reportError",
 	"getConsumer",
-	"getConsumerDomain",
+	"consumerOrigin",
 	"export",
 	"consumer",
 	"getPeerInstances",

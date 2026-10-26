@@ -93,7 +93,7 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
 			focus: () => Promise<void>;
 		},
 	) {
-		this.context = this.options.defaultContext;
+		this.context = this.options.context;
 	}
 
 	/**

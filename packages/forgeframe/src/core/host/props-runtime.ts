@@ -88,7 +88,7 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
 				this.onProps(handler),
 			reportError: (error: Error) => this.options.controls.reportError(error),
 			getConsumer: () => this.options.getConsumerWindow(),
-			getConsumerDomain: () => this.options.getConsumerDomain(),
+			consumerOrigin: this.options.getConsumerDomain(),
 			export: <T>(exports: T) => this.options.controls.exportData(exports),
 			consumer: {
 				props: this.consumerProps,

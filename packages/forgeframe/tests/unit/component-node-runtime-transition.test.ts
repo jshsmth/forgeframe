@@ -17,7 +17,7 @@ describe("Component definitions across runtime transitions", () => {
 			create({
 				tag: "relative-node-component",
 				url: "/host.html",
-				domain: "https://allowed.example.com",
+				hostOrigins: "https://allowed.example.com",
 			}),
 		).not.toThrow();
 
@@ -25,7 +25,7 @@ describe("Component definitions across runtime transitions", () => {
 			create({
 				tag: "absolute-node-component",
 				url: "https://blocked.example.com/host.html",
-				domain: "https://allowed.example.com",
+				hostOrigins: "https://allowed.example.com",
 			}),
 		).toThrow(
 			'Component URL origin "https://blocked.example.com" is not allowed by the configured domain policy.',

@@ -1,4 +1,4 @@
-import type { DomainMatcher } from "../types/utility";
+import type { OriginMatcher } from "../types/utility";
 import { matchDomain } from "../window/helpers";
 
 const ALLOWED_HOST_PROTOCOLS = new Set(["http:", "https:"]);
@@ -11,7 +11,7 @@ const ALLOWED_HOST_PROTOCOLS = new Set(["http:", "https:"]);
 export function resolveComponentHostUrl(
 	value: string,
 	baseUrl: string,
-	allowedDomains?: DomainMatcher,
+	allowedDomains?: OriginMatcher,
 ): URL {
 	let resolved: URL;
 

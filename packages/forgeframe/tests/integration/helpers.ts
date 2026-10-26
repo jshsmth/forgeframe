@@ -15,11 +15,11 @@ import { clearHostInstance, getHost } from "@/core/host";
 import { initHost } from "@/index";
 import type {
 	AnyComponent,
-	DomainMatcher,
 	Host,
 	HostProps,
 	InferablePropsDefinition,
 	InferProps,
+	OriginMatcher,
 	PropsDefinition,
 	PropsOf,
 } from "@/types";
@@ -117,7 +117,7 @@ export type HarnessHostProps<D> = [D] extends [never]
 /** Overrides for the options the harness passes to `initHost()`. */
 export interface HarnessHostOptions {
 	/** Defaults to the harness consumer origin. */
-	consumerOrigins?: DomainMatcher;
+	consumerOrigins?: OriginMatcher;
 	autoInit?: boolean;
 }
 
