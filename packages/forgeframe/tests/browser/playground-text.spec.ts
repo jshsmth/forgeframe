@@ -295,7 +295,7 @@ test("playground rejects reserved prop names and renders after a valid addition"
 	await page.route("https://**/*", (route) => route.abort());
 	await page.goto(`${consumerOrigin}/editor`);
 	await page.locator("#btn-add-prop").click();
-	for (const name of ["reportError", "close"]) {
+	for (const name of ["then", "children"]) {
 		await page.locator("#new-prop-name").fill(name);
 		await page.locator("#btn-confirm-add").click();
 		await expect(page.locator(".log-entry.error .message").last()).toHaveText(

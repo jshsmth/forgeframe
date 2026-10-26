@@ -477,6 +477,26 @@ describe("Messenger", () => {
 		});
 	});
 
+	describe("resolvePending", () => {
+		it("resolves only pending requests of the named type sent to that window", async () => {
+			const replaced = { postMessage: vi.fn() } as unknown as Window;
+			const props = messenger.send(
+				replaced,
+				"https://host.com",
+				"props",
+				{},
+				null,
+			);
+			const call = messenger
+				.send(replaced, "https://host.com", "call", {}, null)
+				.catch((error: Error) => error.message);
+			messenger.resolvePending("props", replaced, { success: true });
+			await expect(props).resolves.toEqual({ success: true });
+			messenger.destroy();
+			await expect(call).resolves.toBe("Messenger destroyed");
+		});
+	});
+
 	describe("post", () => {
 		it("should send one-way message without waiting", () => {
 			const targetWindow = {

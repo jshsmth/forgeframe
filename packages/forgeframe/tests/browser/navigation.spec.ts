@@ -131,7 +131,7 @@ test.beforeAll(async () => {
 					`<!doctype html><script type="module">
 				import {initHost,prop} from '/library.js';
 				const host = initHost({props:{record:prop.any()}, consumerOrigins:['${consumerOrigin}']});
-				window.received = await host.ready;
+				window.received = await host.ready; window.host = host;
 				await host.export({record:window.received.record});
 				window.ready = true;
 				</script>`,
@@ -253,7 +253,7 @@ test.beforeAll(async () => {
 				try { await failed.ready; } catch(error) { window.firstError = error.message; }
 				reject = false;
 				const host = initHost(Component, options);
-				window.received = await host.ready;
+				window.received = await host.ready; window.host = host;
 				window.sameHostProps = window.received === await host.ready;
 				window.freshHostProps = window.received !== await failed.ready.catch(() => undefined);
 				window.ready = true;
@@ -439,9 +439,9 @@ async function prepareDelivery(
 							[parameter]: true,
 							sendToHost: false,
 						},
+						// A same-origin prop can never be a parameter; it stays out.
 						sameOrigin: {
 							schema: prop.string(),
-							[parameter]: true,
 							deliverTo: "same-origin",
 						},
 					},

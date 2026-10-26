@@ -124,7 +124,7 @@ describe("Function prop bridge integration", () => {
 		});
 	});
 
-	it("rejects an unacknowledged props update when the host reconnects, without the ack timeout", async () => {
+	it("settles an unacknowledged props update through the reconnected host's snapshot, without the ack timeout", async () => {
 		harness = createIframeIntegrationHarness();
 		const activeHarness = harness;
 		const container = document.createElement("div");
@@ -151,17 +151,13 @@ describe("Function prop bridge integration", () => {
 			"postResponse",
 		).mockImplementation(() => {});
 		const update = instance.updateProps({ title: "second" });
-		const failure = update.catch((error: unknown) => error);
 		await activeHarness.flushMessages();
 		activeHarness.withHostGlobals(() => host.destroy());
 		const nextHost = activeHarness.bootstrapHost(definitions);
 		if (!nextHost) throw new Error("Expected host reinitialization");
 		// The new session reads the current props instead of waiting 10 seconds.
 		await expect(nextHost.ready).resolves.toEqual({ title: "second" });
-		expect(await failure).toMatchObject({
-			code: "CLOSED",
-			message: "Host reconnected before the props update was acknowledged",
-		});
+		await expect(update).resolves.toBeUndefined();
 	});
 
 	it("rejects a pending host export call once the host window stops answering", async () => {

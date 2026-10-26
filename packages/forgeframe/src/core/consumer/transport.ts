@@ -321,8 +321,7 @@ export class ConsumerTransport<
 				this.bootstrapSessionId = null;
 				this.bridge.resumeRemoteSession(source.window);
 				if (resetLocalReferences) {
-					// Calls and props updates sent to the replaced host session can
-					// never be answered; the new session reads the current props.
+					// Calls into the replaced host session can never be answered.
 					this.bridge.rejectRemoteCalls(
 						source.window,
 						new ForgeFrameError(
@@ -330,14 +329,12 @@ export class ConsumerTransport<
 							"Host reconnected before the call completed",
 						),
 					);
-					this.messenger.rejectPending(
-						MESSAGE_NAME.PROPS,
-						source.window,
-						new ForgeFrameError(
-							"CLOSED",
-							"Host reconnected before the props update was acknowledged",
-						),
-					);
+					// A props update still waiting may never be answered either, but the
+					// bootstrap snapshot this request reads already carries it, so it
+					// counts as delivered and the snapshot no longer waits behind it.
+					this.messenger.resolvePending(MESSAGE_NAME.PROPS, source.window, {
+						success: true,
+					});
 				}
 				const snapshot = await handlers.onBootstrap(
 					source,
