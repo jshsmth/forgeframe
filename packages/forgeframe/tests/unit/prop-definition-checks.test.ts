@@ -2,8 +2,8 @@
  * Unit tests for `@/props/definition-checks`.
  *
  * Covers the declaration checks that `create()` and `initHost()` share: data
- * entries, removed options, the required `schema`, `deliverTo` matchers, and
- * parameter names.
+ * entries, removed and unknown options, the required `schema`, `deliverTo`
+ * matchers, `sendToHost`, and parameter names and their clashes.
  */
 import { describe, expect, it, vi } from "vitest";
 import { assertPropDefinitions } from "@/props/definition-checks";
@@ -216,4 +216,83 @@ describe("assertPropDefinitions", () => {
 			`Prop "ref" ${option} must be a boolean or a non-empty parameter name. To encode a value, pass the encoded string as its own prop, or build the URL in a url(props) function.`,
 		);
 	});
+
+	it.each([
+		["deliverto", "same-origin"],
+		["queryparam", true],
+		["description", "label"],
+	])("rejects the unknown wrapped option %s", (field, value) => {
+		expect(() =>
+			assertPropDefinitions({
+				label: { schema: prop.string(), [field]: value },
+			}),
+		).toThrow(
+			`Prop "label" has the unknown option "${field}". A wrapped definition accepts only schema, deliverTo, sendToHost, queryParam, bodyParam.`,
+		);
+	});
+
+	it("rejects an unknown symbol option and ignores an undefined unknown option", () => {
+		expect(() =>
+			assertPropDefinitions({
+				label: { schema: prop.string(), [Symbol("extra")]: true },
+			}),
+		).toThrow('Prop "label" has the unknown option "Symbol(extra)"');
+		expect(() =>
+			assertPropDefinitions({
+				label: { schema: prop.string(), extra: undefined },
+			}),
+		).not.toThrow();
+	});
+
+	it.each(["yes", 1, null])("rejects sendToHost %j", (sendToHost) => {
+		expect(() =>
+			assertPropDefinitions({ label: { schema: prop.string(), sendToHost } }),
+		).toThrow('Prop "label" sendToHost must be a boolean');
+	});
+
+	it.each(["queryParam", "bodyParam"])(
+		"rejects %s with deliverTo: 'same-origin', and accepts false",
+		(option) => {
+			expect(() =>
+				assertPropDefinitions({
+					token: {
+						schema: prop.string(),
+						deliverTo: "same-origin",
+						[option]: "token",
+					},
+				}),
+			).toThrow(
+				`Prop "token" cannot combine ${option} with deliverTo: 'same-origin'`,
+			);
+			expect(() =>
+				assertPropDefinitions({
+					token: {
+						schema: prop.string(),
+						deliverTo: "same-origin",
+						[option]: false,
+					},
+				}),
+			).not.toThrow();
+		},
+	);
+
+	it.each(["queryParam", "bodyParam"])(
+		"rejects two props that share a %s name, including a key used by true",
+		(option) => {
+			expect(() =>
+				assertPropDefinitions({
+					ref: { schema: prop.string(), [option]: true },
+					other: { schema: prop.string(), [option]: "ref" },
+				}),
+			).toThrow(
+				`Props "ref" and "other" both use the ${option} name "ref"; one value would overwrite the other`,
+			);
+			expect(() =>
+				assertPropDefinitions({
+					ref: { schema: prop.string(), queryParam: "ref" },
+					other: { schema: prop.string(), bodyParam: "ref" },
+				}),
+			).not.toThrow();
+		},
+	);
 });

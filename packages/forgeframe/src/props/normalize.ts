@@ -11,6 +11,7 @@
 
 import { ForgeFrameError } from "../errors";
 import type { PropDefinition, PropDelivery } from "../types/props";
+import { stringifyForWire } from "../utils/json";
 import { isDate, isPlainObject } from "../utils/realm-values";
 import { assertDefinedArrayEntries } from "../utils/wire-value";
 import { matchOrigin } from "../window/helpers";
@@ -550,5 +551,7 @@ function serializePropParameter(value: unknown): string | undefined {
 	if (value === undefined || value === null || typeof value === "function")
 		return undefined;
 	if (isDate(value)) return value.toJSON() ?? undefined;
-	return typeof value === "object" ? JSON.stringify(value) : String(value);
+	return typeof value === "object"
+		? stringifyForWire(value, "a URL or body parameter")
+		: String(value);
 }

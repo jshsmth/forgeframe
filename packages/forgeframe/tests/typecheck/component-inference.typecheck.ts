@@ -48,9 +48,9 @@ void InferredComponent({
 	onSubmit: (_value) => undefined,
 });
 
-const inferredHostCount: number | undefined = initHost(InferredComponent, {
-	consumerOrigins: "*",
-})?.hostProps.count;
+const inferredHostCount: number | undefined = (
+	await initHost(InferredComponent, { consumerOrigins: "*" })?.ready
+)?.count;
 void inferredHostCount;
 
 // @ts-expect-error inferred direct schemas reject the wrong value type
@@ -86,9 +86,9 @@ void CallableSchemaComponent({ name: "ready" });
 // @ts-expect-error callable schemas reject the wrong value type
 void CallableSchemaComponent({ name: 1 });
 
-const callableHostName: string | undefined = initHost(CallableSchemaComponent, {
-	consumerOrigins: "*",
-})?.hostProps.name;
+const callableHostName: string | undefined = (
+	await initHost(CallableSchemaComponent, { consumerOrigins: "*" })?.ready
+)?.name;
 void callableHostName;
 
 // create() takes no type arguments: types come from the schemas.
@@ -271,9 +271,9 @@ void ExternalSchemaComponent({
 	wrappedValue: 42,
 });
 
-const externalSchemaHostProps = initHost(ExternalSchemaComponent, {
+const externalSchemaHostProps = await initHost(ExternalSchemaComponent, {
 	consumerOrigins: "*",
-})?.hostProps;
+})?.ready;
 const defaultedHostValue: string | undefined =
 	externalSchemaHostProps?.defaultedValue;
 void defaultedHostValue;
@@ -310,7 +310,7 @@ const wrappedPresenceHost = initHost(WrappedPresenceComponent, {
 	consumerOrigins: "*",
 });
 if (wrappedPresenceHost) {
-	const hostProps = wrappedPresenceHost.hostProps;
+	const hostProps = await wrappedPresenceHost.ready;
 	const requiredValue: string = hostProps.requiredWrapper;
 	const optionalValue: string | undefined = hostProps.optionalWrapper;
 	const defaultedValue: string = hostProps.defaultedWrapper;
@@ -429,10 +429,12 @@ type RemovedHostPropsDefinition = import("../../src").HostPropsDefinition<{
 type RemovedInferPropsDefinition = import("../../src").InferPropsDefinition<
 	Record<string, never>
 >;
-// @ts-expect-error InferPropsDefinitionInput was renamed InferInput
+// @ts-expect-error InferPropsDefinitionInput was renamed InferPropsInput
 type RemovedInferPropsInput = import("../../src").InferPropsDefinitionInput<
 	Record<string, never>
 >;
+// @ts-expect-error InferInput was renamed InferPropsInput
+type RemovedInferInput = import("../../src").InferInput<Record<string, never>>;
 // @ts-expect-error ForgeFrameComponent was renamed Component
 type RemovedForgeFrameComponent = import("../../src").ForgeFrameComponent;
 // @ts-expect-error ForgeFrameComponentInstance was renamed ComponentInstance
@@ -443,6 +445,7 @@ export type RemovedDefinitionTypes = [
 	RemovedHostPropsDefinition,
 	RemovedInferPropsDefinition,
 	RemovedInferPropsInput,
+	RemovedInferInput,
 	RemovedForgeFrameComponent,
 	RemovedInstance,
 ];
@@ -499,9 +502,13 @@ void coercingInstance.updateProps(coercingProps);
 
 const coercingHost = initHost(CoercingComponent, { consumerOrigins: "*" });
 if (coercingHost) {
-	const amount: number = coercingHost.hostProps.amount;
-	const startsAt: Date = coercingHost.hostProps.startsAt;
-	const count: number = coercingHost.hostProps.count;
+	const { amount, startsAt, count } = await coercingHost.ready;
+	const typedAmount: number = amount;
+	const typedStartsAt: Date = startsAt;
+	const typedCount: number = count;
+	void typedAmount;
+	void typedStartsAt;
+	void typedCount;
 	void amount;
 	void startsAt;
 	void count;
@@ -525,7 +532,8 @@ const outputTypedHost = initHost({
 	props: outputCompatibleHostDefinitions,
 	consumerOrigins: "*",
 });
-const outputTypedCount: number | undefined = outputTypedHost?.hostProps.count;
+const outputTypedCount: number | undefined = (await outputTypedHost?.ready)
+	?.count;
 void outputTypedCount;
 
 // @ts-expect-error the tag-agnostic initHost takes the props type alone
@@ -720,7 +728,7 @@ type RemovedDestroyByTag = PublicApi["destroyByTag"];
 type RemovedDestroyAll = PublicApi["destroyAll"];
 // @ts-expect-error ChildrenDefinition was removed with nested children.
 type RemovedChildrenDefinition = import("../../src").ChildrenDefinition;
-// @ts-expect-error ConsumerNamespace was removed; hostProps.consumer is { props }.
+// @ts-expect-error ConsumerNamespace was removed with hostProps.consumer.
 type RemovedConsumerNamespace = import("../../src").ConsumerNamespace;
 // @ts-expect-error EligibilityResult was removed with eligible.
 type RemovedEligibilityResult = import("../../src").EligibilityResult;
@@ -802,3 +810,51 @@ create({
 	// @ts-expect-error defaultContext was renamed context
 	defaultContext: "popup",
 });
+
+create({
+	tag: "typed-misspelled-wrapped-option",
+	url: "https://example.com",
+	props: {
+		label: {
+			schema: prop.string(),
+			// @ts-expect-error a misspelled wrapped option is not ignored
+			deliverto: "same-origin",
+		},
+	},
+});
+
+initHost({
+	consumerOrigins: "*",
+	props: {
+		// @ts-expect-error children is a reserved prop name
+		children: prop.string(),
+	},
+});
+
+// A runtime-built map typed with PropsDefinition<P> keeps P as the input.
+type AnnotatedProps = { name: string; count?: number };
+const annotatedDefinitions: PropsDefinition<AnnotatedProps> = {
+	name: prop.string(),
+	count: { schema: prop.number().optional(), queryParam: true },
+};
+const AnnotatedComponent = create({
+	tag: "typed-annotated-definitions",
+	url: "https://example.com",
+	props: annotatedDefinitions,
+});
+void AnnotatedComponent({ name: "a" });
+void AnnotatedComponent({ name: "a", count: 1 });
+// @ts-expect-error an annotated map still requires its required props
+void AnnotatedComponent({});
+// @ts-expect-error an annotated map keeps each prop's type
+void AnnotatedComponent({ name: 1 });
+const annotatedInput: InputOf<typeof AnnotatedComponent> = { name: "a" };
+void annotatedInput;
+
+declare const readonlyExportsInstance: ComponentInstance<
+	Record<string, never>,
+	Record<string, never>,
+	{ ready: boolean }
+>;
+// @ts-expect-error exports is read-only; only the host's export() sets it
+readonlyExportsInstance.exports = { ready: true };

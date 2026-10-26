@@ -158,7 +158,11 @@ export type InferTupleInputShape<
 /**
  * Output of a schema with a default: `undefined` input is replaced, so
  * `undefined` remains only when the default value itself can be `undefined`.
- * @internal
+ *
+ * @remarks
+ * Exported because `.default()` signatures name it, so declaration emit of
+ * code that uses them can refer to it.
+ * @public
  */
 export type DefaultedSchemaOutput<T, D> =
 	| Exclude<T, undefined>

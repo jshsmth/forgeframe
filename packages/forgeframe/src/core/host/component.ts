@@ -13,8 +13,12 @@ import { EventEmitter } from "../../events/emitter";
 import { validateExports } from "../../props/exports";
 import type { StandardSchemaV1 } from "../../props/schema";
 import type { HostEvents } from "../../types/events";
-import type { HostProps } from "../../types/runtime";
-import type { OriginMatcher } from "../../types/utility";
+import type {
+	GetPeerInstancesOptions,
+	PeerInfo,
+	RemoteValue,
+} from "../../types/runtime";
+import type { Dimensions, OriginMatcher } from "../../types/utility";
 import type { HostBootstrapData, WindowNamePayload } from "../../window/types";
 import { assertAllowedConsumerOrigin } from "./consumer-origin-policy";
 import { toHandshakeFailure } from "./handshake-failure";
@@ -42,16 +46,17 @@ function assertBootstrapResponse(
 export class HostComponent<P extends Record<string, unknown>> {
 	public event: EventEmitter<HostEvents>;
 
-	/** Resolves to `hostProps` once initial props have passed the host schemas. */
-	public readonly ready: Promise<HostProps<P>>;
+	/** Resolves to the live props once initial props have passed the host schemas. */
+	public readonly ready: Promise<RemoteValue<P>>;
 
-	private uid: string;
+	public readonly uid: string;
 
-	private tag: string;
+	public readonly tag: string;
 
 	private consumerWindow!: Window;
 
-	private consumerOrigin!: string;
+	/** Selected and checked before BOOTSTRAP is sent; fixed for the session. */
+	public readonly consumerOrigin!: string;
 
 	private transport!: HostTransport;
 
@@ -100,20 +105,7 @@ export class HostComponent<P extends Record<string, unknown>> {
 			this.transport = transport;
 
 			propsRuntime = new HostPropsRuntime(options.props, {
-				uid: this.uid,
-				tag: this.tag,
 				event: this.event,
-				controls: {
-					close: () => this.transport.close(),
-					focus: () => this.transport.focus(),
-					resize: (dimensions) => this.transport.resize(dimensions),
-					show: () => this.transport.show(),
-					hide: () => this.transport.hide(),
-					reportError: (error) => this.transport.reportError(error),
-					exportData: (exports) => this.exportData(exports),
-					getPeerInstances: (options) =>
-						this.transport.getPeerInstances(options),
-				},
 				getConsumerWindow: () => this.consumerWindow,
 				getConsumerOrigin: () => this.consumerOrigin,
 				getBridge: () => this.transport.bridge,
@@ -131,12 +123,11 @@ export class HostComponent<P extends Record<string, unknown>> {
 			});
 
 			this.transport.registerPropsHandler({
-				isConsumerSource: (source) => source.window === this.consumerWindow,
+				isConsumerWindow: (source) => source.window === this.consumerWindow,
 				applySerializedProps: (serializedProps) =>
 					this.propsRuntime.applySerializedProps(serializedProps),
 			});
 
-			this.propsRuntime.initializeHostProps();
 			this.ready = this.initializeFromConsumer();
 			// Callers can await ready; a failed start must not create an unhandled
 			// rejection when the embedding consumer has already closed.
@@ -153,7 +144,7 @@ export class HostComponent<P extends Record<string, unknown>> {
 		}
 	}
 
-	private async initializeFromConsumer(): Promise<HostProps<P>> {
+	private async initializeFromConsumer(): Promise<RemoteValue<P>> {
 		const data = await this.receiveBootstrap();
 		try {
 			this.propsRuntime.applyBootstrap(data);
@@ -168,7 +159,7 @@ export class HostComponent<P extends Record<string, unknown>> {
 				"CLOSED",
 				"Host destroyed before bootstrap completed",
 			);
-		return this.propsRuntime.hostProps;
+		return this.propsRuntime.props;
 	}
 
 	/**
@@ -207,13 +198,42 @@ export class HostComponent<P extends Record<string, unknown>> {
 	 * Checks exports against the component's `exports` schema, then queues
 	 * them, so an invalid export rejects here without being sent.
 	 */
-	private async exportData(exports: unknown): Promise<void> {
+	async export(exports: unknown): Promise<void> {
 		validateExports(this.exportsSchema, exports);
 		return this.transport.exportData(exports);
 	}
 
-	public get hostProps(): HostProps<P> {
-		return this.propsRuntime.hostProps;
+	close(): Promise<void> {
+		return this.transport.close();
+	}
+
+	focus(): Promise<void> {
+		return this.transport.focus();
+	}
+
+	resize(dimensions: Dimensions): Promise<void> {
+		return this.transport.resize(dimensions);
+	}
+
+	show(): Promise<void> {
+		return this.transport.show();
+	}
+
+	hide(): Promise<void> {
+		return this.transport.hide();
+	}
+
+	reportError(error: Error): Promise<void> {
+		return this.transport.reportError(error);
+	}
+
+	getPeerInstances(options?: GetPeerInstancesOptions): Promise<PeerInfo[]> {
+		return this.transport.getPeerInstances(options);
+	}
+
+	/** Subscribes to committed prop updates; returns the unsubscribe function. */
+	onProps(handler: (props: RemoteValue<P>) => void): () => void {
+		return this.propsRuntime.onProps(handler);
 	}
 
 	/** Sends INIT once `ready` resolves; idempotent, and inert after `destroy()`. */

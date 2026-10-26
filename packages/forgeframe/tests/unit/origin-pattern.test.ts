@@ -1,8 +1,9 @@
 /**
  * Unit tests for wildcard origin helpers in `@/utils/origin-pattern`.
  *
- * Covers wildcard compilation caching/eviction and stateless `RegExp`
- * evaluation for global and sticky patterns.
+ * Covers the leading-label wildcard rule, matcher validation, compilation
+ * caching/eviction and stateless `RegExp` evaluation for global and sticky
+ * patterns.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -22,52 +23,71 @@ describe("compileWildcardOriginPattern", () => {
 		expect(compileWildcardOriginPattern("https://example.com")).toBeNull();
 	});
 
-	it("should cache compiled wildcard patterns and escape literal metacharacters", async () => {
+	it("matches one or more leading labels, with the scheme and port fixed", async () => {
 		const { compileWildcardOriginPattern, testOriginRegExpStateless } =
 			await loadOriginPatternModule();
-
-		const pattern = "https://*.example.com:8443/path?foo=bar+baz";
-		const compiled = compileWildcardOriginPattern(pattern);
-		const cached = compileWildcardOriginPattern(pattern);
-
+		const compiled = compileWildcardOriginPattern("https://*.example.com");
+		const cached = compileWildcardOriginPattern("https://*.example.com");
 		expect(compiled).toBeInstanceOf(RegExp);
 		expect(cached).toBe(compiled);
+		if (!compiled) return;
 
-		if (!compiled) {
-			return;
-		}
+		const matches = (origin: string) =>
+			testOriginRegExpStateless(compiled, origin);
+		expect(matches("https://app.example.com")).toBe(true);
+		expect(matches("https://a.b.example.com")).toBe(true);
+		expect(matches("https://example.com")).toBe(false);
+		expect(matches("https://evilexample.com")).toBe(false);
+		expect(matches("https://app.example.com.evil.net")).toBe(false);
+		expect(matches("http://app.example.com")).toBe(false);
+		expect(matches("https://app.example.com:8443")).toBe(false);
 
+		const withPort = compileWildcardOriginPattern("https://*.example.com:8443");
 		expect(
-			testOriginRegExpStateless(
-				compiled,
-				"https://api.example.com:8443/path?foo=bar+baz",
-			),
+			withPort &&
+				testOriginRegExpStateless(withPort, "https://a.example.com:8443"),
 		).toBe(true);
 		expect(
-			testOriginRegExpStateless(
-				compiled,
-				"https://api.example.com:8443/pathXfoo=bar+baz",
-			),
+			withPort && testOriginRegExpStateless(withPort, "https://a.example.com"),
 		).toBe(false);
-		expect(
-			testOriginRegExpStateless(
-				compiled,
-				"https://api.example.com:8443/path?foo=barxbaz",
-			),
-		).toBe(false);
+	});
+
+	it("compiles '*' to any origin and a misplaced wildcard to no origin", async () => {
+		const { compileWildcardOriginPattern, testOriginRegExpStateless } =
+			await loadOriginPatternModule();
+		const any = compileWildcardOriginPattern("*");
+		expect(any && testOriginRegExpStateless(any, "https://x.test")).toBe(true);
+		for (const pattern of [
+			"https://*example.com",
+			"https://app.example.com*",
+			"https://api.*.example.com",
+			"*.example.com",
+		]) {
+			const compiled = compileWildcardOriginPattern(pattern);
+			expect(compiled).toBeInstanceOf(RegExp);
+			for (const origin of [
+				"https://evilexample.com",
+				"https://app.example.com.evil.net",
+				"https://api.us.example.com",
+				"http://app.example.com",
+			])
+				expect(compiled && testOriginRegExpStateless(compiled, origin)).toBe(
+					false,
+				);
+		}
 	});
 
 	it("should evict the oldest wildcard pattern once the cache limit is exceeded", async () => {
 		const { compileWildcardOriginPattern } = await loadOriginPatternModule();
 
-		const oldestPattern = "https://host-0.*.example.com";
+		const oldestPattern = "https://*.host-0.example.com";
 		const oldestCompiled = compileWildcardOriginPattern(oldestPattern);
-		const newestPattern = "https://host-200.*.example.com";
+		const newestPattern = "https://*.host-200.example.com";
 
 		let newestCompiled: RegExp | null = null;
 		for (let index = 1; index <= 200; index += 1) {
 			newestCompiled = compileWildcardOriginPattern(
-				`https://host-${index}.*.example.com`,
+				`https://*.host-${index}.example.com`,
 			);
 		}
 
@@ -81,6 +101,34 @@ describe("compileWildcardOriginPattern", () => {
 		expect(recompiledOldest).not.toBe(oldestCompiled);
 		expect(compileWildcardOriginPattern(oldestPattern)).toBe(recompiledOldest);
 		expect(compileWildcardOriginPattern(newestPattern)).toBe(newestCompiled);
+	});
+});
+
+describe("assertOriginMatcher", () => {
+	it.each([
+		["https://*example.com", '"*" may only stand for leading host labels'],
+		["https://app.example.com*", '"*" may only stand for leading host labels'],
+		["https://api.*.example.com", '"*" may only stand for leading host labels'],
+		["*.example.com", 'write the scheme too, such as "https://*.example.com"'],
+		["example.com", 'write the scheme too, such as "https://example.com"'],
+		[
+			"https://*.example.com/",
+			'an origin has no path, query or fragment; write only the scheme, host and port, such as "https://*.example.com"',
+		],
+		["https://app.example.com/login", 'such as "https://app.example.com"'],
+	])("rejects %s", async (pattern, message) => {
+		const { assertOriginMatcher } = await loadOriginPatternModule();
+		expect(() => assertOriginMatcher([pattern], "Matcher")).toThrow(message);
+	});
+
+	it.each([
+		"*",
+		"https://*.example.com",
+		"https://*.example.com:8443",
+		"https://a.test",
+	])("accepts %s", async (pattern) => {
+		const { assertOriginMatcher } = await loadOriginPatternModule();
+		expect(() => assertOriginMatcher(pattern, "Matcher")).not.toThrow();
 	});
 });
 

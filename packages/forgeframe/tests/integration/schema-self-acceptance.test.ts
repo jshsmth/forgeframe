@@ -47,7 +47,7 @@ describe("One schema per prop", () => {
 		});
 		const instance = Component({ amount: "41" });
 		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(
+		const { host, hostProps } = await harness.bootstrapIframeHost(
 			container,
 			definitions,
 		);
@@ -55,7 +55,7 @@ describe("One schema per prop", () => {
 		expect(hostProps.amount).toBe(41);
 
 		const snapshots: unknown[] = [];
-		hostProps.onProps((props) => {
+		host.onProps((props) => {
 			snapshots.push(props.amount);
 		});
 		await instance.updateProps({ amount: "42" });
@@ -110,13 +110,13 @@ describe("One schema per prop", () => {
 		});
 		const instance = Component({ amount: 5 });
 		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(
+		const { host, hostProps } = await harness.bootstrapIframeHost(
 			container,
 			definitions,
 		);
 		await rendering;
 		const snapshots: unknown[] = [];
-		hostProps.onProps((props) => {
+		host.onProps((props) => {
 			snapshots.push(props.amount);
 		});
 
@@ -124,7 +124,7 @@ describe("One schema per prop", () => {
 			`Validation failed: amount: ${SELF_ACCEPTANCE_RULE}; the schema changed the value.`,
 		);
 		expect(hostProps.amount).toBe(5);
-		expect(hostProps.consumer.props).toEqual({ amount: 5 });
+		expect(hostProps).toEqual({ amount: 5 });
 		expect(snapshots).toEqual([]);
 
 		await instance.updateProps({ amount: 12 });
@@ -194,7 +194,7 @@ describe("One schema per prop", () => {
 		if (!host) throw new Error("Expected the corrected host to initialize");
 		await host.ready;
 		await rendering;
-		expect(host.hostProps.amount).toBe(1);
+		expect((await host.ready).amount).toBe(1);
 	});
 
 	it("rejects a received value that the host schema would change, once at the render timeout", async () => {

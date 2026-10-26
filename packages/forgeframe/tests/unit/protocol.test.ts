@@ -20,6 +20,34 @@ describe("PROTOCOL_PREFIX", () => {
 });
 
 describe("serializeMessage", () => {
+	it("wraps an unencodable value as VALIDATION and passes a toJSON error through", () => {
+		const request = (data: unknown) =>
+			createRequestMessage("id-1", "props", data, {
+				uid: "uid",
+				domain: "https://consumer.example.com",
+			});
+		let caught: unknown;
+		try {
+			serializeMessage(request({ big: 1n }));
+		} catch (error) {
+			caught = error;
+		}
+		expect(caught).toMatchObject({ code: "VALIDATION" });
+		expect((caught as Error).cause).toBeInstanceOf(TypeError);
+		const own = new RangeError("from toJSON");
+		expect(() =>
+			serializeMessage(
+				request({
+					value: {
+						toJSON() {
+							throw own;
+						},
+					},
+				}),
+			),
+		).toThrow(own);
+	});
+
 	it("should prefix message with protocol identifier", () => {
 		const message = createRequestMessage(
 			"id-1",

@@ -9,6 +9,7 @@
 
 import { MESSAGE_TYPE } from "../constants";
 import { wireErrorCode } from "../errors";
+import { stringifyForWire } from "../utils/json";
 import type { Message } from "./types";
 
 /**
@@ -22,11 +23,15 @@ export const PROTOCOL_PREFIX = "forgeframe:";
  *
  * @param message - The message to serialize
  * @returns JSON string prefixed with the protocol identifier
+ * @throws ForgeFrameError `VALIDATION`, with the encoder's error as `cause`,
+ * for a value JSON cannot encode, such as a `BigInt` or a cycle
  *
  * @internal
  */
 export function serializeMessage(message: Message): string {
-	return PROTOCOL_PREFIX + JSON.stringify(message);
+	return (
+		PROTOCOL_PREFIX + stringifyForWire(message, `the "${message.name}" message`)
+	);
 }
 
 /**

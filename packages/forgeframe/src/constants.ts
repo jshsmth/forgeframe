@@ -120,12 +120,13 @@ export const PROTOCOL_VERSION = 3;
  */
 export const WINDOW_NAME_PREFIX = "__forgeframe__";
 
+/** Injected by the build and the test tooling. */
+declare const __FORGEFRAME_VERSION__: string | undefined;
+
 /**
  * Current library version.
  * @public
  */
-declare const __FORGEFRAME_VERSION__: string | undefined;
-
 export const VERSION = (() => {
 	if (
 		typeof __FORGEFRAME_VERSION__ !== "string" ||

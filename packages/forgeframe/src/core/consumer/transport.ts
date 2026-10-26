@@ -329,6 +329,12 @@ export class ConsumerTransport<
 							"Host reconnected before the call completed",
 						),
 					);
+					// A props update still waiting may never be answered either, but the
+					// bootstrap snapshot this request reads already carries it, so it
+					// counts as delivered and the snapshot no longer waits behind it.
+					this.messenger.resolvePending(MESSAGE_NAME.PROPS, source.window, {
+						success: true,
+					});
 				}
 				const snapshot = await handlers.onBootstrap(
 					source,

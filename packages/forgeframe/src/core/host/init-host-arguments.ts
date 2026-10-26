@@ -16,7 +16,7 @@ import type { PropsDefinition } from "../../types/props";
 import type { OriginMatcher } from "../../types/utility";
 import { assertOriginMatcher } from "../../utils/origin-pattern";
 import { getComponentOptions } from "../component-registry";
-import { assertPropDefinitionsObject } from "./builtin-keys";
+import { assertPropDefinitionsObject } from "./reserved-props";
 import type { HostPropDefinitions } from "./types";
 
 /** The v2 call shapes that argument errors name. */
@@ -30,6 +30,8 @@ const INIT_HOST_CALL_SHAPE =
 const REMOVED_INIT_HOST_OPTIONS: Readonly<Record<string, string>> = {
 	allowedConsumerDomains:
 		'initHost() option "allowedConsumerDomains" was renamed to consumerOrigins.',
+	deferInit:
+		'initHost() option "deferInit" was replaced. Pass autoInit: false, then call host.init() when the host is ready.',
 };
 
 /** What a valid `initHost()` call starts the host with. */

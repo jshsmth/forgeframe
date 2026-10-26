@@ -17,11 +17,13 @@ import type {
 	AnyComponent,
 	CheckedPropsDefinition,
 	ExportsOf,
+	GetPeerInstancesOptions,
 	Host,
 	InferablePropsDefinition,
 	InitHostOptions,
 	PropsOf,
 } from "../../types/runtime";
+import type { Dimensions } from "../../types/utility";
 import { hasBrowserWindow } from "../../utils/browser";
 import {
 	readWindowNamePayload,
@@ -51,7 +53,10 @@ function readInitialPayload(): WindowNamePayload | null {
 		// A stale name with no parent or opener has no consumer to upgrade, so it
 		// starts nothing, as a current payload without a consumer window does.
 		if (!hasConsumerWindow()) return null;
-		throw new ForgeFrameError("VALIDATION", describeUnsupportedPayload(result));
+		throw new ForgeFrameError(
+			"VERSION_MISMATCH",
+			describeUnsupportedPayload(result),
+		);
 	}
 	if (result.kind === "invalid") {
 		console.error("Failed to parse ForgeFrame payload from window.name");
@@ -99,8 +104,8 @@ const HOST_ALREADY_ACTIVE_ERROR =
  * Pass the shared component definition, so the host validates props with the
  * consumer's schemas and infers their types. The tag-agnostic
  * `initHost({ props, consumerOrigins })` form accepts a window opened for any
- * tag. Await `ready` before reading consumer props; until then `hostProps`
- * holds only the built-in controls.
+ * tag. Await `ready` to read the consumer's props; the returned handle
+ * carries the host controls.
  *
  * Only one host can be active in a window. Call `destroy()`, or let `ready`
  * reject, before starting another.
@@ -231,7 +236,20 @@ function createHost(runtime: HostComponent<Record<string, unknown>>): Host {
 	);
 	return Object.freeze({
 		ready: runtime.ready,
-		hostProps: runtime.hostProps,
+		uid: runtime.uid,
+		tag: runtime.tag,
+		consumerOrigin: runtime.consumerOrigin,
+		close: () => runtime.close(),
+		focus: () => runtime.focus(),
+		resize: (dimensions: Dimensions) => runtime.resize(dimensions),
+		show: () => runtime.show(),
+		hide: () => runtime.hide(),
+		export: (exports: unknown) => runtime.export(exports),
+		onProps: (handler: (props: Record<string, unknown>) => void) =>
+			runtime.onProps(handler),
+		reportError: (error: Error) => runtime.reportError(error),
+		getPeerInstances: (options?: GetPeerInstancesOptions) =>
+			runtime.getPeerInstances(options),
 		init: () => runtime.init(),
 		destroy: () => runtime.destroy(),
 		on: events.on,

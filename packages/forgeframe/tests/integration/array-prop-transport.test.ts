@@ -436,18 +436,13 @@ describe("Array prop transport", () => {
 		});
 		const instance = Component({ label: "initial" });
 		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(
-			container,
-			definitions,
-		);
+		const { host } = await harness.bootstrapIframeHost(container, definitions);
 		await rendering;
 		await harness.withHostGlobalsAsync(() =>
-			hostProps.export({ items: ["initial"] }),
+			host.export({ items: ["initial"] }),
 		);
 		await expect(
-			harness.withHostGlobalsAsync(() =>
-				hostProps.export({ items: [undefined] }),
-			),
+			harness.withHostGlobalsAsync(() => host.export({ items: [undefined] })),
 		).rejects.toMatchObject({
 			code: "VALIDATION",
 			message: expect.stringContaining(
@@ -456,7 +451,7 @@ describe("Array prop transport", () => {
 		});
 		expect(instance.exports).toEqual({ items: ["initial"] });
 		await harness.withHostGlobalsAsync(() =>
-			hostProps.export({ items: ["recovered"] }),
+			host.export({ items: ["recovered"] }),
 		);
 		expect(instance.exports).toEqual({ items: ["recovered"] });
 	});

@@ -57,7 +57,7 @@ describe("Consumer/host handshake integration", () => {
 		expect(container.querySelector("iframe")).toBeNull();
 	});
 
-	it("bootstraps with props only and exposes consumer.props without export", async () => {
+	it("bootstraps with props only and resolves ready to the consumer's props", async () => {
 		harness = createIframeIntegrationHarness();
 		const definitions = { amount: prop.number() };
 		const Component = create({
@@ -90,13 +90,10 @@ describe("Consumer/host handshake integration", () => {
 			props: { amount: 1 },
 		});
 		expect(Object.hasOwn(hostProps, "children")).toBe(false);
-		expect(Object.keys(hostProps.consumer)).toEqual(["props"]);
-		expect(hostProps.consumer.props).toEqual({ amount: 1 });
+		expect(hostProps).toEqual({ amount: 1 });
 
-		const consumer = hostProps.consumer;
 		await instance.updateProps({ amount: 2 });
-		expect(hostProps.consumer).toBe(consumer);
-		expect(hostProps.consumer.props).toEqual({ amount: 2 });
+		expect(hostProps).toEqual({ amount: 2 });
 	});
 
 	it("initializes a fresh host after public teardown and clears stale host props", async () => {
@@ -119,21 +116,20 @@ describe("Consumer/host handshake integration", () => {
 		await rendering;
 		activeHarness.withHostGlobals(() => host.destroy());
 		expect(getHost()).toBeNull();
-		await expect(host.hostProps.hide()).rejects.toThrow();
+		await expect(host.hide()).rejects.toThrow();
 		const nextHost = activeHarness.bootstrapHost(definitions);
 		if (!nextHost) throw new Error("Expected host reinitialization");
 		expect(nextHost).not.toBe(host);
-		expect(nextHost.hostProps).not.toBe(host.hostProps);
-		await nextHost.ready;
+		expect(await nextHost.ready).not.toBe(await host.ready);
 		// Destroying the stale host again leaves its replacement working.
 		activeHarness.withHostGlobals(() => host.destroy());
-		expect(activeHarness.getHostProps()).toBe(nextHost.hostProps);
+		expect(getHost()).not.toBeNull();
 		expect(Object.hasOwn(activeHarness.hostWindow, "hostProps")).toBe(false);
 		await expect(
 			instance.updateProps({ title: "updated" }),
 		).resolves.toBeUndefined();
-		expect(nextHost.hostProps.title).toBe("updated");
-		await expect(nextHost.hostProps.hide()).resolves.toBeUndefined();
+		expect((await nextHost.ready).title).toBe("updated");
+		await expect(nextHost.hide()).resolves.toBeUndefined();
 		expect(container.querySelector("iframe")?.style.display).toBe("none");
 	});
 
@@ -201,7 +197,7 @@ describe("Consumer/host handshake integration", () => {
 		if (!retried) throw new Error("Expected the retried host");
 		await retried.ready;
 		await expect(rendering).resolves.toBeUndefined();
-		expect(retried.hostProps.amount).toBe(5);
+		expect((await retried.ready).amount).toBe(5);
 		// A recovered handshake reports no failure.
 		expect(errors).not.toHaveBeenCalled();
 	});
@@ -237,7 +233,7 @@ describe("Consumer/host handshake integration", () => {
 		if (!host) throw new Error("Expected the corrected host to initialize");
 		await host.ready;
 		await rendering;
-		expect(host.hostProps.profile).toEqual({ name: "initial" });
+		expect((await host.ready).profile).toEqual({ name: "initial" });
 	});
 
 	it("rejects oversized bootstrap metadata before installing a host and accepts a valid retry", async () => {
@@ -278,7 +274,7 @@ describe("Consumer/host handshake integration", () => {
 			throw new Error("Expected the valid retry to initialize the host");
 		await host.ready;
 		await expect(render).resolves.toBeUndefined();
-		expect(host.hostProps.title).toBe("safe");
+		expect((await host.ready).title).toBe("safe");
 		expect(container.querySelector("iframe")).toBe(iframe);
 	});
 
@@ -310,29 +306,27 @@ describe("Consumer/host handshake integration", () => {
 		await expect(renderPromise).resolves.toBeUndefined();
 
 		// ready resolves to the live props object; no window global is defined.
-		expect(hostProps).toBe(host.hostProps);
+		expect(hostProps).toBe(await host.ready);
 		expect(Object.hasOwn(harness.hostWindow, "hostProps")).toBe(false);
 		expect(hostProps.amount).toBe(7);
 		expect(hostProps.message).toBe("ForgeFrame ready");
-		expect(hostProps.consumer.props).toEqual({
+		expect(hostProps).toEqual({
 			amount: 7,
 			message: "ForgeFrame ready",
 		});
 
-		expect(typeof hostProps.uid).toBe("string");
-		expect(hostProps.tag).toBe("integration-handshake-component");
-		expect(typeof hostProps.close).toBe("function");
-		expect(typeof hostProps.focus).toBe("function");
-		expect(typeof hostProps.resize).toBe("function");
-		expect(typeof hostProps.show).toBe("function");
-		expect(typeof hostProps.hide).toBe("function");
-		expect(typeof hostProps.onProps).toBe("function");
-		expect(typeof hostProps.reportError).toBe("function");
-		expect(typeof hostProps.export).toBe("function");
-		expect(Object.keys(hostProps.consumer)).toEqual(["props"]);
-		expect(typeof hostProps.getPeerInstances).toBe("function");
-		expect(hostProps.getConsumer()).toBe(harness.consumerWindow);
-		expect(hostProps.consumerOrigin).toBe(harness.consumerOrigin);
+		expect(typeof host.uid).toBe("string");
+		expect(host.tag).toBe("integration-handshake-component");
+		expect(typeof host.close).toBe("function");
+		expect(typeof host.focus).toBe("function");
+		expect(typeof host.resize).toBe("function");
+		expect(typeof host.show).toBe("function");
+		expect(typeof host.hide).toBe("function");
+		expect(typeof host.onProps).toBe("function");
+		expect(typeof host.reportError).toBe("function");
+		expect(typeof host.export).toBe("function");
+		expect(typeof host.getPeerInstances).toBe("function");
+		expect(host.consumerOrigin).toBe(harness.consumerOrigin);
 
 		await expect(
 			instance.updateProps({
@@ -343,7 +337,7 @@ describe("Consumer/host handshake integration", () => {
 
 		expect(hostProps.amount).toBe(8);
 		expect(hostProps.message).toBe("ForgeFrame updated");
-		expect(hostProps.consumer.props).toEqual({
+		expect(hostProps).toEqual({
 			amount: 8,
 			message: "ForgeFrame updated",
 		});
@@ -374,7 +368,7 @@ describe("Prop updates requested during render", () => {
 		const host = activeHarness.bootstrapHost(definitions, options);
 		if (!host) throw new Error("Expected a host");
 		const notifications: unknown[] = [];
-		host.hostProps.onProps((props) => notifications.push(props.amount));
+		host.onProps((props) => notifications.push(props.amount));
 		return { host, notifications };
 	}
 
@@ -414,9 +408,9 @@ describe("Prop updates requested during render", () => {
 
 		await rendering;
 		await second;
-		expect(host.hostProps.amount).toBeGreaterThanOrEqual(2);
+		expect((await host.ready).amount).toBeGreaterThanOrEqual(2);
 		await third;
-		expect(host.hostProps.amount).toBe(3);
+		expect((await host.ready).amount).toBe(3);
 		expect(notifications).toEqual([1, 2, 3]);
 		expect(order).toEqual(["rendered", "props 2", "props 3"]);
 	});
@@ -451,7 +445,7 @@ describe("Prop updates requested during render", () => {
 		await render;
 		await Promise.all(updates);
 		expect(notifications).toEqual([1, 2, 3, 4]);
-		expect(host.hostProps.amount).toBe(4);
+		expect((await host.ready).amount).toBe(4);
 	});
 
 	it("rejects an invalid queued update on its own after the render", async () => {
@@ -464,7 +458,7 @@ describe("Prop updates requested during render", () => {
 		await expect(rendering).resolves.toBeUndefined();
 		await expect(invalid).rejects.toThrow("Validation failed: amount");
 		await valid;
-		expect(host.hostProps.amount).toBe(3);
+		expect((await host.ready).amount).toBe(3);
 		expect(notifications).toEqual([1, 3]);
 	});
 
@@ -484,7 +478,7 @@ describe("Prop updates requested during render", () => {
 		await expect(moved).rejects.toThrow(
 			"Cannot change component URL origin after render",
 		);
-		expect(host.hostProps.amount).toBe(1);
+		expect((await host.ready).amount).toBe(1);
 	});
 
 	it("rejects queued updates with the closed error when the handshake times out", async () => {
@@ -493,12 +487,56 @@ describe("Prop updates requested during render", () => {
 		const instance = Component({ amount: 1 });
 		const rendering = instance.render(container);
 		const queued = instance.updateProps({ amount: 2 });
-		const queuedRejected = expect(queued).rejects.toThrow(
-			"Cannot update props after the component has closed",
-		);
-		await expect(rendering).rejects.toThrow();
-		await queuedRejected;
+		const queuedFailure = queued.catch((error: unknown) => error);
+		const renderFailure = await rendering.catch((error: unknown) => error);
+		expect(renderFailure).toMatchObject({ code: "INIT_TIMEOUT" });
+		// The held update names the render failure, so callers can tell it apart.
+		expect(await queuedFailure).toMatchObject({
+			code: "CLOSED",
+			message: "Cannot update props after the component has closed",
+			cause: renderFailure,
+		});
 		expect(validate).toHaveBeenCalledTimes(1);
+	});
+
+	it("joins the in-progress render for the same arguments and rejects different ones", async () => {
+		const { Component, container } = setup();
+		const instance = Component({ amount: 1 });
+		const rendering = instance.render(container);
+		const joined = instance.render(container);
+		const otherContext = instance
+			.render(container, "popup")
+			.catch((error: unknown) => error);
+		const otherContainer = instance
+			.render(document.createElement("div"))
+			.catch((error: unknown) => error);
+		await startRecordingHost(container);
+		await expect(rendering).resolves.toBeUndefined();
+		await expect(joined).resolves.toBeUndefined();
+		expect(await otherContext).toMatchObject({
+			code: "VALIDATION",
+			message: expect.stringContaining("different container or context"),
+		});
+		expect(await otherContainer).toMatchObject({ code: "VALIDATION" });
+	});
+
+	it("resolves render() when a rendered listener closes the instance", async () => {
+		const { Component, container } = setup();
+		const instance = Component({ amount: 1 });
+		const closing: Promise<void>[] = [];
+		instance.event.once("rendered", () => {
+			closing.push(instance.close());
+		});
+		const rendering = instance.render(container);
+		await startRecordingHost(container);
+		await expect(rendering).resolves.toBeUndefined();
+		await closing[0];
+		const closed = await instance
+			.updateProps({ amount: 2 })
+			.catch((error: unknown) => error);
+		expect(closed).toMatchObject({ code: "CLOSED" });
+		// A close after a completed render names no render failure.
+		expect((closed as Error).cause).toBeUndefined();
 	});
 
 	it("applies an update from a rendered listener after the updates queued during render", async () => {
@@ -515,7 +553,7 @@ describe("Prop updates requested during render", () => {
 		await queued;
 		await fromRendered;
 		expect(notifications).toEqual([1, 2, 3]);
-		expect(host.hostProps.amount).toBe(3);
+		expect((await host.ready).amount).toBe(3);
 	});
 
 	it("runs held updates as unrendered updates after a retryable render failure", async () => {

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearComponents, closeAll, create } from "@/core/component";
 import { ConsumerComponent } from "@/core/consumer";
-import { HOST_PROPS_BUILTIN_KEYS } from "@/core/host/builtin-keys";
+import { RESERVED_PROP_NAMES } from "@/core/host/reserved-props";
 import { createDeferred } from "@/utils/promise";
 import { elements } from "../../../playground/consumer/elements";
 import { log } from "../../../playground/consumer/logger";
@@ -47,7 +47,7 @@ afterEach(async () => {
 });
 
 describe("playground prop editor", () => {
-	it.each([...HOST_PROPS_BUILTIN_KEYS])(
+	it.each([...RESERVED_PROP_NAMES])(
 		"rejects reserved host-control name %s without changing configuration",
 		(name) => {
 			const config = {

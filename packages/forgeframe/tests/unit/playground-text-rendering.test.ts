@@ -35,18 +35,15 @@ describe("playground cross-window text", () => {
 		const onProps = vi.fn();
 		const onGreet = vi.fn();
 		const exported = vi.fn().mockResolvedValue(undefined);
-		const props = {
-			name: markup,
-			count: 7,
-			[key]: markup,
+		const props = { name: markup, count: 7, [key]: markup, onGreet };
+		hostRuntime.initHost.mockReturnValue({
+			ready: Promise.resolve(props),
 			tag: markup,
 			uid: markup,
 			consumerOrigin: markup,
 			onProps,
-			onGreet,
 			export: exported,
-		};
-		hostRuntime.initHost.mockReturnValue({ ready: Promise.resolve(props) });
+		});
 		await import("../../../playground/host/main");
 		await vi.waitFor(() => expect(onProps).toHaveBeenCalledOnce());
 		// The default consumer origin follows this page's protocol, so HTTP dev works.

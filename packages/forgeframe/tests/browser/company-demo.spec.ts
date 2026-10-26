@@ -685,9 +685,7 @@ test("technical view observes real callback arguments and returns without replac
 		"result.receipt.invoiceId",
 	);
 	await expect(page.locator("#step-code")).toContainText('"recorded"');
-	await expect(page.locator("#step-code")).toContainText(
-		"await props.close();",
-	);
+	await expect(page.locator("#step-code")).toContainText("await host.close();");
 	if (reviewDir && testInfo.project.name === "chromium")
 		await page.screenshot({
 			path: resolve(reviewDir, "desktop-technical-paid.png"),

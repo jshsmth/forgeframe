@@ -164,7 +164,7 @@ export async function runInstancesScenario(
 		tag,
 		url: `${HOST_URL}?scenario=instances`,
 		// The host lists its peers, so this component opts in to discovery.
-		peers: true,
+		peers: "same-origin",
 		dimensions: { width: "100%", height: 300 },
 		props: {
 			scenario: prop.string(),
@@ -248,10 +248,7 @@ export async function runInstancesScenario(
 }
 
 const hostControlExports = prop.object({
-	runControls:
-		prop.function<
-			() => Promise<{ consumerOrigin: string; parentMatched: boolean }>
-		>(),
+	runControls: prop.function<() => Promise<{ consumerOrigin: string }>>(),
 	requestClose: prop.function<() => Promise<boolean>>(),
 });
 
@@ -323,10 +320,9 @@ export async function runHostControlsScenario(
 		);
 		results.push(
 			assertResult(
-				"Host sees the verified consumer window and origin",
-				controlResult.parentMatched &&
-					controlResult.consumerOrigin === window.location.origin,
-				`parent matched: ${controlResult.parentMatched}; origin: ${controlResult.consumerOrigin}`,
+				"Host sees the verified consumer origin",
+				controlResult.consumerOrigin === window.location.origin,
+				`origin: ${controlResult.consumerOrigin}`,
 			),
 		);
 

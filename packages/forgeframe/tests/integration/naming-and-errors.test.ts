@@ -58,19 +58,18 @@ describe("Origin naming and error codes", () => {
 		});
 		const container = createContainer();
 		const rendering = Component({ id: "a" }).render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(
+		const { host, hostProps } = await harness.bootstrapIframeHost(
 			container,
 			Component,
 			{ consumerOrigins: [harness.consumerOrigin] },
 		);
 		await expect(rendering).resolves.toBeUndefined();
-		expect(hostProps.consumerOrigin).toBe(harness.consumerOrigin);
+		expect(host.consumerOrigin).toBe(harness.consumerOrigin);
 		// Read-only at runtime too, not only in the types.
 		expect(() => {
-			(hostProps as { consumerOrigin: string }).consumerOrigin =
-				"https://x.test";
+			(host as { consumerOrigin: string }).consumerOrigin = "https://x.test";
 		}).toThrow(TypeError);
-		expect(hostProps.consumerOrigin).toBe(harness.consumerOrigin);
+		expect(host.consumerOrigin).toBe(harness.consumerOrigin);
 		expect(hostProps.id).toBe("a");
 	});
 
@@ -120,17 +119,19 @@ describe("Origin naming and error codes", () => {
 		);
 	});
 
-	it("reserves consumerOrigin as a built-in name", () => {
+	it("reserves then as a prop name with the VALIDATION code", () => {
 		expectCode(
 			catchError(() =>
 				create({
-					tag: "reserved-consumer-origin",
+					tag: "reserved-then",
 					url: HOST_URL,
-					props: { consumerOrigin: prop.string() },
+					// @ts-expect-error then is a reserved prop name
+					// biome-ignore lint/suspicious/noThenProperty: checks the reserved name
+					props: { then: prop.function() },
 				}),
 			),
 			"VALIDATION",
-			'Prop "consumerOrigin" is reserved',
+			'Prop "then" is reserved',
 		);
 	});
 
@@ -212,11 +213,9 @@ describe("Origin naming and error codes", () => {
 		);
 		const host = activeHarness.bootstrapHost(Component, { autoInit: false });
 		if (!host) throw new Error("Expected a host");
-		const hostProps = await activeHarness.withHostGlobalsAsync(
-			() => host.ready,
-		);
+		await activeHarness.withHostGlobalsAsync(() => host.ready);
 		await activeHarness
-			.withHostGlobalsAsync(() => hostProps.close())
+			.withHostGlobalsAsync(() => host.close())
 			.catch(() => {});
 
 		expectCode(
@@ -403,7 +402,7 @@ describe("Origin naming and error codes", () => {
 			errors.push(error);
 		});
 		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(container, {});
+		const { host } = await harness.bootstrapIframeHost(container, {});
 		await rendering;
 		const bridge = (
 			getHost() as unknown as {
@@ -412,11 +411,11 @@ describe("Origin naming and error codes", () => {
 		).bridge;
 
 		await harness.withHostGlobalsAsync(() =>
-			hostProps.export({ ready: true, refresh: () => 1 }),
+			host.export({ ready: true, refresh: () => 1 }),
 		);
 		const retained = bridge.localFunctions.size;
 		const error = await harness.withHostGlobalsAsync(() =>
-			hostProps
+			host
 				.export({ ready: "yes", extra: () => 2, more: () => 3 })
 				.catch((caught: unknown) => caught),
 		);

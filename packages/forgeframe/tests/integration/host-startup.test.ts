@@ -9,7 +9,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { deserializeMessage } from "@/communication/protocol";
 import { MESSAGE_NAME } from "@/constants";
 import { deleteRegisteredComponent } from "@/core/component-registry";
-import { HOST_PROPS_BUILTIN_KEYS } from "@/core/host/builtin-keys";
 import { create, ForgeFrameError, initHost, isHost, prop } from "@/index";
 import {
 	createIframeIntegrationHarness,
@@ -112,9 +111,8 @@ describe("Explicit host start-up", () => {
 
 		const host = activeHarness.bootstrapHost(HostSide);
 		if (!host) throw new Error("Expected an explicit host");
-		await expect(host.ready).resolves.toBe(host.hostProps);
 		await expect(rendering).resolves.toBeUndefined();
-		expect(host.hostProps.amount).toBe(10);
+		expect((await host.ready).amount).toBe(10);
 	});
 
 	it("rejects the removed allowedConsumerDomains option in a host bundle", async () => {
@@ -173,9 +171,9 @@ describe("Explicit host start-up", () => {
 				call: (component: unknown) =>
 					callInitHost(component, {
 						consumerOrigins: "*",
-						deferInit: true,
+						autoStart: true,
 					}),
-				message: 'initHost() does not accept the "deferInit" option',
+				message: 'initHost() does not accept the "autoStart" option',
 			},
 			{
 				label: "a v1 definitions map",
@@ -221,6 +219,16 @@ describe("Explicit host start-up", () => {
 					"initHost() autoInit must be a boolean. Use initHost(Component, { consumerOrigins })",
 			},
 			{
+				label: "the removed deferInit option",
+				call: (component: unknown) =>
+					callInitHost(component, {
+						consumerOrigins: "*",
+						deferInit: true,
+					}),
+				message:
+					'initHost() option "deferInit" was replaced. Pass autoInit: false, then call host.init() when the host is ready.',
+			},
+			{
 				label: "a third positional argument",
 				call: (component: unknown) =>
 					callInitHost(
@@ -241,14 +249,15 @@ describe("Explicit host start-up", () => {
 					"initHost() props must be a prop definitions object. Use initHost(Component, { consumerOrigins })",
 			},
 			{
-				label: "props that define a reserved built-in name",
+				label: "props that define a reserved name",
 				call: () =>
 					callInitHost({
 						consumerOrigins: "*",
-						props: { close: prop.string() },
+						// biome-ignore lint/suspicious/noThenProperty: checks the reserved name
+						props: { then: prop.function() },
 					}),
 				message:
-					'Prop "close" is reserved by hostProps built-ins and cannot be defined as a custom prop',
+					'Prop "then" is reserved by ForgeFrame and cannot be defined as a custom prop',
 				namesCallShape: false,
 			},
 		])(
@@ -332,7 +341,7 @@ describe("Explicit host start-up", () => {
 	});
 
 	describe("component form", () => {
-		it("holds only built-ins until ready resolves to the same live object", async () => {
+		it("resolves ready to a live props object without host controls", async () => {
 			harness = createIframeIntegrationHarness();
 			const activeHarness = harness;
 			const { Component, instance, rendering } = await renderConsumer(
@@ -342,19 +351,14 @@ describe("Explicit host start-up", () => {
 
 			const host = activeHarness.bootstrapHost(Component);
 			if (!host) throw new Error("Expected a host");
-			const { hostProps } = host;
-			// `children` stays reserved, but hostProps no longer carries it.
-			expect(Object.keys(hostProps).sort()).toEqual(
-				[...HOST_PROPS_BUILTIN_KEYS].filter((key) => key !== "children").sort(),
-			);
-			expect(hostProps.amount).toBeUndefined();
+			expect(typeof host.close).toBe("function");
 
-			await expect(host.ready).resolves.toBe(hostProps);
+			const hostProps = await host.ready;
 			await rendering;
-			expect(hostProps.amount).toBe(10);
+			expect(hostProps).toEqual({ amount: 10 });
 			await instance.updateProps({ amount: 11 });
-			expect(host.hostProps).toBe(hostProps);
-			expect(hostProps.amount).toBe(11);
+			expect(await host.ready).toBe(hostProps);
+			expect(hostProps).toEqual({ amount: 11 });
 		});
 
 		it("validates the bootstrap with the component's schemas", async () => {
@@ -408,9 +412,8 @@ describe("Explicit host start-up", () => {
 
 			const retried = activeHarness.bootstrapHost(Component);
 			if (!retried) throw new Error("Expected the retried host");
-			await expect(retried.ready).resolves.toBe(retried.hostProps);
 			await expect(rendering).resolves.toBeUndefined();
-			expect(retried.hostProps.amount).toBe(10);
+			expect((await retried.ready).amount).toBe(10);
 		});
 
 		it("throws for a window opened for another tag, then accepts the right component", async () => {
@@ -452,7 +455,6 @@ describe("Explicit host start-up", () => {
 			await host.ready;
 			await rendering;
 			expect(() => activeHarness.bootstrapHost(Component)).toThrow(activeError);
-			expect(activeHarness.getHostProps()).toBe(host.hostProps);
 		});
 	});
 
@@ -469,11 +471,11 @@ describe("Explicit host start-up", () => {
 			const host = activeHarness.bootstrapHost(Component, { autoInit: false });
 			if (!host) throw new Error("Expected a deferred host");
 			const props = await host.ready;
-			for (let read = 0; read < 3; read += 1) void host.hostProps.amount;
+			for (let read = 0; read < 3; read += 1) void props.amount;
 			expect(await isSettled(activeHarness, rendering)).toBe(false);
 			expect(sent).not.toContain(MESSAGE_NAME.INIT);
 
-			await props.hide();
+			await host.hide();
 			expect(iframe.style.display).toBe("none");
 
 			host.init();
@@ -546,13 +548,25 @@ describe("Explicit host start-up", () => {
 			if (!host) throw new Error("Expected a host");
 			expect(Object.hasOwn(activeHarness.hostWindow, "hostProps")).toBe(false);
 			expect(Object.keys(host).sort()).toEqual([
+				"close",
+				"consumerOrigin",
 				"destroy",
-				"hostProps",
+				"export",
+				"focus",
+				"getPeerInstances",
+				"hide",
 				"init",
 				"on",
+				"onProps",
 				"once",
 				"ready",
+				"reportError",
+				"resize",
+				"show",
+				"tag",
+				"uid",
 			]);
+			expect(Object.isFrozen(host)).toBe(true);
 			for (const internal of [
 				"flushInit",
 				"getProps",
@@ -582,7 +596,7 @@ describe("Explicit host start-up", () => {
 				).toThrow(
 					new ForgeFrameError(
 						"VALIDATION",
-						'The host "props" event was removed in ForgeFrame 2; use hostProps.onProps(handler) instead',
+						'The host "props" event was removed in ForgeFrame 2; use host.onProps(handler) instead',
 					),
 				);
 			}
@@ -594,7 +608,7 @@ describe("Explicit host start-up", () => {
 			expect(Object.hasOwn(activeHarness.hostWindow, "hostProps")).toBe(false);
 		});
 
-		it("delivers committed props to hostProps.onProps() until unsubscribed", async () => {
+		it("delivers committed props to host.onProps() until unsubscribed", async () => {
 			harness = createIframeIntegrationHarness();
 			const activeHarness = harness;
 			const { Component, instance, rendering } = await renderConsumer(
@@ -605,7 +619,7 @@ describe("Explicit host start-up", () => {
 			const host = activeHarness.bootstrapHost(Component);
 			if (!host) throw new Error("Expected a host");
 			const received: unknown[] = [];
-			const unsubscribe = host.hostProps.onProps((props) => {
+			const unsubscribe = host.onProps((props) => {
 				received.push(props);
 			});
 			await host.ready;

@@ -48,9 +48,13 @@ describe("matchOrigin", () => {
 		expect(
 			matchOrigin("https://*.example.com", "https://sub.example.com"),
 		).toBe(true);
+		// Only leading labels may be wildcards.
 		expect(
 			matchOrigin("https://api.*.example.com", "https://api.us.example.com"),
-		).toBe(true);
+		).toBe(false);
+		expect(matchOrigin("https://*example.com", "https://evilexample.com")).toBe(
+			false,
+		);
 		expect(matchOrigin("https://*.example.com", "https://example.com")).toBe(
 			false,
 		);

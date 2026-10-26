@@ -6,7 +6,13 @@
  * `await host.ready`.
  */
 
-import { create, type Host, type HostProps, initHost, prop } from "forgeframe";
+import {
+	create,
+	type Host,
+	initHost,
+	prop,
+	type RemoteValue,
+} from "forgeframe";
 import { requireValue } from "../require-value";
 import { consumerUrl } from "./consumer-url";
 
@@ -51,35 +57,16 @@ const app = requireValue(document.getElementById("app"));
 /**
  * Render when embedded via ForgeFrame
  *
- * HostProps<MyProps> includes:
- * - All props passed from consumer (name, count, onGreet, etc.)
- * - Built-in methods (close, resize, focus, show, hide, export, etc.)
- * - Context info (uid, tag, consumerOrigin, etc.)
+ * `hostProps` holds the props passed from the consumer (name, count, onGreet,
+ * etc.); `host` carries the controls (close, resize, export, etc.) and context
+ * (uid, tag, consumerOrigin).
  */
-function renderEmbedded(hostProps: HostProps<MyProps>) {
-	// Built-in hostProps keys to exclude from "Received Props"
-	const builtInKeys = new Set([
-		"uid",
-		"tag",
-		"close",
-		"focus",
-		"resize",
-		"show",
-		"hide",
-		"onProps",
-		"reportError",
-		"getConsumer",
-		"consumerOrigin",
-		"export",
-		"consumer",
-		"getPeerInstances",
-	]);
-
+function renderEmbedded(hostProps: RemoteValue<MyProps>, host: Host<MyProps>) {
 	const getUserProps = () => {
 		const userProps: Record<string, unknown> = {};
-		const propsRecord = hostProps as unknown as Record<string, unknown>;
+		const propsRecord = hostProps as Record<string, unknown>;
 		for (const key of Object.keys(propsRecord)) {
-			if (!builtInKeys.has(key) && typeof propsRecord[key] !== "function") {
+			if (typeof propsRecord[key] !== "function") {
 				userProps[key] = propsRecord[key];
 			}
 		}
@@ -195,9 +182,9 @@ function renderEmbedded(hostProps: HostProps<MyProps>) {
 			.getElementById("props-display")
 			?.replaceChildren(renderPropsGrid());
 		for (const [id, text] of Object.entries({
-			"host-tag": hostProps.tag,
-			"host-uid": `${hostProps.uid.slice(0, 12)}...`,
-			"consumer-origin": hostProps.consumerOrigin,
+			"host-tag": host.tag,
+			"host-uid": `${host.uid.slice(0, 12)}...`,
+			"consumer-origin": host.consumerOrigin,
 		})) {
 			const display = document.getElementById(id);
 			if (display) display.textContent = text;
@@ -223,7 +210,7 @@ function renderEmbedded(hostProps: HostProps<MyProps>) {
 		document
 			.getElementById("btn-export")
 			?.addEventListener("click", async () => {
-				await hostProps.export({
+				await host.export({
 					exportedAt: new Date().toISOString(),
 					data: { name: hostProps.name, count: hostProps.count },
 				});
@@ -232,27 +219,27 @@ function renderEmbedded(hostProps: HostProps<MyProps>) {
 
 		// Report error to consumer
 		document.getElementById("btn-error")?.addEventListener("click", () => {
-			hostProps.reportError(new Error("Test error from host"));
+			host.reportError(new Error("Test error from host"));
 			setStatus("Reported error to consumer");
 		});
 
 		// Request close through the built-in control, including in copied examples.
 		document.getElementById("btn-close")?.addEventListener("click", () => {
-			void hostProps.close();
+			void host.close();
 		});
 
 		// Resize the iframe
 		document
 			.getElementById("btn-resize-grow")
 			?.addEventListener("click", async () => {
-				await hostProps.resize({ height: 500 });
+				await host.resize({ height: 500 });
 				setStatus("Resized to 500px");
 			});
 
 		document
 			.getElementById("btn-resize-shrink")
 			?.addEventListener("click", async () => {
-				await hostProps.resize({ height: 300 });
+				await host.resize({ height: 300 });
 				setStatus("Resized to 300px");
 			});
 
@@ -260,13 +247,13 @@ function renderEmbedded(hostProps: HostProps<MyProps>) {
 		document
 			.getElementById("btn-focus")
 			?.addEventListener("click", async () => {
-				await hostProps.focus();
+				await host.focus();
 				setStatus("Focused");
 			});
 
 		// Hide the iframe
 		document.getElementById("btn-hide")?.addEventListener("click", async () => {
-			await hostProps.hide();
+			await host.hide();
 			setStatus("Hidden (use consumer Show button)");
 		});
 	};
@@ -275,7 +262,7 @@ function renderEmbedded(hostProps: HostProps<MyProps>) {
 	render();
 
 	// Listen for prop updates from consumer
-	hostProps.onProps((newProps) => {
+	host.onProps((newProps) => {
 		console.log("[Host] Props updated:", newProps);
 		// Update UI with new values - handle any prop dynamically
 		for (const [key, value] of Object.entries(newProps)) {
@@ -292,13 +279,13 @@ function renderEmbedded(hostProps: HostProps<MyProps>) {
 
 	const exportInitialData = async () => {
 		if (hostProps.scenario === "configuration") {
-			await hostProps.export({ observed: getUserProps() });
+			await host.export({ observed: getUserProps() });
 			return;
 		}
 
 		if (hostProps.scenario === "instances") {
-			const peers = await hostProps.getPeerInstances();
-			await hostProps.export({
+			const peers = await host.getPeerInstances();
+			await host.export({
 				instanceLabel: hostProps.label,
 				peerUids: peers.map((peer) => peer.uid),
 				peerCount: peers.length,
@@ -307,20 +294,19 @@ function renderEmbedded(hostProps: HostProps<MyProps>) {
 		}
 
 		if (hostProps.scenario === "host-controls") {
-			await hostProps.export({
+			await host.export({
 				runControls: async () => {
-					await hostProps.resize({ width: 460, height: 350 });
-					await hostProps.focus();
-					await hostProps.hide();
+					await host.resize({ width: 460, height: 350 });
+					await host.focus();
+					await host.hide();
 					await new Promise((resolve) => setTimeout(resolve, 120));
-					await hostProps.show();
+					await host.show();
 					return {
-						consumerOrigin: hostProps.consumerOrigin,
-						parentMatched: hostProps.getConsumer() === window.parent,
+						consumerOrigin: host.consumerOrigin,
 					};
 				},
 				requestClose: async () => {
-					setTimeout(() => void hostProps.close(), 60);
+					setTimeout(() => void host.close(), 60);
 					return true;
 				},
 			});
@@ -328,23 +314,23 @@ function renderEmbedded(hostProps: HostProps<MyProps>) {
 		}
 
 		if (hostProps.scenario === "transport") {
-			await hostProps.export({ observed: getUserProps() });
+			await host.export({ observed: getUserProps() });
 			return;
 		}
 
 		if (hostProps.scenario === "reliability") {
-			await hostProps.export({
+			await host.export({
 				ready: true,
 				readState: () => ({
 					label: hostProps.label ?? "",
-					uid: hostProps.uid,
+					uid: host.uid,
 				}),
 			});
 			return;
 		}
 
 		if (hostProps.scenario === "common-actions") {
-			await hostProps.export({
+			await host.export({
 				ready: true,
 				getSnapshot: () => ({
 					label: hostProps.label ?? "",
@@ -360,19 +346,19 @@ function renderEmbedded(hostProps: HostProps<MyProps>) {
 		}
 
 		if (hostProps.scenario === "popup") {
-			await hostProps.export({
+			await host.export({
 				popupReady: true,
 				hasOpener: window.opener !== null,
-				consumerOrigin: hostProps.consumerOrigin,
+				consumerOrigin: host.consumerOrigin,
 				// Only the popup itself may resize a cross-origin popup window.
 				resizeSelf: (dimensions: { width: number; height: number }) =>
-					hostProps.resize(dimensions),
+					host.resize(dimensions),
 			});
 			return;
 		}
 
 		if (hostProps.scenario === "checkout-e2e") {
-			await hostProps.export({
+			await host.export({
 				checkoutReady: true,
 				submitPayment: async (token: string) => {
 					const receipt = {
@@ -393,7 +379,7 @@ function renderEmbedded(hostProps: HostProps<MyProps>) {
 
 		if (hostProps.scenario === "bridge" && hostProps.onCalculate) {
 			const callbackResult = await hostProps.onCalculate(19, 23);
-			await hostProps.export({
+			await host.export({
 				ready: true,
 				callbackResult,
 				multiply: (left: number, right: number) => left * right,
@@ -416,7 +402,7 @@ function renderEmbedded(hostProps: HostProps<MyProps>) {
 			const childInstance = NestedChildComponent({ scenario: "nested-child" });
 			await childInstance.render(nestedMount);
 			await waitFor(() => childInstance.exports !== undefined);
-			await hostProps.export({
+			await host.export({
 				nestedReady: true,
 				childTag: NESTED_CHILD_TAG,
 				childExportReady: Boolean(childInstance.exports?.nestedChildReady),
@@ -425,27 +411,27 @@ function renderEmbedded(hostProps: HostProps<MyProps>) {
 		}
 
 		if (hostProps.scenario === "nested-child") {
-			await hostProps.export({ nestedChildReady: true });
+			await host.export({ nestedChildReady: true });
 			return;
 		}
 
 		if (hostProps.scenario === "errors") {
-			await hostProps.export({
+			await host.export({
 				explode: () => {
 					throw new Error("Expected host function failure");
 				},
 			});
-			await hostProps.reportError(new Error("Expected host-reported error"));
+			await host.reportError(new Error("Expected host-reported error"));
 			return;
 		}
 
-		await hostProps.export({ ready: true, timestamp: Date.now() });
+		await host.export({ ready: true, timestamp: Date.now() });
 	};
 
 	void exportInitialData().catch((error: unknown) => {
 		const hostError = error instanceof Error ? error : new Error(String(error));
 		console.error("[Host] Initial export failed:", hostError);
-		void hostProps.reportError(hostError);
+		void host.reportError(hostError);
 	});
 }
 
@@ -486,7 +472,7 @@ const initializeHostPage = async () => {
 	// names the props the playground consumer sends.
 	const host = initHost({ consumerOrigins }) as Host<MyProps> | null;
 	if (host) {
-		renderEmbedded(await host.ready);
+		renderEmbedded(await host.ready, host);
 	} else {
 		renderStandalone();
 	}

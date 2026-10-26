@@ -16,8 +16,7 @@ import type { StandardSchemaV1 } from "../../props/schema";
 import type { SerializedProps } from "../../props/types";
 import type { HostEvents } from "../../types/events";
 import type { PropsDefinition } from "../../types/props";
-import type { GetPeerInstancesOptions, PeerInfo } from "../../types/runtime";
-import type { Dimensions, OriginMatcher } from "../../types/utility";
+import type { OriginMatcher } from "../../types/utility";
 
 export type VerifiedMessageSource = Parameters<MessageHandler>[1];
 
@@ -43,22 +42,8 @@ export interface HostRuntimeOptions<P> {
 	onDestroy?: () => void;
 }
 
-export interface HostPropsRuntimeControls {
-	close(): Promise<void>;
-	focus(): Promise<void>;
-	resize(dimensions: Dimensions): Promise<void>;
-	show(): Promise<void>;
-	hide(): Promise<void>;
-	reportError(error: Error): Promise<void>;
-	exportData<T>(exports: T): Promise<void>;
-	getPeerInstances(options?: GetPeerInstancesOptions): Promise<PeerInfo[]>;
-}
-
 export interface HostPropsRuntimeOptions {
-	uid: string;
-	tag: string;
 	event: EventEmitter<HostEvents>;
-	controls: HostPropsRuntimeControls;
 	getConsumerWindow(): Window;
 	getConsumerOrigin(): string;
 	getBridge(): FunctionBridge;
@@ -77,6 +62,6 @@ export interface HostTransportOptions {
 }
 
 export interface HostTransportPropsHandler {
-	isConsumerSource(source: VerifiedMessageSource): boolean;
+	isConsumerWindow(source: VerifiedMessageSource): boolean;
 	applySerializedProps(serializedProps: SerializedProps): { success: true };
 }

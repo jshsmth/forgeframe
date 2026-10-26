@@ -93,7 +93,7 @@ describe("Props sync integration", () => {
 		activeHarness.attachHostToIframe(iframe);
 		const host = activeHarness.bootstrapHost(definitions);
 		if (!host) throw new Error("Missing initial host");
-		const unsubscribe = host.hostProps.onProps(() => {
+		const unsubscribe = host.onProps(() => {
 			unsubscribe();
 			activeHarness.withHostGlobals(() => host.destroy());
 		});
@@ -138,17 +138,17 @@ describe("Props sync integration", () => {
 			extra: "undeclared initial",
 		});
 		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(
+		const { host, hostProps } = await harness.bootstrapIframeHost(
 			container,
 			definitions,
 		);
 		await rendering;
-		expect(hostProps.consumer.props).toEqual({ title: "initial" });
+		expect(hostProps).toEqual({ title: "initial" });
 		for (const key of ["local", "constructor", "extra"]) {
 			expect(Object.hasOwn(hostProps, key)).toBe(false);
 		}
 		const snapshots: unknown[] = [];
-		hostProps.onProps((props) => {
+		host.onProps((props) => {
 			snapshots.push(props);
 		});
 		await instance.updateProps({
@@ -158,7 +158,7 @@ describe("Props sync integration", () => {
 			extra: "undeclared update",
 		});
 		expect(hostProps.title).toBe("updated");
-		expect(hostProps.consumer.props).toEqual({ title: "updated" });
+		expect(hostProps).toEqual({ title: "updated" });
 		expect(snapshots).toEqual([{ title: "updated" }]);
 		for (const key of ["local", "constructor", "extra"]) {
 			expect(Object.hasOwn(hostProps, key)).toBe(false);
@@ -183,14 +183,11 @@ describe("Props sync integration", () => {
 		vi.spyOn(console, "error").mockImplementation(() => undefined);
 		const snapshots: number[] = [];
 		const rejectedSnapshots: unknown[] = [];
-		hostProps.onProps(({ amount }) => {
+		host.onProps(({ amount }) => {
 			snapshots.push(amount);
 		});
 		host.on("error", () => {
-			rejectedSnapshots.push({
-				amount: hostProps.amount,
-				consumer: hostProps.consumer.props,
-			});
+			rejectedSnapshots.push({ ...hostProps });
 		});
 
 		const rejected = expect(
@@ -199,9 +196,9 @@ describe("Props sync integration", () => {
 		const next = instance.updateProps({ amount: 2 });
 		await rejected;
 		await next;
-		expect(rejectedSnapshots).toEqual([{ amount: 1, consumer: { amount: 1 } }]);
+		expect(rejectedSnapshots).toEqual([{ amount: 1 }]);
 		expect(snapshots).toEqual([2]);
-		expect(hostProps.consumer.props).toEqual({ amount: 2 });
+		expect(hostProps).toEqual({ amount: 2 });
 		expect(hostProps.amount).toBe(2);
 	});
 
@@ -216,7 +213,7 @@ describe("Props sync integration", () => {
 		document.body.append(container);
 		const instance = Component({ title: "initial" });
 		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(container, {
+		const { host } = await harness.bootstrapIframeHost(container, {
 			title: prop.string(),
 		});
 		await rendering;
@@ -226,11 +223,11 @@ describe("Props sync integration", () => {
 			received.push(title);
 			subscription();
 			// Bound the counterexample so live Set iteration cannot freeze the test.
-			if (received.length < 3) subscription = hostProps.onProps(rearm);
+			if (received.length < 3) subscription = host.onProps(rearm);
 		};
-		subscription = hostProps.onProps(rearm);
+		subscription = host.onProps(rearm);
 		const persistent = vi.fn();
-		hostProps.onProps(persistent);
+		host.onProps(persistent);
 
 		await expect(
 			instance.updateProps({ title: "first" }),
@@ -256,19 +253,19 @@ describe("Props sync integration", () => {
 			document.body.append(container);
 			const instance = Component({ title: "initial" });
 			const rendering = instance.render(container);
-			const { hostProps } = await harness.bootstrapIframeHost(
+			const { host } = await harness.bootstrapIframeHost(
 				container,
 				definitions,
 			);
 			await rendering;
 			const later = vi.fn();
 			let laterSubscription: () => void;
-			const earlierSubscription = hostProps.onProps(() => {
+			const earlierSubscription = host.onProps(() => {
 				earlierSubscription();
 				if (action === "replace") laterSubscription();
-				laterSubscription = hostProps.onProps(later);
+				laterSubscription = host.onProps(later);
 			});
-			laterSubscription = hostProps.onProps(later);
+			laterSubscription = host.onProps(later);
 			await instance.updateProps({ title: "first" });
 			const initialCalls = action === "replace" ? 0 : 1;
 			expect(later).toHaveBeenCalledTimes(initialCalls);
@@ -293,19 +290,19 @@ describe("Props sync integration", () => {
 			document.body.append(container);
 			const instance = Component({ title: "initial" });
 			const rendering = instance.render(container);
-			const { host, hostProps } = await activeHarness.bootstrapIframeHost(
+			const { host } = await activeHarness.bootstrapIframeHost(
 				container,
 				definitions,
 			);
 			await rendering;
 			let laterSubscription: () => void;
-			hostProps.onProps(() => {
+			host.onProps(() => {
 				if (action === "destroy")
 					activeHarness.withHostGlobals(() => host.destroy());
 				else laterSubscription();
 			});
 			const later = vi.fn();
-			laterSubscription = hostProps.onProps(later);
+			laterSubscription = host.onProps(later);
 			await instance.updateProps({ title: "updated" });
 			expect(later).not.toHaveBeenCalled();
 		},
@@ -323,7 +320,7 @@ describe("Props sync integration", () => {
 		});
 		const instance = Component({ title: "initial" });
 		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(
+		const { host, hostProps } = await harness.bootstrapIframeHost(
 			container,
 			definitions,
 		);
@@ -334,11 +331,11 @@ describe("Props sync integration", () => {
 		});
 		const cancelledSnapshots: string[] = [];
 		const liveSnapshots: string[] = [];
-		const subscription = hostProps.onProps(({ title }) => {
+		const subscription = host.onProps(({ title }) => {
 			cancelledSnapshots.push(title);
 			return pending;
 		});
-		hostProps.onProps(({ title }) => {
+		host.onProps(({ title }) => {
 			liveSnapshots.push(title);
 		});
 		await instance.updateProps({ title: "first" });
@@ -353,7 +350,7 @@ describe("Props sync integration", () => {
 		await instance.updateProps({ title: "second" });
 		expect(cancelledSnapshots).toEqual(["first"]);
 		expect(liveSnapshots).toEqual(["first", "second"]);
-		expect(hostProps.consumer.props).toEqual({ title: "second" });
+		expect(hostProps).toEqual({ title: "second" });
 	});
 
 	it("withholds consumer-only and origin-restricted props during bootstrap and later updates", async () => {
@@ -386,14 +383,14 @@ describe("Props sync integration", () => {
 			restricted: "restricted secret",
 		});
 		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(
+		const { host, hostProps } = await harness.bootstrapIframeHost(
 			container,
 			definitions,
 		);
 		await rendering;
-		expect(hostProps.consumer.props).toEqual({ title: "initial" });
+		expect(hostProps).toEqual({ title: "initial" });
 		const snapshots: unknown[] = [];
-		hostProps.onProps((props) => {
+		host.onProps((props) => {
 			snapshots.push(props);
 		});
 		await instance.updateProps({
@@ -402,7 +399,7 @@ describe("Props sync integration", () => {
 			sameOrigin: "next same-origin",
 			restricted: "next restricted",
 		});
-		expect(hostProps.consumer.props).toEqual({ title: "updated" });
+		expect(hostProps).toEqual({ title: "updated" });
 		expect(snapshots).toEqual([{ title: "updated" }]);
 		for (const key of ["local", "sameOrigin", "restricted"]) {
 			expect(Object.hasOwn(hostProps, key)).toBe(false);
@@ -436,12 +433,12 @@ describe("Props sync integration", () => {
 			hasOwnProperty: undefined,
 		});
 		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(
+		const { host, hostProps } = await harness.bootstrapIframeHost(
 			container,
 			definitions,
 		);
 		await rendering;
-		const close = hostProps.close;
+		const close = host.close;
 		await instance.updateProps({
 			toString: "first",
 			constructor: "second",
@@ -455,9 +452,9 @@ describe("Props sync integration", () => {
 		});
 		for (const key of ["toString", "constructor", "hasOwnProperty"]) {
 			expect(Object.hasOwn(hostProps, key)).toBe(false);
-			expect(Object.hasOwn(hostProps.consumer.props, key)).toBe(false);
+			expect(Object.hasOwn(hostProps, key)).toBe(false);
 		}
-		expect(hostProps.close).toBe(close);
+		expect(host.close).toBe(close);
 	});
 
 	it.each([Infinity, -Infinity])(
@@ -479,18 +476,18 @@ describe("Props sync integration", () => {
 			expect(container.querySelector("iframe")).toBeNull();
 			const instance = Component({ amount: 42 });
 			const rendering = instance.render(container);
-			const { hostProps } = await harness.bootstrapIframeHost(
+			const { host, hostProps } = await harness.bootstrapIframeHost(
 				container,
 				definitions,
 			);
 			await rendering;
 			const onProps = vi.fn();
-			hostProps.onProps(onProps);
+			host.onProps(onProps);
 			await expect(instance.updateProps({ amount: value })).rejects.toThrow(
 				"Expected finite number",
 			);
 			expect(hostProps.amount).toBe(42);
-			expect(hostProps.consumer.props.amount).toBe(42);
+			expect(hostProps.amount).toBe(42);
 			expect(onProps).not.toHaveBeenCalled();
 			await instance.updateProps({ amount: 84 });
 			expect(hostProps.amount).toBe(84);
@@ -552,7 +549,7 @@ describe("Props sync integration", () => {
 		const container = document.createElement("div");
 		document.body.append(container);
 		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(
+		const { host, hostProps } = await harness.bootstrapIframeHost(
 			container,
 			definitions,
 		);
@@ -562,7 +559,7 @@ describe("Props sync integration", () => {
 		await instance.updateProps({ title: "updated", message: "updated" });
 		expect(hostProps.message).toBe("updated");
 		expect(Object.hasOwn(hostProps, "title")).toBe(false);
-		await hostProps.close();
+		await host.close();
 		expect(container.querySelector("iframe")).toBeNull();
 	});
 
@@ -588,11 +585,11 @@ describe("Props sync integration", () => {
 		);
 		await rendering;
 		expect(Object.hasOwn(hostProps, "beta")).toBe(false);
-		expect(hostProps.consumer.props).toEqual({ title: "initial" });
+		expect(hostProps).toEqual({ title: "initial" });
 		await instance.updateProps({ beta: "off", title: "updated" });
 		expect(hostProps.title).toBe("updated");
 		expect(Object.hasOwn(hostProps, "beta")).toBe(false);
-		expect(hostProps.consumer.props).toEqual({ title: "updated" });
+		expect(hostProps).toEqual({ title: "updated" });
 	});
 
 	it("keeps every field unchecked only for a tag-agnostic host without props", async () => {
@@ -607,7 +604,7 @@ describe("Props sync integration", () => {
 		const rendering = Component({ title: "raw" }).render(container);
 		const { hostProps } = await harness.bootstrapIframeHost(container);
 		await rendering;
-		expect(hostProps.consumer.props).toEqual({ title: "raw" });
+		expect(hostProps).toEqual({ title: "raw" });
 	});
 
 	it("drops every field for the host of a component that declares no props", async () => {
@@ -627,7 +624,7 @@ describe("Props sync integration", () => {
 		const Bare = create({ tag, url: "https://host.example.com/widget" });
 		const { hostProps } = await harness.bootstrapIframeHost(container, Bare);
 		await rendering;
-		expect(hostProps.consumer.props).toEqual({});
+		expect(hostProps).toEqual({});
 		expect(Object.hasOwn(hostProps, "title")).toBe(false);
 	});
 
@@ -642,19 +639,16 @@ describe("Props sync integration", () => {
 		const container = document.createElement("div");
 		document.body.append(container);
 		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(
-			container,
-			definitions,
-		);
+		const { host } = await harness.bootstrapIframeHost(container, definitions);
 		await rendering;
 		const calls: string[] = [];
 		const callback = ({ title }: { title: string }) => {
 			calls.push(title);
 		};
-		const previous = hostProps.onProps(callback);
-		const duplicate = hostProps.onProps(callback);
+		const previous = host.onProps(callback);
+		const duplicate = host.onProps(callback);
 		previous();
-		const current = hostProps.onProps(callback);
+		const current = host.onProps(callback);
 		previous();
 		duplicate();
 		await instance.updateProps({ title: "updated" });
@@ -682,16 +676,15 @@ describe("Props sync integration", () => {
 		});
 
 		const renderPromise = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(
+		const { host, hostProps } = await harness.bootstrapIframeHost(
 			container,
 			SYNC_PROP_DEFINITIONS,
 		);
 
 		await expect(renderPromise).resolves.toBeUndefined();
 
-		const initialConsumerProps = hostProps.consumer.props;
 		const onProps = vi.fn();
-		hostProps.onProps(onProps);
+		host.onProps(onProps);
 
 		await expect(
 			instance.updateProps({
@@ -702,8 +695,10 @@ describe("Props sync integration", () => {
 
 		expect(hostProps.title).toBe("Updated title");
 		expect("optionalNote" in hostProps).toBe(false);
-		expect(hostProps.consumer.props).toEqual({ title: "Updated title" });
-		expect(hostProps.consumer.props).not.toBe(initialConsumerProps);
+		expect(hostProps).toEqual({ title: "Updated title" });
+		// The live object keeps its identity; subscribers get a fresh snapshot.
+		expect(await host.ready).toBe(hostProps);
+		expect(onProps.mock.calls[0]?.[0]).not.toBe(hostProps);
 		expect(onProps).toHaveBeenCalledTimes(1);
 		expect(onProps).toHaveBeenCalledWith({ title: "Updated title" });
 	});
@@ -756,7 +751,7 @@ describe("Props sync integration", () => {
 		});
 
 		const renderPromise = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(
+		const { host, hostProps } = await harness.bootstrapIframeHost(
 			container,
 			DATE_SYNC_PROP_DEFINITIONS,
 		);
@@ -767,7 +762,7 @@ describe("Props sync integration", () => {
 		expect(hostProps.publishedAt.toISOString()).toBe(initialDate.toISOString());
 
 		const onProps = vi.fn();
-		hostProps.onProps(onProps);
+		host.onProps(onProps);
 
 		await expect(
 			instance.updateProps({
@@ -818,13 +813,13 @@ describe("undefined in factory input and updates", () => {
 			committed.push({ ...props });
 		});
 		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(
+		const { host, hostProps } = await harness.bootstrapIframeHost(
 			container,
 			definitions,
 		);
 		await rendering;
 		const notifications: Record<string, unknown>[] = [];
-		hostProps.onProps((props) => notifications.push({ ...props }));
+		host.onProps((props) => notifications.push({ ...props }));
 		return { instance, hostProps, committed, notifications };
 	}
 
@@ -861,7 +856,7 @@ describe("undefined in factory input and updates", () => {
 		expect(hostProps.note).toBe("kept");
 		await instance.updateProps({ note: undefined });
 		expect(Object.hasOwn(hostProps, "note")).toBe(false);
-		expect(Object.hasOwn(hostProps.consumer.props, "note")).toBe(false);
+		expect(Object.hasOwn(hostProps, "note")).toBe(false);
 		await instance.updateProps({ title: "v" });
 		expect(Object.hasOwn(hostProps, "note")).toBe(false);
 		await instance.updateProps({ note: "again" });
@@ -901,7 +896,7 @@ describe("undefined in factory input and updates", () => {
 		});
 		expect(hostProps.theme).toBe("light");
 		expect(Object.hasOwn(hostProps, "note")).toBe(false);
-		expect(Object.hasOwn(hostProps.consumer.props, "note")).toBe(false);
+		expect(Object.hasOwn(hostProps, "note")).toBe(false);
 	});
 });
 

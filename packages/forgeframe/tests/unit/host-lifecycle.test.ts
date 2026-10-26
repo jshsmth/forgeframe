@@ -45,6 +45,12 @@ function createPayload(
 	};
 }
 
+/** Reads a runtime's live props object, which `ready` resolves to, before it settles. */
+function readLiveProps(host: object): Record<string, unknown> {
+	return (host as { propsRuntime: { props: Record<string, unknown> } })
+		.propsRuntime.props;
+}
+
 /**
  * Creates a host instance while stubbing consumer window resolution behavior.
  */
@@ -168,11 +174,9 @@ describe("Host lifecycle behavior", () => {
 					createMessageSource(window),
 				),
 			).toEqual({ success: true });
-			expect(host.hostProps.consumer.props).toEqual({ amount: 42 });
+			expect(readLiveProps(host)).toEqual({ amount: 42 });
 			bootstrap.resolve({ props: { amount: 10, local: "old private" } });
-			await host.ready;
-			expect(host.hostProps.consumer.props).toEqual({ amount: 42 });
-			expect(Object.hasOwn(host.hostProps, "local")).toBe(false);
+			expect(await host.ready).toEqual({ amount: 42 });
 		} finally {
 			host.destroy();
 		}
@@ -190,11 +194,23 @@ describe("Host lifecycle behavior", () => {
 		expect(propsHandler?.({ amount: 42 }, createMessageSource(window))).toEqual(
 			{ success: true },
 		);
-		expect(host.hostProps.amount).toBe(42);
+		expect(readLiveProps(host).amount).toBe(42);
 		bootstrap.resolve({ props: { amount: 10 } });
-		await host.ready;
-		expect(host.hostProps.amount).toBe(42);
+		expect((await host.ready).amount).toBe(42);
 		host.destroy();
+	});
+
+	it("drops a then field from an unchecked consumer, so ready still resolves", async () => {
+		const host = await createBootstrappedHost(
+			// biome-ignore lint/suspicious/noThenProperty: checks the reserved name
+			{ then: "not a promise", children: "jsx", amount: 2 },
+			{ propDefinitions: "unchecked" as never },
+		);
+		try {
+			expect(await host.ready).toEqual({ amount: 2 });
+		} finally {
+			host.destroy();
+		}
 	});
 
 	it("notifies subscribers once when bootstrap completes", async () => {
@@ -205,7 +221,7 @@ describe("Host lifecycle behavior", () => {
 		const host = createHost();
 		try {
 			const notifications: unknown[] = [];
-			host.hostProps.onProps((props) => {
+			host.onProps((props) => {
 				notifications.push(props.amount);
 			});
 			const propsHandler = requireValue(
@@ -224,7 +240,7 @@ describe("Host lifecycle behavior", () => {
 			await host.ready;
 
 			expect(notifications).toEqual([42]);
-			expect(host.hostProps).not.toHaveProperty("children");
+			expect(await host.ready).not.toHaveProperty("children");
 		} finally {
 			host.destroy();
 		}
@@ -261,8 +277,7 @@ describe("Host lifecycle behavior", () => {
 		});
 
 		expect(host).not.toBeNull();
-		expect(requireValue(host).hostProps.label).toBeUndefined();
-		expect(requireValue(host).hostProps.secret).toBeUndefined();
+		expect(readLiveProps(requireValue(getHost()))).toEqual({});
 	});
 
 	it("keeps the channel metadata in window.name after host initialization", async () => {
@@ -281,9 +296,9 @@ describe("Host lifecycle behavior", () => {
 
 		expect(window.name).toBe(bootstrapWindowName);
 		expect(isHost()).toBe(true);
-		expect(getHost()?.hostProps).toBe(host.hostProps);
+		expect(getHost()?.uid).toBe(host.uid);
 		await host.ready;
-		expect(host.hostProps.amount).toBe(42);
+		expect((await host.ready).amount).toBe(42);
 		expect(window.name).toBe(bootstrapWindowName);
 		await vi.waitFor(() =>
 			expect(sendSpy.mock.calls.map(([, , name]) => name)).toContain(
@@ -329,7 +344,7 @@ describe("Host lifecycle behavior", () => {
 		await expect(host.ready).rejects.toThrow(
 			"Validation failed: secret: Required",
 		);
-		expect(host.hostProps.consumerOrigin).toBe(window.location.origin);
+		expect(host.consumerOrigin).toBe(window.location.origin);
 		expect(getHost()).toBeNull();
 	});
 
@@ -358,7 +373,7 @@ describe("Host lifecycle behavior", () => {
 		expect(hostProps.label).toBe("visible");
 		expect(hostProps).not.toHaveProperty("secret");
 		expect(hostProps).not.toHaveProperty("partner");
-		expect(hostProps.consumer.props).toEqual({ label: "visible" });
+		expect(hostProps).toEqual({ label: "visible" });
 	});
 
 	it("should isolate failing props subscribers and continue notifying others", async () => {
@@ -375,8 +390,8 @@ describe("Host lifecycle behavior", () => {
 		const healthySubscriber = vi.fn();
 		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-		host.hostProps.onProps(throwingSubscriber);
-		host.hostProps.onProps(healthySubscriber);
+		host.onProps(throwingSubscriber);
+		host.onProps(healthySubscriber);
 
 		const result = requireValue(propsHandler)(
 			{ amount: 77 },
@@ -401,7 +416,7 @@ describe("Host lifecycle behavior", () => {
 				.spyOn(console, "error")
 				.mockImplementation(() => {});
 			const order: string[] = [];
-			host.hostProps.onProps(() => {
+			host.onProps(() => {
 				order.push("failing");
 				return kind === "promise"
 					? Promise.reject(error)
@@ -411,7 +426,7 @@ describe("Host lifecycle behavior", () => {
 								reject(error),
 						};
 			});
-			host.hostProps.onProps(() => {
+			host.onProps(() => {
 				order.push("healthy");
 			});
 			const propsHandler = (
@@ -423,7 +438,7 @@ describe("Host lifecycle behavior", () => {
 				propsHandler?.({ amount: 77 }, createMessageSource(window)),
 			).toEqual({ success: true });
 			expect(order).toEqual(["failing", "healthy"]);
-			expect(host.hostProps.amount).toBe(77);
+			expect((await host.ready).amount).toBe(77);
 			await vi.waitFor(() =>
 				expect(consoleSpy).toHaveBeenCalledWith(
 					"Error in props handler:",
@@ -436,9 +451,9 @@ describe("Host lifecycle behavior", () => {
 	it("should cancel subscriptions and retain rejection handling after destruction", async () => {
 		const host = await createBootstrappedHost();
 		const cancelled = vi.fn();
-		host.hostProps.onProps(cancelled)();
+		host.onProps(cancelled)();
 		let rejectObserver: ((error: Error) => void) | undefined;
-		host.hostProps.onProps(
+		host.onProps(
 			() =>
 				new Promise<void>((_resolve, reject) => {
 					rejectObserver = reject;
@@ -463,14 +478,14 @@ describe("Host lifecycle behavior", () => {
 	it("should acknowledge updates without waiting for an async subscriber", async () => {
 		const host = await createBootstrappedHost();
 		let resolveObserver: (() => void) | undefined;
-		host.hostProps.onProps(
+		host.onProps(
 			() =>
 				new Promise<void>((resolve) => {
 					resolveObserver = resolve;
 				}),
 		);
 		const healthy = vi.fn();
-		host.hostProps.onProps(healthy);
+		host.onProps(healthy);
 		const propsHandler = (
 			host as unknown as { messenger: { handlers: Map<string, DirectHandler> } }
 		).messenger.handlers.get(MESSAGE_NAME.PROPS);
@@ -526,8 +541,7 @@ describe("Host lifecycle behavior", () => {
 				createMessageSource(window),
 			),
 		).toThrow("Validation failed: amount: Expected number, got string");
-		expect(typedHost.hostProps.amount).toBe(10);
-		expect(typedHost.hostProps.consumer.props).toEqual({ amount: 10 });
+		expect(await typedHost.ready).toEqual({ amount: 10 });
 		expect(consoleSpy).toHaveBeenCalledWith(
 			"Error deserializing props:",
 			expect.any(Error),

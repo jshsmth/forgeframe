@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { checkReadmeExamples } from "./check-readme-examples.mjs";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const { version } = JSON.parse(
@@ -84,9 +85,17 @@ assert.throws(() => initHost(), (error) => error instanceof ForgeFrameError && e
 `,
 	);
 	run(process.execPath, ["smoke.mjs"]);
+	// The default condition lets require(esm) and CommonJS test runners load it.
+	writeFileSync(
+		resolve(directory, "require.cjs"),
+		`const assert = require('node:assert/strict');
+assert.equal(typeof require('forgeframe').create, 'function');
+`,
+	);
+	run(process.execPath, ["require.cjs"]);
 	writeFileSync(
 		resolve(directory, "consumer.mts"),
-		`import { create, initHost, prop, type ExportsOf, type HostProps, type HostPropsOf, type PropsOf, type RemoteValue, type StandardSchemaV1, type StringSchema } from 'forgeframe';
+		`import { create, initHost, prop, type ExportsOf, type HostOf, type HostPropsOf, type PropsOf, type RemoteValue, type StandardSchemaV1, type StringSchema } from 'forgeframe';
 const Component = create({
  tag: 'typed-package', url: 'https://example.com/widget',
  props: { count: prop.number().default(1), callback: prop.function<(n: number) => string>(), defaultedCallback: prop.function<() => number>().default(() => () => 42) },
@@ -99,15 +108,15 @@ const propsCount: PropsOf<typeof Component>['count'] = 1;
 const localExports: ExportsOf<typeof Component> = { reset: () => undefined };
 const label: StringSchema = prop.string();
 const parsed: StandardSchemaV1.InferOutput<typeof label> = 'value';
-declare const typedHost: HostPropsOf<typeof Component>;
+declare const typedHost: HostOf<typeof Component>;
 void typedHost.export(localExports);
 void reset; void propsCount; void parsed;
-declare const host: HostProps<{ callback: (n: number) => string }>;
-const result: Promise<string> = host.callback(1);
+declare const hostProps: HostPropsOf<typeof Component>;
+const result: Promise<string> = hostProps.callback(1);
 declare const exports: RemoteValue<{ nested: { method: () => number } }>;
 const remoteResult: Promise<number> = exports.nested.method();
 const started = initHost(Component, { consumerOrigins: '*' });
-const startedCount: number | undefined = started?.hostProps.count;
+const startedCount: number | undefined = (await started?.ready)?.count;
 void result; void remoteResult; void startedCount;
 `,
 	);
@@ -175,6 +184,32 @@ export const agnosticHost = initHost({ props: { n: prop.number() }, consumerOrig
 		]);
 	// React is not installed yet, so the root entry's types must not need it.
 	typecheck("consumer.mts", "readme-consumer.mts");
+	// The declarations also compile with the oldest supported TypeScript,
+	// installed apart so it never replaces the repository's compiler.
+	run(process.execPath, [
+		npmCli,
+		"install",
+		"--prefix",
+		resolve(directory, "typescript-5.0"),
+		"--ignore-scripts",
+		"--no-audit",
+		"--no-fund",
+		"--package-lock=false",
+		"typescript@5.0.4",
+	]);
+	run(process.execPath, [
+		resolve(directory, "typescript-5.0/node_modules/typescript/bin/tsc"),
+		"--noEmit",
+		"--strict",
+		"--module",
+		"NodeNext",
+		"--moduleResolution",
+		"NodeNext",
+		"--target",
+		"ES2022",
+		"consumer.mts",
+		"readme-consumer.mts",
+	]);
 
 	const reactSection = readme.split("## React Integration (Optional)")[1];
 	const reactExample = reactSection?.match(/```tsx\r?\n([\s\S]*?)```/)?.[1];
@@ -215,6 +250,42 @@ void element; void total;
 `,
 	);
 	typecheck("readme-react.tsx", "react-consumer.tsx");
+
+	// Every README example outside the v1 migration guide compiles against the
+	// installed package; schema libraries come from the repository.
+	for (const dependency of ["zod", "valibot"]) {
+		symlinkSync(
+			resolve(repoRoot, "node_modules", dependency),
+			resolve(directory, "node_modules", dependency),
+			"dir",
+		);
+	}
+	const checkedExamples = checkReadmeExamples(readme, directory, (...files) =>
+		run(process.execPath, [
+			resolve(repoRoot, "node_modules/typescript/bin/tsc"),
+			"--ignoreConfig",
+			"--noEmit",
+			"--strict",
+			// Snippet context is declared as any, so implicit any is expected.
+			"--noImplicitAny",
+			"false",
+			"--useUnknownInCatchVariables",
+			"false",
+			"--skipLibCheck",
+			"--module",
+			"ESNext",
+			"--moduleResolution",
+			"bundler",
+			"--moduleDetection",
+			"force",
+			"--target",
+			"ES2022",
+			"--jsx",
+			"react-jsx",
+			...files,
+		]),
+	);
+	console.log(`README: ${checkedExamples} TypeScript examples compile`);
 	console.log(
 		`Installed forgeframe@${version}: ESM runtime and NodeNext consumer types passed`,
 	);

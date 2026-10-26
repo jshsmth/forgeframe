@@ -8,6 +8,7 @@ import { Messenger } from "@/communication/messenger";
 import {
 	createRequestMessage,
 	createResponseMessage,
+	deserializeMessage,
 	serializeMessage,
 } from "@/communication/protocol";
 import { MESSAGE_TYPE } from "@/constants";
@@ -476,6 +477,26 @@ describe("Messenger", () => {
 		});
 	});
 
+	describe("resolvePending", () => {
+		it("resolves only pending requests of the named type sent to that window", async () => {
+			const replaced = { postMessage: vi.fn() } as unknown as Window;
+			const props = messenger.send(
+				replaced,
+				"https://host.com",
+				"props",
+				{},
+				null,
+			);
+			const call = messenger
+				.send(replaced, "https://host.com", "call", {}, null)
+				.catch((error: Error) => error.message);
+			messenger.resolvePending("props", replaced, { success: true });
+			await expect(props).resolves.toEqual({ success: true });
+			messenger.destroy();
+			await expect(call).resolves.toBe("Messenger destroyed");
+		});
+	});
+
 	describe("post", () => {
 		it("should send one-way message without waiting", () => {
 			const targetWindow = {
@@ -729,7 +750,7 @@ describe("Messenger", () => {
 			expect(handler).not.toHaveBeenCalled();
 		});
 
-		it("should ignore messages without handlers", async () => {
+		it("answers a request without a handler with VERSION_MISMATCH", async () => {
 			const targetWindow = {
 				postMessage: vi.fn(),
 			} as unknown as Window;
@@ -749,8 +770,15 @@ describe("Messenger", () => {
 			// Allow async processing
 			await new Promise((resolve) => setTimeout(resolve, 0));
 
-			// Should not send any response for unknown message
-			expect(targetWindow.postMessage).not.toHaveBeenCalled();
+			// A newer peer's request fails fast with a coded reply.
+			const [reply] = vi.mocked(targetWindow.postMessage).mock.calls[0] ?? [];
+			const response = deserializeMessage(reply);
+			expect(response?.type).toBe("response");
+			expect(response?.id).toBe("req-1");
+			expect(response?.error).toMatchObject({
+				code: "VERSION_MISMATCH",
+				message: expect.stringContaining('"unknownMessage" request'),
+			});
 		});
 	});
 

@@ -327,9 +327,9 @@ async function runPropsScenario(sandbox: HTMLElement): Promise<TestResult[]> {
 				queryParam: true,
 				sendToHost: false,
 			},
+			// A same-origin prop is never a parameter; it must stay out of the URL.
 			sameOriginQuery: {
 				schema: prop.string(),
-				queryParam: true,
 				deliverTo: "same-origin",
 			},
 			value: prop.string(),

@@ -27,7 +27,6 @@ const consumerWindowUnavailableErrors = new WeakSet<Error>();
 export function isConsumerWindowUnavailable(error: unknown): boolean {
 	return error instanceof Error && consumerWindowUnavailableErrors.has(error);
 }
-export { CONSUMER_ORIGIN_VERIFICATION_ERROR } from "./consumer-origin-policy";
 
 export function resolveConsumerWindow(hostWindow: Window = window): Window {
 	if (isIframe(hostWindow)) {

@@ -10,7 +10,7 @@
 
 import type { ContextType } from "../constants";
 import { CONTEXT, EVENT } from "../constants";
-import { ForgeFrameError } from "../errors";
+import { ForgeFrameError, hasErrorCode } from "../errors";
 import { createEventSubscriber, EventEmitter } from "../events/emitter";
 import {
 	getPropsForHost,
@@ -120,6 +120,15 @@ export class ConsumerComponent<
 	/** @internal */
 	private destroyed = false;
 
+	/** The arguments of the render attempt in progress; a second call must match. */
+	private renderArguments: {
+		container: string | HTMLElement;
+		context: ContextType | undefined;
+	} | null = null;
+
+	/** Why the last render attempt failed; the `cause` of updates its teardown rejects. */
+	private renderFailure: unknown;
+
 	/** @internal */
 	private closing = false;
 
@@ -182,13 +191,26 @@ export class ConsumerComponent<
 	 * Renders the component into a DOM container.
 	 *
 	 * @remarks
-	 * This is the primary method for displaying the component. It creates
-	 * an iframe or popup, establishes communication with the host, and
-	 * handles the prerender/render lifecycle.
+	 * Opens an iframe or popup, waits for the host's handshake and resolves
+	 * once the host is ready. The `render` event fires before anything opens
+	 * and `rendered` after this promise has settled, so a `rendered` listener
+	 * can close the instance without failing the render. Calling again while
+	 * a render is in progress joins it when the arguments
+	 * match, and rejects with `VALIDATION` when they differ.
 	 *
-	 * @param container - CSS selector or HTMLElement to render into
-	 * @param context - Override the default rendering context (iframe or popup)
-	 * @throws Error if component was already destroyed or rendered
+	 * A `POPUP_BLOCKED` or URL failure rejects without closing the instance,
+	 * so it can render again, for example in an iframe. Any other failure
+	 * closes it: `closed` fires and updates held behind the render reject with
+	 * `CLOSED`, whose `cause` is the render's failure, before this promise
+	 * rejects.
+	 *
+	 * @param container - CSS selector or element to render into
+	 * @param context - Override the default context (iframe/popup)
+	 * @returns Promise that resolves when rendering is complete
+	 * @throws ForgeFrameError `CLOSED` after the instance is closed,
+	 * `VALIDATION` once rendered or for different arguments while rendering,
+	 * `POPUP_BLOCKED`, `INIT_TIMEOUT`, `CANCELLED` when `close()` interrupts it,
+	 * or the host's failure
 	 *
 	 * @example
 	 * ```typescript
@@ -203,25 +225,45 @@ export class ConsumerComponent<
 		this.assertRenderAllowed();
 
 		if (this.renderPromise) {
+			this.assertSameRenderArguments(container, context);
 			return this.renderPromise;
 		}
 
+		this.renderArguments = { container, context };
 		const renderTask = createDeferred<void>();
 		const operation = renderTask.promise;
 		this.renderPromise = operation;
 		this.activeRenderTask = renderTask;
 		// Updates requested from here on wait behind this attempt.
 		const propsHold = this.propsPipeline.holdForRender();
-		void this.performRender(container, context, propsHold.earlierWork).then(
-			renderTask.resolve,
-			renderTask.reject,
-		);
+		void this.performRender(
+			container,
+			context,
+			propsHold.earlierWork,
+			renderTask,
+		).then(renderTask.resolve, renderTask.reject);
 		try {
 			await operation;
 		} finally {
 			// Held updates are released first, so bookkeeping can never strand them.
 			propsHold.release();
 			this.finishRenderTask(renderTask, operation);
+		}
+	}
+
+	/** A render in progress can be joined only with the arguments it started with. */
+	private assertSameRenderArguments(
+		container: string | HTMLElement,
+		context: ContextType | undefined,
+	): void {
+		if (
+			this.renderArguments?.container !== container ||
+			this.renderArguments.context !== context
+		) {
+			throw new ForgeFrameError(
+				"VALIDATION",
+				"render() is already in progress with a different container or context; await it, or close the instance first",
+			);
 		}
 	}
 
@@ -254,11 +296,17 @@ export class ConsumerComponent<
 		}
 	}
 
-	/** @internal */
+	/**
+	 * Runs one render attempt. The task resolves before `rendered` is emitted,
+	 * so a listener that closes the instance cannot turn a completed render
+	 * into a rejection.
+	 * @internal
+	 */
 	private async performRender(
 		container: string | HTMLElement,
 		context: ContextType | undefined,
 		earlierPropsWork: Promise<void> | null,
+		renderTask: Deferred<void>,
 	): Promise<void> {
 		this.renderer.context = resolveRenderContext(
 			context,
@@ -307,16 +355,24 @@ export class ConsumerComponent<
 			this.assertRenderActive();
 
 			this.rendered = true;
-
+			renderTask.resolve();
 			this.#emitter.emit(EVENT.RENDERED, undefined);
 		} catch (err) {
 			const renderWasCancelled = this.isRenderCancelled();
-			await this.destroy().catch(() => undefined);
-			if (renderWasCancelled) {
+			if (!renderWasCancelled && hasErrorCode(err, "POPUP_BLOCKED")) {
+				// Nothing opened, so the instance stays usable: the caller can
+				// render again, for example in an iframe.
 				this.teardownRenderResources();
-				throw this.createRenderCancellationError();
+				throw err;
 			}
-			throw err;
+			const failure = renderWasCancelled
+				? this.createRenderCancellationError()
+				: err;
+			// Updates rejected by this teardown name the render failure as cause.
+			this.renderFailure = failure;
+			await this.destroy().catch(() => undefined);
+			if (renderWasCancelled) this.teardownRenderResources();
+			throw failure;
 		}
 	}
 
@@ -387,7 +443,7 @@ export class ConsumerComponent<
 	 * @remarks
 	 * Browsers do not let the consumer resize a cross-origin popup. That call
 	 * throws without emitting `resize`; the host can resize its own popup with
-	 * `hostProps.resize()`.
+	 * `host.resize()`.
 	 *
 	 * With no iframe mounted and no popup open there is nothing to resize, so
 	 * the call does nothing and emits no `resize`, as `focus()` does. The
@@ -402,7 +458,7 @@ export class ConsumerComponent<
 		if (outcome === "denied") {
 			throw new ForgeFrameError(
 				"VALIDATION",
-				`Cannot resize the popup for component "${this.options.tag}": the browser blocks resizing a cross-origin window. Call hostProps.resize() from the host instead.`,
+				`Cannot resize the popup for component "${this.options.tag}": the browser blocks resizing a cross-origin window. Call host.resize() from the host instead.`,
 			);
 		}
 		if (outcome === "resized") this.emitResize(dimensions);
@@ -522,6 +578,9 @@ export class ConsumerComponent<
 			throw new ForgeFrameError(
 				"CLOSED",
 				"Cannot update props after the component has closed",
+				this.renderFailure === undefined
+					? undefined
+					: { cause: this.renderFailure },
 			);
 		}
 	}

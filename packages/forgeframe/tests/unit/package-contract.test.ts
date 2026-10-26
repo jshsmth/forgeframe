@@ -88,8 +88,16 @@ describe("package contract", () => {
 
 		expect(packageJson.module).toBe("./dist/forgeframe.js");
 		expect(packageJson.exports).toEqual({
-			".": { types: "./dist/index.d.ts", import: "./dist/forgeframe.js" },
-			"./react": { types: "./dist/react.d.ts", import: "./dist/react.js" },
+			".": {
+				types: "./dist/index.d.ts",
+				import: "./dist/forgeframe.js",
+				default: "./dist/forgeframe.js",
+			},
+			"./react": {
+				types: "./dist/react.d.ts",
+				import: "./dist/react.js",
+				default: "./dist/react.js",
+			},
 		});
 	});
 
@@ -210,7 +218,7 @@ describe("package contract", () => {
 				expect(result.status).toBe(failing.length === 0 ? 0 : 1);
 				for (const entry of failing) {
 					expect(result.stderr).toContain(
-						`${entry} exceeds its minified and gzip budget`,
+						`${entry} exceeds its raw and gzip budget`,
 					);
 				}
 			} finally {

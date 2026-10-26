@@ -15,7 +15,7 @@ import {
 	assertIframeAttributeNames,
 	assertSandboxOption,
 } from "../render/iframe-configuration";
-import type { InferInput, InferProps } from "../types/props";
+import type { InferProps, InferPropsInput } from "../types/props";
 import type {
 	Component,
 	ComponentInstance,
@@ -43,7 +43,7 @@ import {
 	registerComponent,
 } from "./component-registry";
 import { ConsumerComponent } from "./consumer";
-import { assertPropDefinitionsObject } from "./host/builtin-keys";
+import { assertPropDefinitionsObject } from "./host/reserved-props";
 import { resolveRenderContext } from "./render-context";
 
 /**
@@ -147,14 +147,17 @@ function assertComponentFields<P>(options: ComponentOptions<P>): void {
 function assertComponentMatchers<P>(options: ComponentOptions<P>): void {
 	if (options.hostOrigins !== undefined)
 		assertOriginMatcher(options.hostOrigins, "Component hostOrigins");
-	if ((options.peers as unknown) === false) {
+	const peers: unknown = options.peers;
+	if (typeof peers === "boolean") {
 		throw new ForgeFrameError(
 			"VALIDATION",
-			"Component peers must be true or an origin matcher; omit it to keep peer discovery off",
+			peers
+				? 'Component peers: true was renamed. Use peers: "same-origin", as deliverTo spells it.'
+				: 'Component peers must be "same-origin" or an origin matcher; omit it to keep peer discovery off',
 		);
 	}
-	if (options.peers !== undefined && options.peers !== true)
-		assertOriginMatcher(options.peers, "Component peers");
+	if (peers !== undefined && peers !== "same-origin")
+		assertOriginMatcher(peers, "Component peers");
 }
 
 /**
@@ -171,7 +174,7 @@ const REMOVED_COMPONENT_OPTIONS: Readonly<Record<string, string>> = {
 	children:
 		'Component option "children" was removed. Import child components in the host page and render them there; each child host calls initHost(Child, { consumerOrigins }).',
 	peerDomains:
-		'Component option "peerDomains" was removed. Peer discovery is opt-in: set peers: true for same-origin peers, or peers: <origin matcher> to also admit those host origins.',
+		'Component option "peerDomains" was removed. Peer discovery is opt-in: set peers: "same-origin" for same-origin peers, or peers: <origin matcher> to also admit those host origins.',
 	domain:
 		'Component option "domain" was renamed. Use hostOrigins, which lists host origins such as "https://pay.example.com".',
 	timeout:
@@ -288,15 +291,18 @@ export function create<
 	const S = undefined,
 >(
 	options: InferredComponentOptions<D, S>,
-): Component<InferProps<D>, InferInput<D>, InferExports<S>>;
+): Component<InferProps<D>, InferPropsInput<D>, InferExports<S>>;
 export function create(
 	options: ComponentOptions<Record<string, unknown>>,
 ): Component<Record<string, unknown>> {
-	validateComponentOptions(options);
-	const runtimeOptions = options;
+	// Later changes to the caller's objects must not bypass validation.
+	const runtimeOptions = { ...options };
+	validateComponentOptions(runtimeOptions);
+	if (runtimeOptions.props !== undefined)
+		runtimeOptions.props = copyPropDefinitions(runtimeOptions.props);
 
 	const instances: ComponentInstance<RuntimeProps>[] = [];
-	const componentTag = options.tag;
+	const componentTag = runtimeOptions.tag;
 
 	function untrackInstance(instance: ConsumerComponent<RuntimeProps>): void {
 		removeTrackedInstance(instances, instance);
@@ -433,4 +439,18 @@ export function unregisterComponent(tag: string): void {
 export function clearComponents(): void {
 	clearRegisteredComponents();
 	clearIndexedInstances();
+}
+
+/**
+ * Copies checked definitions, and each wrapped entry, so the caller cannot
+ * change them after `create()` validated them. Checked entries and their
+ * fields are data fields, so copying invokes no accessor.
+ */
+function copyPropDefinitions<D extends object>(definitions: D): D {
+	const copy: Record<string, unknown> = {};
+	for (const [key, entry] of Object.entries(definitions)) {
+		copy[key] =
+			entry === undefined || isStandardSchema(entry) ? entry : { ...entry };
+	}
+	return copy as D;
 }

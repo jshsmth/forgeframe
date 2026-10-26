@@ -1,15 +1,15 @@
 /**
  * Type-level assertions for the public host runtime surface.
  *
- * Pins prop and exports inference through `initHost(Component, ...)` and
- * `HostPropsOf`, the narrow `Host` object it returns, the tag-agnostic form's
+ * Pins prop and exports inference through `initHost(Component, ...)`,
+ * `HostPropsOf` and `HostOf`, the `Host` handle it returns, the tag-agnostic form's
  * inferred props, and the v1 start-up and read paths that no longer exist.
  */
 // @ts-expect-error ForgeFrame 2 has no default export; use named imports.
 import ForgeFrame, {
 	create,
 	type Host,
-	type HostProps,
+	type HostOf,
 	type HostPropsOf,
 	type InitHostOptions,
 	initHost,
@@ -35,21 +35,33 @@ const typedHost: Host<PaymentProps> | null = host;
 void typedHost;
 
 if (host) {
-	const ready: Promise<HostProps<PaymentProps>> = host.ready;
-	void ready;
-	const amount: number = host.hostProps.amount;
+	const ready: Promise<RemoteValue<PaymentProps>> = host.ready;
+	const props = await ready;
+	const amount: number = props.amount;
 	void amount;
 	// @ts-expect-error host props keep the component's inferred types.
-	const wrongAmount: string = host.hostProps.amount;
+	const wrongAmount: string = props.amount;
 	void wrongAmount;
-	const settled: Promise<void> = host.hostProps.onSuccess("id");
+	const settled: Promise<void> = props.onSuccess("id");
 	void settled;
+	// @ts-expect-error controls live on the host, not on the props.
+	void props.close;
+	// @ts-expect-error the hostProps property was removed; await host.ready.
+	void host.hostProps;
+	// @ts-expect-error getConsumer() was removed.
+	void host.getConsumer;
+	// @ts-expect-error ready is read-only.
+	host.ready = ready;
+	const closed: Promise<void> = host.close();
+	const resized: Promise<void> = host.resize({ width: 1, height: 2 });
+	const uid: string = host.uid;
+	const tag: string = host.tag;
+	void closed;
+	void resized;
+	void uid;
+	void tag;
 
-	const replacement = host.hostProps;
-	// @ts-expect-error hostProps is a read-only, live object.
-	host.hostProps = replacement;
-
-	const stopProps: () => void = host.hostProps.onProps((props) => {
+	const stopProps: () => void = host.onProps((props) => {
 		const nextAmount: number = props.amount;
 		void nextAmount;
 	});
@@ -62,14 +74,14 @@ if (host) {
 	host.once("error", (error: Error) => {
 		void error;
 	});
-	// @ts-expect-error Host events have only error; observe props with hostProps.onProps().
+	// @ts-expect-error Host events have only error; observe props with host.onProps().
 	host.on("props", () => {});
 	// @ts-expect-error Host events have only error.
 	host.on("resize", () => {});
-	const reported: Promise<void> = host.hostProps.reportError(new Error("x"));
+	const reported: Promise<void> = host.reportError(new Error("x"));
 	void reported;
 	// @ts-expect-error onError was renamed reportError.
-	void host.hostProps.onError;
+	void host.onError;
 
 	host.init();
 	// @ts-expect-error init() returns nothing; failures go to on('error').
@@ -77,9 +89,9 @@ if (host) {
 	host.destroy();
 
 	// Observer typing remains compatible with synchronous, async, and implicit-value handlers.
-	host.hostProps.onProps(() => {});
-	host.hostProps.onProps(async () => {});
-	host.hostProps.onProps(({ amount }) => amount);
+	host.onProps(() => {});
+	host.onProps(async () => {});
+	host.onProps(({ amount }) => amount);
 }
 
 // The tag-agnostic form infers props from its definitions.
@@ -88,12 +100,12 @@ const tagAgnosticHost = initHost({
 	consumerOrigins: ["https://app.example.com", /\.example\.com$/],
 	autoInit: false,
 });
-const label: string | undefined = tagAgnosticHost?.hostProps.label;
+const label: string | undefined = (await tagAgnosticHost?.ready)?.label;
 void label;
 const untypedHost: Host | null = initHost({ consumerOrigins: "*" });
 void untypedHost;
 // Without definitions, props are untyped and exports accept any value.
-void untypedHost?.hostProps.export({ anything: true });
+void untypedHost?.export({ anything: true });
 
 // HostPropsOf and initHost(Component) share one contract with the consumer.
 const ExportingForm = create({
@@ -105,23 +117,29 @@ const ExportingForm = create({
 		valid: prop.boolean(),
 	}),
 });
-function submitFrom(props: HostPropsOf<typeof ExportingForm>) {
+function submitFrom(
+	host: HostOf<typeof ExportingForm>,
+	props: HostPropsOf<typeof ExportingForm>,
+) {
 	const total: number = props.amount;
 	void total;
-	return props.export({ submit: () => "ok", valid: true });
+	return host.export({ submit: () => "ok", valid: true });
 }
 void submitFrom;
 const exportingHost = initHost(ExportingForm, { consumerOrigins: "*" });
 if (exportingHost) {
-	const typedProps: HostPropsOf<typeof ExportingForm> = exportingHost.hostProps;
+	const typedProps: HostPropsOf<typeof ExportingForm> =
+		await exportingHost.ready;
 	void typedProps;
-	void exportingHost.hostProps.export({ submit: () => "ok", valid: true });
+	const typedHost: HostOf<typeof ExportingForm> = exportingHost;
+	void typedHost;
+	void exportingHost.export({ submit: () => "ok", valid: true });
 	// @ts-expect-error export() takes the exports schema's type
-	void exportingHost.hostProps.export({ submit: () => "ok", valid: "yes" });
+	void exportingHost.export({ submit: () => "ok", valid: "yes" });
 	// @ts-expect-error export() requires every exported field
-	void exportingHost.hostProps.export({ valid: true });
+	void exportingHost.export({ valid: true });
 	// A typed host still fits helpers that take untyped exports.
-	const loose: HostProps<{ amount: number }> = exportingHost.hostProps;
+	const loose: Host<{ amount: number }> = exportingHost;
 	void loose;
 }
 
@@ -164,11 +182,11 @@ create({
 });
 
 if (host) {
-	const consumerProps: RemoteValue<PaymentProps> =
-		host.hostProps.consumer.props;
-	void consumerProps;
-	// @ts-expect-error consumer.export was removed; use hostProps.export().
-	void host.hostProps.consumer.export({ token: "abc" });
+	const props = await host.ready;
+	// @ts-expect-error hostProps.consumer was removed; ready resolves to the props.
+	void props.consumer;
 	// @ts-expect-error nested children were removed; import child components directly.
-	void host.hostProps.children;
+	void props.children;
+	// @ts-expect-error a prop named then is reserved.
+	void props.then;
 }

@@ -14,6 +14,7 @@ import {
 	getComponent,
 	unregisterComponent,
 } from "@/core/component";
+import { getComponentOptions } from "@/core/component-registry";
 import { getPeerInstances } from "@/core/consumer/peers";
 import { clearHostInstance, isHost } from "@/core/host";
 import { prop } from "@/props/prop";
@@ -323,7 +324,19 @@ describe("Component Creation", () => {
 				...({ peers: false } as object),
 			}),
 		).toThrow(
-			"Component peers must be true or an origin matcher; omit it to keep peer discovery off",
+			'Component peers must be "same-origin" or an origin matcher; omit it to keep peer discovery off',
+		);
+	});
+
+	it("rejects peers: true with the renamed same-origin value", () => {
+		expect(() =>
+			create({
+				tag: "true-peers-component",
+				url: "https://host.example.com/widget",
+				...({ peers: true } as object),
+			}),
+		).toThrow(
+			'Component peers: true was renamed. Use peers: "same-origin", as deliverTo spells it.',
 		);
 	});
 
@@ -335,7 +348,7 @@ describe("Component Creation", () => {
 				...({ peerDomains: "https://partner.example.com" } as object),
 			}),
 		).toThrow(
-			'Component option "peerDomains" was removed. Peer discovery is opt-in: set peers: true for same-origin peers, or peers: <origin matcher> to also admit those host origins.',
+			'Component option "peerDomains" was removed. Peer discovery is opt-in: set peers: "same-origin" for same-origin peers, or peers: <origin matcher> to also admit those host origins.',
 		);
 	});
 
@@ -472,6 +485,7 @@ describe("Component Creation", () => {
 					props: {
 						profile: {
 							schema: prop.any<Record<string, unknown>>(),
+							// @ts-expect-error removed options are unknown wrapped fields
 							serialization,
 						},
 					},
@@ -496,6 +510,7 @@ describe("Component Creation", () => {
 			props: {
 				profile: {
 					schema: prop.any<Record<string, unknown>>(),
+					// @ts-expect-error removed options are unknown wrapped fields
 					serialization: undefined,
 				},
 			},
@@ -586,29 +601,63 @@ describe("Component Creation", () => {
 		expect(getComponent("malformed-wrapped-definition")).toBeUndefined();
 	});
 
-	it("should reject custom props that collide with hostProps built-ins", () => {
+	it("keeps its own copy of the options, so later caller changes are ignored", () => {
+		const label = { schema: prop.string(), queryParam: "label" as string };
+		const options = {
+			tag: "copied-options",
+			url: "https://example.com/widget",
+			props: { label },
+		};
+		const Component = create(options);
+		options.url = "https://attacker.example/widget";
+		label.queryParam = "";
+		(options.props as Record<string, unknown>).extra = { schema: 1 };
+		const instance = Component({ label: "a" });
+		expect(getComponentOptions(Component)).toMatchObject({
+			url: "https://example.com/widget",
+			props: { label: { queryParam: "label" } },
+		});
+		expect(getComponentOptions(Component)?.props).not.toHaveProperty("extra");
+		void instance.close();
+	});
+
+	it("should reject props named then or children and accept host control names", () => {
 		expect(() =>
 			create({
-				tag: "reserved-close-prop",
+				tag: "reserved-then-prop",
 				url: "https://example.com",
 				props: {
-					close: prop.function(),
+					// @ts-expect-error then is a reserved prop name
+					// biome-ignore lint/suspicious/noThenProperty: checks the reserved name
+					then: prop.function(),
 				},
 			}),
 		).toThrow(
-			'Prop "close" is reserved by hostProps built-ins and cannot be defined as a custom prop',
+			'Prop "then" is reserved by ForgeFrame and cannot be defined as a custom prop',
 		);
+		expect(() =>
+			create({
+				tag: "control-named-props",
+				url: "https://example.com",
+				props: {
+					close: prop.function(),
+					resize: prop.string(),
+					consumerOrigin: prop.string(),
+				},
+			}),
+		).not.toThrow();
 
 		expect(() =>
 			create({
 				tag: "reserved-children-prop",
 				url: "https://example.com",
 				props: {
+					// @ts-expect-error children is a reserved prop name
 					children: prop.any<Record<string, unknown>>(),
 				},
 			}),
 		).toThrow(
-			'Prop "children" is reserved by hostProps built-ins and cannot be defined as a custom prop',
+			'Prop "children" is reserved by ForgeFrame and cannot be defined as a custom prop',
 		);
 	});
 
@@ -1390,12 +1439,12 @@ describe("Host Context Detection", () => {
 		it("should include all registered component tags when allTags is true", async () => {
 			const AlphaComponent = create({
 				tag: "peer-alpha",
-				peers: true,
+				peers: "same-origin",
 				url: "https://example.com/alpha",
 			});
 			const BetaComponent = create({
 				tag: "peer-beta",
-				peers: true,
+				peers: "same-origin",
 				url: "https://example.com/beta",
 			});
 
@@ -1412,14 +1461,14 @@ describe("Host Context Detection", () => {
 			const sameTagSiblings = getPeerInstances({
 				uid: alphaPrimary.uid,
 				tag: "peer-alpha",
-				peers: true,
+				peers: "same-origin",
 				hostOrigin: PEER_HOST_ORIGIN,
 				allTags: false,
 			});
 			const allTagsSiblings = getPeerInstances({
 				uid: alphaPrimary.uid,
 				tag: "peer-alpha",
-				peers: true,
+				peers: "same-origin",
 				hostOrigin: PEER_HOST_ORIGIN,
 				allTags: true,
 			});
@@ -1456,12 +1505,12 @@ describe("Host Context Detection", () => {
 		it("should exclude peers whose verified host origin differs or is unavailable", async () => {
 			const AlphaComponent = create({
 				tag: "peer-origin-alpha",
-				peers: true,
+				peers: "same-origin",
 				url: "https://example.com/alpha",
 			});
 			const BetaComponent = create({
 				tag: "peer-origin-beta",
-				peers: true,
+				peers: "same-origin",
 				url: "https://example.com/beta",
 			});
 
@@ -1471,8 +1520,12 @@ describe("Host Context Detection", () => {
 			const foreignOtherTag = BetaComponent({});
 			const unconnected = AlphaComponent({});
 			const sameOriginOtherTag = BetaComponent({});
-			foreignSameTag.exports = { secret: "foreign-same-tag" };
-			foreignOtherTag.exports = { secret: "foreign-other-tag" };
+			(foreignSameTag as { exports?: unknown }).exports = {
+				secret: "foreign-same-tag",
+			};
+			(foreignOtherTag as { exports?: unknown }).exports = {
+				secret: "foreign-other-tag",
+			};
 			setVerifiedHostOrigin(
 				PEER_HOST_ORIGIN,
 				requester,
@@ -1489,7 +1542,7 @@ describe("Host Context Detection", () => {
 				const uids = getPeerInstances({
 					uid: requester.uid,
 					tag: "peer-origin-alpha",
-					peers: true,
+					peers: "same-origin",
 					hostOrigin: PEER_HOST_ORIGIN,
 					allTags,
 				}).map((sibling) => sibling.uid);
@@ -1522,7 +1575,7 @@ describe("Host Context Detection", () => {
 			});
 			const PrivateComponent = create({
 				tag: "peer-domains-private",
-				peers: true,
+				peers: "same-origin",
 				url: "https://widgets-a.myapp.example/private",
 				hostOrigins: "https://*.myapp.example",
 			});
@@ -1540,7 +1593,7 @@ describe("Host Context Detection", () => {
 				getPeerInstances({
 					uid: requester.uid,
 					tag: "peer-domains-shared",
-					peers: true,
+					peers: "same-origin",
 					hostOrigin,
 					allTags: true,
 				}).map((sibling) => sibling.uid);
@@ -1567,7 +1620,9 @@ describe("Host Context Detection", () => {
 			const requester = PartnerComponent({});
 			const opaquePeer = PartnerComponent({});
 			const namedPeer = PartnerComponent({});
-			opaquePeer.exports = { secret: "sandboxed document" };
+			(opaquePeer as { exports?: unknown }).exports = {
+				secret: "sandboxed document",
+			};
 			setVerifiedHostOrigin("https://widgets.myapp.example", requester);
 			setVerifiedHostOrigin("null", opaquePeer);
 			setVerifiedHostOrigin("https://other.myapp.example", namedPeer);
@@ -1576,7 +1631,7 @@ describe("Host Context Detection", () => {
 				getPeerInstances({
 					uid: requester.uid,
 					tag: "peer-domains-opaque-peer",
-					peers: true,
+					peers: "same-origin",
 					hostOrigin: "https://widgets.myapp.example",
 					allTags: false,
 				}).map((sibling) => sibling.uid),
@@ -1590,14 +1645,16 @@ describe("Host Context Detection", () => {
 		it("should list same-origin peers whose hosts are still loading without exports", async () => {
 			const LoadingComponent = create({
 				tag: "peer-loading",
-				peers: true,
+				peers: "same-origin",
 				url: "https://example.com/loading",
 			});
 
 			const requester = LoadingComponent({});
 			const loadingPeer = LoadingComponent({});
 			const foreignLoadingPeer = LoadingComponent({});
-			loadingPeer.exports = { early: "not yet verified" };
+			(loadingPeer as { exports?: unknown }).exports = {
+				early: "not yet verified",
+			};
 			setVerifiedHostOrigin(PEER_HOST_ORIGIN, requester);
 			setOpenedHostOrigin(PEER_HOST_ORIGIN, loadingPeer);
 			setOpenedHostOrigin(
@@ -1609,7 +1666,7 @@ describe("Host Context Detection", () => {
 				getPeerInstances({
 					uid: requester.uid,
 					tag: "peer-loading",
-					peers: true,
+					peers: "same-origin",
 					hostOrigin: PEER_HOST_ORIGIN,
 					allTags: false,
 				}),
@@ -1622,7 +1679,7 @@ describe("Host Context Detection", () => {
 				getPeerInstances({
 					uid: requester.uid,
 					tag: "peer-loading",
-					peers: true,
+					peers: "same-origin",
 					hostOrigin: PEER_HOST_ORIGIN,
 					allTags: false,
 				}),
@@ -1644,7 +1701,7 @@ describe("Host Context Detection", () => {
 		it("should update indexed peers when sibling instances are destroyed", async () => {
 			const IndexedComponent = create({
 				tag: "peer-index-cleanup",
-				peers: true,
+				peers: "same-origin",
 				url: "https://example.com/peer-index-cleanup",
 			});
 
@@ -1656,7 +1713,7 @@ describe("Host Context Detection", () => {
 				getPeerInstances({
 					uid: primary.uid,
 					tag: "peer-index-cleanup",
-					peers: true,
+					peers: "same-origin",
 					hostOrigin: PEER_HOST_ORIGIN,
 					allTags: false,
 				}),
@@ -1673,7 +1730,7 @@ describe("Host Context Detection", () => {
 				getPeerInstances({
 					uid: primary.uid,
 					tag: "peer-index-cleanup",
-					peers: true,
+					peers: "same-origin",
 					hostOrigin: PEER_HOST_ORIGIN,
 					allTags: false,
 				}),
@@ -1685,12 +1742,12 @@ describe("Host Context Detection", () => {
 		it("should exclude unregistered tags from allTags sibling lookup", async () => {
 			const AlphaComponent = create({
 				tag: "peer-index-unregister-alpha",
-				peers: true,
+				peers: "same-origin",
 				url: "https://example.com/peer-index-unregister-alpha",
 			});
 			const BetaComponent = create({
 				tag: "peer-index-unregister-beta",
-				peers: true,
+				peers: "same-origin",
 				url: "https://example.com/peer-index-unregister-beta",
 			});
 
@@ -1701,7 +1758,7 @@ describe("Host Context Detection", () => {
 			const siblingsBeforeUnregister = getPeerInstances({
 				uid: alphaPrimary.uid,
 				tag: "peer-index-unregister-alpha",
-				peers: true,
+				peers: "same-origin",
 				hostOrigin: PEER_HOST_ORIGIN,
 				allTags: true,
 			});
@@ -1716,7 +1773,7 @@ describe("Host Context Detection", () => {
 			const siblingsAfterUnregister = getPeerInstances({
 				uid: alphaPrimary.uid,
 				tag: "peer-index-unregister-alpha",
-				peers: true,
+				peers: "same-origin",
 				hostOrigin: PEER_HOST_ORIGIN,
 				allTags: true,
 			});

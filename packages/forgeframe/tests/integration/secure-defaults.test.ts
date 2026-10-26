@@ -45,14 +45,14 @@ describe("Secure defaults integration", () => {
 			const container = mountContainer();
 			const rendering = Component({ amount: 1 }).render(container);
 
-			const { hostProps } = await activeHarness.bootstrapIframeHost(
+			const { host, hostProps } = await activeHarness.bootstrapIframeHost(
 				container,
 				Component,
 				{ consumerOrigins: "*" },
 			);
 			await rendering;
 
-			expect(hostProps.consumerOrigin).toBe(activeHarness.consumerOrigin);
+			expect(host.consumerOrigin).toBe(activeHarness.consumerOrigin);
 			expect(hostProps.amount).toBe(1);
 		});
 	});

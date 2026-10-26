@@ -660,7 +660,7 @@ describe("Consumer lifecycle behavior", () => {
 	it("should ignore spoofed GET_PEERS from a different trusted window and accept the opened host window", async () => {
 		const PeerComponent = create({
 			tag: "peer-siblings-component",
-			peers: true,
+			peers: "same-origin",
 			url: "https://host.example.com/peer",
 			props: {
 				amount: { schema: prop.number() },
@@ -671,8 +671,8 @@ describe("Consumer lifecycle behavior", () => {
 			PeerComponent({ amount: 1 }),
 			PeerComponent({ amount: 2 }),
 		);
-		requester.exports = { id: "a" };
-		sibling.exports = { id: "b" };
+		(requester as { exports?: unknown }).exports = { id: "a" };
+		(sibling as { exports?: unknown }).exports = { id: "b" };
 		setVerifiedHostOrigin("https://host.example.com", requester, sibling);
 
 		const hostWindow = connectHostWindow(requester);
@@ -710,12 +710,12 @@ describe("Consumer lifecycle behavior", () => {
 	it("should scope GET_PEERS to the requester's own identity and verified host origin", async () => {
 		const RequesterComponent = create({
 			tag: "peer-scope-requester",
-			peers: true,
+			peers: "same-origin",
 			url: "https://host.example.com/requester",
 		});
 		const VictimComponent = create({
 			tag: "peer-scope-victim",
-			peers: true,
+			peers: "same-origin",
 			url: "https://victim.example.com/widget",
 		});
 
@@ -726,9 +726,13 @@ describe("Consumer lifecycle behavior", () => {
 				VictimComponent(),
 				VictimComponent(),
 			);
-		sameOriginSibling.exports = { id: "same-origin" };
-		victim.exports = { secret: "victim" };
-		victimSibling.exports = { secret: "victim-sibling" };
+		(sameOriginSibling as { exports?: unknown }).exports = {
+			id: "same-origin",
+		};
+		(victim as { exports?: unknown }).exports = { secret: "victim" };
+		(victimSibling as { exports?: unknown }).exports = {
+			secret: "victim-sibling",
+		};
 		setVerifiedHostOrigin(
 			"https://host.example.com",
 			requester,
@@ -774,7 +778,7 @@ describe("Consumer lifecycle behavior", () => {
 	it("should drop GET_PEERS from opaque-origin hosts even when hostOrigins is '*'", async () => {
 		const OpaqueComponent = create({
 			tag: "peer-scope-opaque",
-			peers: true,
+			peers: "same-origin",
 			url: "https://host.example.com/opaque",
 			hostOrigins: "*",
 		});
@@ -782,7 +786,9 @@ describe("Consumer lifecycle behavior", () => {
 			OpaqueComponent(),
 			OpaqueComponent(),
 		);
-		otherProvider.exports = { secret: "other-provider" };
+		(otherProvider as { exports?: unknown }).exports = {
+			secret: "other-provider",
+		};
 		// Sandboxed frames without allow-same-origin all serialize as "null".
 		setVerifiedHostOrigin("null", requester, otherProvider);
 		const hostWindow = connectHostWindow(requester);
@@ -808,7 +814,7 @@ describe("Consumer lifecycle behavior", () => {
 			PrivateComponent(),
 			PrivateComponent(),
 		);
-		other.exports = { secret: "private" };
+		(other as { exports?: unknown }).exports = { secret: "private" };
 		setVerifiedHostOrigin("https://host.example.com", requester, other);
 		const hostWindow = connectHostWindow(requester);
 
@@ -826,19 +832,19 @@ describe("Consumer lifecycle behavior", () => {
 		);
 		expect(response.data).toBeUndefined();
 		expect(response.error.message).toBe(
-			'Peer discovery is not enabled for component "peer-scope-disabled". Set peers: true, or an origin matcher, in its create() options.',
+			'Peer discovery is not enabled for component "peer-scope-disabled". Set peers: "same-origin", or an origin matcher, in its create() options.',
 		);
 	});
 
 	it("should treat malformed GET_PEERS data as a same-tag lookup", async () => {
 		const PeerComponent = create({
 			tag: "peer-scope-malformed",
-			peers: true,
+			peers: "same-origin",
 			url: "https://host.example.com/peer",
 		});
 		const OtherComponent = create({
 			tag: "peer-scope-malformed-other",
-			peers: true,
+			peers: "same-origin",
 			url: "https://host.example.com/other",
 		});
 		const [requester, sibling, otherTag] = trackInstances(
@@ -846,8 +852,8 @@ describe("Consumer lifecycle behavior", () => {
 			PeerComponent(),
 			OtherComponent(),
 		);
-		sibling.exports = { id: "sibling" };
-		otherTag.exports = { id: "other-tag" };
+		(sibling as { exports?: unknown }).exports = { id: "sibling" };
+		(otherTag as { exports?: unknown }).exports = { id: "other-tag" };
 		setVerifiedHostOrigin(
 			"https://host.example.com",
 			requester,
@@ -1577,7 +1583,7 @@ describe("Factory instance close and teardown", () => {
 		const tag = "listener-free-deregistration";
 		const Component = create({
 			tag,
-			peers: true,
+			peers: "same-origin",
 			url: "https://example.com/tracked",
 		});
 		const first = Component();
@@ -1602,7 +1608,7 @@ describe("Factory instance close and teardown", () => {
 			getPeerInstances({
 				uid: second.uid,
 				tag,
-				peers: true,
+				peers: "same-origin",
 				hostOrigin: PEER_HOST_ORIGIN,
 				allTags: false,
 			}),
@@ -1614,7 +1620,7 @@ describe("Factory instance close and teardown", () => {
 			getPeerInstances({
 				uid: "outside",
 				tag,
-				peers: true,
+				peers: "same-origin",
 				hostOrigin: PEER_HOST_ORIGIN,
 				allTags: false,
 			}),

@@ -68,7 +68,7 @@ describe("Body param bootstrap integration", () => {
 			fields: { token: "abc123" },
 		});
 		expect(document.querySelector("form")).toBeNull();
-		expect(hostProps.consumer.props).toEqual({
+		expect(hostProps).toEqual({
 			token: "abc123",
 			mode: "embedded",
 		});
@@ -110,7 +110,7 @@ describe("Body param bootstrap integration", () => {
 			fields: { token: "popup-token" },
 		});
 		expect(document.querySelector("form")).toBeNull();
-		expect(hostProps.consumer.props).toEqual({
+		expect(hostProps).toEqual({
 			token: "popup-token",
 			mode: "popup",
 		});
@@ -218,7 +218,7 @@ describe("Body param bootstrap integration", () => {
 			fields: { token: "t2" },
 		});
 		expect(await host.ready).toMatchObject({ token: "t2", mode: "m2" });
-		expect(hostProps.consumer.props).toEqual({ token: "t2", mode: "m2" });
+		expect(hostProps).toEqual({ token: "t2", mode: "m2" });
 	});
 
 	it("keeps an update requested during render out of the initial request and bootstrap", async () => {
@@ -247,6 +247,6 @@ describe("Body param bootstrap integration", () => {
 			fields: { token: "t0" },
 		});
 		await Promise.all([rendering, held]);
-		expect(hostProps.consumer.props).toEqual({ token: "t1", mode: "m1" });
+		expect(hostProps).toEqual({ token: "t1", mode: "m1" });
 	});
 });

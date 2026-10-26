@@ -10,8 +10,11 @@
  * - `POPUP_BLOCKED`: the browser refused to open the popup.
  * - `INIT_TIMEOUT`: the initial handshake did not complete in time. When the
  *   host reported why it failed, `cause` holds that reason.
- * - `VALIDATION`: invalid options, props, arguments or calls, values that
- *   cannot cross windows, and payloads from another ForgeFrame major version.
+ * - `VALIDATION`: invalid options, props, arguments or calls, and values
+ *   that cannot cross windows, such as a `BigInt` or a cycle.
+ * - `VERSION_MISMATCH`: the other window runs a ForgeFrame version that cannot
+ *   talk to this one, such as a 1.x consumer, or a request this version does
+ *   not know.
  * - `ORIGIN_REJECTED`: a trust policy refused an origin or a window.
  * - `CANCELLED`: the consumer's own `close()` interrupted `render()`.
  * - `CLOSED`: the instance, the host or the other window is gone or no longer
@@ -24,6 +27,7 @@ export type ForgeFrameErrorCode =
 	| "POPUP_BLOCKED"
 	| "INIT_TIMEOUT"
 	| "VALIDATION"
+	| "VERSION_MISMATCH"
 	| "ORIGIN_REJECTED"
 	| "CANCELLED"
 	| "CLOSED"
@@ -34,6 +38,7 @@ const ERROR_CODES: Readonly<Record<ForgeFrameErrorCode, true>> = {
 	POPUP_BLOCKED: true,
 	INIT_TIMEOUT: true,
 	VALIDATION: true,
+	VERSION_MISMATCH: true,
 	ORIGIN_REJECTED: true,
 	CANCELLED: true,
 	CLOSED: true,
@@ -45,7 +50,9 @@ const ERROR_CODES: Readonly<Record<ForgeFrameErrorCode, true>> = {
  *
  * @remarks
  * The `message` is for people and may change in any release; branch on
- * `code`. The standard `cause` holds the underlying failure, when there is
+ * `code`. Minor releases may add codes, so keep a `default` branch. A code
+ * this version does not know, received from a newer peer, arrives as a plain
+ * `Error` with the peer's message. The standard `cause` holds the underlying failure, when there is
  * one. Errors thrown by your own callbacks, templates and URL functions reach
  * you unchanged, not wrapped in a `ForgeFrameError`.
  *

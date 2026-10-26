@@ -455,10 +455,11 @@ export class Messenger {
 		origin: string,
 	): Promise<void> {
 		const handler = this.handlers.get(message.name);
-		if (!handler) return;
 		let responseData: unknown;
 		let responseError: Error | undefined;
 		try {
+			// A peer on another version fails fast instead of at its timeout.
+			if (!handler) throw unsupportedRequest(message.name);
 			responseData = await this.executeRequest(
 				handler,
 				message.data,
@@ -537,12 +538,34 @@ export class Messenger {
 	 * @param error - The rejection reason
 	 */
 	rejectPending(name: string, targetWin: Window, error: Error): void {
+		for (const pending of this.takePending(name, targetWin))
+			pending.deferred.reject(error);
+	}
+
+	/**
+	 * Resolves pending requests of one message type sent to a window whose
+	 * new document already has what they carried, such as props updates the
+	 * reconnected host reads in its bootstrap snapshot.
+	 *
+	 * @param name - The message name/type of the requests to resolve
+	 * @param targetWin - The window the requests were sent to
+	 * @param value - The response the requests resolve with
+	 */
+	resolvePending(name: string, targetWin: Window, value: unknown): void {
+		for (const pending of this.takePending(name, targetWin))
+			pending.deferred.resolve(value);
+	}
+
+	/** Removes and returns one message type's pending requests to a window. */
+	private takePending(name: string, targetWin: Window): PendingRequest[] {
+		const taken: PendingRequest[] = [];
 		for (const [id, pending] of this.pending) {
 			if (pending.name !== name || pending.targetWin !== targetWin) continue;
 			this.pending.delete(id);
 			clearTimeout(pending.timeout);
-			pending.deferred.reject(error);
+			taken.push(pending);
 		}
+		return taken;
 	}
 
 	/**
@@ -570,4 +593,12 @@ export class Messenger {
 		this.pending.clear();
 		this.handlers.clear();
 	}
+}
+
+/** The reply to a request this window has no handler for. */
+function unsupportedRequest(name: string): ForgeFrameError {
+	return new ForgeFrameError(
+		"VERSION_MISMATCH",
+		`This window's ForgeFrame does not support the "${name}" request; run the same ForgeFrame version in both windows`,
+	);
 }
