@@ -11,10 +11,18 @@ export default defineConfig({
 		__FORGEFRAME_VERSION__: JSON.stringify(packageJson.version),
 	},
 	resolve: {
-		alias: {
-			"@": resolve(import.meta.dirname, "src"),
-			forgeframe: resolve(import.meta.dirname, "src/index.ts"),
-		},
+		// Exact matches, so the bare `forgeframe` alias cannot capture `forgeframe/react`.
+		alias: [
+			{ find: /^@\//, replacement: `${resolve(import.meta.dirname, "src")}/` },
+			{
+				find: /^forgeframe$/,
+				replacement: resolve(import.meta.dirname, "src/index.ts"),
+			},
+			{
+				find: /^forgeframe\/react$/,
+				replacement: resolve(import.meta.dirname, "src/react.ts"),
+			},
+		],
 	},
 	test: {
 		environment: "jsdom",

@@ -1,7 +1,6 @@
 import { createServer, type Server } from "node:http";
-import { fileURLToPath } from "node:url";
 import { expect, type Frame, type Page, test } from "@playwright/test";
-import { build } from "vite";
+import { buildLibrary } from "./library-build";
 
 let consumerOrigin: string;
 let hostOrigin: string;
@@ -17,15 +16,7 @@ async function listen(server: Server): Promise<string> {
 }
 
 test.beforeAll(async () => {
-	const result = await build({
-		configFile: fileURLToPath(new URL("../../vite.config.ts", import.meta.url)),
-		logLevel: "silent",
-		build: { write: false },
-	});
-	const built = Array.isArray(result) ? result[0] : result;
-	if (!("output" in built)) throw new Error("Unexpected watch build");
-	const bundle = built.output.find((entry) => entry.type === "chunk")?.code;
-	if (!bundle) throw new Error("Missing library bundle");
+	const library = await buildLibrary();
 	const serve = (
 		res: import("node:http").ServerResponse,
 		body: string,
@@ -36,8 +27,9 @@ test.beforeAll(async () => {
 	};
 	consumerOrigin = await listen(
 		createServer((req, res) => {
-			if (req.url === "/library.js")
-				return serve(res, bundle, "text/javascript");
+			const libraryFile = library.get(req.url ?? "");
+			if (libraryFile !== undefined)
+				return serve(res, libraryFile, "text/javascript");
 			serve(
 				res,
 				'<!doctype html><div id="requester"></div><div id="sibling"></div><div id="other"></div>',
@@ -48,7 +40,9 @@ test.beforeAll(async () => {
 		req: import("node:http").IncomingMessage,
 		res: import("node:http").ServerResponse,
 	) => {
-		if (req.url === "/library.js") return serve(res, bundle, "text/javascript");
+		const libraryFile = library.get(req.url ?? "");
+		if (libraryFile !== undefined)
+			return serve(res, libraryFile, "text/javascript");
 		if (req.url === "/capacity") {
 			return serve(
 				res,

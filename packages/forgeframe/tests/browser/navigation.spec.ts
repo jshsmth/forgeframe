@@ -1,7 +1,6 @@
 import { createServer, type Server } from "node:http";
-import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
-import { build } from "vite";
+import { buildLibrary } from "./library-build";
 
 /** The only fields a v2 consumer writes into window.name. */
 const CHANNEL_METADATA_KEYS = [
@@ -16,7 +15,7 @@ let consumerOrigin: string;
 let hostOrigin: string;
 let attackerOrigin: string;
 const servers: Server[] = [];
-let bundle: string;
+let library: ReadonlyMap<string, string>;
 const deliveryRequests: Array<{ url: string; method: string; body: string }> =
 	[];
 
@@ -68,30 +67,22 @@ function respond(
 }
 
 test.beforeAll(async () => {
-	const result = await build({
-		configFile: fileURLToPath(new URL("../../vite.config.ts", import.meta.url)),
-		logLevel: "silent",
-		build: { write: false },
-	});
-	const built = Array.isArray(result) ? result[0] : result;
-	if (!("output" in built)) throw new Error("Unexpected watch build");
-	const output = built.output;
-	const chunk = output.find((entry) => entry.type === "chunk");
-	if (!chunk) throw new Error("Missing library bundle");
-	bundle = chunk.code;
+	library = await buildLibrary();
 
 	consumerOrigin = `http://127.0.0.1:${await listen(
 		createServer((req, res) => {
-			if (req.url === "/library.js")
-				return respond(res, bundle, "text/javascript");
+			const libraryFile = library.get(req.url ?? "");
+			if (libraryFile !== undefined)
+				return respond(res, libraryFile, "text/javascript");
 			res.setHeader("Referrer-Policy", "no-referrer");
 			respond(res, '<!doctype html><div id="mount"></div>');
 		}),
 	)}`;
 	hostOrigin = `http://127.0.0.1:${await listen(
 		createServer((req, res) => {
-			if (req.url === "/library.js")
-				return respond(res, bundle, "text/javascript");
+			const libraryFile = library.get(req.url ?? "");
+			if (libraryFile !== undefined)
+				return respond(res, libraryFile, "text/javascript");
 			if (
 				new URL(req.url ?? "/", "http://fixture.invalid").pathname.endsWith(
 					"/delivery",
@@ -284,8 +275,9 @@ test.beforeAll(async () => {
 	)}`;
 	attackerOrigin = `http://localhost:${await listen(
 		createServer((req, res) => {
-			if (req.url === "/library.js")
-				return respond(res, bundle, "text/javascript");
+			const libraryFile = library.get(req.url ?? "");
+			if (libraryFile !== undefined)
+				return respond(res, libraryFile, "text/javascript");
 			if (
 				new URL(req.url ?? "/", "http://fixture.invalid").pathname.endsWith(
 					"/delivery",

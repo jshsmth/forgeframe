@@ -856,11 +856,14 @@ const MyComponent = create({
 
 ## React Integration (Optional)
 
+React support lives in its own entry point, `forgeframe/react`. It needs `react` (16.8 or later; the tests run React 19), which is an optional peer dependency, so projects without React install nothing extra. The root `forgeframe` entry contains no React code and its types reference no React types.
+
 ### Basic Usage
 
 ```tsx
-import React, { useState } from 'react';
-import { create, prop, createReactComponent } from 'forgeframe';
+import { useRef, useState } from 'react';
+import { create, prop } from 'forgeframe';
+import { createReactComponent, type ReactInstance } from 'forgeframe/react';
 
 const LoginComponent = create({
   tag: 'login',
@@ -870,12 +873,14 @@ const LoginComponent = create({
     email: prop.string().optional(),
     onLogin: prop.function<(user: { id: number; name: string }) => void>(),
   },
+  exports: prop.object({ reset: prop.function<() => void>() }),
 });
 
-const Login = createReactComponent(LoginComponent, { React });
+const Login = createReactComponent(LoginComponent);
 
 function App() {
   const [user, setUser] = useState<{ id: number; name: string } | null>(null);
+  const login = useRef<ReactInstance<{ reset: () => void }>>(null);
 
   return (
     <div>
@@ -886,13 +891,17 @@ function App() {
         onRendered={() => console.log('Ready')}
         onError={(err) => console.error(err)}
         onClose={() => console.log('Closed')}
+        instanceRef={login}
         className="login-frame"
         style={{ border: '1px solid #ccc' }}
       />
+      <button onClick={() => login.current?.exports?.reset()}>Reset</button>
     </div>
   );
 }
 ```
+
+`createReactComponent(Component)` takes only the component. React DevTools shows the wrapper as `ForgeFrame(<tag>)`, here `ForgeFrame(login)`. Annotate a wrapper with `ReactComponentOf<typeof LoginComponent>`.
 
 ### React Props
 
@@ -900,33 +909,28 @@ The React component accepts your component props alongside these wrapper props:
 
 | Prop | Type | Description |
 |------|------|-------------|
-| `onRendered` | `() => void` | The instance's `rendered` event |
-| `onError` | `(err: Error) => void` | The instance's `error` event, plus construction, render, and prop-sync failures |
-| `onClose` | `() => void` | The instance's `close` event |
-| `context` | `'iframe' \| 'popup'` | Render mode |
+| `onRendered` | `() => void` | Called once the instance has rendered, right after `instanceRef` receives it |
+| `onError` | `(err: Error) => void` | The instance's `error` event, plus construction, render, and prop-sync failures. Library failures are [`ForgeFrameError`s](#errors); branch on `err.code`, such as `POPUP_BLOCKED` |
+| `onClose` | `() => void` | The instance's `close` event: the host or the user closed it, `instanceRef.current.close()` was called, or the wrapper unmounted or changed `context` |
+| `context` | `'iframe' \| 'popup'` | Render mode; changing it closes the instance and renders a new one |
+| `instanceRef` | `React.Ref<ReactInstance<Exports>>` | Receives the rendered instance, and `null` when it closes, the wrapper unmounts, `context` changes, or rendering fails. Accepts a ref object or a callback ref |
 | `className` | `string` | Container CSS class |
-| `style` | `CSSProperties` | Container inline styles |
+| `style` | `React.CSSProperties` | Container inline styles |
 | `ref` | `React.Ref<HTMLDivElement>` | Access the wrapper's container element. It is attached during React's commit, so a parent's `useLayoutEffect` can read it, and React 19 callback-ref cleanups run on unmount |
 
-The adapter reserves these names and does not forward them as component props. The core API no longer reserves them, but through React give a callback the host must receive a different name, such as `onHostClose`, and do not make a reserved name a required custom prop.
+The handle `instanceRef` receives (`ReactInstance<Exports>`) has the instance's `uid`, `exports`, `event` (`on` and `once`, including the `exports` event), `resize()`, `focus()`, `show()`, `hide()` and `close()`. It has no `render()` or `updateProps()`: the wrapper renders the instance and sends prop changes itself. It is set only after `render()` resolves, so every method works on it; while the frame loads it is `null`.
 
-Removing a prop from your JSX resets it exactly as `updateProps({ key: undefined })` does, and passing `undefined` counts as leaving the prop out, so `theme={dark ? 'dark' : undefined}` sends no update when it switches between the two. Commits made while the frame is still loading reach the host in order once it has started.
+These names are reserved: `createReactComponent` throws a `VALIDATION` error for a component that declares a prop named `onRendered`, `onError`, `onClose`, `context`, `instanceRef`, `className`, `style` or `ref`. Give such a prop another name, such as `onHostClose`.
+
+Removing a prop from your JSX resets it exactly as `updateProps({ key: undefined })` does, and passing `undefined` counts as leaving the prop out, so `theme={dark ? 'dark' : undefined}` sends no update when it switches between the two. Commits made while the frame is still loading reach the host in order once it has started. After the instance closes, prop changes are not sent until a new instance renders (change `context` or the React `key`).
 
 Construction and render failures go to `onError` and are shown inside the wrapper; sibling React content is unaffected, and the container ref stays attached. To recover, change `context` (which creates a fresh instance) or change the wrapper's React `key` to remount it.
 
-### Factory Pattern
+### Server rendering, React Server Components and Preact
 
-To wrap several components with the same React instance, use `withReactComponent`:
-
-```tsx
-import { withReactComponent } from 'forgeframe';
-
-const createComponent = withReactComponent(React);
-
-const LoginReact = createComponent(LoginComponent);
-const PaymentReact = createComponent(PaymentComponent);
-const ProfileReact = createComponent(ProfileComponent);
-```
+- **Server rendering:** importing `forgeframe/react` has no side effects. On the server the wrapper renders only its container `div`; effects do not run, so no instance is created until the client hydrates.
+- **React Server Components:** the wrapper uses hooks, so render it inside a client component (a file with `"use client"`).
+- **Preact:** alias `react` to `preact/compat` in your bundler (for example `resolve.alias: { react: 'preact/compat' }` in Vite).
 
 ---
 
@@ -1392,7 +1396,7 @@ A host that shares definitions with a `deliverTo` prop no longer requires that p
 | Event constants | `EVENT.RENDERED` | `'rendered'` (type `EventType`) |
 | Exports validation | Not validated | Validated against `exports`; invalid exports reject the host's `export()`, keep the previous exports and emit `error` |
 | `hostProps.export()` type | `export<X>(exports: X)` | Typed by the component's `exports` schema; any value without one |
-| React generics | `createReactComponent<P, X, E, I, RequireProps, SchemaInputs>` | `createReactComponent<typeof C, E>`, normally inferred; wrapper props come from `InputOf<typeof C>` |
+| React generics | `createReactComponent<P, X, E, I, RequireProps, SchemaInputs>` | `createReactComponent<typeof C>`, normally inferred; wrapper props come from `InputOf<typeof C>`; see [React](#react-forgeframereact) |
 | Enum literal types | `prop.enum(['a', 'b'])` could widen to `string` under a contextual type | Always `'a' \| 'b'` |
 
 ### Props are always JSON
@@ -1417,6 +1421,21 @@ ForgeFrame 2 sends every prop as JSON through the function bridge. The `serializ
 | DOM methods | `await instance.show()`, and the same for `hide`, `focus` and `resize`, returned promises | They return `void` and finish before they return | `await` still works; replace `.then()` and `.catch()` chains, and catch `resize()` errors with `try`/`catch` |
 | `resize` with nothing mounted | Emitted `resize` | Emits nothing, as `focus` does | Listen for `resize` only once rendered |
 | Invalid URL at render | Closed the instance | Rejects `render()` and leaves the instance open | Fix the props with `updateProps()` and render again |
+
+### React: `forgeframe/react`
+
+| Area | v1 | v2 | What to do |
+|---|---|---|---|
+| Import | `import { createReactComponent } from 'forgeframe'` | `import { createReactComponent } from 'forgeframe/react'` | Change the import; `react` is an optional peer dependency that React apps already have |
+| Factory | `createReactComponent(Component, { React })` | `createReactComponent(Component)` | Drop the second argument; passing one throws a `VALIDATION` error |
+| Curried factory | `withReactComponent(React)(Component)` | Removed | Call `createReactComponent(Component)` for each component |
+| Instance access | Not available (the `ref` is the container `div`) | The `instanceRef` prop receives a handle after render and `null` when it goes away | Use it for `exports`, `resize()`, `focus()`, `show()`, `hide()`, `close()` and events |
+| Types | `ReactComponentProps<P>` (unused generic), `ReactComponentType<P, E>`, `ReactDriverOptions` | `ReactComponentProps<Exports>`, `ReactComponentOf<typeof C>`, `ReactInstance<Exports>`; `style` is `React.CSSProperties` | Import the types from `forgeframe/react` |
+| DevTools name | `ForgeFrame(Component)` | `ForgeFrame(<tag>)` | Update snapshot tests that include the display name |
+| Reserved names | A component prop named like a wrapper prop was silently not forwarded | `createReactComponent` throws a `VALIDATION` error | Rename the component prop (for example `onHostClose`) |
+| `onRendered` timing | On the instance's `rendered` event | After `render()` resolves, right after `instanceRef` is set | None |
+| A render failure | Could reach `onError` twice (the `error` event and the rejected render), plus a `CLOSED` error for each prop change held during that render | Reported once | None |
+| Preact | `createReactComponent(C, { React: preactCompat })` | Alias `react` to `preact/compat` in your bundler | Configure the alias |
 
 ### Named exports only
 
@@ -1452,9 +1471,11 @@ import {
   prop,                 // Prop schema builders
   ForgeFrameError,      // The error ForgeFrame raises; branch on error.code
   VERSION,              // Library version
-  createReactComponent, // React adapter
-  withReactComponent,   // React adapter factory
 } from 'forgeframe';
+
+import {
+  createReactComponent, // React adapter; see React Integration
+} from 'forgeframe/react';
 ```
 
 ### Component Options
@@ -1524,8 +1545,6 @@ import {
   create,
   initHost,
   prop,
-  createReactComponent,
-  withReactComponent,
   type Component,
   type AnyComponent,      // Constrains generics that accept any component
   type ComponentInstance,
@@ -1563,6 +1582,13 @@ import {
   type GetPeerInstancesOptions,
   type PeerInfo,
 } from 'forgeframe';
+
+import {
+  createReactComponent,
+  type ReactComponentOf,     // ReactComponentOf<typeof C>: the wrapper's React type
+  type ReactComponentProps,  // The wrapper's own props
+  type ReactInstance,        // What instanceRef receives
+} from 'forgeframe/react';
 ```
 
 ### Typing helpers
@@ -1667,11 +1693,11 @@ For a custom deployment, set `VITE_HOST_URL` in the consumer build and `VITE_CON
 
 The [architecture guide](https://github.com/jshsmth/ForgeFrame/blob/main/docs/architecture.md) covers state ownership and the render/bootstrap, props, callback, and React flows. The [callable reference](https://github.com/jshsmth/ForgeFrame/blob/main/docs/iosp-review.md) classifies runtime responsibilities and links their boundary tests.
 
-- `packages/forgeframe/src/index.ts` defines the public exports. Other source barrels are internal; the package has no subpath exports.
+- The package has two entries, built together so they share one copy of the core: `packages/forgeframe/src/index.ts` (`forgeframe`) defines the public exports, and `src/react.ts` (`forgeframe/react`) exports the React adapter. Other source barrels are internal.
 - `core/component.ts` owns component factories and instance tracking. `core/consumer.ts` coordinates rendering, the prop pipeline, and transport; `core/host/` owns host bootstrap and `hostProps`.
 - `communication/` owns request/response messaging and callback bridging. Transports hold their peer window and validate browser-provided sources and origins.
 - `props/` owns schemas, normalization, and serialization. Each prop has one schema that must accept its own output unchanged, so every trust boundary revalidates normalized props with that same schema.
-- `render/` owns iframe and popup resources and templates; `drivers/` holds the optional React adapter. `packages/playground/` exercises the library as consumer and host.
+- `render/` owns iframe and popup resources and templates; `drivers/` holds the optional React adapter, published only through `forgeframe/react`. `packages/playground/` exercises the library as consumer and host.
 
 ### Project Wiki
 
@@ -1703,10 +1729,10 @@ Tests and playground bindings use explicit value guards, so a missing fixture or
 | `npm run test:run` | Unit and integration tests in jsdom, plus Node-specific suites |
 | `npm run test:coverage` | The same tests with coverage thresholds enforced |
 | `npm run test:browser` | Cross-origin iframe and popup regressions in Chromium, Firefox, and WebKit |
-| `npm run build && npm run typecheck:package` | ESM output and emitted declarations under NodeNext resolution |
-| `npm run size` | Minified and gzipped size of the built bundle against its budgets in `packages/forgeframe/scripts/check-bundle-size.mjs`; run after `npm run build` |
+| `npm run build && npm run typecheck:package` | ESM output and both entries' emitted declarations under NodeNext resolution |
+| `npm run size` | Minified and gzipped size of each published entry (`forgeframe` and `forgeframe/react`, each with the shared chunks it imports) against its budgets in `packages/forgeframe/scripts/check-bundle-size.mjs`; run after `npm run build` |
 | `npm run build:playground` | Consumer and host production builds |
-| `npm run test:package` | Pack and install the built library in an isolated project; verify ESM imports and NodeNext consumer types |
+| `npm run test:package` | Pack and install the built library in an isolated project; verify both entries' ESM imports and NodeNext consumer types, with the root types checked before React is installed |
 | `npm run release:check` | Lint, types, tests once with coverage, builds, bundle size, dependency audit, package dry run, and installed-package checks; does not publish |
 
 See the [test index](https://github.com/jshsmth/ForgeFrame/blob/main/packages/forgeframe/tests/README.md) for suite selection and single-file commands. jsdom tests do not replace browser testing of cross-origin navigation, popup blockers, or visual behavior. `npm audit` needs registry access; if the audit service fails, the release check is incomplete even when the local checks pass.

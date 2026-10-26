@@ -1,7 +1,8 @@
 /**
  * Integration-style test for public entrypoint side effects.
  *
- * Covers module import safety and explicit host initialization when
+ * Covers module import safety of both entries (`forgeframe` and
+ * `forgeframe/react`) and explicit host initialization when
  * ForgeFrame-shaped window payloads are present in host-like window contexts.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -42,6 +43,7 @@ describe("Index side effects", () => {
 			.mockResolvedValue(undefined);
 
 		const publicEntrypoint = await import("@/index");
+		await import("@/react");
 
 		const { getHost } = await import("@/core/host");
 

@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type FrameLocator, type Page, test } from "@playwright/test";
 import { build } from "vite";
+import { buildLibrary } from "./library-build";
 
 const servers: Server[] = [];
 type Files = Map<string, string | Uint8Array>;
@@ -111,16 +112,8 @@ test.beforeAll(async () => {
 		collect(fixture.hostFiles, host);
 	}
 	// Use a deliberately faulty merchant with the real production payment host and bridge.
-	const library = await build({
-		configFile: fileURLToPath(new URL("../../vite.config.ts", import.meta.url)),
-		logLevel: "silent",
-		build: { write: false },
-	});
-	const bundled = Array.isArray(library) ? library[0] : library;
-	if (!("output" in bundled)) throw new Error("Unexpected watch build");
-	const chunk = bundled.output.find((entry) => entry.type === "chunk");
-	if (!chunk) throw new Error("Missing library fixture bundle");
-	consumerFiles.set("library.js", chunk.code);
+	for (const [path, code] of await buildLibrary())
+		consumerFiles.set(path.slice(1), code);
 	consumerFiles.set(
 		"acknowledgement-fixture.html",
 		`<!doctype html><button id="open-payment" disabled>Open payment</button><div id="mount"></div>

@@ -6,7 +6,8 @@
 		/* Match workspace/Vite resolution without requiring generated declarations. */
 		"paths": {
 			"@/*": ["../../src/*"],
-			"forgeframe": ["../../src/index.ts"]
+			"forgeframe": ["../../src/index.ts"],
+			"forgeframe/react": ["../../src/react.ts"]
 		}
 	},
 	"include": ["./**/*.ts", "./**/*.tsx"]

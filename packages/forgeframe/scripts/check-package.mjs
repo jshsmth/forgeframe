@@ -40,6 +40,18 @@ try {
 		),
 	);
 	assert.equal(artifact.version, version);
+	const packedFiles = artifact.files.map((file) => file.path);
+	for (const file of [
+		"dist/forgeframe.js",
+		"dist/index.d.ts",
+		"dist/react.js",
+		"dist/react.d.ts",
+	])
+		assert.ok(packedFiles.includes(file), `Missing ${file} from the package`);
+	assert.ok(
+		packedFiles.some((file) => /^dist\/shared-[\w-]+\.js$/.test(file)),
+		"Missing the shared chunk from the package",
+	);
 	writeFileSync(
 		resolve(directory, "package.json"),
 		JSON.stringify({ private: true, type: "module" }),
@@ -57,11 +69,10 @@ try {
 		resolve(directory, "smoke.mjs"),
 		`import assert from 'node:assert/strict';
 import * as entrypoint from 'forgeframe';
-import { VERSION, ForgeFrameError, create, isHost, initHost, prop, createReactComponent } from 'forgeframe';
+import { VERSION, ForgeFrameError, create, isHost, initHost, prop } from 'forgeframe';
 assert.equal(VERSION, ${JSON.stringify(version)});
-for (const removed of ['default', 'ForgeFrame', 'getHostProps', 'isEmbedded', 'CONTEXT', 'EVENT', 'isStandardSchema', 'StringSchema', 'PopupOpenError'])
-	assert.equal(removed in entrypoint, false, removed + ' was removed in ForgeFrame 2');
-assert.equal(typeof createReactComponent, 'function');
+for (const removed of ['default', 'ForgeFrame', 'getHostProps', 'isEmbedded', 'CONTEXT', 'EVENT', 'isStandardSchema', 'StringSchema', 'PopupOpenError', 'createReactComponent', 'withReactComponent'])
+	assert.equal(removed in entrypoint, false, removed + ' was removed from the root in ForgeFrame 2');
 assert.equal(isHost(), false);
 assert.deepEqual(prop.string().trim()['~standard'].validate(' value '), { value: 'value' });
 const callback = () => 42;
@@ -144,11 +155,32 @@ export const agnosticHost = initHost({ props: { n: prop.number() }, consumerOrig
 	)?.[1];
 	assert.ok(readmeExample, "Missing README Define a Component example");
 	writeFileSync(resolve(directory, "readme-consumer.mts"), readmeExample);
+	const typecheck = (...files) =>
+		run(process.execPath, [
+			resolve(repoRoot, "node_modules/typescript/bin/tsc"),
+			"--ignoreConfig",
+			"--noEmit",
+			"--strict",
+			"--skipLibCheck",
+			"false",
+			"--module",
+			"NodeNext",
+			"--moduleResolution",
+			"NodeNext",
+			"--target",
+			"ES2022",
+			"--jsx",
+			"react-jsx",
+			...files,
+		]);
+	// React is not installed yet, so the root entry's types must not need it.
+	typecheck("consumer.mts", "readme-consumer.mts");
+
 	const reactSection = readme.split("## React Integration (Optional)")[1];
 	const reactExample = reactSection?.match(/```tsx\r?\n([\s\S]*?)```/)?.[1];
 	assert.ok(reactExample, "Missing README React Basic Usage example");
 	writeFileSync(resolve(directory, "readme-react.tsx"), reactExample);
-	// React is an optional adapter dependency; use the repository's pinned fixture runtime.
+	// React is an optional peer; use the repository's pinned fixture runtime.
 	mkdirSync(resolve(directory, "node_modules/@types"), { recursive: true });
 	for (const dependency of ["react", "@types/react"]) {
 		symlinkSync(
@@ -157,25 +189,32 @@ export const agnosticHost = initHost({ props: { n: prop.number() }, consumerOrig
 			"dir",
 		);
 	}
-	run(process.execPath, [
-		resolve(repoRoot, "node_modules/typescript/bin/tsc"),
-		"--ignoreConfig",
-		"--noEmit",
-		"--strict",
-		"--skipLibCheck",
-		"false",
-		"--module",
-		"NodeNext",
-		"--moduleResolution",
-		"NodeNext",
-		"--target",
-		"ES2022",
-		"--jsx",
-		"react-jsx",
-		"consumer.mts",
-		"readme-consumer.mts",
-		"readme-react.tsx",
-	]);
+	writeFileSync(
+		resolve(directory, "react-smoke.mjs"),
+		`import assert from 'node:assert/strict';
+import * as reactEntrypoint from 'forgeframe/react';
+import { create, ForgeFrameError } from 'forgeframe';
+assert.deepEqual(Object.keys(reactEntrypoint), ['createReactComponent']);
+const Component = create({ tag: 'installed-react', url: 'https://example.com/widget' });
+assert.equal(reactEntrypoint.createReactComponent(Component).displayName, 'ForgeFrame(installed-react)');
+assert.throws(() => reactEntrypoint.createReactComponent(Component, { React: {} }), (error) => error instanceof ForgeFrameError && error.code === 'VALIDATION');
+`,
+	);
+	run(process.execPath, ["react-smoke.mjs"]);
+	writeFileSync(
+		resolve(directory, "react-consumer.tsx"),
+		`import { createRef } from 'react';
+import { create, prop } from 'forgeframe';
+import { createReactComponent, type ReactComponentOf, type ReactInstance } from 'forgeframe/react';
+const Component = create({ tag: 'typed-react', url: 'https://example.com/widget', props: { label: prop.string() }, exports: prop.object({ total: prop.function<() => number>() }) });
+const Wrapped: ReactComponentOf<typeof Component> = createReactComponent(Component);
+const instanceRef = createRef<ReactInstance<{ total: () => number }>>();
+const element = <Wrapped label="ready" instanceRef={instanceRef} style={{ display: 'block' }} />;
+const total: Promise<number> | undefined = instanceRef.current?.exports?.total();
+void element; void total;
+`,
+	);
+	typecheck("readme-react.tsx", "react-consumer.tsx");
 	console.log(
 		`Installed forgeframe@${version}: ESM runtime and NodeNext consumer types passed`,
 	);

@@ -2,6 +2,7 @@ import { createServer, type Server } from "node:http";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 import { build } from "vite";
+import { buildLibrary } from "./library-build";
 
 const servers: Server[] = [];
 let consumerOrigin: string;
@@ -28,7 +29,10 @@ async function listen(server: Server): Promise<string> {
 test.beforeAll(async () => {
 	const files = new Map<string, string | Uint8Array>();
 	const consumerFiles = new Map<string, string | Uint8Array>();
-	const scripts = { library: "", logger: "" };
+	const scripts: { library: ReadonlyMap<string, string>; logger: string } = {
+		library: new Map(),
+		logger: "",
+	};
 	// Reserve both origins first: the host build allowlists the consumer origin.
 	[hostOrigin, consumerOrigin] = await Promise.all([
 		listen(
@@ -67,9 +71,13 @@ test.beforeAll(async () => {
 					res.end(consumerFile);
 					return;
 				}
-				if (req.url === "/library.js" || req.url === "/logger.js") {
+				const script =
+					req.url === "/logger.js"
+						? scripts.logger
+						: scripts.library.get(req.url ?? "");
+				if (script !== undefined) {
 					res.setHeader("Content-Type", "text/javascript");
-					res.end(req.url === "/library.js" ? scripts.library : scripts.logger);
+					res.end(script);
 					return;
 				}
 				res.setHeader("Content-Type", "text/html");
@@ -80,13 +88,7 @@ test.beforeAll(async () => {
 		),
 	]);
 	const [library, host, logger, consumer] = await Promise.all([
-		build({
-			configFile: fileURLToPath(
-				new URL("../../vite.config.ts", import.meta.url),
-			),
-			logLevel: "silent",
-			build: { write: false },
-		}),
+		buildLibrary(),
 		build({
 			configFile: fileURLToPath(
 				new URL("../../../playground/vite.config.host.ts", import.meta.url),
@@ -122,11 +124,15 @@ test.beforeAll(async () => {
 				__FORGEFRAME_VERSION__: JSON.stringify("1.0.0"),
 			},
 			resolve: {
-				alias: {
-					forgeframe: fileURLToPath(
-						new URL("../../src/index.ts", import.meta.url),
-					),
-				},
+				// Exact matches, so the bare alias cannot capture `forgeframe/react`.
+				alias: [
+					{
+						find: /^forgeframe$/,
+						replacement: fileURLToPath(
+							new URL("../../src/index.ts", import.meta.url),
+						),
+					},
+				],
 			},
 			build: {
 				write: false,
@@ -159,7 +165,7 @@ test.beforeAll(async () => {
 				entry.type === "chunk" ? entry.code : entry.source,
 			);
 	}
-	scripts.library = code(library);
+	scripts.library = library;
 	scripts.logger = code(logger);
 });
 test.afterAll(async () => {

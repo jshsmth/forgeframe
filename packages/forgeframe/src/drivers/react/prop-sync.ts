@@ -50,7 +50,8 @@ export interface ReactPropQueue {
 /** Per-instance state for serializing React prop updates. @internal */
 export interface ReactPropSyncState extends ReactPropQueue {
 	instance: ComponentInstance;
-	renderReady: boolean;
+	/** Whether `render()` resolved; updates sent before then are held by the core. */
+	rendered: boolean;
 	draining: boolean;
 	active: boolean;
 }
@@ -144,9 +145,11 @@ export function enqueuePropSnapshot(
 }
 
 /**
- * Serializes queued updates after rendering, stopping when the instance becomes obsolete.
+ * Serializes queued updates, stopping when the instance becomes obsolete.
+ * Updates committed during `render()` are held by the core until the render
+ * settles, so they need no gate here.
  * Failed entries are reported and removed unless an equivalent commit requested one retry.
- * An existing drain or a render gate prevents a second drain from starting.
+ * An existing drain prevents a second drain from starting.
  * @param isCurrentSyncState - Checks both active state and ownership by the current mount.
  * @param onError - Error observer that must isolate its own failures so draining can continue.
  * @internal
@@ -156,7 +159,7 @@ export async function drainPropUpdates(
 	isCurrentSyncState: (state: ReactPropSyncState) => boolean,
 	onError: (error: Error) => void,
 ): Promise<void> {
-	if (state.draining || !state.renderReady || !isCurrentSyncState(state)) {
+	if (state.draining || !isCurrentSyncState(state)) {
 		return;
 	}
 

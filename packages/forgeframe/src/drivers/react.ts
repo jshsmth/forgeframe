@@ -1,149 +1,251 @@
+import {
+	type CSSProperties,
+	createElement,
+	type ForwardRefExoticComponent,
+	forwardRef,
+	type ReactElement,
+	type Ref,
+	type RefAttributes,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 import type { ContextType } from "../constants";
+import { getComponentOptions } from "../core/component-registry";
+import { ForgeFrameError } from "../errors";
 import type {
 	AnyComponent,
 	ComponentInstance,
+	ExportsOf,
 	InputOf,
-	PropsOf,
 } from "../types/runtime";
-import { isCurrentSyncState, mountReactInstance } from "./react/lifecycle";
+import {
+	callReactCallback,
+	isCurrentSyncState,
+	isHeldUpdateCancellation,
+	mountReactInstance,
+	type ReactInstanceRefs,
+	retargetHandle,
+} from "./react/lifecycle";
 import {
 	drainPropUpdates,
 	enqueuePropSnapshot,
-	type ReactPropSyncState,
 	snapshotProps,
 } from "./react/prop-sync";
 
 /**
- * Minimal React-like interface for driver compatibility.
+ * The rendered ForgeFrame instance that `instanceRef` receives.
  *
  * @remarks
- * These are minimal type definitions to avoid requiring `@types/react` as a dependency.
- * The driver only uses a subset of React's API, so any React-compatible library
- * (such as Preact with compat) can be used as long as it implements these methods.
+ * The wrapper owns rendering and prop synchronization, so the handle leaves
+ * out `render()` and `updateProps()`. `close()` closes the instance through
+ * the wrapper, which then calls `onClose` and clears `instanceRef`.
  *
- * @internal
- */
-interface ReactLike<E> {
-	createElement: (...args: never[]) => E;
-	useRef: (...args: never[]) => unknown;
-	useEffect: (...args: never[]) => unknown;
-	useState: (...args: never[]) => unknown;
-	forwardRef: (...args: never[]) => unknown;
-}
-
-/** Internal callable shape used after the public compatibility check. @internal */
-interface ReactRuntime<E> {
-	createElement: (
-		type: string,
-		props?: Record<string, unknown> | null,
-		...children: unknown[]
-	) => E;
-	useRef: <T>(initial: T | null) => { current: T | null };
-	// biome-ignore lint/suspicious/noConfusingVoidType: React effects may return nothing or a cleanup callback; retain the React-compatible signature.
-	useEffect: (effect: () => void | (() => void), deps?: unknown[]) => void;
-	useState: <T>(initial: T) => [T, (v: T) => void];
-	forwardRef: <T, P>(
-		render: (
-			props: P,
-			ref: ((value: T | null) => void) | { current: T | null } | null,
-		) => E,
-	) => ReactComponentType<P, E>;
-}
-
-/**
- * Props for the generated React component wrapper.
- *
- * @remarks
- * These props are available on all React components created by the driver,
- * in addition to the component-specific props defined in the ForgeFrame component.
- *
- * @typeParam _P - The component-specific props type (unused in base interface)
+ * @typeParam Exports - What the host exports, from the component's `exports`
+ * schema
  *
  * @public
  */
-export interface ReactComponentProps<_P = unknown> {
-	/** Ref to the container element, cleared when the wrapper unmounts. */
-	ref?:
-		| ((value: HTMLDivElement | null) => void)
-		| { current: HTMLDivElement | null }
-		| null;
+export type ReactInstance<Exports = unknown> = Pick<
+	ComponentInstance<Record<string, unknown>, Record<string, unknown>, Exports>,
+	"uid" | "exports" | "event" | "close" | "focus" | "resize" | "show" | "hide"
+>;
 
+/**
+ * Props every wrapper from {@link createReactComponent} accepts, besides the
+ * component's own props.
+ *
+ * @remarks
+ * These names are reserved: a component whose definition declares one of them
+ * is rejected by {@link createReactComponent}. The wrapper also accepts a
+ * `ref`, which receives the container `div`.
+ *
+ * @typeParam Exports - What the host exports; types the `instanceRef` handle
+ *
+ * @public
+ */
+export interface ReactComponentProps<Exports = unknown> {
 	/**
-	 * Callback invoked when the component has finished rendering.
-	 *
-	 * @remarks
-	 * This is called once the cross-domain component has been fully mounted
-	 * and is visible to the user.
+	 * Called after the instance has rendered, right after `instanceRef`
+	 * receives the handle.
 	 */
 	onRendered?: () => void;
 
 	/**
-	 * Callback invoked when the component encounters an error.
-	 *
-	 * @param error - The error that occurred during rendering or operation
+	 * Called with each error: a failed render or prop update, or an error the
+	 * host reports.
 	 *
 	 * @remarks
-	 * Errors can occur during initial render, prop updates, or cross-domain communication.
+	 * Library failures are `ForgeFrameError`s; branch on `error.code`, such as
+	 * `POPUP_BLOCKED` or `INIT_TIMEOUT`. Errors the host reports with
+	 * `reportError()` arrive as plain `Error`s.
 	 */
 	onError?: (error: Error) => void;
 
 	/**
-	 * Callback invoked when the component is closed.
-	 *
-	 * @remarks
-	 * This is triggered when the cross-domain component is programmatically closed
-	 * or when the user closes a popup window.
+	 * Called when the instance closes: the host closes it, the user closes its
+	 * popup, `instanceRef.current.close()` is called, or the wrapper unmounts or
+	 * changes `context`. `instanceRef` is cleared just before it runs.
 	 */
 	onClose?: () => void;
 
 	/**
-	 * The rendering context for the component.
-	 *
-	 * @remarks
-	 * Determines whether the component renders in an iframe or popup window.
-	 * Defaults to the component's configured default context.
+	 * Renders in an iframe or a popup. Defaults to the component's `context`
+	 * option. Changing it closes the instance and renders a new one.
 	 */
 	context?: ContextType;
 
 	/**
-	 * CSS class name applied to the container element.
-	 *
-	 * @remarks
-	 * The container is a `div` element that wraps the iframe or serves as
-	 * the anchor point for popup positioning.
+	 * Receives a handle to the rendered instance once `render()` resolves, and
+	 * `null` when that instance closes, the wrapper unmounts, `context`
+	 * changes, or rendering fails. Accepts a ref object or a callback ref.
 	 */
+	instanceRef?: Ref<ReactInstance<Exports>>;
+
+	/** CSS class name of the container `div`. */
 	className?: string;
 
 	/**
-	 * Inline styles applied to the container element.
-	 *
-	 * @remarks
-	 * These styles are merged with the default container styles.
-	 * The container defaults to `display: inline-block`.
+	 * Inline styles of the container `div`, merged over its default
+	 * `display: inline-block`.
 	 */
-	style?: Record<string, string | number>;
+	style?: CSSProperties;
 }
 
 /**
- * Full props type combining driver props with component-specific props.
- *
- * @typeParam C - The wrapped ForgeFrame component
+ * The React component {@link createReactComponent} returns for a component.
  *
  * @remarks
- * This type merges {@link ReactComponentProps} with the component's factory
- * input, so props whose schemas reject `undefined` stay required in JSX.
+ * Its props are the component's factory input, with requiredness kept, plus
+ * {@link ReactComponentProps} and a `ref` to the container `div`.
  *
- * @internal
+ * @typeParam C - The wrapped component, as `typeof Component`
+ *
+ * @example
+ * ```typescript
+ * const LoginReact: ReactComponentOf<typeof LoginComponent> =
+ *   createReactComponent(LoginComponent);
+ * ```
+ *
+ * @public
  */
-type FullReactComponentProps<C extends AnyComponent> = ReactComponentProps<
-	PropsOf<C>
-> &
-	InputOf<C>;
+export type ReactComponentOf<C extends AnyComponent> =
+	ForwardRefExoticComponent<
+		InputOf<C> &
+			ReactComponentProps<ExportsOf<C>> &
+			RefAttributes<HTMLDivElement>
+	>;
+
+/** Props consumed by the wrapper and never forwarded to the component. */
+const RESERVED_WRAPPER_PROPS = [
+	"onRendered",
+	"onError",
+	"onClose",
+	"context",
+	"instanceRef",
+	"className",
+	"style",
+	"ref",
+] as const;
+
+/** All props the wrapper body receives. @internal */
+type WrapperProps = Record<string, unknown> & ReactComponentProps;
 
 /** Attaches the container element and forwards it to one forwarded ref. @internal */
 type ContainerRefCallback = (
 	node: HTMLDivElement | null,
 ) => (() => void) | undefined;
+
+/**
+ * Checks a `createReactComponent` call and returns the wrapped component's tag.
+ *
+ * @throws {@link ForgeFrameError} `VALIDATION` for a v1 second argument, a value
+ * that is not a ForgeFrame component, or a reserved wrapper prop name in the
+ * component's definitions
+ * @internal
+ */
+function assertReactComponentArguments(
+	Component: unknown,
+	extraArguments: readonly unknown[],
+): string {
+	if (extraArguments.length > 0) {
+		throw new ForgeFrameError(
+			"VALIDATION",
+			"createReactComponent() takes only the component. React now comes from the `react` peer dependency, so remove the second argument (the v1 `{ React }` option).",
+		);
+	}
+	const options =
+		typeof Component === "function"
+			? getComponentOptions(Component)
+			: undefined;
+	if (!options) {
+		throw new ForgeFrameError(
+			"VALIDATION",
+			"createReactComponent() expects a component returned by create().",
+		);
+	}
+	const reserved = RESERVED_WRAPPER_PROPS.filter((name) =>
+		Object.hasOwn(options.props ?? {}, name),
+	);
+	if (reserved.length > 0) {
+		throw new ForgeFrameError(
+			"VALIDATION",
+			`Component "${options.tag}" declares ${reserved.map((name) => `"${name}"`).join(", ")}, which the React wrapper reserves for itself. Rename the prop (for example "onHostClose").`,
+		);
+	}
+	return options.tag;
+}
+
+/**
+ * Splits the wrapper's own props from the props it forwards to the component.
+ * @internal
+ */
+function splitWrapperProps(props: WrapperProps): {
+	wrapperProps: ReactComponentProps;
+	componentProps: Record<string, unknown>;
+} {
+	const {
+		onRendered,
+		onError,
+		onClose,
+		context,
+		instanceRef,
+		className,
+		style,
+		...componentProps
+	} = props;
+	return {
+		wrapperProps: {
+			onRendered,
+			onError,
+			onClose,
+			context,
+			instanceRef,
+			className,
+			style,
+		},
+		componentProps,
+	};
+}
+
+/**
+ * The container `div`'s props: the error presentation while an error is
+ * shown, otherwise the default inline-block layout. The caller's `style`
+ * wins over both.
+ * @internal
+ */
+function containerElementProps(
+	error: Error | null,
+	className: string | undefined,
+	style: CSSProperties | undefined,
+): { className: string | undefined; style: CSSProperties } {
+	return {
+		className,
+		style: error
+			? { color: "red", padding: "16px", ...style }
+			: { display: "inline-block", ...style },
+	};
+}
 
 /**
  * Returns one stable container callback per forwarded ref. Memoizing by ref,
@@ -153,7 +255,7 @@ type ContainerRefCallback = (
  */
 function createContainerRefCache(containerRef: {
 	current: HTMLDivElement | null;
-}): (ref: ReactComponentProps["ref"]) => ContainerRefCallback {
+}): (ref: Ref<HTMLDivElement> | undefined) => ContainerRefCallback {
 	const byRef = new WeakMap<object, ContainerRefCallback>();
 	let withoutRef: ContainerRefCallback | undefined;
 	return (ref) => {
@@ -178,7 +280,7 @@ function createContainerRefCache(containerRef: {
  */
 function createContainerRef(
 	containerRef: { current: HTMLDivElement | null },
-	ref: ReactComponentProps["ref"],
+	ref: Ref<HTMLDivElement> | undefined,
 ): ContainerRefCallback {
 	return (node) => {
 		containerRef.current = node;
@@ -197,175 +299,98 @@ function createContainerRef(
 	};
 }
 
-/** Reports React driver errors without allowing observer failures to break lifecycle work. @internal */
+/** Reports an error to `onError` without letting its failure break lifecycle work. @internal */
 function reportReactError(
 	callback: ((error: Error) => void) | undefined,
 	error: Error,
 ): void {
-	if (!callback) {
-		return;
-	}
-
-	try {
-		const result = (callback as (reportedError: Error) => unknown)(error);
-		if (
-			result &&
-			typeof result === "object" &&
-			"catch" in result &&
-			typeof result.catch === "function"
-		) {
-			(result as Promise<unknown>).catch((callbackError: unknown) => {
-				console.error("Error in React onError callback:", callbackError);
-			});
-		}
-	} catch (callbackError) {
-		console.error("Error in React onError callback:", callbackError);
-	}
+	if (callback) callReactCallback("onError", () => callback(error));
 }
 
 /**
- * Configuration options for creating a React driver.
+ * Wraps a ForgeFrame component as a React component.
+ *
+ * @param Component - The component returned by `create()`
+ * @typeParam C - The wrapped component; its factory input types the wrapper's
+ * props, and its exports type the `instanceRef` handle
+ * @returns A React component that renders `Component` in its container `div`
+ * @throws {@link ForgeFrameError} `VALIDATION` when `Component` is not a
+ * ForgeFrame component, when a second argument is passed (the v1 `{ React }`
+ * option), or when the component declares a prop the wrapper reserves
  *
  * @remarks
- * The React instance must be provided to avoid bundling React with the driver.
- * This allows the driver to work with any version of React that implements
- * the required hooks and methods.
+ * The wrapper creates and renders an instance when it mounts and closes it
+ * when it unmounts. Committed prop changes are sent in order with
+ * `updateProps()`; removing a prop resets it as `updateProps({ key: undefined })`
+ * does, and passing `undefined` counts as leaving the prop out. Changing
+ * `context` closes the instance and renders a new one.
  *
- * @public
- */
-export interface ReactDriverOptions<E = unknown> {
-	/**
-	 * The React library instance to use for component creation.
-	 *
-	 * @remarks
-	 * Must provide `createElement`, `useRef`, `useEffect`, `useState`, and `forwardRef`.
-	 * Compatible with React 16.8+ and Preact with compat.
-	 */
-	React: ReactLike<E>;
-}
-
-/**
- * Type definition for a React component created by the integration.
+ * The forwarded `ref` is the container `div`, attached during commit, before a
+ * parent's layout effects run; React 19 ref cleanups are honored. `instanceRef`
+ * receives the rendered instance; see {@link ReactComponentProps.instanceRef}.
+ * A failed render shows its message inside the container and calls `onError`.
  *
- * @typeParam P - The props type for the component
- *
- * @remarks
- * This interface represents the callable component function returned by
- * {@link createReactComponent}. It includes an optional `displayName` for
- * React DevTools integration.
- *
- * @public
- */
-export interface ReactComponentType<P, E = unknown> {
-	/**
-	 * Renders the component with the given props.
-	 *
-	 * @param props - The component props
-	 * @returns A React element (type varies by React version)
-	 */
-	(props: P): E;
-
-	/**
-	 * Display name shown in React DevTools.
-	 *
-	 * @remarks
-	 * Automatically set to `ForgeFrame(ComponentName)` by the driver.
-	 */
-	displayName?: string;
-}
-
-/**
- * Creates a React component wrapper for a ForgeFrame cross-domain component.
- *
- * @param Component - The ForgeFrame component to wrap
- * @param options - Configuration options including the React instance
- * @typeParam C - The wrapped ForgeFrame component; its factory input types the
- * wrapper's props
- * @typeParam E - The React element return type
- *
- * @returns A React component that renders the ForgeFrame component
- *
- * @remarks
- * This function bridges ForgeFrame's cross-domain component system with React's
- * component model. The returned component handles:
- * - Mounting and unmounting lifecycle
- * - Prop synchronization with the cross-domain component
- * - Error boundary integration via the `onError` callback
- * - Ref forwarding to the container element
- *
- * The forwarded ref is attached to the container element directly, so it is
- * set before a parent's layout effects run, and React 19 ref cleanups are honored.
- *
- * The component automatically cleans up the cross-domain connection when unmounted.
- * Committed prop changes synchronize in order after rendering. Removing a prop
- * resets it exactly as `updateProps({ key: undefined })` does, and passing
- * `undefined` counts as leaving the prop out, so switching between the two
- * sends no update.
- * Changing `context` remounts the instance with an independent update queue.
+ * React DevTools shows the wrapper as `ForgeFrame(<tag>)`. On the server the
+ * wrapper renders only its container; effects do not run, so no instance is
+ * created. Use it inside a client component in React Server Components
+ * frameworks.
  *
  * @example
  * ```tsx
- * import React from 'react';
- * import { create, prop, createReactComponent } from 'forgeframe';
+ * import { create, prop } from 'forgeframe';
+ * import { createReactComponent } from 'forgeframe/react';
  *
  * const LoginComponent = create({
  *   tag: 'login-component',
- *   url: 'https://example.com/login',
+ *   url: 'https://auth.example.com/login',
  *   props: {
  *     onLogin: prop.function<(user: { id: string }) => void>(),
  *   },
  * });
  *
- * const LoginReact = createReactComponent(LoginComponent, { React });
+ * const LoginReact = createReactComponent(LoginComponent);
  *
- * // Usage in JSX:
- * <LoginReact onLogin={(user) => console.log(user)} />
+ * <LoginReact onLogin={(user) => console.log(user)} />;
  * ```
  *
  * @public
  */
-export function createReactComponent<C extends AnyComponent, E = unknown>(
+export function createReactComponent<C extends AnyComponent>(
 	Component: C,
-	options: ReactDriverOptions<E>,
-): ReactComponentType<FullReactComponentProps<C>, E> {
-	const { createElement, useRef, useEffect, useState, forwardRef } =
-		options.React as unknown as ReactRuntime<E>;
+): ReactComponentOf<C>;
+export function createReactComponent(
+	Component: AnyComponent,
+	...extraArguments: unknown[]
+): ReactComponentOf<AnyComponent> {
+	const tag = assertReactComponentArguments(Component, extraArguments);
 	const createInstance = Component as unknown as (
 		props: Record<string, unknown>,
 	) => ComponentInstance;
 
-	const ReactComponent = forwardRef<HTMLDivElement, FullReactComponentProps<C>>(
-		function ForgeFrameComponent(props, ref) {
-			const {
-				onRendered,
-				onError,
-				onClose,
-				context,
-				className,
-				style,
-				...componentProps
-			} = props;
+	const ReactComponent = forwardRef<HTMLDivElement, WrapperProps>(
+		function ForgeFrameComponent(props, ref): ReactElement {
+			const { wrapperProps, componentProps } = splitWrapperProps(props);
+			const { onRendered, onError, onClose, context, instanceRef } =
+				wrapperProps;
 
-			const containerRef = useRef<HTMLDivElement>(null);
-			const instanceRef = useRef<ComponentInstance | null>(null);
-			const propSyncRef = useRef<ReactPropSyncState | null>(null);
-			const onRenderedRef = useRef<typeof onRendered>(onRendered);
-			const onErrorRef = useRef<typeof onError>(onError);
-			const onCloseRef = useRef<typeof onClose>(onClose);
+			const containerRef = useRef<HTMLDivElement | null>(null);
+			const mountRefsRef = useRef<ReactInstanceRefs>(null);
+			const onRenderedRef = useRef(onRendered);
+			const onErrorRef = useRef(onError);
+			const onCloseRef = useRef(onClose);
 			const containerRefCache =
 				useRef<ReturnType<typeof createContainerRefCache>>(null);
 			const [error, setError] = useState<Error | null>(null);
 			// Lazily created once; React re-attaches only when the forwarded ref changes.
 			containerRefCache.current ??= createContainerRefCache(containerRef);
 			const attachContainer = containerRefCache.current(ref);
-
-			const refs = { instanceRef, propSyncRef };
-			const isCurrent = (state: ReactPropSyncState) =>
-				isCurrentSyncState(state, refs);
-			const onDriverError = (err: Error) =>
-				reportReactError(onErrorRef.current ?? undefined, err);
-			const drain = (state: ReactPropSyncState) =>
-				drainPropUpdates(state, isCurrent, onDriverError);
+			mountRefsRef.current ??= {
+				current: null,
+				published: null,
+				target: instanceRef,
+				targetCleanup: undefined,
+			};
+			const mountRefs = mountRefsRef.current;
 
 			useEffect(() => {
 				onRenderedRef.current = onRendered;
@@ -373,51 +398,56 @@ export function createReactComponent<C extends AnyComponent, E = unknown>(
 				onCloseRef.current = onClose;
 			}, [onRendered, onError, onClose]);
 
+			// biome-ignore lint/correctness/useExhaustiveDependencies: an instance mounts with its first committed props and remounts only for a new context; later props sync through the queue, and mountRefs is created once.
 			useEffect(() => {
 				const container = containerRef.current;
 				if (!container) return;
 
 				setError(null);
-
-				const initialProps = snapshotProps(
-					componentProps as Record<string, unknown>,
-				);
 				return mountReactInstance(
 					createInstance,
-					initialProps,
+					snapshotProps(componentProps),
 					container,
 					context,
-					refs,
+					mountRefs,
 					{
 						onRendered: () => onRenderedRef.current?.(),
 						onClose: () => onCloseRef.current?.(),
-						onError: onDriverError,
+						onError: (err) => reportReactError(onErrorRef.current, err),
 						setError,
-					},
-					(state) => {
-						void drain(state);
 					},
 				);
 			}, [context]);
 
+			// biome-ignore lint/correctness/useExhaustiveDependencies: mountRefs is created once per wrapper and never replaced.
 			useEffect(() => {
-				const syncState = propSyncRef.current;
-				if (!syncState || !isCurrent(syncState)) return;
+				retargetHandle(mountRefs, instanceRef);
+			}, [instanceRef]);
 
-				const nextProps = snapshotProps(
-					componentProps as Record<string, unknown>,
-				);
-				if (enqueuePropSnapshot(syncState, nextProps)) void drain(syncState);
+			useEffect(() => {
+				const state = mountRefs.current;
+				if (!state || !isCurrentSyncState(state, mountRefs)) return;
+				if (enqueuePropSnapshot(state, snapshotProps(componentProps))) {
+					void drainPropUpdates(
+						state,
+						(candidate) => isCurrentSyncState(candidate, mountRefs),
+						(err) => {
+							if (!isHeldUpdateCancellation(state, err))
+								reportReactError(onErrorRef.current, err);
+						},
+					);
+				}
 			});
 
 			return createElement(
 				"div",
 				{
 					ref: attachContainer,
-					className,
-					style: error
-						? { color: "red", padding: "16px", ...style }
-						: { display: "inline-block", ...style },
+					...containerElementProps(
+						error,
+						wrapperProps.className,
+						wrapperProps.style,
+					),
 				},
 				// Keep error content in its own node so recovery cannot clear an iframe
 				// inserted into this container by the new instance's render call.
@@ -426,59 +456,7 @@ export function createReactComponent<C extends AnyComponent, E = unknown>(
 		},
 	);
 
-	const displayName = `ForgeFrame(${(Component as { name?: string }).name || "Component"})`;
-	ReactComponent.displayName = displayName;
+	ReactComponent.displayName = `ForgeFrame(${tag})`;
 
-	return ReactComponent;
-}
-
-/**
- * Creates a curried React component factory with a pre-configured React instance.
- *
- * @param React - The React library instance to use for all created components
- *
- * @returns A function that creates React wrappers for ForgeFrame components
- *
- * @remarks
- * This is a higher-order function that simplifies creating multiple React components
- * with the same React instance. It returns a factory that can be reused
- * across multiple ForgeFrame components.
- *
- * This pattern is useful when you have many ForgeFrame components and want to
- * avoid passing the React instance repeatedly.
- *
- * @example
- * ```tsx
- * import React from 'react';
- * import { create, withReactComponent } from 'forgeframe';
- *
- * // Create a reusable component factory
- * const createComponent = withReactComponent(React);
- *
- * // Create multiple React components using the same factory
- * const LoginComponent = create({ tag: 'login', url: '...' });
- * const ProfileComponent = create({ tag: 'profile', url: '...' });
- *
- * const LoginReact = createComponent(LoginComponent);
- * const ProfileReact = createComponent(ProfileComponent);
- * ```
- *
- * @public
- */
-export function withReactComponent<E>(React: ReactLike<E>) {
-	/**
-	 * Factory function that wraps a ForgeFrame component as a React component.
-	 *
-	 * @typeParam C - The wrapped ForgeFrame component
-	 *
-	 * @param Component - The ForgeFrame component to wrap
-	 * @returns A React component that renders the ForgeFrame component
-	 *
-	 * @internal
-	 */
-	return function createComponent<C extends AnyComponent>(
-		Component: C,
-	): ReactComponentType<FullReactComponentProps<C>, E> {
-		return createReactComponent(Component, { React });
-	};
+	return ReactComponent as unknown as ReactComponentOf<AnyComponent>;
 }

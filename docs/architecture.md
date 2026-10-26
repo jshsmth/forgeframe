@@ -5,12 +5,12 @@ desc: Consumer and host state ownership, transport contracts, and lifecycle flow
 tags: []
 sources: []
 created: 2026-10-01T01:55:30Z
-updated: 2026-10-26T08:16:48Z
+updated: 2026-10-26T08:32:10Z
 ---
 
 # ForgeFrame architecture
 
-ForgeFrame has two runtimes: the **consumer** is the outer embedding app, and the **host** is the embedded iframe or popup. The public entrypoint is `packages/forgeframe/src/index.ts`, which has named exports only. Importing the entrypoint does not start a browser runtime: a host starts only through `initHost()`. Without browser globals, `isHost()` returns false and a well-formed `initHost()` call returns null; malformed `initHost()` arguments still throw.
+ForgeFrame has two runtimes: the **consumer** is the outer embedding app, and the **host** is the embedded iframe or popup. The package has two public entrypoints with named exports only: `packages/forgeframe/src/index.ts` (`forgeframe`) and `src/react.ts` (`forgeframe/react`, the React adapter). One library build emits both, so modules they share, such as the component registry and `ForgeFrameError`, are emitted once in a shared chunk and exist once per page; the root entry contains no React code. Importing either entrypoint does not start a browser runtime: a host starts only through `initHost()`. Without browser globals, `isHost()` returns false and a well-formed `initHost()` call returns null; malformed `initHost()` arguments still throw.
 
 ## Responsibilities and state ownership
 
@@ -30,7 +30,7 @@ Paths are relative to `packages/forgeframe/src`.
 | Messaging | `communication/messenger.ts` | Trusted matchers, pending correlated requests, message handlers, and listener lifetime. A messenger never trusts an opaque (`"null"`) origin, its own or a sender's, even under `'*'`, and consumer messengers listen only once host content opens. Requests go only to the origin of an absolute URL target; `"*"`, `"/"`, other strings, and opaque-origin URLs are rejected before posting. `protocol.ts` owns envelopes and encoding. |
 | Function bridge | `communication/bridge.ts` | Local callable IDs, remote wrappers, capacity, and serialization batches. Recursive codecs define the wire semantics. |
 | Props and schemas | `props/normalize.ts`, `props/exports.ts`, `props/prop/`, `props/definition-checks.ts` | Schema-driven normalization, output validation, the exports check (`validateExports`, the same unchanged-output rule as props), the pure delivery policy for `sendToHost` and `deliverTo`, immutable builders, schema issue paths, and the declaration checks (removed options, required `schema`, `deliverTo` matchers, parameter names) shared by `create()` and `initHost()`. Only compiled definitions are cached. |
-| React adapter | `drivers/react.ts` | Hook and ref ordering and React render state. `react/lifecycle.ts` coordinates a mounted instance; `react/prop-sync.ts` owns queue operations and draining. The wrapper owns the refs. |
+| React adapter | `react.ts` (`forgeframe/react`), `drivers/react.ts` | Imports React directly (an optional peer dependency). `createReactComponent` checks its arguments (one component, no reserved wrapper prop names) and names the wrapper `ForgeFrame(<tag>)` from the registry's options. Hook and ref ordering and React render state live in the wrapper. `react/lifecycle.ts` coordinates a mounted instance and its `instanceRef` handle; `react/prop-sync.ts` owns queue operations and draining. The wrapper owns the refs. |
 | Supporting operations | `window/`, `utils/`, `events/` | Window adapters and bootstrap metadata, dimensions, origin matching and matcher validation (`utils/origin-pattern.ts`), the opaque-origin check (`utils/origin.ts`), wire values, promise and cleanup resources, IDs, and event subscriptions. |
 | Errors | `errors.ts` | `ForgeFrameError` and the `ForgeFrameErrorCode` union, plus the wire helpers that send a code with an error response and rebuild a coded error from one. Every error ForgeFrame raises is a `ForgeFrameError`, except the build-time version check; errors from application code pass through, and `normalizeError()` keeps a non-`Error` thrown value as `cause`. |
 
@@ -130,9 +130,11 @@ The function bridge:
 
 ## React commit flow
 
-The hook wrapper updates callback refs, mounts an instance for the current context, and observes committed props, in that effect order. The container element's ref is a callback created once per forwarded ref, so React attaches and forwards the element during commit, before layout effects, and a forwarded callback's React 19 cleanup replaces its `null` call.
+The hook wrapper updates callback refs, mounts an instance for the current context, moves the `instanceRef` handle to a changed `instanceRef` prop, and observes committed props, in that effect order. The container element's ref is a callback created once per forwarded ref, so React attaches and forwards the element during commit, before layout effects, and a forwarded callback's React 19 cleanup replaces its `null` call.
 
-Each mounted instance has its own sync state. Commits produce shallow snapshots without `undefined`-valued keys, so passing `undefined` and omitting a prop are the same commit, and send `undefined` for previously known keys that are now omitted, which resets them in core. A failed equivalent pending commit requests one retry; successful acknowledgements advance the FIFO. Draining waits for render readiness and checks the current instance identity around every await, so failed or obsolete work cannot update a new mount's refs or queue. Cleanup deactivates the queue before closing and unsubscribing.
+`instanceRef` receives a frozen handle (`uid`, a live `exports` getter, `event`, `close`, `focus`, `resize`, `show`, `hide`; no `render` or `updateProps`) only after the current mount's `render()` resolves, immediately before `onRendered`. It is cleared before `onClose` when that instance closes (by the host, the user, the handle or cleanup), when the wrapper unmounts or `context` remounts it, and is never set after a failed render. Only the current mount writes it; a callback ref's React 19 cleanup replaces its `null` call. A render failure that also arrives on the `error` event is reported to `onError` once.
+
+Each mounted instance has its own sync state. Commits produce shallow snapshots without `undefined`-valued keys, so passing `undefined` and omitting a prop are the same commit, and send `undefined` for previously known keys that are now omitted, which resets them in core. A failed equivalent pending commit requests one retry; successful acknowledgements advance the FIFO. There is no render gate: a commit during `render()` is sent at once and the core holds it until the render settles; if the render fails, the held update's `CLOSED` rejection is not reported, because the render failure is. Draining checks the current instance identity around every await, so failed or obsolete work cannot update a new mount's refs or queue. Cleanup deactivates the queue before closing and unsubscribing.
 
 ## Playground
 

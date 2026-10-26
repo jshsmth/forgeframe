@@ -1,8 +1,9 @@
 /**
  * Package contract checks for the public npm artifact shape.
  *
- * These tests keep README/package/build configuration aligned with the v1
- * decision to ship one ESM entrypoint and no public UMD build.
+ * These tests keep README/package/build configuration aligned with the
+ * decision to ship ESM only, with no public UMD build: the root `forgeframe`
+ * entry and the `forgeframe/react` subpath, built together.
  */
 
 import { spawnSync } from "node:child_process";
@@ -17,18 +18,21 @@ type RootPackageJson = {
 	scripts: Record<string, string>;
 };
 
+type PackageEntry = {
+	types: string;
+	import: string;
+	require?: string;
+	default?: string;
+};
+
 type ForgeFramePackageJson = {
 	version: string;
 	scripts: Record<string, string>;
 	module: string;
-	exports: {
-		".": {
-			types: string;
-			import: string;
-			require?: string;
-			default?: string;
-		};
-	};
+	exports: Record<string, PackageEntry>;
+	peerDependencies?: Record<string, string>;
+	peerDependenciesMeta?: Record<string, { optional?: boolean }>;
+	dependencies?: Record<string, string>;
 };
 
 const testDir = dirname(fileURLToPath(import.meta.url));
@@ -44,25 +48,43 @@ function readJson<T>(path: string): T {
 }
 
 describe("package contract", () => {
-	it("should expose a single ESM package entrypoint", () => {
+	it("should expose the root and React ESM entrypoints only", () => {
 		const packageJson = readJson<ForgeFramePackageJson>(
 			resolve(packageRoot, "package.json"),
 		);
 
 		expect(packageJson.module).toBe("./dist/forgeframe.js");
-		expect(packageJson.exports["."]).toEqual({
-			types: "./dist/index.d.ts",
-			import: "./dist/forgeframe.js",
+		expect(packageJson.exports).toEqual({
+			".": { types: "./dist/index.d.ts", import: "./dist/forgeframe.js" },
+			"./react": { types: "./dist/react.d.ts", import: "./dist/react.js" },
 		});
-		expect(packageJson.exports["."].require).toBeUndefined();
-		expect(packageJson.exports["."].default).toBeUndefined();
 	});
 
-	it("should build only the ESM library format", () => {
+	it("should declare React and its types as optional peers only", () => {
+		const packageJson = readJson<ForgeFramePackageJson>(
+			resolve(packageRoot, "package.json"),
+		);
+
+		expect(packageJson.dependencies).toBeUndefined();
+		expect(packageJson.peerDependencies).toEqual({
+			"@types/react": ">=16.8.0",
+			react: ">=16.8.0",
+		});
+		expect(packageJson.peerDependenciesMeta).toEqual({
+			"@types/react": { optional: true },
+			react: { optional: true },
+		});
+	});
+
+	it("should build both entries in one ESM library build", () => {
 		const viteConfig = readText(resolve(packageRoot, "vite.config.ts"));
 
 		expect(viteConfig).toMatch(/formats:\s*\[\s*["']es["']\s*,?\s*\]/);
 		expect(viteConfig).not.toMatch(/\bumd\b/i);
+		expect(viteConfig).toMatch(
+			/forgeframe:\s*resolve\([^)]*"src\/index\.ts"\)/,
+		);
+		expect(viteConfig).toMatch(/react:\s*resolve\([^)]*"src\/react\.ts"\)/);
 	});
 
 	it("should keep README package claims aligned with ESM-only output", () => {
@@ -103,26 +125,41 @@ describe("package contract", () => {
 	});
 
 	it.each([
-		{ label: "within", bytes: 1024, succeeds: true },
-		// Random bytes do not compress, so this exceeds both budgets.
-		{ label: "over", bytes: 140 * 1024, succeeds: false },
+		{ label: "within", shared: 1024, react: 1024, failing: [] },
+		// Random bytes do not compress, so these exceed both budgets. The root
+		// entry counts the shared chunk it imports.
+		{
+			label: "over",
+			shared: 140 * 1024,
+			react: 1024,
+			failing: ["forgeframe.js"],
+		},
+		{ label: "over", shared: 1024, react: 20 * 1024, failing: ["react.js"] },
 	])(
-		"should check the bundle size budget for a bundle $label budget",
-		({ bytes, succeeds }) => {
+		"should check each entry's size budget, with its shared chunks, for a build $label budget",
+		({ shared, react, failing }) => {
 			const dir = mkdtempSync(join(tmpdir(), "forgeframe-size-"));
 			try {
-				const bundle = join(dir, "forgeframe.js");
-				writeFileSync(bundle, randomBytes(bytes));
+				const filler = (bytes: number) => randomBytes(bytes).toString("base64");
+				writeFileSync(join(dir, "shared-abc.js"), filler((shared * 3) / 4));
+				writeFileSync(
+					join(dir, "forgeframe.js"),
+					`import { a } from "./shared-abc.js";\n`,
+				);
+				writeFileSync(
+					join(dir, "react.js"),
+					`import "./shared-abc.js";\n${filler((react * 3) / 4)}`,
+				);
 				const result = spawnSync(
 					process.execPath,
-					[resolve(packageRoot, "scripts/check-bundle-size.mjs"), bundle],
+					[resolve(packageRoot, "scripts/check-bundle-size.mjs"), dir],
 					{ encoding: "utf8" },
 				);
 				expect(result.error).toBeUndefined();
-				expect(result.status).toBe(succeeds ? 0 : 1);
-				if (!succeeds) {
+				expect(result.status).toBe(failing.length === 0 ? 0 : 1);
+				for (const entry of failing) {
 					expect(result.stderr).toContain(
-						"Bundle exceeds its minified and gzip budget",
+						`${entry} exceeds its minified and gzip budget`,
 					);
 				}
 			} finally {

@@ -11,13 +11,19 @@ export default defineConfig({
 		__FORGEFRAME_VERSION__: JSON.stringify(packageJson.version),
 	},
 	build: {
+		// One build for both entries, so modules they share are emitted once and
+		// exist once per page.
 		lib: {
-			entry: resolve(import.meta.dirname, "src/index.ts"),
+			entry: {
+				forgeframe: resolve(import.meta.dirname, "src/index.ts"),
+				react: resolve(import.meta.dirname, "src/react.ts"),
+			},
 			formats: ["es"],
-			fileName: "forgeframe",
+			fileName: (_format, entryName) => `${entryName}.js`,
 		},
 		rolldownOptions: {
 			external: ["react", "react-dom"],
+			output: { chunkFileNames: "shared-[hash].js" },
 		},
 		sourcemap: false,
 		minify: "oxc",

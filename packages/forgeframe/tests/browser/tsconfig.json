@@ -4,7 +4,13 @@
 		"noEmit": true,
 		"rootDir": "../..",
 		"declaration": false,
-		"emitDeclarationOnly": false
+		"emitDeclarationOnly": false,
+		/* Typecheck the fixtures' public specifiers against the source. */
+		"paths": {
+			"@/*": ["../../src/*"],
+			"forgeframe": ["../../src/index.ts"],
+			"forgeframe/react": ["../../src/react.ts"]
+		}
 	},
 	"include": ["./*.ts", "../../playwright.config.ts"]
 }

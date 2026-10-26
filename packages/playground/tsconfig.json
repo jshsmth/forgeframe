@@ -17,7 +17,8 @@
 
 		/* Typecheck the live workspace source, matching the Vite aliases. */
 		"paths": {
-			"forgeframe": ["../forgeframe/src/index.ts"]
+			"forgeframe": ["../forgeframe/src/index.ts"],
+			"forgeframe/react": ["../forgeframe/src/react.ts"]
 		},
 
 		/* Linting */

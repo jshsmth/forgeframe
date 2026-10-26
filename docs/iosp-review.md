@@ -5,7 +5,7 @@ desc: Runtime callable responsibilities, IOSP classifications, and boundary test
 tags: []
 sources: []
 created: 2026-10-01T01:55:30Z
-updated: 2026-10-26T08:16:48Z
+updated: 2026-10-26T08:32:10Z
 ---
 
 # ForgeFrame callable reference
@@ -31,7 +31,7 @@ Pure policy consumes observed facts; integrations and adapters obtain browser ev
 | <a id="evidence-render"></a>render | [consumer-renderer.test](../packages/forgeframe/tests/unit/consumer-renderer.test.ts), [iframe.test](../packages/forgeframe/tests/unit/iframe.test.ts), [popup.test](../packages/forgeframe/tests/unit/popup.test.ts), [render-templates.test](../packages/forgeframe/tests/unit/render-templates.test.ts), [body-param-bootstrap.test](../packages/forgeframe/tests/integration/body-param-bootstrap.test.ts), [popup-host-handshake.test](../packages/forgeframe/tests/integration/popup-host-handshake.test.ts), [secure-defaults.test](../packages/forgeframe/tests/integration/secure-defaults.test.ts) |
 | <a id="evidence-consumer"></a>consumer | [component.test](../packages/forgeframe/tests/unit/component.test.ts), [component-instance-index.test](../packages/forgeframe/tests/unit/component-instance-index.test.ts), [consumer-lifecycle.test](../packages/forgeframe/tests/unit/consumer-lifecycle.test.ts), [consumer-branch-coverage.test](../packages/forgeframe/tests/unit/consumer-branch-coverage.test.ts), [consumer-transport.test](../packages/forgeframe/tests/unit/consumer-transport.test.ts), [component-events.test](../packages/forgeframe/tests/unit/component-events.test.ts), [lifecycle-events.test](../packages/forgeframe/tests/integration/lifecycle-events.test.ts), [consumer-host-handshake.test](../packages/forgeframe/tests/integration/consumer-host-handshake.test.ts), [host-controls-routing.test](../packages/forgeframe/tests/integration/host-controls-routing.test.ts), [instance-tracking.test](../packages/forgeframe/tests/integration/instance-tracking.test.ts), [secure-defaults.test](../packages/forgeframe/tests/integration/secure-defaults.test.ts), [exports-schema.test](../packages/forgeframe/tests/integration/exports-schema.test.ts) |
 | <a id="evidence-host"></a>host | [host-security.test](../packages/forgeframe/tests/unit/host-security.test.ts), [host-lifecycle.test](../packages/forgeframe/tests/unit/host-lifecycle.test.ts), [host-branch-coverage.test](../packages/forgeframe/tests/unit/host-branch-coverage.test.ts), [host-transport.test](../packages/forgeframe/tests/unit/host-transport.test.ts), [props-sync.test](../packages/forgeframe/tests/integration/props-sync.test.ts), [consumer-host-handshake.test](../packages/forgeframe/tests/integration/consumer-host-handshake.test.ts), [host-startup.test](../packages/forgeframe/tests/integration/host-startup.test.ts), [handshake-failure.test](../packages/forgeframe/tests/unit/handshake-failure.test.ts), [protocol-version.test](../packages/forgeframe/tests/integration/protocol-version.test.ts), [schema-self-acceptance.test](../packages/forgeframe/tests/integration/schema-self-acceptance.test.ts), [secure-defaults.test](../packages/forgeframe/tests/integration/secure-defaults.test.ts), [exports-schema.test](../packages/forgeframe/tests/integration/exports-schema.test.ts) |
-| <a id="evidence-react"></a>react | [react-host-sync.test](../packages/forgeframe/tests/integration/react-host-sync.test.ts), [react-driver-lifecycle.test](../packages/forgeframe/tests/unit/react-driver-lifecycle.test.ts), [react-driver-prop-sync.test](../packages/forgeframe/tests/unit/react-driver-prop-sync.test.ts), [react-prop-queue.test](../packages/forgeframe/tests/unit/react-prop-queue.test.ts), [react-driver-dom.test](../packages/forgeframe/tests/integration/react-driver-dom.test.ts) |
+| <a id="evidence-react"></a>react | [react-host-sync.test](../packages/forgeframe/tests/integration/react-host-sync.test.ts), [react-driver-faults.test](../packages/forgeframe/tests/integration/react-driver-faults.test.ts), [react-prop-queue.test](../packages/forgeframe/tests/unit/react-prop-queue.test.ts), [react-driver-dom.test](../packages/forgeframe/tests/integration/react-driver-dom.test.ts), [index-node-smoke.test](../packages/forgeframe/tests/unit/index-node-smoke.test.ts) |
 | <a id="evidence-utilities"></a>utilities | [utils.test](../packages/forgeframe/tests/unit/utils.test.ts), [origin-pattern.test](../packages/forgeframe/tests/unit/origin-pattern.test.ts), [window-helpers.test](../packages/forgeframe/tests/unit/window-helpers.test.ts), [window-name-payload.test](../packages/forgeframe/tests/unit/window-name-payload.test.ts), [props-serialize.test](../packages/forgeframe/tests/unit/props-serialize.test.ts), [protocol.test](../packages/forgeframe/tests/unit/protocol.test.ts) |
 | <a id="evidence-contract"></a>contract | [package-contract.test](../packages/forgeframe/tests/unit/package-contract.test.ts), [index-node-smoke.test](../packages/forgeframe/tests/unit/index-node-smoke.test.ts), [index-side-effect-free.test](../packages/forgeframe/tests/unit/index-side-effect-free.test.ts), [component-node-runtime-transition.test](../packages/forgeframe/tests/unit/component-node-runtime-transition.test.ts), [version.test](../packages/forgeframe/tests/unit/version.test.ts) |
 
@@ -280,7 +280,7 @@ Constructor proxies bind the host's own fields and its props and transport runti
 
 The constructor takes one options object (`HostRuntimeOptions`: definitions, the component's `exports` schema, `consumerOrigins`, `autoInit`, and the owner's destruction callback). `exportData` checks each export with `validateExports` before queueing it on the transport, so an invalid export rejects at the host's call site without being sent; the tag-agnostic form has no schema and sends unchecked. `receiveBootstrap` requests BOOTSTRAP, checks the response's shape, and passes the messaging consumer origin to the shared allowlist policy in `consumer-origin-policy.ts` again, as defence in depth. `assertBootstrapResponse` is the **O** shape check (`VALIDATION`). Any failure there, apart from destruction, goes through `toHandshakeFailure` (an unanswered request becomes `INIT_TIMEOUT`, other codes stay) and is reported on the `error` event, as a `ForgeFrameError` with that code whose `cause` is the failure, before `ready` rejects with the same error. When host schemas reject the bootstrap snapshot, the props runtime reports the `Error` instead, and `initializeFromConsumer` passes it through `toHandshakeFailure` (so `ready` always rejects with a code; a schema that throws becomes `VALIDATION` with the original as `cause`) and asks the transport to tell the verified, allowed consumer why; consumer-origin rejections are not reported to the consumer.
 
-- **O:** `assertBootstrapResponse`, `HostComponent.constructor.getConsumerOrigin@98`, `HostComponent.constructor.beforeInit`, `HostComponent.constructor.getConsumerWindow`, `HostComponent.constructor.getConsumerOrigin@119`, `HostComponent.constructor.getBridge`, `HostComponent.constructor.get@126`, `HostComponent.constructor.get@130`, `HostComponent.constructor.isConsumerSource`.
+- **O:** `assertBootstrapResponse`, `HostComponent.constructor.getConsumerOrigin@97`, `HostComponent.constructor.beforeInit`, `HostComponent.constructor.getConsumerWindow`, `HostComponent.constructor.getConsumerOrigin@118`, `HostComponent.constructor.getBridge`, `HostComponent.constructor.get@125`, `HostComponent.constructor.get@129`, `HostComponent.constructor.isConsumerSource`.
 - **I:** `HostComponent.constructor`, `HostComponent.constructor.close`, `HostComponent.constructor.focus`, `HostComponent.constructor.resize`, `HostComponent.constructor.show`, `HostComponent.constructor.hide`, `HostComponent.constructor.reportError`, `HostComponent.constructor.exportData`, `HostComponent.constructor.getPeerInstances`, `HostComponent.constructor.applySerializedProps`, `HostComponent.initializeFromConsumer`, `HostComponent.receiveBootstrap`, `HostComponent.exportData`, `HostComponent.hostProps`, `HostComponent.init`, `HostComponent.destroy`.
 - **O callbacks:** `HostComponent.constructor.callback@143`.
 
@@ -381,33 +381,39 @@ Evidence: [consumer](#evidence-consumer); typecheck.
 
 ### [drivers/react.ts](../packages/forgeframe/src/drivers/react.ts)
 
-The wrapper's type parameters are the component and the element type; its props come from `InputOf` of the component, and its internal instance refs use the untyped `ComponentInstance`. Hooks are unconditional and keep their order. Hook callbacks coordinate the lifecycle and queue helpers through current refs. The container's ref is a callback created by `createContainerRef` and memoized per forwarded ref by `createContainerRefCache`, so a render React discards cannot replace a committed ref's callback, and React attaches and forwards the element during commit, before layout effects; a forwarded callback's React 19 cleanup replaces the `null` call on detach.
+The wrapper imports React's own APIs; its type parameter is the component, its props come from `InputOf` of the component plus `ReactComponentProps<ExportsOf<C>>`, and its internal mount state uses the untyped `ComponentInstance`. `assertReactComponentArguments` reads the component's options from the registry once and applies the call-shape rules (no second argument, a ForgeFrame component, no reserved wrapper prop names), each a `VALIDATION` error; its tag names the wrapper. `splitWrapperProps` separates the wrapper's own props from the forwarded ones, and `containerElementProps` is the container's presentation policy (error or default layout, the caller's `style` winning). Hooks are unconditional and keep their order. Hook callbacks coordinate the lifecycle and queue helpers through the mount state ref. The container's ref is a callback created by `createContainerRef` and memoized per forwarded ref by `createContainerRefCache`, so a render React discards cannot replace a committed ref's callback, and React attaches and forwards the element during commit, before layout effects; a forwarded callback's React 19 cleanup replaces the `null` call on detach. The prop-sync effect's error observer drops a held update's `CLOSED` rejection while the render is pending (`isHeldUpdateCancellation`).
 
-- **O:** `reportReactError`, `createContainerRefCache`, `createContainerRef`.
-- **I:** `createReactComponent`, `createReactComponent.ForgeFrameComponent`, `createReactComponent.ForgeFrameComponent.isCurrent`, `createReactComponent.ForgeFrameComponent.onDriverError`, `createReactComponent.ForgeFrameComponent.drain`, `createReactComponent.ForgeFrameComponent.callback@376.onRendered`, `createReactComponent.ForgeFrameComponent.callback@376.onClose`, `withReactComponent`, `withReactComponent.createComponent`.
-- **O callbacks:** `reportReactError.callback@217`, `createContainerRefCache.callback@159`, `createContainerRef.callback@183`, `createContainerRef.callback@183.callback@188`, `createReactComponent.ForgeFrameComponent.callback@370`.
-- **I callbacks:** `createReactComponent.ForgeFrameComponent.callback@376`, `createReactComponent.ForgeFrameComponent.callback@376.callback@397`, `createReactComponent.ForgeFrameComponent.callback@403`.
+- **O:** `splitWrapperProps`, `containerElementProps`, `createContainerRefCache`, `createContainerRef`.
+- **M:** `assertReactComponentArguments`.
+- **Retained rationale —** `assertReactComponentArguments`: It reads the registry's options once and applies three short call-shape rules to them; a separate lookup step would only pass the options through.
+- **I:** `reportReactError`, `createReactComponent`, `createReactComponent.ForgeFrameComponent`, `createReactComponent.ForgeFrameComponent.callback@402.onRendered`, `createReactComponent.ForgeFrameComponent.callback@402.onClose`, `createReactComponent.ForgeFrameComponent.callback@402.onError`.
+- **O callbacks:** `assertReactComponentArguments.callback@187`, `assertReactComponentArguments.callback@193`, `reportReactError.callback@307`, `createContainerRefCache.callback@261`, `createContainerRef.callback@285`, `createContainerRef.callback@285.callback@290`, `createReactComponent.ForgeFrameComponent.callback@395`.
+- **I callbacks:** `createReactComponent.ForgeFrameComponent.callback@402`, `createReactComponent.ForgeFrameComponent.callback@423`, `createReactComponent.ForgeFrameComponent.callback@427`, `createReactComponent.ForgeFrameComponent.callback@427.callback@433`, `createReactComponent.ForgeFrameComponent.callback@427.callback@434`.
 
 Evidence: [react](#evidence-react); typecheck.
 
 ### [drivers/react/lifecycle.ts](../packages/forgeframe/src/drivers/react/lifecycle.ts)
 
-Creating sync state, selecting the current identity, and releasing refs are operations. Mounting sequences construction, observer registration, render readiness, and cleanup. Promise callbacks discard results for obsolete mounts before applying state.
+Creating sync state and the instance handle, selecting the current identity, recognizing a held update's cancellation, and writing a ref are operations. `createInstanceHandle` builds the frozen `instanceRef` handle; its methods delegate to the instance and its `exports` getter reads it live. `publishHandle`, `unpublishHandle` and `retargetHandle` move the handle between the mount state and the `instanceRef` target. `callReactCallback` runs a wrapper callback and logs a throw or a rejected promise, so lifecycle work continues. Mounting sequences construction, observer registration, render completion (publish the handle, then `onRendered`), and cleanup. Promise callbacks discard results for obsolete mounts before applying state; a render failure already reported on the `error` event is not reported again.
 
-- **O:** `isCurrentSyncState`, `createPropSyncState`, `releaseInstanceRefs`.
-- **I:** `mountReactInstance`, `mountReactInstance.isCurrent`.
-- **O callbacks:** `mountReactInstance.callback@95`, `mountReactInstance.callback@107`, `mountReactInstance.callback@126.callback@128`.
-- **I callbacks:** `mountReactInstance.callback@98`, `mountReactInstance.callback@102`, `mountReactInstance.callback@115`, `mountReactInstance.callback@126`.
+- **O:** `isHeldUpdateCancellation`, `isCurrentSyncState`, `createPropSyncState`, `createInstanceHandle`, `createInstanceHandle.exports`, `assignRef`, `callReactCallback`, `callReactCallback.log`.
+- **I:** `createInstanceHandle.close`, `createInstanceHandle.focus`, `createInstanceHandle.resize`, `createInstanceHandle.show`, `createInstanceHandle.hide`, `clearRef`, `mountReactInstance`.
+- **M:** `publishHandle`, `unpublishHandle`, `retargetHandle`.
+- **Retained rationale —** `publishHandle`, `unpublishHandle`, `retargetHandle`: each makes one transition of the published-handle state and writes the target through `assignRef` or `clearRef`; splitting would separate a field write from the ref write it records.
+- **O callbacks:** `mountReactInstance.callback@237.callback@239`.
+- **I callbacks:** `mountReactInstance.callback@210`, `mountReactInstance.callback@223`, `mountReactInstance.callback@229`, `mountReactInstance.callback@237`.
+- **M callbacks:** `mountReactInstance.callback@217`.
+- **Retained rationale —** `mountReactInstance.callback@217`: it records the error as reported and passes it to `onError`; the record is what lets the render rejection skip a second report.
 
 Evidence: [react](#evidence-react); typecheck.
 
 ### [drivers/react/prop-sync.ts](../packages/forgeframe/src/drivers/react/prop-sync.ts)
 
-Comparison, shallow snapshots, omission resets, and queue acknowledgement and failure transitions are explicit operations. Draining composes them around `updateProps` and checks identity at each await.
+Comparison, shallow snapshots, omission resets, and queue acknowledgement and failure transitions are explicit operations. Draining composes them around `updateProps` and checks identity at each await. There is no render gate: the core holds updates made during `render()`.
 
 - **O:** `shallowEqualProps`, `deactivatePropSyncState`, `snapshotProps`, `buildPropUpdate`, `failPropUpdate`, `acknowledgePropUpdate`.
 - **I:** `drainPropUpdates`.
-- **O callbacks:** `snapshotProps.callback@74`.
+- **O callbacks:** `snapshotProps.callback@75`.
 - **M:** `enqueuePropSnapshot`.
 - **Retained rationale —** `enqueuePropSnapshot`: Comparison chooses either one pending retry flag or an appended prepared payload. This short queue adapter keeps equivalent-commit behavior readable; comparison, reset construction and failure transitions are separate operations.
 
@@ -433,7 +439,7 @@ Evidence: [consumer](#evidence-consumer), [component-events.test](../packages/fo
 
 ### [index.ts](../packages/forgeframe/src/index.ts)
 
-**Contract only:** types, re-exports, or immutable declarations; no runtime callables. The entrypoint has named exports only.
+**Contract only:** types, re-exports, or immutable declarations; no runtime callables. The `forgeframe` entrypoint has named exports only and no React exports.
 
 Evidence: [contract](#evidence-contract); typecheck.
 
@@ -581,6 +587,12 @@ Evidence: [utilities](#evidence-utilities); typecheck.
 **Contract only:** types, re-exports, or immutable declarations; no runtime callables.
 
 Evidence: [props](#evidence-props); typecheck.
+
+### [react.ts](../packages/forgeframe/src/react.ts)
+
+**Contract only:** re-exports. The `forgeframe/react` entrypoint exports `createReactComponent` and the types `ReactComponentOf`, `ReactComponentProps` and `ReactInstance`; it is built with the root entry in one library build, so both share one core.
+
+Evidence: [react](#evidence-react), [contract](#evidence-contract); typecheck.
 
 ### [render/iframe-configuration.ts](../packages/forgeframe/src/render/iframe-configuration.ts)
 
