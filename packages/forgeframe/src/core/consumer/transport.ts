@@ -321,12 +321,21 @@ export class ConsumerTransport<
 				this.bootstrapSessionId = null;
 				this.bridge.resumeRemoteSession(source.window);
 				if (resetLocalReferences) {
-					// Calls into the replaced host session can never be answered.
+					// Calls and props updates sent to the replaced host session can
+					// never be answered; the new session reads the current props.
 					this.bridge.rejectRemoteCalls(
 						source.window,
 						new ForgeFrameError(
 							"CLOSED",
 							"Host reconnected before the call completed",
+						),
+					);
+					this.messenger.rejectPending(
+						MESSAGE_NAME.PROPS,
+						source.window,
+						new ForgeFrameError(
+							"CLOSED",
+							"Host reconnected before the props update was acknowledged",
 						),
 					);
 				}

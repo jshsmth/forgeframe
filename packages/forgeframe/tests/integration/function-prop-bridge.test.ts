@@ -124,6 +124,46 @@ describe("Function prop bridge integration", () => {
 		});
 	});
 
+	it("rejects an unacknowledged props update when the host reconnects, without the ack timeout", async () => {
+		harness = createIframeIntegrationHarness();
+		const activeHarness = harness;
+		const container = document.createElement("div");
+		document.body.append(container);
+		const definitions = { title: prop.string() };
+		const Component = create({
+			tag: "integration-reconnect-pending-props",
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const instance = Component({ title: "first" });
+		const rendering = instance.render(container);
+		const { host } = await activeHarness.bootstrapIframeHost(
+			container,
+			definitions,
+		);
+		await rendering;
+
+		// A replaced document stops answering without running host teardown.
+		const { messenger } = getHost() as unknown as { messenger: Messenger };
+		vi.spyOn(messenger, "post").mockImplementation(() => {});
+		vi.spyOn(
+			messenger as unknown as { postResponse: () => void },
+			"postResponse",
+		).mockImplementation(() => {});
+		const update = instance.updateProps({ title: "second" });
+		const failure = update.catch((error: unknown) => error);
+		await activeHarness.flushMessages();
+		activeHarness.withHostGlobals(() => host.destroy());
+		const nextHost = activeHarness.bootstrapHost(definitions);
+		if (!nextHost) throw new Error("Expected host reinitialization");
+		// The new session reads the current props instead of waiting 10 seconds.
+		await expect(nextHost.ready).resolves.toEqual({ title: "second" });
+		expect(await failure).toMatchObject({
+			code: "CLOSED",
+			message: "Host reconnected before the props update was acknowledged",
+		});
+	});
+
 	it("rejects a pending host export call once the host window stops answering", async () => {
 		harness = createIframeIntegrationHarness();
 		const activeHarness = harness;

@@ -487,12 +487,56 @@ describe("Prop updates requested during render", () => {
 		const instance = Component({ amount: 1 });
 		const rendering = instance.render(container);
 		const queued = instance.updateProps({ amount: 2 });
-		const queuedRejected = expect(queued).rejects.toThrow(
-			"Cannot update props after the component has closed",
-		);
-		await expect(rendering).rejects.toThrow();
-		await queuedRejected;
+		const queuedFailure = queued.catch((error: unknown) => error);
+		const renderFailure = await rendering.catch((error: unknown) => error);
+		expect(renderFailure).toMatchObject({ code: "INIT_TIMEOUT" });
+		// The held update names the render failure, so callers can tell it apart.
+		expect(await queuedFailure).toMatchObject({
+			code: "CLOSED",
+			message: "Cannot update props after the component has closed",
+			cause: renderFailure,
+		});
 		expect(validate).toHaveBeenCalledTimes(1);
+	});
+
+	it("joins the in-progress render for the same arguments and rejects different ones", async () => {
+		const { Component, container } = setup();
+		const instance = Component({ amount: 1 });
+		const rendering = instance.render(container);
+		const joined = instance.render(container);
+		const otherContext = instance
+			.render(container, "popup")
+			.catch((error: unknown) => error);
+		const otherContainer = instance
+			.render(document.createElement("div"))
+			.catch((error: unknown) => error);
+		await startRecordingHost(container);
+		await expect(rendering).resolves.toBeUndefined();
+		await expect(joined).resolves.toBeUndefined();
+		expect(await otherContext).toMatchObject({
+			code: "VALIDATION",
+			message: expect.stringContaining("different container or context"),
+		});
+		expect(await otherContainer).toMatchObject({ code: "VALIDATION" });
+	});
+
+	it("resolves render() when a rendered listener closes the instance", async () => {
+		const { Component, container } = setup();
+		const instance = Component({ amount: 1 });
+		const closing: Promise<void>[] = [];
+		instance.event.once("rendered", () => {
+			closing.push(instance.close());
+		});
+		const rendering = instance.render(container);
+		await startRecordingHost(container);
+		await expect(rendering).resolves.toBeUndefined();
+		await closing[0];
+		const closed = await instance
+			.updateProps({ amount: 2 })
+			.catch((error: unknown) => error);
+		expect(closed).toMatchObject({ code: "CLOSED" });
+		// A close after a completed render names no render failure.
+		expect((closed as Error).cause).toBeUndefined();
 	});
 
 	it("applies an update from a rendered listener after the updates queued during render", async () => {

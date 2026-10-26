@@ -102,8 +102,10 @@ describe("openPopup", () => {
 				},
 			},
 		],
-	])("should throw POPUP_BLOCKED for a %s popup window", (_label, mockWin) => {
+	])("should throw POPUP_BLOCKED for a %s popup window", (label, mockWin) => {
 		window.open = vi.fn().mockReturnValue(mockWin);
+		const close = vi.fn();
+		Object.defineProperty(mockWin, "close", { value: close });
 
 		expect(() =>
 			openPopup({
@@ -112,6 +114,8 @@ describe("openPopup", () => {
 				dimensions: { width: 500, height: 600 },
 			}),
 		).toThrow(expect.objectContaining({ code: "POPUP_BLOCKED" }));
+		// A window that only looked blocked is closed, not left untracked.
+		if (label === "zero-dimension") expect(close).toHaveBeenCalledOnce();
 	});
 
 	it("should handle string dimensions", () => {

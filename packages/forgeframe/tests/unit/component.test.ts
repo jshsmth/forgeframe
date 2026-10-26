@@ -14,6 +14,7 @@ import {
 	getComponent,
 	unregisterComponent,
 } from "@/core/component";
+import { getComponentOptions } from "@/core/component-registry";
 import { getPeerInstances } from "@/core/consumer/peers";
 import { clearHostInstance, isHost } from "@/core/host";
 import { prop } from "@/props/prop";
@@ -598,6 +599,26 @@ describe("Component Creation", () => {
 			'Prop "theme" queryParam must be a boolean or a non-empty parameter name.',
 		);
 		expect(getComponent("malformed-wrapped-definition")).toBeUndefined();
+	});
+
+	it("keeps its own copy of the options, so later caller changes are ignored", () => {
+		const label = { schema: prop.string(), queryParam: "label" as string };
+		const options = {
+			tag: "copied-options",
+			url: "https://example.com/widget",
+			props: { label },
+		};
+		const Component = create(options);
+		options.url = "https://attacker.example/widget";
+		label.queryParam = "";
+		(options.props as Record<string, unknown>).extra = { schema: 1 };
+		const instance = Component({ label: "a" });
+		expect(getComponentOptions(Component)).toMatchObject({
+			url: "https://example.com/widget",
+			props: { label: { queryParam: "label" } },
+		});
+		expect(getComponentOptions(Component)?.props).not.toHaveProperty("extra");
+		void instance.close();
 	});
 
 	it("should reject props named then or children and accept host control names", () => {

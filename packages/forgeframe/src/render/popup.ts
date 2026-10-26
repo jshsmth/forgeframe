@@ -86,6 +86,8 @@ export function openPopup(options: PopupOptions): Window {
 	const win = window.open(url, name, features);
 
 	if (!win || isPopupBlocked(win)) {
+		// A window that only looked blocked must not stay open and untracked.
+		if (win) closePopup(win);
 		throw new ForgeFrameError("POPUP_BLOCKED", "Popup blocked by browser");
 	}
 

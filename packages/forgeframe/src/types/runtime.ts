@@ -420,9 +420,27 @@ export interface ComponentInstance<
 	/**
 	 * Render the component into a container.
 	 *
+	 * @remarks
+	 * Opens an iframe or popup, waits for the host's handshake and resolves
+	 * once the host is ready. The `render` event fires before anything opens
+	 * and `rendered` after this promise has settled, so a `rendered` listener
+	 * can close the instance without failing the render. Calling again while
+	 * a render is in progress joins it when the arguments
+	 * match, and rejects with `VALIDATION` when they differ.
+	 *
+	 * A `POPUP_BLOCKED` or URL failure rejects without closing the instance,
+	 * so it can render again, for example in an iframe. Any other failure
+	 * closes it: `closed` fires and updates held behind the render reject with
+	 * `CLOSED`, whose `cause` is the render's failure, before this promise
+	 * rejects.
+	 *
 	 * @param container - CSS selector or element to render into
 	 * @param context - Override the default context (iframe/popup)
 	 * @returns Promise that resolves when rendering is complete
+	 * @throws ForgeFrameError `CLOSED` after the instance is closed,
+	 * `VALIDATION` once rendered or for different arguments while rendering,
+	 * `POPUP_BLOCKED`, `INIT_TIMEOUT`, `CANCELLED` when `close()` interrupts it,
+	 * or the host's failure
 	 */
 	render(container: string | HTMLElement, context?: ContextType): Promise<void>;
 

@@ -41,14 +41,12 @@ export interface ReactMountState {
 
 /**
  * Whether an update failure only says that the render it was held behind
- * failed. The render failure itself is reported, so this one is not.
+ * failed: the core rejects those with `CLOSED` and the render's failure as
+ * `cause`. The render failure itself is reported, so this one is not.
  * @internal
  */
-export function isHeldUpdateCancellation(
-	state: ReactPropSyncState,
-	error: unknown,
-): boolean {
-	return !state.rendered && hasErrorCode(error, "CLOSED");
+export function isHeldUpdateCancellation(error: unknown): boolean {
+	return hasErrorCode(error, "CLOSED") && (error as Error).cause !== undefined;
 }
 
 /** Creates the wrapper's mount state, with nothing mounted or published yet. @internal */

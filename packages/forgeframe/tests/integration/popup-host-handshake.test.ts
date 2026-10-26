@@ -211,5 +211,14 @@ describe("Popup host handshake integration", () => {
 		await expect(rejection).rejects.toMatchObject({ code: "POPUP_BLOCKED" });
 		expect(container.childElementCount).toBe(0);
 		expect(harness.getLastPopupOpen()).toBeNull();
+		// The instance stays open, so the caller can fall back to an iframe.
+		expect(PopupComponent.instances).toContain(instance);
+		const closed = vi.fn();
+		instance.event.on("closed", closed);
+		const fallback = instance.render(container, "iframe");
+		expect(container.querySelector("iframe")).not.toBeNull();
+		await instance.close();
+		await expect(fallback).rejects.toMatchObject({ code: "CANCELLED" });
+		expect(closed).toHaveBeenCalledOnce();
 	});
 });

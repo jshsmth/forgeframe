@@ -295,11 +295,14 @@ export function create<
 export function create(
 	options: ComponentOptions<Record<string, unknown>>,
 ): Component<Record<string, unknown>> {
-	validateComponentOptions(options);
-	const runtimeOptions = options;
+	// Later changes to the caller's objects must not bypass validation.
+	const runtimeOptions = { ...options };
+	validateComponentOptions(runtimeOptions);
+	if (runtimeOptions.props !== undefined)
+		runtimeOptions.props = copyPropDefinitions(runtimeOptions.props);
 
 	const instances: ComponentInstance<RuntimeProps>[] = [];
-	const componentTag = options.tag;
+	const componentTag = runtimeOptions.tag;
 
 	function untrackInstance(instance: ConsumerComponent<RuntimeProps>): void {
 		removeTrackedInstance(instances, instance);
@@ -436,4 +439,18 @@ export function unregisterComponent(tag: string): void {
 export function clearComponents(): void {
 	clearRegisteredComponents();
 	clearIndexedInstances();
+}
+
+/**
+ * Copies checked definitions, and each wrapped entry, so the caller cannot
+ * change them after `create()` validated them. Checked entries and their
+ * fields are data fields, so copying invokes no accessor.
+ */
+function copyPropDefinitions<D extends object>(definitions: D): D {
+	const copy: Record<string, unknown> = {};
+	for (const [key, entry] of Object.entries(definitions)) {
+		copy[key] =
+			entry === undefined || isStandardSchema(entry) ? entry : { ...entry };
+	}
+	return copy as D;
 }
