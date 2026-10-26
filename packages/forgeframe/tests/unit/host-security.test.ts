@@ -315,7 +315,7 @@ describe("Host security", () => {
 		);
 
 		expect(() => initHost({ props: {}, consumerOrigins: [] })).toThrow(
-			'Consumer domain "https://trusted.example.com" is not allowed',
+			'Consumer origin "https://trusted.example.com" is not allowed',
 		);
 	});
 
@@ -334,7 +334,7 @@ describe("Host security", () => {
 
 		expect(() =>
 			initHost({ props: {}, consumerOrigins: "https://trusted.example.com" }),
-		).toThrow('Consumer domain "https://evil.example.com" is not allowed');
+		).toThrow('Consumer origin "https://evil.example.com" is not allowed');
 	});
 
 	it("should keep the bootstrap window name and allow a same-page retry when allowlist validation fails", () => {
@@ -448,7 +448,7 @@ describe("Host security", () => {
 		);
 		expect(() =>
 			initHost({ props: {}, consumerOrigins: "https://trusted.example.com" }),
-		).toThrow('Consumer domain "https://evil.example.com" is not allowed');
+		).toThrow('Consumer origin "https://evil.example.com" is not allowed');
 		expect(postMessage).not.toHaveBeenCalled();
 
 		window.name = buildWindowName(

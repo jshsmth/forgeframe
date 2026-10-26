@@ -8,12 +8,12 @@
 
 import { MESSAGE_TYPE } from "../constants";
 import type { OriginMatcher } from "../types/utility";
-import {
-	compileWildcardDomainPattern,
-	testDomainRegExpStateless,
-} from "../utils/domain-pattern";
 import { normalizeError } from "../utils/error";
 import { isOpaqueOrigin } from "../utils/origin";
+import {
+	compileWildcardOriginPattern,
+	testOriginRegExpStateless,
+} from "../utils/origin-pattern";
 import { createDeferred, type Deferred } from "../utils/promise";
 import { generateShortUID } from "../utils/uid";
 import {
@@ -68,18 +68,18 @@ function isPendingResponseSourceMatch(
  * and the `"/"` same-origin token, or if its origin is opaque, as for
  * `data:` and `about:` URLs, which no window can be addressed by.
  */
-function resolveTargetOrigin(targetDomain: string, name: string): string {
+function resolveTargetOrigin(target: string, name: string): string {
 	let origin: string;
 	try {
-		origin = new URL(targetDomain).origin;
+		origin = new URL(target).origin;
 	} catch {
 		throw new Error(
-			`Cannot send "${name}": target origin "${targetDomain}" is not an absolute URL`,
+			`Cannot send "${name}": target origin "${target}" is not an absolute URL`,
 		);
 	}
 	if (isOpaqueOrigin(origin)) {
 		throw new Error(
-			`Cannot send "${name}": target origin "${targetDomain}" is opaque`,
+			`Cannot send "${name}": target origin "${target}" is opaque`,
 		);
 	}
 	return origin;
@@ -140,21 +140,21 @@ export class Messenger {
 	 *
 	 * @param channelUid - Component channel identifier shared by the paired consumer and host messengers
 	 * @param win - The window to listen for messages on
-	 * @param domain - The origin domain of this messenger
-	 * @param trustedDomains - Optional domains to trust for incoming messages
+	 * @param origin - The origin of this messenger
+	 * @param trustedOrigins - Optional origins to trust for incoming messages
 	 * @param listenImmediately - Whether to attach the message listener now; otherwise call {@link Messenger.listen}
 	 */
 	constructor(
 		private channelUid: string,
 		private win: Window = window,
-		private domain: string = window.location.origin,
-		trustedDomains?: OriginMatcher,
+		private origin: string = window.location.origin,
+		trustedOrigins?: OriginMatcher,
 		listenImmediately = true,
 	) {
-		if (!isOpaqueOrigin(domain)) this.allowedOrigins.add(domain);
+		if (!isOpaqueOrigin(origin)) this.allowedOrigins.add(origin);
 
-		if (trustedDomains) {
-			this.addTrustedDomain(trustedDomains);
+		if (trustedOrigins) {
+			this.addTrustedOrigin(trustedOrigins);
 		}
 
 		if (listenImmediately) this.listen();
@@ -170,53 +170,53 @@ export class Messenger {
 	}
 
 	/**
-	 * Adds a trusted domain that can send messages to this messenger.
+	 * Adds a trusted origin that can send messages to this messenger.
 	 *
-	 * @param domain - Domain pattern to trust (string, RegExp, or array)
+	 * @param origin - Origin pattern to trust (string, RegExp, or array)
 	 */
-	addTrustedDomain(domain: OriginMatcher): void {
-		if (Array.isArray(domain)) {
-			for (const d of domain) {
-				this.addTrustedDomain(d);
+	addTrustedOrigin(origin: OriginMatcher): void {
+		if (Array.isArray(origin)) {
+			for (const d of origin) {
+				this.addTrustedOrigin(d);
 			}
-		} else if (domain instanceof RegExp) {
-			this.allowedOriginPatterns.push(domain);
+		} else if (origin instanceof RegExp) {
+			this.allowedOriginPatterns.push(origin);
 		} else {
-			const wildcardPattern = compileWildcardDomainPattern(domain);
+			const wildcardPattern = compileWildcardOriginPattern(origin);
 			if (wildcardPattern) {
-				if (!this.wildcardPatternRegistry.has(domain)) {
-					this.wildcardPatternRegistry.set(domain, wildcardPattern);
+				if (!this.wildcardPatternRegistry.has(origin)) {
+					this.wildcardPatternRegistry.set(origin, wildcardPattern);
 					this.allowedOriginPatterns.push(wildcardPattern);
 				}
 			} else {
-				this.allowedOrigins.add(domain);
+				this.allowedOrigins.add(origin);
 			}
 		}
 	}
 
 	/**
-	 * Removes a trusted domain from this messenger.
+	 * Removes a trusted origin from this messenger.
 	 *
-	 * @param domain - Domain pattern to remove (string, RegExp, or array)
+	 * @param origin - Origin pattern to remove (string, RegExp, or array)
 	 */
-	removeTrustedDomain(domain: OriginMatcher): void {
-		if (Array.isArray(domain)) {
-			for (const d of domain) {
-				this.removeTrustedDomain(d);
+	removeTrustedOrigin(origin: OriginMatcher): void {
+		if (Array.isArray(origin)) {
+			for (const d of origin) {
+				this.removeTrustedOrigin(d);
 			}
-		} else if (domain instanceof RegExp) {
+		} else if (origin instanceof RegExp) {
 			this.allowedOriginPatterns = this.allowedOriginPatterns.filter(
-				(pattern) => pattern !== domain,
+				(pattern) => pattern !== origin,
 			);
 		} else {
-			const wildcardPattern = this.wildcardPatternRegistry.get(domain);
+			const wildcardPattern = this.wildcardPatternRegistry.get(origin);
 			if (wildcardPattern) {
 				this.allowedOriginPatterns = this.allowedOriginPatterns.filter(
 					(pattern) => pattern !== wildcardPattern,
 				);
-				this.wildcardPatternRegistry.delete(domain);
+				this.wildcardPatternRegistry.delete(origin);
 			}
-			this.allowedOrigins.delete(domain);
+			this.allowedOrigins.delete(origin);
 		}
 	}
 
@@ -236,7 +236,7 @@ export class Messenger {
 		}
 
 		for (const pattern of this.allowedOriginPatterns) {
-			if (testDomainRegExpStateless(pattern, origin)) {
+			if (testOriginRegExpStateless(pattern, origin)) {
 				return true;
 			}
 		}
@@ -250,7 +250,7 @@ export class Messenger {
 	 * @typeParam T - The data type being sent
 	 * @typeParam R - The expected response type
 	 * @param targetWin - The target window to send to
-	 * @param targetDomain - The target origin, as an absolute URL
+	 * @param target - The target origin, as an absolute URL
 	 * @param name - The message name/type
 	 * @param data - Optional data payload
 	 * @param timeout - Timeout in milliseconds (default: 10000); `null` waits
@@ -262,7 +262,7 @@ export class Messenger {
 	 */
 	async send<T = unknown, R = unknown>(
 		targetWin: Window,
-		targetDomain: string,
+		target: string,
 		name: string,
 		data?: T,
 		timeout: number | null = 10000,
@@ -272,11 +272,11 @@ export class Messenger {
 			throw new Error("Messenger has been destroyed");
 		}
 
-		const targetOrigin = resolveTargetOrigin(targetDomain, name);
+		const targetOrigin = resolveTargetOrigin(target, name);
 		const id = generateShortUID();
 		const message = createRequestMessage(id, name, data, {
 			uid: this.channelUid,
-			domain: this.domain,
+			domain: this.origin,
 		});
 		const serialized = serializeMessage(message);
 		if (this.destroyed) throw new Error("Messenger destroyed");
@@ -317,14 +317,14 @@ export class Messenger {
 	 *
 	 * @typeParam T - The data type being sent
 	 * @param targetWin - The target window to send to
-	 * @param targetDomain - The target origin, as an absolute URL
+	 * @param target - The target origin, as an absolute URL
 	 * @param name - The message name/type
 	 * @param data - Optional data payload
 	 * @throws Error if messenger is destroyed or the target is not an absolute URL
 	 */
 	post<T = unknown>(
 		targetWin: Window,
-		targetDomain: string,
+		target: string,
 		name: string,
 		data?: T,
 	): void {
@@ -332,11 +332,11 @@ export class Messenger {
 			throw new Error("Messenger has been destroyed");
 		}
 
-		const targetOrigin = resolveTargetOrigin(targetDomain, name);
+		const targetOrigin = resolveTargetOrigin(target, name);
 		const id = generateShortUID();
 		const message = createRequestMessage(id, name, data, {
 			uid: this.channelUid,
-			domain: this.domain,
+			domain: this.origin,
 		});
 
 		targetWin.postMessage(serializeMessage(message), targetOrigin);
@@ -470,7 +470,7 @@ export class Messenger {
 		data: unknown,
 		error?: Error,
 	): string {
-		const source = { uid: this.channelUid, domain: this.domain };
+		const source = { uid: this.channelUid, domain: this.origin };
 		try {
 			return serializeMessage(
 				createResponseMessage(message.id, data, source, error),

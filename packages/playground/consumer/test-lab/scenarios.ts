@@ -194,7 +194,7 @@ async function runSecurityScenario(
 						hostOrigins: "https://blocked.example.com",
 					}),
 				),
-			"is not allowed by the configured domain policy",
+			"is not allowed by the component's hostOrigins",
 		),
 	);
 

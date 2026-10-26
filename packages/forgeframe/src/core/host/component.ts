@@ -16,7 +16,7 @@ import type { HostProps } from "../../types/runtime";
 import type { OriginMatcher } from "../../types/utility";
 import { normalizeError } from "../../utils/error";
 import type { HostBootstrapData, WindowNamePayload } from "../../window/types";
-import { assertAllowedConsumerDomain } from "./consumer-origin-policy";
+import { assertAllowedConsumerOrigin } from "./consumer-origin-policy";
 import { HostPropsRuntime } from "./props-runtime";
 import {
 	resolveConsumerWindow,
@@ -37,7 +37,7 @@ export class HostComponent<P extends Record<string, unknown>> {
 
 	private consumerWindow!: Window;
 
-	private consumerDomain!: string;
+	private consumerOrigin!: string;
 
 	private transport!: HostTransport;
 
@@ -57,7 +57,7 @@ export class HostComponent<P extends Record<string, unknown>> {
 		this.tag = payload.tag;
 		this.event = new EventEmitter();
 		this.consumerOrigins = options.consumerOrigins;
-		this.exportsSchema = options.exports;
+		this.exportsSchema = options.exportsSchema;
 		this.onDestroy = options.onDestroy;
 
 		let transport: HostTransport | null = null;
@@ -67,9 +67,9 @@ export class HostComponent<P extends Record<string, unknown>> {
 			this.consumerWindow = resolveConsumerWindow();
 
 			// The bootstrap exchange verifies this target before any props arrive.
-			this.consumerDomain = resolveMessagingConsumerContext({
+			this.consumerOrigin = resolveMessagingConsumerContext({
 				consumerWindow: this.consumerWindow,
-				claimedConsumerDomain: payload.consumerDomain,
+				claimedConsumerOrigin: payload.consumerDomain,
 				consumerOrigins: this.consumerOrigins,
 				tag: this.tag,
 			});
@@ -79,8 +79,8 @@ export class HostComponent<P extends Record<string, unknown>> {
 				context: payload.context,
 				event: this.event,
 				consumerWindow: this.consumerWindow,
-				consumerDomain: this.consumerDomain,
-				getConsumerDomain: () => this.consumerDomain,
+				consumerOrigin: this.consumerOrigin,
+				getConsumerOrigin: () => this.consumerOrigin,
 				beforeInit: () => this.ready,
 			});
 			this.transport = transport;
@@ -101,7 +101,7 @@ export class HostComponent<P extends Record<string, unknown>> {
 						this.transport.getPeerInstances(options),
 				},
 				getConsumerWindow: () => this.consumerWindow,
-				getConsumerDomain: () => this.consumerDomain,
+				getConsumerOrigin: () => this.consumerOrigin,
 				getBridge: () => this.transport.bridge,
 			});
 			this.propsRuntime = propsRuntime;
@@ -175,9 +175,9 @@ export class HostComponent<P extends Record<string, unknown>> {
 			}
 			// Defence in depth: the origin was checked before BOOTSTRAP was sent, and
 			// the messenger accepts this response only from that origin.
-			assertAllowedConsumerDomain(
+			assertAllowedConsumerOrigin(
 				this.consumerOrigins,
-				this.consumerDomain,
+				this.consumerOrigin,
 				this.tag,
 			);
 			return data;

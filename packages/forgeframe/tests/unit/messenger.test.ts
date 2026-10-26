@@ -364,11 +364,11 @@ describe("Messenger", () => {
 
 		it.each(["*", "/", "target.com", ""])(
 			'should reject the non-URL target "%s" before posting',
-			async (targetDomain) => {
+			async (targetOrigin) => {
 				await expect(
-					messenger.send(targetWindow, targetDomain, "invalidTarget"),
+					messenger.send(targetWindow, targetOrigin, "invalidTarget"),
 				).rejects.toThrow(
-					`Cannot send "invalidTarget": target origin "${targetDomain}" is not an absolute URL`,
+					`Cannot send "invalidTarget": target origin "${targetOrigin}" is not an absolute URL`,
 				);
 
 				expect(targetWindow.postMessage).not.toHaveBeenCalled();
@@ -381,11 +381,11 @@ describe("Messenger", () => {
 
 		it.each(["data:text/plain,hi", "about:blank"])(
 			'should reject the opaque-origin target "%s" before posting',
-			async (targetDomain) => {
+			async (targetOrigin) => {
 				await expect(
-					messenger.send(targetWindow, targetDomain, "opaqueTarget"),
+					messenger.send(targetWindow, targetOrigin, "opaqueTarget"),
 				).rejects.toThrow(
-					`Cannot send "opaqueTarget": target origin "${targetDomain}" is opaque`,
+					`Cannot send "opaqueTarget": target origin "${targetOrigin}" is opaque`,
 				);
 
 				expect(targetWindow.postMessage).not.toHaveBeenCalled();
@@ -396,7 +396,7 @@ describe("Messenger", () => {
 			},
 		);
 
-		it("should normalize URL-like targetDomain values when matching response origins", async () => {
+		it("should normalize URL-like targetOrigin values when matching response origins", async () => {
 			const sendPromise = messenger.send(
 				targetWindow,
 				"https://TARGET.com/path/to/page?foo=bar#hash",
@@ -506,15 +506,15 @@ describe("Messenger", () => {
 
 		it.each(["*", "/", "target.com"])(
 			'should reject the non-URL target "%s" before posting',
-			(targetDomain) => {
+			(targetOrigin) => {
 				const targetWindow = {
 					postMessage: vi.fn(),
 				} as unknown as Window;
 
 				expect(() =>
-					messenger.post(targetWindow, targetDomain, "notify"),
+					messenger.post(targetWindow, targetOrigin, "notify"),
 				).toThrow(
-					`Cannot send "notify": target origin "${targetDomain}" is not an absolute URL`,
+					`Cannot send "notify": target origin "${targetOrigin}" is not an absolute URL`,
 				);
 				expect(targetWindow.postMessage).not.toHaveBeenCalled();
 			},
@@ -892,7 +892,7 @@ describe("Messenger", () => {
 			expect(handler).not.toHaveBeenCalled();
 
 			// Add trust
-			messenger.addTrustedDomain("https://new-trusted.com");
+			messenger.addTrustedOrigin("https://new-trusted.com");
 
 			// Now should work
 			dispatchMessage(
@@ -919,7 +919,7 @@ describe("Messenger", () => {
 			);
 			const source = { postMessage: vi.fn() } as unknown as Window;
 
-			messenger.addTrustedDomain("https://remove-string.com");
+			messenger.addTrustedOrigin("https://remove-string.com");
 			dispatchMessage(
 				serializeMessage(request),
 				source,
@@ -928,7 +928,7 @@ describe("Messenger", () => {
 			await new Promise((resolve) => setTimeout(resolve, 0));
 			expect(handler).toHaveBeenCalledTimes(1);
 
-			messenger.removeTrustedDomain("https://remove-string.com");
+			messenger.removeTrustedOrigin("https://remove-string.com");
 			dispatchMessage(
 				serializeMessage(request),
 				source,
@@ -953,7 +953,7 @@ describe("Messenger", () => {
 			);
 			const source = { postMessage: vi.fn() } as unknown as Window;
 
-			messenger.addTrustedDomain("https://*.remove-wildcard.com");
+			messenger.addTrustedOrigin("https://*.remove-wildcard.com");
 			dispatchMessage(
 				serializeMessage(request),
 				source,
@@ -962,7 +962,7 @@ describe("Messenger", () => {
 			await new Promise((resolve) => setTimeout(resolve, 0));
 			expect(handler).toHaveBeenCalledTimes(1);
 
-			messenger.removeTrustedDomain("https://*.remove-wildcard.com");
+			messenger.removeTrustedOrigin("https://*.remove-wildcard.com");
 			dispatchMessage(
 				serializeMessage(request),
 				source,
@@ -977,7 +977,7 @@ describe("Messenger", () => {
 			messenger.on("test-remove-array", handler);
 
 			const regexDomain = /^https:\/\/.*\.remove-array\.com$/;
-			messenger.addTrustedDomain(["https://remove-array.com", regexDomain]);
+			messenger.addTrustedOrigin(["https://remove-array.com", regexDomain]);
 
 			const source = { postMessage: vi.fn() } as unknown as Window;
 			const stringRequest = createRequestMessage(
@@ -1009,7 +1009,7 @@ describe("Messenger", () => {
 			await new Promise((resolve) => setTimeout(resolve, 0));
 			expect(handler).toHaveBeenCalledTimes(2);
 
-			messenger.removeTrustedDomain(["https://remove-array.com", regexDomain]);
+			messenger.removeTrustedOrigin(["https://remove-array.com", regexDomain]);
 			dispatchMessage(
 				serializeMessage(stringRequest),
 				source,

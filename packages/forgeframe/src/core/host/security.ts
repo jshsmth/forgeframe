@@ -64,15 +64,15 @@ export function getAccessibleConsumerOrigin(
  */
 export function resolveMessagingConsumerContext(options: {
 	consumerWindow: Window;
-	claimedConsumerDomain: string;
+	claimedConsumerOrigin: string;
 	consumerOrigins: OriginMatcher;
 	tag: string;
 }): string {
-	const consumerDomain =
+	const consumerOrigin =
 		getAccessibleConsumerOrigin(options.consumerWindow) ??
-		options.claimedConsumerDomain;
+		options.claimedConsumerOrigin;
 	return validateMessagingConsumerContext(
-		consumerDomain,
+		consumerOrigin,
 		options.consumerOrigins,
 		options.tag,
 	);

@@ -1,10 +1,10 @@
 /**
  * @packageDocumentation
- * Internal domain-pattern helpers shared by ForgeFrame trust and origin checks.
+ * Internal origin-pattern helpers shared by ForgeFrame trust and origin checks.
  *
  * @remarks
  * Centralizes wildcard compilation and stateless `RegExp` evaluation so
- * window helpers and the messenger preserve identical domain-matching behavior.
+ * window helpers and the messenger preserve identical origin-matching behavior.
  */
 
 import type { OriginMatcher } from "../types/utility";
@@ -17,9 +17,9 @@ function escapeRegExp(value: string): string {
 }
 
 /**
- * Compiles a wildcard domain pattern into an anchored `RegExp`.
+ * Compiles a wildcard origin pattern into an anchored `RegExp`.
  *
- * @param pattern - Domain pattern that may contain `*` wildcards.
+ * @param pattern - Origin pattern that may contain `*` wildcards.
  * @returns Compiled `RegExp`, or `null` when the pattern has no wildcards.
  *
  * @remarks
@@ -28,7 +28,7 @@ function escapeRegExp(value: string): string {
  *
  * @internal
  */
-export function compileWildcardDomainPattern(pattern: string): RegExp | null {
+export function compileWildcardOriginPattern(pattern: string): RegExp | null {
 	if (!pattern.includes("*")) {
 		return null;
 	}
@@ -56,10 +56,10 @@ export function compileWildcardDomainPattern(pattern: string): RegExp | null {
 }
 
 /**
- * Tests a domain `RegExp` without mutating `lastIndex` on global or sticky patterns.
+ * Tests an origin `RegExp` without mutating `lastIndex` on global or sticky patterns.
  *
  * @param pattern - Pattern to test.
- * @param value - Domain string to match.
+ * @param value - Origin string to match.
  * @returns `true` when the pattern matches the provided value.
  *
  * @remarks
@@ -68,7 +68,7 @@ export function compileWildcardDomainPattern(pattern: string): RegExp | null {
  *
  * @internal
  */
-export function testDomainRegExpStateless(
+export function testOriginRegExpStateless(
 	pattern: RegExp,
 	value: string,
 ): boolean {

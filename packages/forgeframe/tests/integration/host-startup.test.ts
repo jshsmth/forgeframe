@@ -291,7 +291,7 @@ describe("Explicit host start-up", () => {
 					consumerOrigins: ["https://other-consumer.example.com"],
 				}),
 			).toThrow(
-				`Consumer domain "${activeHarness.consumerOrigin}" is not allowed`,
+				`Consumer origin "${activeHarness.consumerOrigin}" is not allowed`,
 			);
 			await activeHarness.flushMessages();
 			expect(sent).toEqual([]);

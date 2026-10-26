@@ -166,11 +166,8 @@ export class ConsumerComponent<
 
 		this.propsPipeline = new ConsumerPropsPipeline(this.options, { ...props });
 
-		this.transport = new ConsumerTransport(
-			this.uid,
-			this.options,
-			() => this.resolveUrl(),
-			(url) => this.resolveUrlOrigin(url),
+		this.transport = new ConsumerTransport(this.uid, this.options, (url) =>
+			this.resolveUrlOrigin(url),
 		);
 
 		this.setupMessageHandlers();
@@ -218,8 +215,9 @@ export class ConsumerComponent<
 		try {
 			await operation;
 		} finally {
-			this.finishRenderTask(renderTask, operation);
+			// Held updates are released first, so bookkeeping can never strand them.
 			propsHold.release();
+			this.finishRenderTask(renderTask, operation);
 		}
 	}
 
@@ -277,7 +275,7 @@ export class ConsumerComponent<
 				document.baseURI,
 				this.options.hostOrigins,
 			).href;
-			this.transport.syncTrustedDomainForUrl(baseUrl);
+			this.transport.syncTrustedOriginForUrl(baseUrl);
 		} catch (error) {
 			await this.destroy().catch(() => undefined);
 			throw error;
@@ -503,15 +501,15 @@ export class ConsumerComponent<
 	 * @internal
 	 */
 	private assertStableRenderedOrigin(nextHostOrigin: string): void {
-		const openedHostDomain = this.transport.openedHostDomain;
+		const openedHostOrigin = this.transport.openedHostOrigin;
 
 		if (
 			(this.rendered || this.renderPromise !== null) &&
-			openedHostDomain &&
-			nextHostOrigin !== openedHostDomain
+			openedHostOrigin &&
+			nextHostOrigin !== openedHostOrigin
 		) {
 			throw new Error(
-				`Cannot change component URL origin after render (from "${openedHostDomain}" to "${nextHostOrigin}")`,
+				`Cannot change component URL origin after render (from "${openedHostOrigin}" to "${nextHostOrigin}")`,
 			);
 		}
 	}
@@ -530,13 +528,13 @@ export class ConsumerComponent<
 	}
 
 	/** Returns the browser-verified origin of the connected host window, if any. @internal */
-	getVerifiedHostDomain(): string | null {
-		return this.transport.activeHostDomain;
+	getVerifiedHostOrigin(): string | null {
+		return this.transport.activeHostOrigin;
 	}
 
 	/** Returns the origin this instance opened its host at, before verification. @internal */
-	getOpenedHostDomain(): string | null {
-		return this.transport.openedHostDomain;
+	getOpenedHostOrigin(): string | null {
+		return this.transport.openedHostOrigin;
 	}
 
 	/** Returns the component's `peers` option. @internal */
@@ -601,8 +599,8 @@ export class ConsumerComponent<
 	 * Ensures the messenger trusts the origin for a resolved host URL.
 	 * @internal
 	 */
-	private syncTrustedDomainForUrl(url: string): void {
-		this.transport.syncTrustedDomainForUrl(url);
+	private syncTrustedOriginForUrl(url: string): void {
+		this.transport.syncTrustedOriginForUrl(url);
 	}
 
 	/**
@@ -639,9 +637,9 @@ export class ConsumerComponent<
 	 * @internal
 	 */
 	private async open(baseUrl: string): Promise<void> {
-		this.syncTrustedDomainForUrl(baseUrl);
-		const openedHostDomain = this.resolveUrlOrigin(baseUrl);
-		this.transport.activeHostDomain = null;
+		this.syncTrustedOriginForUrl(baseUrl);
+		const openedHostOrigin = this.resolveUrlOrigin(baseUrl);
+		this.transport.activeHostOrigin = null;
 
 		this.transport.attachHostWindow(
 			this.renderer.open({
@@ -659,7 +657,7 @@ export class ConsumerComponent<
 					this.cleanup.register(cleanupFn);
 				},
 			}),
-			openedHostDomain,
+			openedHostOrigin,
 		);
 	}
 

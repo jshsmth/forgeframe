@@ -28,8 +28,8 @@ function createInstance(uid: string): TestInstance {
 		hide: vi.fn(async () => {}),
 		updateProps: vi.fn(async () => {}),
 		event: {} as TestInstance["event"],
-		getVerifiedHostDomain: vi.fn(() => null),
-		getOpenedHostDomain: vi.fn(() => null),
+		getVerifiedHostOrigin: vi.fn(() => null),
+		getOpenedHostOrigin: vi.fn(() => null),
 		getPeers: vi.fn(() => undefined),
 	} as TestInstance;
 

@@ -20,10 +20,10 @@ import type { SerializedProps } from "../../props/types";
 import type { PropsDefinition } from "../../types/props";
 import type { HostProps, RemoteValue } from "../../types/runtime";
 import { normalizeError } from "../../utils/error";
-import { getDomain } from "../../window/helpers";
+import { getOrigin } from "../../window/helpers";
 import type { HostBootstrapData } from "../../window/types";
 import { HOST_PROPS_BUILTIN_KEYS } from "./builtin-keys";
-import type { HostPropsRuntimeOptions } from "./types";
+import type { HostPropDefinitions, HostPropsRuntimeOptions } from "./types";
 
 function filterReservedHostPropKeys<P extends Record<string, unknown>>(
 	props: P,
@@ -54,16 +54,16 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
 	private initialized = false;
 	private pendingBootstrapProps: SerializedProps | null = null;
 	/** This host's own origin, read once when the host starts. */
-	private readonly hostOrigin = getDomain();
+	private readonly hostOrigin = getOrigin();
 	/** Definitions of the props this host expects, selected on first use. */
 	private deliveredPropDefinitions?: Partial<PropsDefinition<P>>;
 
 	/**
-	 * @param propDefinitions - The host's definitions, or `undefined` for a
+	 * @param propDefinitions - The host's definitions, or `"unchecked"` for a
 	 * tag-agnostic host without `props`, which accepts every field unchecked
 	 */
 	constructor(
-		private readonly propDefinitions: PropsDefinition<P> | undefined,
+		private readonly propDefinitions: HostPropDefinitions<P>,
 		private options: HostPropsRuntimeOptions,
 	) {}
 
@@ -88,7 +88,7 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
 				this.onProps(handler),
 			reportError: (error: Error) => this.options.controls.reportError(error),
 			getConsumer: () => this.options.getConsumerWindow(),
-			consumerOrigin: this.options.getConsumerDomain(),
+			consumerOrigin: this.options.getConsumerOrigin(),
 			export: <T>(exports: T) => this.options.controls.exportData(exports),
 			consumer: {
 				props: this.consumerProps,
@@ -216,7 +216,7 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
 			this.filterUndeliveredProps(serializedProps),
 			this.options.getBridge(),
 			this.options.getConsumerWindow(),
-			this.options.getConsumerDomain(),
+			this.options.getConsumerOrigin(),
 		) as RemoteValue<P>;
 	}
 
@@ -229,7 +229,7 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
 	private filterUndeliveredProps<T extends Record<string, unknown>>(
 		props: T,
 	): T {
-		if (this.propDefinitions === undefined) return props;
+		if (this.propDefinitions === "unchecked") return props;
 		return selectExpectedFields(props, this.expectedDefinitions());
 	}
 
@@ -241,8 +241,11 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
 	private expectedDefinitions(): Partial<PropsDefinition<P>> {
 		// Both origins are fixed once the host starts, so the selection is too.
 		this.deliveredPropDefinitions ??= getDeliveredPropDefinitions(
-			this.propDefinitions ?? (EMPTY_PROP_DEFINITIONS as PropsDefinition<P>),
-			createDeliveryTarget(this.hostOrigin, this.options.getConsumerDomain()),
+			// An unchecked host requires and validates no prop.
+			this.propDefinitions === "unchecked"
+				? (EMPTY_PROP_DEFINITIONS as PropsDefinition<P>)
+				: this.propDefinitions,
+			createDeliveryTarget(this.hostOrigin, this.options.getConsumerOrigin()),
 		);
 		return this.deliveredPropDefinitions;
 	}

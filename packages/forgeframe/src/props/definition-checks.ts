@@ -8,7 +8,7 @@
  * declaration checks read fields through the same own-field rule.
  */
 
-import { assertOriginMatcher } from "../utils/domain-pattern";
+import { assertOriginMatcher } from "../utils/origin-pattern";
 import { isStandardSchema } from "./schema";
 
 /**

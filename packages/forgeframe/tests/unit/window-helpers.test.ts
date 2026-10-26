@@ -6,17 +6,17 @@
 import { describe, expect, it } from "vitest";
 import {
 	getConsumer,
-	getDomain,
 	getOpener,
+	getOrigin,
 	isIframe,
 	isPopup,
 	isWindowClosed,
-	matchDomain,
+	matchOrigin,
 } from "@/window/helpers";
 
-describe("getDomain", () => {
+describe("getOrigin", () => {
 	it("should return current window origin", () => {
-		const domain = getDomain();
+		const domain = getOrigin();
 		expect(domain).toBe(window.location.origin);
 	});
 
@@ -27,69 +27,69 @@ describe("getDomain", () => {
 			},
 		} as unknown as Window;
 
-		expect(getDomain(crossOriginWin)).toBe("");
+		expect(getOrigin(crossOriginWin)).toBe("");
 	});
 });
 
-describe("matchDomain", () => {
+describe("matchOrigin", () => {
 	it('should match wildcard "*"', () => {
-		expect(matchDomain("*", "https://example.com")).toBe(true);
-		expect(matchDomain("*", "https://any.domain.com")).toBe(true);
+		expect(matchOrigin("*", "https://example.com")).toBe(true);
+		expect(matchOrigin("*", "https://any.domain.com")).toBe(true);
 	});
 
 	it("should match exact string", () => {
-		expect(matchDomain("https://example.com", "https://example.com")).toBe(
+		expect(matchOrigin("https://example.com", "https://example.com")).toBe(
 			true,
 		);
-		expect(matchDomain("https://example.com", "https://other.com")).toBe(false);
+		expect(matchOrigin("https://example.com", "https://other.com")).toBe(false);
 	});
 
 	it("should match wildcard string patterns", () => {
 		expect(
-			matchDomain("https://*.example.com", "https://sub.example.com"),
+			matchOrigin("https://*.example.com", "https://sub.example.com"),
 		).toBe(true);
 		expect(
-			matchDomain("https://api.*.example.com", "https://api.us.example.com"),
+			matchOrigin("https://api.*.example.com", "https://api.us.example.com"),
 		).toBe(true);
-		expect(matchDomain("https://*.example.com", "https://example.com")).toBe(
+		expect(matchOrigin("https://*.example.com", "https://example.com")).toBe(
 			false,
 		);
-		expect(matchDomain("https://*.example.com", "https://evil.com")).toBe(
+		expect(matchOrigin("https://*.example.com", "https://evil.com")).toBe(
 			false,
 		);
 	});
 
 	it("should match RegExp", () => {
-		expect(matchDomain(/example\.com$/, "https://example.com")).toBe(true);
-		expect(matchDomain(/example\.com$/, "https://sub.example.com")).toBe(true);
-		expect(matchDomain(/example\.com$/, "https://other.com")).toBe(false);
+		expect(matchOrigin(/example\.com$/, "https://example.com")).toBe(true);
+		expect(matchOrigin(/example\.com$/, "https://sub.example.com")).toBe(true);
+		expect(matchOrigin(/example\.com$/, "https://other.com")).toBe(false);
 	});
 
 	it("should handle global RegExp patterns consistently", () => {
 		const pattern = /example\.com$/g;
 
-		expect(matchDomain(pattern, "https://example.com")).toBe(true);
-		expect(matchDomain(pattern, "https://example.com")).toBe(true);
+		expect(matchOrigin(pattern, "https://example.com")).toBe(true);
+		expect(matchOrigin(pattern, "https://example.com")).toBe(true);
 	});
 
 	it("should match array of patterns (OR logic)", () => {
 		const patterns = ["https://a.com", "https://b.com"];
 
-		expect(matchDomain(patterns, "https://a.com")).toBe(true);
-		expect(matchDomain(patterns, "https://b.com")).toBe(true);
-		expect(matchDomain(patterns, "https://c.com")).toBe(false);
+		expect(matchOrigin(patterns, "https://a.com")).toBe(true);
+		expect(matchOrigin(patterns, "https://b.com")).toBe(true);
+		expect(matchOrigin(patterns, "https://c.com")).toBe(false);
 	});
 
 	it("should handle mixed array patterns", () => {
 		const patterns = ["https://exact.com", /\.trusted\.com$/];
 
-		expect(matchDomain(patterns, "https://exact.com")).toBe(true);
-		expect(matchDomain(patterns, "https://sub.trusted.com")).toBe(true);
-		expect(matchDomain(patterns, "https://untrusted.com")).toBe(false);
+		expect(matchOrigin(patterns, "https://exact.com")).toBe(true);
+		expect(matchOrigin(patterns, "https://sub.trusted.com")).toBe(true);
+		expect(matchOrigin(patterns, "https://untrusted.com")).toBe(false);
 	});
 
 	it("should return false for invalid pattern type", () => {
-		expect(matchDomain(123 as unknown as string, "https://example.com")).toBe(
+		expect(matchOrigin(123 as unknown as string, "https://example.com")).toBe(
 			false,
 		);
 	});

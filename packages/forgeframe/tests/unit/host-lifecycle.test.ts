@@ -541,6 +541,7 @@ describe("Host lifecycle behavior", () => {
 		vi.spyOn(helpers, "isPopup").mockReturnValue(false);
 
 		const host = new HostComponent(createPayload(), {
+			props: "unchecked",
 			consumerOrigins: "*",
 			autoInit: false,
 		});
@@ -554,6 +555,7 @@ describe("Host lifecycle behavior", () => {
 		vi.spyOn(helpers, "getOpener").mockReturnValue(openerWindow);
 
 		const host = new HostComponent(createPayload(), {
+			props: "unchecked",
 			consumerOrigins: "*",
 			autoInit: false,
 		});
@@ -567,6 +569,7 @@ describe("Host lifecycle behavior", () => {
 		expect(
 			() =>
 				new HostComponent(createPayload(), {
+					props: "unchecked",
 					consumerOrigins: "*",
 					autoInit: false,
 				}),

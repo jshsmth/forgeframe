@@ -9,9 +9,9 @@ import { MESSAGE_NAME } from "@/constants";
 import { create, prop } from "@/index";
 import type { Dimensions, PropsDefinition } from "@/types";
 import {
-	getVerifiedHostDomain,
-	setVerifiedHostDomain,
-} from "../peer-host-domain";
+	getVerifiedHostOrigin,
+	setVerifiedHostOrigin,
+} from "../peer-host-origin";
 import {
 	createIframeIntegrationHarness,
 	dispatchForgeFrameRequest,
@@ -218,7 +218,7 @@ describe("Host controls and routing integration", () => {
 		const rendering = requester.render(container);
 		const { hostProps } = await harness.bootstrapIframeHost(container);
 		await rendering;
-		setVerifiedHostDomain(getVerifiedHostDomain(requester), sibling);
+		setVerifiedHostOrigin(getVerifiedHostOrigin(requester), sibling);
 		const peers = await hostProps.getPeerInstances();
 		const held = peers[0]?.exports as { initial: () => Promise<number> };
 		const failedMethods = Object.fromEntries(
@@ -262,10 +262,10 @@ describe("Host controls and routing integration", () => {
 		const rendering = requester.render(container);
 		const { hostProps } = await harness.bootstrapIframeHost(container);
 		await rendering;
-		const requesterOrigin = getVerifiedHostDomain(requester);
+		const requesterOrigin = getVerifiedHostOrigin(requester);
 		expect(requesterOrigin).toBe("https://host.example.com");
-		setVerifiedHostDomain(requesterOrigin, sameOrigin);
-		setVerifiedHostDomain(
+		setVerifiedHostOrigin(requesterOrigin, sameOrigin);
+		setVerifiedHostOrigin(
 			"https://other.example.com",
 			foreignSameTag,
 			foreignOtherTag,
@@ -311,7 +311,7 @@ describe("Host controls and routing integration", () => {
 		const rendering = requester.render(container);
 		const { hostProps } = await harness.bootstrapIframeHost(container);
 		await rendering;
-		setVerifiedHostDomain("https://partner.example.com", shared, privatePeer);
+		setVerifiedHostOrigin("https://partner.example.com", shared, privatePeer);
 
 		const peers = await harness.withHostGlobalsAsync(() =>
 			hostProps.getPeerInstances({ allTags: true }),
@@ -339,7 +339,7 @@ describe("Host controls and routing integration", () => {
 		const rendering = requester.render(container);
 		const { hostProps } = await harness.bootstrapIframeHost(container);
 		await rendering;
-		setVerifiedHostDomain(getVerifiedHostDomain(requester), other);
+		setVerifiedHostOrigin(getVerifiedHostOrigin(requester), other);
 
 		await expect(
 			harness.withHostGlobalsAsync(() => hostProps.getPeerInstances()),
@@ -369,7 +369,7 @@ describe("Host controls and routing integration", () => {
 		const rendering = requester.render(container);
 		const { hostProps } = await harness.bootstrapIframeHost(container);
 		await rendering;
-		setVerifiedHostDomain(getVerifiedHostDomain(requester), listed, hidden);
+		setVerifiedHostOrigin(getVerifiedHostOrigin(requester), listed, hidden);
 
 		for (const options of [undefined, { allTags: true }]) {
 			await expect(
@@ -467,7 +467,7 @@ describe("Host controls and routing integration", () => {
 			definitions,
 		);
 		await rendering;
-		setVerifiedHostDomain(getVerifiedHostDomain(requester), sibling);
+		setVerifiedHostOrigin(getVerifiedHostOrigin(requester), sibling);
 		const peers = await harness.withHostGlobalsAsync(() =>
 			hostProps.getPeerInstances(),
 		);
@@ -535,7 +535,7 @@ describe("Host controls and routing integration", () => {
 		);
 
 		await expect(renderPromise).resolves.toBeUndefined();
-		setVerifiedHostDomain(getVerifiedHostDomain(instance), sibling);
+		setVerifiedHostOrigin(getVerifiedHostOrigin(instance), sibling);
 
 		const resizeDimensions: Dimensions = { width: 320, height: 240 };
 		await harness.withHostGlobalsAsync(() =>

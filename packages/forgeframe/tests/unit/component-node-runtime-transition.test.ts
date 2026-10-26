@@ -28,7 +28,7 @@ describe("Component definitions across runtime transitions", () => {
 				hostOrigins: "https://allowed.example.com",
 			}),
 		).toThrow(
-			'Component URL origin "https://blocked.example.com" is not allowed by the configured domain policy.',
+			`Component URL origin "https://blocked.example.com" is not allowed by the component's hostOrigins.`,
 		);
 
 		clearComponents();

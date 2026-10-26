@@ -13,9 +13,10 @@ import { EMPTY_PROP_DEFINITIONS } from "../../props/definitions";
 import type { StandardSchemaV1 } from "../../props/schema";
 import type { PropsDefinition } from "../../types/props";
 import type { OriginMatcher } from "../../types/utility";
-import { assertOriginMatcher } from "../../utils/domain-pattern";
+import { assertOriginMatcher } from "../../utils/origin-pattern";
 import { getComponentOptions } from "../component-registry";
 import { assertPropDefinitionsObject } from "./builtin-keys";
+import type { HostPropDefinitions } from "./types";
 
 /** The v2 call shapes that argument errors name. */
 const INIT_HOST_CALL_SHAPE =
@@ -25,16 +26,13 @@ const INIT_HOST_CALL_SHAPE =
 export interface HostStartOptions {
 	/** The tag the component form requires; absent for the tag-agnostic form. */
 	componentTag?: string;
-	/**
-	 * The definitions the host validates with; absent only for a tag-agnostic
-	 * host without `props`, which accepts every field unchecked.
-	 */
-	props?: PropsDefinition<Record<string, unknown>>;
+	/** The definitions the host validates with, or `"unchecked"`. */
+	props: HostPropDefinitions<Record<string, unknown>>;
 	/**
 	 * The component's `exports` schema, checked before each export is sent;
 	 * absent for the tag-agnostic form.
 	 */
-	exports?: StandardSchemaV1;
+	exportsSchema?: StandardSchemaV1;
 	consumerOrigins: OriginMatcher;
 	autoInit: boolean;
 }
@@ -73,7 +71,7 @@ export function readInitHostArguments(
 			// A component without props declares none, so its host accepts none.
 			props: (componentOptions.props ??
 				EMPTY_PROP_DEFINITIONS) as PropsDefinition<Record<string, unknown>>,
-			exports: componentOptions.exports,
+			exportsSchema: componentOptions.exports,
 		};
 	}
 	if (args.length > 1) {
@@ -138,6 +136,9 @@ function readInitHostOptions(
 	return {
 		consumerOrigins: consumerOrigins as OriginMatcher,
 		autoInit: autoInit ?? true,
-		props: props as PropsDefinition<Record<string, unknown>> | undefined,
+		// A tag-agnostic host without props keeps every field unchecked.
+		props:
+			(props as PropsDefinition<Record<string, unknown>> | undefined) ??
+			"unchecked",
 	};
 }

@@ -17,7 +17,7 @@ import { getPeerInstances } from "@/core/consumer/peers";
 import { prop } from "@/props/prop";
 import * as popupRender from "@/render/popup";
 import { CleanupManager } from "@/utils/cleanup";
-import { PEER_HOST_DOMAIN, setVerifiedHostDomain } from "../peer-host-domain";
+import { PEER_HOST_ORIGIN, setVerifiedHostOrigin } from "../peer-host-origin";
 import { requireValue } from "../require-value";
 
 const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
@@ -28,8 +28,8 @@ type DirectHandler = (data: unknown, source?: HandlerSource) => unknown;
 type ConsumerInternals = {
 	transport: {
 		hostWindow: Window | null;
-		attachHostWindow(hostWindow: Window | null, openedHostDomain: string): void;
-		openedHostDomain: string | null;
+		attachHostWindow(hostWindow: Window | null, openedHostOrigin: string): void;
+		openedHostOrigin: string | null;
 		hostInitialized: boolean;
 		initPromise: {
 			promise: Promise<void>;
@@ -331,7 +331,7 @@ describe("Consumer lifecycle behavior", () => {
 			.mockResolvedValue(undefined);
 
 		attachOpenedHost(internal, hostWindow);
-		internal.transport.openedHostDomain = configuredOrigin;
+		internal.transport.openedHostOrigin = configuredOrigin;
 		const session = await bootstrapHost(consumer, hostWindow, redirectedOrigin);
 
 		dispatchHostMessage(MESSAGE_NAME.INIT, hostWindow, {
@@ -652,7 +652,7 @@ describe("Consumer lifecycle behavior", () => {
 		expect(readResponseData(hostWindow)).toEqual({ success: true });
 	});
 
-	it("should ignore spoofed GET_SIBLINGS from a different trusted window and accept the opened host window", async () => {
+	it("should ignore spoofed GET_PEERS from a different trusted window and accept the opened host window", async () => {
 		const PeerComponent = create({
 			tag: "peer-siblings-component",
 			peers: true,
@@ -668,12 +668,12 @@ describe("Consumer lifecycle behavior", () => {
 		);
 		requester.exports = { id: "a" };
 		sibling.exports = { id: "b" };
-		setVerifiedHostDomain("https://host.example.com", requester, sibling);
+		setVerifiedHostOrigin("https://host.example.com", requester, sibling);
 
 		const hostWindow = connectHostWindow(requester);
 		const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
 
-		dispatchHostMessage(MESSAGE_NAME.GET_SIBLINGS, spoofedWindow, {
+		dispatchHostMessage(MESSAGE_NAME.GET_PEERS, spoofedWindow, {
 			data: {
 				uid: requester.uid,
 				tag: "peer-siblings-component",
@@ -684,7 +684,7 @@ describe("Consumer lifecycle behavior", () => {
 
 		expect(readResponseData(spoofedWindow)).toEqual({ success: false });
 
-		dispatchHostMessage(MESSAGE_NAME.GET_SIBLINGS, hostWindow, {
+		dispatchHostMessage(MESSAGE_NAME.GET_PEERS, hostWindow, {
 			data: {
 				uid: requester.uid,
 				tag: "peer-siblings-component",
@@ -702,7 +702,7 @@ describe("Consumer lifecycle behavior", () => {
 		]);
 	});
 
-	it("should scope GET_SIBLINGS to the requester's own identity and verified host origin", async () => {
+	it("should scope GET_PEERS to the requester's own identity and verified host origin", async () => {
 		const RequesterComponent = create({
 			tag: "peer-scope-requester",
 			peers: true,
@@ -724,16 +724,16 @@ describe("Consumer lifecycle behavior", () => {
 		sameOriginSibling.exports = { id: "same-origin" };
 		victim.exports = { secret: "victim" };
 		victimSibling.exports = { secret: "victim-sibling" };
-		setVerifiedHostDomain(
+		setVerifiedHostOrigin(
 			"https://host.example.com",
 			requester,
 			sameOriginSibling,
 		);
-		setVerifiedHostDomain("https://victim.example.com", victim, victimSibling);
+		setVerifiedHostOrigin("https://victim.example.com", victim, victimSibling);
 		const hostWindow = connectHostWindow(requester);
 
 		// A host claiming another component's uid and tag still sees only its own peers.
-		dispatchHostMessage(MESSAGE_NAME.GET_SIBLINGS, hostWindow, {
+		dispatchHostMessage(MESSAGE_NAME.GET_PEERS, hostWindow, {
 			data: { uid: victim.uid, tag: "peer-scope-victim" },
 			claimedUid: requester.uid,
 		});
@@ -747,7 +747,7 @@ describe("Consumer lifecycle behavior", () => {
 			},
 		]);
 
-		dispatchHostMessage(MESSAGE_NAME.GET_SIBLINGS, hostWindow, {
+		dispatchHostMessage(MESSAGE_NAME.GET_PEERS, hostWindow, {
 			data: {
 				uid: victim.uid,
 				tag: "peer-scope-victim",
@@ -766,7 +766,7 @@ describe("Consumer lifecycle behavior", () => {
 		]);
 	});
 
-	it("should drop GET_SIBLINGS from opaque-origin hosts even when domain is '*'", async () => {
+	it("should drop GET_PEERS from opaque-origin hosts even when domain is '*'", async () => {
 		const OpaqueComponent = create({
 			tag: "peer-scope-opaque",
 			peers: true,
@@ -779,11 +779,11 @@ describe("Consumer lifecycle behavior", () => {
 		);
 		otherProvider.exports = { secret: "other-provider" };
 		// Sandboxed frames without allow-same-origin all serialize as "null".
-		setVerifiedHostDomain("null", requester, otherProvider);
+		setVerifiedHostOrigin("null", requester, otherProvider);
 		const hostWindow = connectHostWindow(requester);
 
 		for (const options of [undefined, { allTags: true }]) {
-			dispatchHostMessage(MESSAGE_NAME.GET_SIBLINGS, hostWindow, {
+			dispatchHostMessage(MESSAGE_NAME.GET_PEERS, hostWindow, {
 				data: { options },
 				origin: "null",
 				claimedUid: requester.uid,
@@ -794,7 +794,7 @@ describe("Consumer lifecycle behavior", () => {
 		}
 	});
 
-	it("should refuse GET_SIBLINGS for a component that has not enabled peers", async () => {
+	it("should refuse GET_PEERS for a component that has not enabled peers", async () => {
 		const PrivateComponent = create({
 			tag: "peer-scope-disabled",
 			url: "https://host.example.com/private",
@@ -804,10 +804,10 @@ describe("Consumer lifecycle behavior", () => {
 			PrivateComponent(),
 		);
 		other.exports = { secret: "private" };
-		setVerifiedHostDomain("https://host.example.com", requester, other);
+		setVerifiedHostOrigin("https://host.example.com", requester, other);
 		const hostWindow = connectHostWindow(requester);
 
-		dispatchHostMessage(MESSAGE_NAME.GET_SIBLINGS, hostWindow, {
+		dispatchHostMessage(MESSAGE_NAME.GET_PEERS, hostWindow, {
 			data: {},
 			claimedUid: requester.uid,
 		});
@@ -825,7 +825,7 @@ describe("Consumer lifecycle behavior", () => {
 		);
 	});
 
-	it("should treat malformed GET_SIBLINGS data as a same-tag lookup", async () => {
+	it("should treat malformed GET_PEERS data as a same-tag lookup", async () => {
 		const PeerComponent = create({
 			tag: "peer-scope-malformed",
 			peers: true,
@@ -843,7 +843,7 @@ describe("Consumer lifecycle behavior", () => {
 		);
 		sibling.exports = { id: "sibling" };
 		otherTag.exports = { id: "other-tag" };
-		setVerifiedHostDomain(
+		setVerifiedHostOrigin(
 			"https://host.example.com",
 			requester,
 			sibling,
@@ -854,7 +854,7 @@ describe("Consumer lifecycle behavior", () => {
 		const handler = requireValue(
 			getHandlers(
 				requester as unknown as ConsumerComponent<Record<string, unknown>>,
-			).get(MESSAGE_NAME.GET_SIBLINGS),
+			).get(MESSAGE_NAME.GET_PEERS),
 		);
 
 		for (const data of [
@@ -1377,7 +1377,7 @@ describe("Consumer lifecycle behavior", () => {
 		} as unknown as Window;
 		const internal = getInternals(consumer);
 		attachOpenedHost(internal, hostWindow);
-		internal.transport.openedHostDomain = "https://host.example.com";
+		internal.transport.openedHostOrigin = "https://host.example.com";
 
 		const previousProps = { ...internal.propsPipeline.props };
 		const sendSpy = vi
@@ -1410,7 +1410,7 @@ describe("Consumer lifecycle behavior", () => {
 		} as unknown as Window;
 		const internal = getInternals(consumer);
 		attachOpenedHost(internal, hostWindow);
-		internal.transport.openedHostDomain = "https://host.example.com";
+		internal.transport.openedHostOrigin = "https://host.example.com";
 
 		const sendSpy = vi
 			.spyOn(internal.transport.messenger, "send")
@@ -1440,7 +1440,7 @@ describe("Consumer lifecycle behavior", () => {
 
 		const internal = getInternals(consumer);
 		attachOpenedHost(internal, { closed: true } as unknown as Window);
-		internal.transport.openedHostDomain = "https://host.example.com";
+		internal.transport.openedHostOrigin = "https://host.example.com";
 
 		const sendSpy = vi
 			.spyOn(internal.transport.messenger, "send")
@@ -1572,7 +1572,7 @@ describe("Factory instance close and teardown", () => {
 		});
 		const first = Component();
 		const second = Component();
-		setVerifiedHostDomain(PEER_HOST_DOMAIN, first, second);
+		setVerifiedHostOrigin(PEER_HOST_ORIGIN, first, second);
 		const events: string[] = [];
 		for (const [name, instance] of [
 			["first", first],
@@ -1593,7 +1593,7 @@ describe("Factory instance close and teardown", () => {
 				uid: second.uid,
 				tag,
 				peers: true,
-				hostDomain: PEER_HOST_DOMAIN,
+				hostOrigin: PEER_HOST_ORIGIN,
 				allTags: false,
 			}),
 		).toEqual([]);
@@ -1605,7 +1605,7 @@ describe("Factory instance close and teardown", () => {
 				uid: "outside",
 				tag,
 				peers: true,
-				hostDomain: PEER_HOST_DOMAIN,
+				hostOrigin: PEER_HOST_ORIGIN,
 				allTags: false,
 			}),
 		).toEqual([]);

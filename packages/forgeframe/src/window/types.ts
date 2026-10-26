@@ -20,7 +20,7 @@ export interface WindowNamePayload {
 	protocolVersion: number;
 	/** Rendering context */
 	context: ContextType;
-	/** Consumer window domain */
+	/** Consumer window origin; the wire field keeps its protocol 3 name */
 	consumerDomain: string;
 }
 

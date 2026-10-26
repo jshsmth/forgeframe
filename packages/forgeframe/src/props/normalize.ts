@@ -12,7 +12,7 @@
 import type { PropDefinition, PropDelivery } from "../types/props";
 import { isDate, isPlainObject } from "../utils/realm-values";
 import { assertDefinedArrayEntries } from "../utils/wire-value";
-import { matchDomain } from "../window/helpers";
+import { matchOrigin } from "../window/helpers";
 import { SELF_ACCEPTANCE_MIGRATIONS } from "./definition-checks";
 import {
 	isStandardSchema,
@@ -413,7 +413,7 @@ export function isPropDelivered(
 	const deliverTo: PropDelivery | undefined = definition.deliverTo;
 	if (deliverTo === undefined) return true;
 	if (deliverTo === "same-origin") return target.sameOrigin;
-	return matchDomain(deliverTo, target.hostOrigin);
+	return matchOrigin(deliverTo, target.hostOrigin);
 }
 
 /**

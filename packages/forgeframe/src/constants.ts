@@ -92,8 +92,8 @@ export const MESSAGE_NAME = {
 	CALL: "forgeframe_call",
 	/** Relayed peer export method call */
 	PEER_CALL: "forgeframe_peer_call",
-	/** Get sibling components request */
-	GET_SIBLINGS: "forgeframe_get_siblings",
+	/** Peer discovery request; the wire name keeps its protocol 3 spelling */
+	GET_PEERS: "forgeframe_get_siblings",
 	/** One-way notice that the host runtime was destroyed */
 	TEARDOWN: "forgeframe_teardown",
 } as const;

@@ -1,5 +1,5 @@
 import type { OriginMatcher } from "../../types/utility";
-import { matchDomain } from "../../window/helpers";
+import { matchOrigin } from "../../window/helpers";
 
 export const CONSUMER_ORIGIN_VERIFICATION_ERROR =
 	"Could not verify consumer origin";
@@ -9,20 +9,20 @@ export const CONSUMER_ORIGIN_VERIFICATION_ERROR =
  * @throws If the origin is empty or does not match the allowlist.
  * @internal
  */
-export function assertAllowedConsumerDomain(
+export function assertAllowedConsumerOrigin(
 	consumerOrigins: OriginMatcher,
-	consumerDomain: string,
+	consumerOrigin: string,
 	tag: string,
 ): void {
-	if (!consumerDomain) {
+	if (!consumerOrigin) {
 		throw new Error(
 			`${CONSUMER_ORIGIN_VERIFICATION_ERROR} for component "${tag}"`,
 		);
 	}
 
-	if (!matchDomain(consumerOrigins, consumerDomain)) {
+	if (!matchOrigin(consumerOrigins, consumerOrigin)) {
 		throw new Error(
-			`Consumer domain "${consumerDomain}" is not allowed for component "${tag}"`,
+			`Consumer origin "${consumerOrigin}" is not allowed by consumerOrigins for component "${tag}"`,
 		);
 	}
 }
@@ -35,22 +35,22 @@ export function assertAllowedConsumerDomain(
  * @internal
  */
 export function validateMessagingConsumerContext(
-	consumerDomain: string,
+	consumerOrigin: string,
 	consumerOrigins: OriginMatcher,
 	tag: string,
 ): string {
 	let origin: URL;
 	try {
-		origin = new URL(consumerDomain);
+		origin = new URL(consumerOrigin);
 	} catch {
 		throw new Error(CONSUMER_ORIGIN_VERIFICATION_ERROR);
 	}
 	if (
 		!["http:", "https:"].includes(origin.protocol) ||
-		origin.origin !== consumerDomain
+		origin.origin !== consumerOrigin
 	) {
 		throw new Error(CONSUMER_ORIGIN_VERIFICATION_ERROR);
 	}
-	assertAllowedConsumerDomain(consumerOrigins, consumerDomain, tag);
-	return consumerDomain;
+	assertAllowedConsumerOrigin(consumerOrigins, consumerOrigin, tag);
+	return consumerOrigin;
 }

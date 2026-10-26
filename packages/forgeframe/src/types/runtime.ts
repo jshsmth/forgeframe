@@ -750,7 +750,7 @@ export interface HostPropsBuiltins<
 	 * origin are returned, unless a peer's `peers` matcher admits this origin.
 	 * Peers whose hosts are still loading are listed without exports until rediscovery.
 	 * Exported methods are relayed through the consumer and return promises.
-	 * Rediscover peers after a sibling replaces its exports or reconnects; retired
+	 * Rediscover peers after a peer replaces its exports or reconnects; retired
 	 * methods reject. Unrelated prop updates do not retire cached peer methods.
 	 *
 	 * @param options - Options for peer discovery

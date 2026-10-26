@@ -19,10 +19,10 @@ import { clearHostInstance, isHost } from "@/core/host";
 import { prop } from "@/props/prop";
 import type { ComponentOptions } from "@/types";
 import {
-	PEER_HOST_DOMAIN,
-	setOpenedHostDomain,
-	setVerifiedHostDomain,
-} from "../peer-host-domain";
+	PEER_HOST_ORIGIN,
+	setOpenedHostOrigin,
+	setVerifiedHostOrigin,
+} from "../peer-host-origin";
 import { checkRenderValidation } from "../render-validation";
 
 const originalWindowName = window.name;
@@ -142,7 +142,7 @@ describe("Component Creation", () => {
 				url: "https://attacker.example.com/widget",
 				hostOrigins: "https://trusted.example.com",
 			}),
-		).toThrow("is not allowed by the configured domain policy");
+		).toThrow("is not allowed by the component's hostOrigins");
 	});
 
 	it("should validate function URLs before rendering them", async () => {
@@ -1398,8 +1398,8 @@ describe("Host Context Detection", () => {
 			const alphaPrimary = AlphaComponent({});
 			const alphaSibling = AlphaComponent({});
 			const betaSibling = BetaComponent({});
-			setVerifiedHostDomain(
-				PEER_HOST_DOMAIN,
+			setVerifiedHostOrigin(
+				PEER_HOST_ORIGIN,
 				alphaPrimary,
 				alphaSibling,
 				betaSibling,
@@ -1409,14 +1409,14 @@ describe("Host Context Detection", () => {
 				uid: alphaPrimary.uid,
 				tag: "peer-alpha",
 				peers: true,
-				hostDomain: PEER_HOST_DOMAIN,
+				hostOrigin: PEER_HOST_ORIGIN,
 				allTags: false,
 			});
 			const allTagsSiblings = getPeerInstances({
 				uid: alphaPrimary.uid,
 				tag: "peer-alpha",
 				peers: true,
-				hostDomain: PEER_HOST_DOMAIN,
+				hostOrigin: PEER_HOST_ORIGIN,
 				allTags: true,
 			});
 
@@ -1469,13 +1469,13 @@ describe("Host Context Detection", () => {
 			const sameOriginOtherTag = BetaComponent({});
 			foreignSameTag.exports = { secret: "foreign-same-tag" };
 			foreignOtherTag.exports = { secret: "foreign-other-tag" };
-			setVerifiedHostDomain(
-				PEER_HOST_DOMAIN,
+			setVerifiedHostOrigin(
+				PEER_HOST_ORIGIN,
 				requester,
 				sameOrigin,
 				sameOriginOtherTag,
 			);
-			setVerifiedHostDomain(
+			setVerifiedHostOrigin(
 				"https://foreign-host.example.com",
 				foreignSameTag,
 				foreignOtherTag,
@@ -1486,7 +1486,7 @@ describe("Host Context Detection", () => {
 					uid: requester.uid,
 					tag: "peer-origin-alpha",
 					peers: true,
-					hostDomain: PEER_HOST_DOMAIN,
+					hostOrigin: PEER_HOST_ORIGIN,
 					allTags,
 				}).map((sibling) => sibling.uid);
 
@@ -1526,18 +1526,18 @@ describe("Host Context Detection", () => {
 			const requester = SharedComponent({});
 			const sharedPeer = SharedComponent({});
 			const privatePeer = PrivateComponent({});
-			setVerifiedHostDomain("https://widgets-a.myapp.example", requester);
-			setVerifiedHostDomain(
+			setVerifiedHostOrigin("https://widgets-a.myapp.example", requester);
+			setVerifiedHostOrigin(
 				"https://widgets-b.myapp.example",
 				sharedPeer,
 				privatePeer,
 			);
-			const lookup = (hostDomain: string) =>
+			const lookup = (hostOrigin: string) =>
 				getPeerInstances({
 					uid: requester.uid,
 					tag: "peer-domains-shared",
 					peers: true,
-					hostDomain,
+					hostOrigin,
 					allTags: true,
 				}).map((sibling) => sibling.uid);
 
@@ -1564,16 +1564,16 @@ describe("Host Context Detection", () => {
 			const opaquePeer = PartnerComponent({});
 			const namedPeer = PartnerComponent({});
 			opaquePeer.exports = { secret: "sandboxed document" };
-			setVerifiedHostDomain("https://widgets.myapp.example", requester);
-			setVerifiedHostDomain("null", opaquePeer);
-			setVerifiedHostDomain("https://other.myapp.example", namedPeer);
+			setVerifiedHostOrigin("https://widgets.myapp.example", requester);
+			setVerifiedHostOrigin("null", opaquePeer);
+			setVerifiedHostOrigin("https://other.myapp.example", namedPeer);
 
 			expect(
 				getPeerInstances({
 					uid: requester.uid,
 					tag: "peer-domains-opaque-peer",
 					peers: true,
-					hostDomain: "https://widgets.myapp.example",
+					hostOrigin: "https://widgets.myapp.example",
 					allTags: false,
 				}).map((sibling) => sibling.uid),
 			).toEqual([namedPeer.uid]);
@@ -1594,9 +1594,9 @@ describe("Host Context Detection", () => {
 			const loadingPeer = LoadingComponent({});
 			const foreignLoadingPeer = LoadingComponent({});
 			loadingPeer.exports = { early: "not yet verified" };
-			setVerifiedHostDomain(PEER_HOST_DOMAIN, requester);
-			setOpenedHostDomain(PEER_HOST_DOMAIN, loadingPeer);
-			setOpenedHostDomain(
+			setVerifiedHostOrigin(PEER_HOST_ORIGIN, requester);
+			setOpenedHostOrigin(PEER_HOST_ORIGIN, loadingPeer);
+			setOpenedHostOrigin(
 				"https://foreign-host.example.com",
 				foreignLoadingPeer,
 			);
@@ -1606,20 +1606,20 @@ describe("Host Context Detection", () => {
 					uid: requester.uid,
 					tag: "peer-loading",
 					peers: true,
-					hostDomain: PEER_HOST_DOMAIN,
+					hostOrigin: PEER_HOST_ORIGIN,
 					allTags: false,
 				}),
 			).toEqual([
 				{ uid: loadingPeer.uid, tag: "peer-loading", exports: undefined },
 			]);
 
-			setVerifiedHostDomain(PEER_HOST_DOMAIN, loadingPeer);
+			setVerifiedHostOrigin(PEER_HOST_ORIGIN, loadingPeer);
 			expect(
 				getPeerInstances({
 					uid: requester.uid,
 					tag: "peer-loading",
 					peers: true,
-					hostDomain: PEER_HOST_DOMAIN,
+					hostOrigin: PEER_HOST_ORIGIN,
 					allTags: false,
 				}),
 			).toEqual([
@@ -1646,14 +1646,14 @@ describe("Host Context Detection", () => {
 
 			const primary = IndexedComponent({});
 			const sibling = IndexedComponent({});
-			setVerifiedHostDomain(PEER_HOST_DOMAIN, primary, sibling);
+			setVerifiedHostOrigin(PEER_HOST_ORIGIN, primary, sibling);
 
 			expect(
 				getPeerInstances({
 					uid: primary.uid,
 					tag: "peer-index-cleanup",
 					peers: true,
-					hostDomain: PEER_HOST_DOMAIN,
+					hostOrigin: PEER_HOST_ORIGIN,
 					allTags: false,
 				}),
 			).toEqual([
@@ -1670,7 +1670,7 @@ describe("Host Context Detection", () => {
 					uid: primary.uid,
 					tag: "peer-index-cleanup",
 					peers: true,
-					hostDomain: PEER_HOST_DOMAIN,
+					hostOrigin: PEER_HOST_ORIGIN,
 					allTags: false,
 				}),
 			).toEqual([]);
@@ -1692,13 +1692,13 @@ describe("Host Context Detection", () => {
 
 			const alphaPrimary = AlphaComponent({});
 			const betaSibling = BetaComponent({});
-			setVerifiedHostDomain(PEER_HOST_DOMAIN, alphaPrimary, betaSibling);
+			setVerifiedHostOrigin(PEER_HOST_ORIGIN, alphaPrimary, betaSibling);
 
 			const siblingsBeforeUnregister = getPeerInstances({
 				uid: alphaPrimary.uid,
 				tag: "peer-index-unregister-alpha",
 				peers: true,
-				hostDomain: PEER_HOST_DOMAIN,
+				hostOrigin: PEER_HOST_ORIGIN,
 				allTags: true,
 			});
 			expect(
@@ -1713,7 +1713,7 @@ describe("Host Context Detection", () => {
 				uid: alphaPrimary.uid,
 				tag: "peer-index-unregister-alpha",
 				peers: true,
-				hostDomain: PEER_HOST_DOMAIN,
+				hostOrigin: PEER_HOST_ORIGIN,
 				allTags: true,
 			});
 			expect(

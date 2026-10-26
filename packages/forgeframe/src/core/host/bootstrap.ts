@@ -202,7 +202,7 @@ function startHostRuntime(
 	try {
 		runtime = new HostComponent(payload, {
 			props: start.props,
-			exports: start.exports,
+			exportsSchema: start.exportsSchema,
 			consumerOrigins: start.consumerOrigins,
 			autoInit: start.autoInit,
 			onDestroy: () => {

@@ -58,18 +58,15 @@ function createOptions(
 
 function createTransport({
 	options = createOptions(),
-	resolveUrl = () => "https://host.example.com/widget",
 	resolveUrlOrigin = (url: string) =>
 		new URL(url, window.location.origin).origin,
 }: {
 	options?: NormalizedOptions<TestProps>;
-	resolveUrl?: () => string;
 	resolveUrlOrigin?: (url: string) => string;
 } = {}) {
 	const transport = new ConsumerTransport<TestProps, { ready: boolean }>(
 		"consumer-transport-uid",
 		options,
-		resolveUrl,
 		resolveUrlOrigin,
 	);
 	createdTransports.push(transport);
@@ -245,28 +242,43 @@ describe("ConsumerTransport", () => {
 
 	it("should prefer the verified active origin after host initialization", () => {
 		const transport = createTransport();
-		transport.openedHostDomain = "https://host.example.com";
-		transport.activeHostDomain = "https://redirected-host.example.com";
+		transport.openedHostOrigin = "https://host.example.com";
+		transport.activeHostOrigin = "https://redirected-host.example.com";
 
-		expect(transport.getHostDomain()).toBe(
+		expect(transport.getHostOrigin()).toBe(
 			"https://redirected-host.example.com",
 		);
 
-		transport.activeHostDomain = null;
-		expect(transport.getHostDomain()).toBe("https://host.example.com");
+		transport.activeHostOrigin = null;
+		expect(transport.getHostOrigin()).toBe("https://host.example.com");
 	});
 
-	it("should rely exclusively on an explicit domain policy when configured", () => {
+	it("should track the trusted static URL origin only without hostOrigins, across teardown", () => {
+		expect(
+			createTransport({
+				options: createOptions({ hostOrigins: "https://host.example.com" }),
+			}).staticUrlTrustedOrigin,
+		).toBeNull();
+
+		const transport = createTransport();
+		expect(transport.staticUrlTrustedOrigin).toBe("https://host.example.com");
+		transport.resetHostWindow();
+		const removeSpy = vi.spyOn(transport.messenger, "removeTrustedOrigin");
+		transport.syncTrustedOriginForUrl("https://moved.example.com/widget");
+		expect(removeSpy).toHaveBeenCalledWith("https://host.example.com");
+		expect(transport.staticUrlTrustedOrigin).toBe("https://moved.example.com");
+	});
+
+	it("should rely exclusively on an explicit hostOrigins policy when configured", () => {
 		const transport = createTransport({
 			options: createOptions({
 				hostOrigins: ["https://explicit.example.com"],
 			}),
-			resolveUrl: () => "https://dynamic-old.example.com/widget",
 		});
-		const removeSpy = vi.spyOn(transport.messenger, "removeTrustedDomain");
-		const addSpy = vi.spyOn(transport.messenger, "addTrustedDomain");
+		const removeSpy = vi.spyOn(transport.messenger, "removeTrustedOrigin");
+		const addSpy = vi.spyOn(transport.messenger, "addTrustedOrigin");
 
-		transport.syncTrustedDomainForUrl(
+		transport.syncTrustedOriginForUrl(
 			"https://dynamic-next.example.com/widget",
 		);
 
@@ -427,7 +439,7 @@ describe("ConsumerTransport", () => {
 			.mockResolvedValue("callback-result");
 
 		transport.attachHostWindow(hostWindow, HOST_ORIGIN);
-		transport.openedHostDomain = configuredOrigin;
+		transport.openedHostOrigin = configuredOrigin;
 		transport.setupMessageHandlers(handlers);
 
 		const exportHandler = getHandler(transport, MESSAGE_NAME.EXPORT);

@@ -55,7 +55,11 @@ function createHost({
 		consumerWindow,
 	);
 
-	return new HostComponent(payload, { consumerOrigins: "*", autoInit });
+	return new HostComponent(payload, {
+		props: "unchecked",
+		consumerOrigins: "*",
+		autoInit,
+	});
 }
 
 /**
@@ -101,9 +105,9 @@ describe("Host branch coverage and edge paths", () => {
 
 		await vi.waitFor(() => expect(sendSpy).toHaveBeenCalledTimes(2));
 		const [bootstrapCall, initCall] = sendSpy.mock.calls;
-		const [targetWindow, targetDomain, name, data] =
+		const [targetWindow, targetOrigin, name, data] =
 			requireValue(bootstrapCall);
-		expect([targetWindow, targetDomain, name]).toEqual([
+		expect([targetWindow, targetOrigin, name]).toEqual([
 			window,
 			window.location.origin,
 			MESSAGE_NAME.BOOTSTRAP,
@@ -234,7 +238,7 @@ describe("Host branch coverage and edge paths", () => {
 		expect(sendSpy).toHaveBeenCalledWith(
 			window,
 			window.location.origin,
-			MESSAGE_NAME.GET_SIBLINGS,
+			MESSAGE_NAME.GET_PEERS,
 			{ options: { allTags: true } },
 		);
 	});

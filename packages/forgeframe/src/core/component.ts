@@ -25,7 +25,7 @@ import type {
 	InferredComponentOptions,
 } from "../types/runtime";
 import { hasBrowserWindow } from "../utils/browser";
-import { assertOriginMatcher } from "../utils/domain-pattern";
+import { assertOriginMatcher } from "../utils/origin-pattern";
 import { resolveComponentHostUrl } from "../utils/url";
 import {
 	clearIndexedInstances,

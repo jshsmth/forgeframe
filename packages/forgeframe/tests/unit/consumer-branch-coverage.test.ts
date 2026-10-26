@@ -21,12 +21,12 @@ const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
 type ConsumerInternals = {
 	transport: {
 		hostWindow: Window | null;
-		attachHostWindow(hostWindow: Window | null, openedHostDomain: string): void;
-		openedHostDomain: string | null;
+		attachHostWindow(hostWindow: Window | null, openedHostOrigin: string): void;
+		openedHostOrigin: string | null;
 		messenger: {
 			allowedOrigins: Set<string>;
 			allowedOriginPatterns: RegExp[];
-			addTrustedDomain: (domain: string) => void;
+			addTrustedOrigin: (domain: string) => void;
 			send: (...args: unknown[]) => Promise<unknown>;
 		};
 	};
@@ -44,7 +44,7 @@ type ConsumerInternals = {
 	};
 	options: Record<string, unknown>;
 	resolveUrlOrigin: (url: string) => string | null;
-	syncTrustedDomainForUrl: (url: string) => void;
+	syncTrustedOriginForUrl: (url: string) => void;
 	resolveContainer: (container?: string | HTMLElement) => HTMLElement;
 	checkEligibility: () => void;
 	prerender: () => Promise<void>;
@@ -252,16 +252,19 @@ describe("Consumer branch coverage and edge paths", () => {
 		);
 	});
 
-	it("should reject a URL origin outside the configured domain policy", () => {
+	it("should reject a URL origin outside the component's hostOrigins", () => {
+		const consumer = createConsumer({
+			hostOrigins: "https://trusted.example.com",
+		});
 		expect(() =>
-			createConsumer({ hostOrigins: "https://trusted.example.com" }),
-		).toThrow("is not allowed by the configured domain policy");
+			getInternals(consumer).resolveUrlOrigin("https://host.example.com"),
+		).toThrow("is not allowed by the component's hostOrigins");
 	});
 
 	it("should reject invalid URLs during trusted-domain sync", () => {
 		const consumer = createConsumer();
 		expect(() =>
-			getInternals(consumer).syncTrustedDomainForUrl("http://%"),
+			getInternals(consumer).syncTrustedOriginForUrl("http://%"),
 		).toThrow("Invalid component URL");
 	});
 

@@ -1,5 +1,5 @@
 import type { OriginMatcher } from "../types/utility";
-import { matchDomain } from "../window/helpers";
+import { matchOrigin } from "../window/helpers";
 
 const ALLOWED_HOST_PROTOCOLS = new Set(["http:", "https:"]);
 
@@ -11,7 +11,7 @@ const ALLOWED_HOST_PROTOCOLS = new Set(["http:", "https:"]);
 export function resolveComponentHostUrl(
 	value: string,
 	baseUrl: string,
-	allowedDomains?: OriginMatcher,
+	allowedOrigins?: OriginMatcher,
 ): URL {
 	let resolved: URL;
 
@@ -29,9 +29,9 @@ export function resolveComponentHostUrl(
 		);
 	}
 
-	if (allowedDomains && !matchDomain(allowedDomains, resolved.origin)) {
+	if (allowedOrigins && !matchOrigin(allowedOrigins, resolved.origin)) {
 		throw new Error(
-			`Component URL origin "${resolved.origin}" is not allowed by the configured domain policy.`,
+			`Component URL origin "${resolved.origin}" is not allowed by the component's hostOrigins.`,
 		);
 	}
 

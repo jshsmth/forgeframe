@@ -1,13 +1,13 @@
 import type { OriginMatcher } from "../types/utility";
 import {
-	compileWildcardDomainPattern,
-	testDomainRegExpStateless,
-} from "../utils/domain-pattern";
+	compileWildcardOriginPattern,
+	testOriginRegExpStateless,
+} from "../utils/origin-pattern";
 
 /**
- * Gets the domain (origin) of the specified window.
+ * Gets the origin of the specified window.
  *
- * @param win - The window to get the domain from. Defaults to the current window.
+ * @param win - The window to get the origin from. Defaults to the current window.
  * @returns The origin string (e.g., "https://example.com") or an empty string if cross-origin access is denied.
  *
  * @remarks
@@ -16,16 +16,16 @@ import {
  *
  * @example
  * ```typescript
- * // Get current window's domain
- * const domain = getDomain();
+ * // Get current window's origin
+ * const origin = getOrigin();
  *
- * // Get an iframe's domain
- * const iframeDomain = getDomain(iframe.contentWindow);
+ * // Get an iframe's origin
+ * const iframeOrigin = getOrigin(iframe.contentWindow);
  * ```
  *
  * @internal
  */
-export function getDomain(win: Window = window): string {
+export function getOrigin(win: Window = window): string {
 	try {
 		return win.location.origin;
 	} catch {
@@ -34,16 +34,16 @@ export function getDomain(win: Window = window): string {
 }
 
 /**
- * Checks if a domain matches a given pattern.
+ * Checks if an origin matches a given pattern.
  *
  * @param pattern - The pattern to match against. Can be a string (exact match or `"*"` wildcard),
  *                  a RegExp, or an array of patterns.
- * @param domain - The domain string to test.
- * @returns `true` if the domain matches the pattern, `false` otherwise.
+ * @param origin - The origin string to test.
+ * @returns `true` if the origin matches the pattern, `false` otherwise.
  *
  * @remarks
  * Pattern matching rules:
- * - `"*"` matches any domain
+ * - `"*"` matches any origin
  * - String patterns without wildcards require exact match
  * - String patterns with `*` use wildcard matching (for example, `'https://*.example.com'`)
  * - RegExp patterns are evaluated statelessly so global/sticky flags do not leak `lastIndex` across calls
@@ -52,39 +52,39 @@ export function getDomain(win: Window = window): string {
  * @example
  * ```typescript
  * // Wildcard - matches everything
- * matchDomain('*', 'https://example.com'); // true
+ * matchOrigin('*', 'https://example.com'); // true
  *
  * // Exact match
- * matchDomain('https://example.com', 'https://example.com'); // true
+ * matchOrigin('https://example.com', 'https://example.com'); // true
  *
  * // Wildcard string match
- * matchDomain('https://*.example.com', 'https://sub.example.com'); // true
+ * matchOrigin('https://*.example.com', 'https://sub.example.com'); // true
  *
  * // RegExp match
- * matchDomain(/\.example\.com$/, 'https://sub.example.com'); // true
+ * matchOrigin(/\.example\.com$/, 'https://sub.example.com'); // true
  *
  * // Array of patterns
- * matchDomain(['https://a.com', 'https://b.com'], 'https://b.com'); // true
+ * matchOrigin(['https://a.com', 'https://b.com'], 'https://b.com'); // true
  * ```
  *
  * @internal
  */
-export function matchDomain(pattern: OriginMatcher, domain: string): boolean {
+export function matchOrigin(pattern: OriginMatcher, origin: string): boolean {
 	if (typeof pattern === "string") {
 		if (pattern === "*") return true;
-		const wildcardPattern = compileWildcardDomainPattern(pattern);
+		const wildcardPattern = compileWildcardOriginPattern(pattern);
 		if (wildcardPattern) {
-			return testDomainRegExpStateless(wildcardPattern, domain);
+			return testOriginRegExpStateless(wildcardPattern, origin);
 		}
-		return pattern === domain;
+		return pattern === origin;
 	}
 
 	if (pattern instanceof RegExp) {
-		return testDomainRegExpStateless(pattern, domain);
+		return testOriginRegExpStateless(pattern, origin);
 	}
 
 	if (Array.isArray(pattern)) {
-		return pattern.some((p) => matchDomain(p, domain));
+		return pattern.some((p) => matchOrigin(p, origin));
 	}
 
 	return false;

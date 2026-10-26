@@ -9,7 +9,7 @@
 
 import type { PeerInfo, PeersOption } from "../../types/runtime";
 import { isOpaqueOrigin } from "../../utils/origin";
-import { matchDomain } from "../../window/helpers";
+import { matchOrigin } from "../../window/helpers";
 import {
 	getComponentInstancesByTag,
 	getIndexedComponentInstances,
@@ -31,7 +31,7 @@ export interface ConsumerPeerRequest {
 	/** The requesting component's `peers` option. */
 	peers: PeersOption;
 	/** Browser-verified origin of the requesting host window. */
-	hostDomain: string;
+	hostOrigin: string;
 	/** Include peers from all component tags, as normalized by the transport. */
 	allTags: boolean;
 }
@@ -44,9 +44,9 @@ export interface PeerCandidate {
 	uid: string;
 	tag: string;
 	/** Browser-verified origin of the instance's connected host, if any. */
-	verifiedHostDomain: string | null;
+	verifiedHostOrigin: string | null;
 	/** Origin the instance opened its host at, before verification. */
-	openedHostDomain: string | null;
+	openedHostOrigin: string | null;
 	/** The instance's component `peers` option. */
 	peers: PeersOption;
 	exports: unknown;
@@ -68,7 +68,7 @@ export function getPeerInstances(request: ConsumerPeerRequest): PeerInfo[] {
 	return selectPeerInstances(
 		indexed.map(({ tag, instance }) => observePeerCandidate(tag, instance)),
 		request.uid,
-		request.hostDomain,
+		request.hostOrigin,
 	);
 }
 
@@ -95,8 +95,8 @@ function observePeerCandidate(
 	return {
 		uid: instance.uid,
 		tag,
-		verifiedHostDomain: instance.getVerifiedHostDomain(),
-		openedHostDomain: instance.getOpenedHostDomain(),
+		verifiedHostOrigin: instance.getVerifiedHostOrigin(),
+		openedHostOrigin: instance.getOpenedHostOrigin(),
 		peers: instance.getPeers(),
 		exports: instance.exports,
 	};
@@ -119,21 +119,21 @@ function observePeerCandidate(
 export function selectPeerInstances(
 	candidates: readonly PeerCandidate[],
 	requestingUid: string,
-	requestingHostDomain: string,
+	requestingHostOrigin: string,
 ): PeerInfo[] {
-	if (isOpaqueOrigin(requestingHostDomain)) return [];
+	if (isOpaqueOrigin(requestingHostOrigin)) return [];
 	const peers: PeerInfo[] = [];
 	for (const candidate of candidates) {
 		if (candidate.uid === requestingUid || candidate.peers === undefined)
 			continue;
-		const peerHostDomain =
-			candidate.verifiedHostDomain ?? candidate.openedHostDomain;
-		if (peerHostDomain === null || isOpaqueOrigin(peerHostDomain)) continue;
+		const peerHostOrigin =
+			candidate.verifiedHostOrigin ?? candidate.openedHostOrigin;
+		if (peerHostOrigin === null || isOpaqueOrigin(peerHostOrigin)) continue;
 		if (
-			peerHostDomain !== requestingHostDomain &&
+			peerHostOrigin !== requestingHostOrigin &&
 			!(
 				candidate.peers !== true &&
-				matchDomain(candidate.peers, requestingHostDomain)
+				matchOrigin(candidate.peers, requestingHostOrigin)
 			)
 		)
 			continue;
@@ -141,7 +141,7 @@ export function selectPeerInstances(
 			uid: candidate.uid,
 			tag: candidate.tag,
 			exports:
-				candidate.verifiedHostDomain === null ? undefined : candidate.exports,
+				candidate.verifiedHostOrigin === null ? undefined : candidate.exports,
 		});
 	}
 	return peers;
