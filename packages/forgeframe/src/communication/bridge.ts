@@ -8,6 +8,7 @@
  */
 
 import { MESSAGE_NAME } from "../constants";
+import { ForgeFrameError } from "../errors";
 import { isDate } from "../utils/realm-values";
 import { generateShortUID } from "../utils/uid";
 import {
@@ -177,7 +178,8 @@ export class FunctionBridge {
 			!this.currentBatchIds.has(existingId ?? "") &&
 			this.currentBatchIds.size >= MAX_FUNCTIONS
 		) {
-			throw new Error(
+			throw new ForgeFrameError(
+				"CAPACITY",
 				"Function snapshot exceeds the 500 distinct callback limit",
 			);
 		}
@@ -185,7 +187,8 @@ export class FunctionBridge {
 		const limit =
 			this.batchMode === "replace" ? MAX_RETAINED_FUNCTIONS : MAX_FUNCTIONS;
 		if (this.localFunctions.size >= limit) {
-			throw new Error(
+			throw new ForgeFrameError(
+				"CAPACITY",
 				limit === MAX_RETAINED_FUNCTIONS
 					? "Function recovery pool is full (1000 callbacks); retry retained callbacks or reconnect"
 					: "Function registry exceeds the 500 distinct callback limit",
@@ -256,7 +259,8 @@ export class FunctionBridge {
 	): CallableFunction {
 		const wrapper = async (...args: unknown[]): Promise<unknown> => {
 			const endedMessage = this.endedSessions.get(targetWin);
-			if (endedMessage !== undefined) throw new Error(endedMessage);
+			if (endedMessage !== undefined)
+				throw new ForgeFrameError("CLOSED", endedMessage);
 			const unwatch = this.watchRemoteCall(targetWin, targetOrigin);
 			try {
 				return await this.messenger.send(
@@ -323,7 +327,7 @@ export class FunctionBridge {
 						if (this.callWatches.get(targetWin) === watch)
 							this.rejectRemoteCalls(
 								targetWin,
-								new Error(UNRESPONSIVE_WINDOW_ERROR),
+								new ForgeFrameError("CLOSED", UNRESPONSIVE_WINDOW_ERROR),
 							);
 					},
 				);
@@ -364,18 +368,35 @@ export class FunctionBridge {
 			this.callMessageName,
 			async ({ id, args }, source) => {
 				if (!this.isExpectedSource(source)) {
-					throw new Error("Function call rejected from unexpected window");
+					throw new ForgeFrameError(
+						"ORIGIN_REJECTED",
+						"Function call rejected from unexpected window",
+					);
 				}
 				const fn = this.localFunctions.get(id);
 				if (!fn) {
-					throw new Error(`Function with id "${id}" not found`);
+					throw new ForgeFrameError(
+						"CLOSED",
+						`Function with id "${id}" not found`,
+					);
 				}
-				return fn(...args);
+				try {
+					return await fn(...args);
+				} catch (error) {
+					// An application callback's failure is its own, so it never
+					// carries a ForgeFrame code to the caller.
+					throw error instanceof ForgeFrameError
+						? new Error(error.message)
+						: error;
+				}
 			},
 		);
 		this.messenger.on(this.livenessMessageName, (_data, source) => {
 			if (!this.isExpectedSource(source)) {
-				throw new Error("Liveness check rejected from unexpected window");
+				throw new ForgeFrameError(
+					"ORIGIN_REJECTED",
+					"Liveness check rejected from unexpected window",
+				);
 			}
 			return true;
 		});
@@ -412,7 +433,10 @@ export class FunctionBridge {
 	 */
 	startBatch(mode: "replace" | "append" = "replace"): void {
 		if (this.batchMode)
-			throw new Error("Function serialization batch already active");
+			throw new ForgeFrameError(
+				"VALIDATION",
+				"Function serialization batch already active",
+			);
 		this.currentBatchIds.clear();
 		this.newBatchIds.clear();
 		this.batchMode = mode;
@@ -486,7 +510,7 @@ export class FunctionBridge {
 	 */
 	endRemoteSession(targetWin: Window, message: string): void {
 		this.endedSessions.set(targetWin, message);
-		this.rejectRemoteCalls(targetWin, new Error(message));
+		this.rejectRemoteCalls(targetWin, new ForgeFrameError("CLOSED", message));
 	}
 
 	/**
@@ -575,7 +599,7 @@ function enterStack(
 	stack: WeakSet<object>,
 	error: string,
 ): void {
-	if (stack.has(value)) throw new Error(error);
+	if (stack.has(value)) throw new ForgeFrameError("VALIDATION", error);
 	stack.add(value);
 }
 

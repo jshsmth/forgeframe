@@ -7,6 +7,7 @@
  */
 
 import { MESSAGE_TYPE } from "../constants";
+import { errorFromWire, ForgeFrameError } from "../errors";
 import type { OriginMatcher } from "../types/utility";
 import { normalizeError } from "../utils/error";
 import { isOpaqueOrigin } from "../utils/origin";
@@ -73,12 +74,14 @@ function resolveTargetOrigin(target: string, name: string): string {
 	try {
 		origin = new URL(target).origin;
 	} catch {
-		throw new Error(
+		throw new ForgeFrameError(
+			"VALIDATION",
 			`Cannot send "${name}": target origin "${target}" is not an absolute URL`,
 		);
 	}
 	if (isOpaqueOrigin(origin)) {
-		throw new Error(
+		throw new ForgeFrameError(
+			"ORIGIN_REJECTED",
 			`Cannot send "${name}": target origin "${target}" is opaque`,
 		);
 	}
@@ -269,7 +272,7 @@ export class Messenger {
 		onDeliveryAttempt?: () => void,
 	): Promise<R> {
 		if (this.destroyed) {
-			throw new Error("Messenger has been destroyed");
+			throw new ForgeFrameError("CLOSED", "Messenger has been destroyed");
 		}
 
 		const targetOrigin = resolveTargetOrigin(target, name);
@@ -279,7 +282,8 @@ export class Messenger {
 			domain: this.origin,
 		});
 		const serialized = serializeMessage(message);
-		if (this.destroyed) throw new Error("Messenger destroyed");
+		if (this.destroyed)
+			throw new ForgeFrameError("CLOSED", "Messenger destroyed");
 
 		const deferred = createDeferred<R>();
 		const timeoutId =
@@ -288,7 +292,10 @@ export class Messenger {
 				: setTimeout(() => {
 						this.pending.delete(id);
 						deferred.reject(
-							new Error(`Message "${name}" timed out after ${timeout}ms`),
+							new ForgeFrameError(
+								"CLOSED",
+								`Message "${name}" timed out after ${timeout}ms`,
+							),
 						);
 					}, timeout);
 
@@ -329,7 +336,7 @@ export class Messenger {
 		data?: T,
 	): void {
 		if (this.destroyed) {
-			throw new Error("Messenger has been destroyed");
+			throw new ForgeFrameError("CLOSED", "Messenger has been destroyed");
 		}
 
 		const targetOrigin = resolveTargetOrigin(target, name);
@@ -419,7 +426,9 @@ export class Messenger {
 		this.pending.delete(message.id);
 		clearTimeout(pending.timeout);
 		if (message.error)
-			pending.deferred.reject(new Error(message.error.message));
+			pending.deferred.reject(
+				errorFromWire(message.error.message, message.error.code),
+			);
 		else pending.deferred.resolve(message.data);
 	}
 
@@ -481,7 +490,10 @@ export class Messenger {
 					message.id,
 					undefined,
 					source,
-					new Error(`Could not serialize response for "${message.name}"`),
+					new ForgeFrameError(
+						"VALIDATION",
+						`Could not serialize response for "${message.name}"`,
+					),
 				),
 			);
 		}
@@ -534,7 +546,9 @@ export class Messenger {
 
 		for (const pending of this.pending.values()) {
 			clearTimeout(pending.timeout);
-			pending.deferred.reject(new Error("Messenger destroyed"));
+			pending.deferred.reject(
+				new ForgeFrameError("CLOSED", "Messenger destroyed"),
+			);
 		}
 		this.pending.clear();
 		this.handlers.clear();

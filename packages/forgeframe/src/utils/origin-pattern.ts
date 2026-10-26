@@ -7,6 +7,7 @@
  * window helpers and the messenger preserve identical origin-matching behavior.
  */
 
+import { ForgeFrameError } from "../errors";
 import type { OriginMatcher } from "../types/utility";
 
 const wildcardPatternCache = new Map<string, RegExp>();
@@ -105,19 +106,22 @@ export function assertOriginMatcher(
 		entry instanceof RegExp ||
 		(typeof entry === "string" && entry.trim() !== "");
 	if (Array.isArray(value) && value.length === 0 && emptyArray === "rejected") {
-		throw new Error(
+		throw new ForgeFrameError(
+			"VALIDATION",
 			`${option} must list at least one origin; an empty array matches none`,
 		);
 	}
 	const entries = Array.isArray(value) ? value : [value];
 	if (!entries.every(isPattern)) {
-		throw new Error(
+		throw new ForgeFrameError(
+			"VALIDATION",
 			`${option} must be a non-empty origin string, a RegExp, or an array of them`,
 		);
 	}
 	const bareHost = entries.find(isBareHostPattern);
 	if (bareHost !== undefined) {
-		throw new Error(
+		throw new ForgeFrameError(
+			"VALIDATION",
 			`${option} lists "${bareHost}", which is not an origin and can never match one; write the scheme too, such as "https://${bareHost}"`,
 		);
 	}

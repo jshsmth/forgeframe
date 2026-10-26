@@ -10,7 +10,7 @@ import { deserializeMessage } from "@/communication/protocol";
 import { MESSAGE_NAME } from "@/constants";
 import { deleteRegisteredComponent } from "@/core/component-registry";
 import { HOST_PROPS_BUILTIN_KEYS } from "@/core/host/builtin-keys";
-import { create, initHost, isHost, prop } from "@/index";
+import { create, ForgeFrameError, initHost, isHost, prop } from "@/index";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
@@ -567,7 +567,12 @@ describe("Explicit host start-up", () => {
 					"resize",
 					() => {},
 				),
-			).toThrow(new TypeError('Host events support "error", not "resize"'));
+			).toThrow(
+				new ForgeFrameError(
+					"VALIDATION",
+					'Host events support "error", not "resize"',
+				),
+			);
 			for (const method of ["on", "once"] as const) {
 				expect(() =>
 					(host[method] as (event: string, handler: () => void) => unknown)(
@@ -575,7 +580,8 @@ describe("Explicit host start-up", () => {
 						() => {},
 					),
 				).toThrow(
-					new TypeError(
+					new ForgeFrameError(
+						"VALIDATION",
 						'The host "props" event was removed in ForgeFrame 2; use hostProps.onProps(handler) instead',
 					),
 				);

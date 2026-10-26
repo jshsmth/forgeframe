@@ -1,0 +1,356 @@
+/**
+ * Integration tests for the origin-named options and ForgeFrameError codes.
+ *
+ * Exercises the renamed options end to end, the migration errors for removed
+ * names, and the codes ForgeFrame raises on each side of the handshake,
+ * including codes that cross windows.
+ */
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { getHost } from "@/core/host/bootstrap";
+import { create, ForgeFrameError, initHost, prop } from "@/index";
+import {
+	createIframeIntegrationHarness,
+	type IframeIntegrationHarness,
+} from "./helpers";
+
+const HOST_URL = "https://host.example.com/widget";
+
+/** Asserts a ForgeFrameError with the code and, optionally, message text. */
+function expectCode(error: unknown, code: string, text?: string): void {
+	expect(error).toBeInstanceOf(ForgeFrameError);
+	expect(error).toMatchObject({ name: "ForgeFrameError", code });
+	if (text) expect((error as Error).message).toContain(text);
+}
+
+function catchError(run: () => unknown): unknown {
+	try {
+		run();
+	} catch (error) {
+		return error;
+	}
+	throw new Error("Expected a throw");
+}
+
+function createContainer(): HTMLDivElement {
+	const container = document.createElement("div");
+	document.body.append(container);
+	return container;
+}
+
+describe("Origin naming and error codes", () => {
+	let harness: IframeIntegrationHarness | null = null;
+
+	afterEach(async () => {
+		await harness?.cleanup();
+		harness = null;
+		vi.restoreAllMocks();
+	});
+
+	it("completes a handshake with hostOrigins, initTimeout, context and consumerOrigins", async () => {
+		harness = createIframeIntegrationHarness();
+		const Component = create({
+			tag: "renamed-options-handshake",
+			url: (props) => `${HOST_URL}?id=${props.id}`,
+			hostOrigins: "https://host.example.com",
+			initTimeout: 2000,
+			context: "iframe",
+			props: { id: prop.string() },
+		});
+		const container = createContainer();
+		const rendering = Component({ id: "a" }).render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			Component,
+			{ consumerOrigins: [harness.consumerOrigin] },
+		);
+		await expect(rendering).resolves.toBeUndefined();
+		expect(hostProps.consumerOrigin).toBe(harness.consumerOrigin);
+		expect(hostProps.id).toBe("a");
+	});
+
+	it.each([
+		["domain", "https://host.example.com", "hostOrigins"],
+		["timeout", 1000, "initTimeout"],
+		["defaultContext", "popup", "context"],
+	])(
+		"rejects the removed %s option, naming %s",
+		(option, value, replacement) => {
+			const error = catchError(() =>
+				create({
+					tag: `removed-option-${option.toLowerCase()}`,
+					url: HOST_URL,
+					...({ [option]: value } as object),
+				}),
+			);
+			expectCode(error, "VALIDATION", `"${option}" was renamed`);
+			expect((error as Error).message).toContain(replacement);
+		},
+	);
+
+	it("rejects initHost's removed allowedConsumerDomains option, naming consumerOrigins", () => {
+		const error = catchError(() =>
+			initHost({
+				...({ allowedConsumerDomains: "*" } as object),
+				consumerOrigins: "*",
+			}),
+		);
+		expectCode(error, "VALIDATION", "renamed to consumerOrigins");
+	});
+
+	it.each([
+		["hostOrigins", "app.example.com"],
+		["peers", "true"],
+	])("rejects a %s string without a scheme", (option, value) => {
+		expectCode(
+			catchError(() =>
+				create({
+					tag: `bare-host-${option.toLowerCase()}`,
+					url: HOST_URL,
+					...({ [option]: value } as object),
+				}),
+			),
+			"VALIDATION",
+			`"${value}", which is not an origin`,
+		);
+	});
+
+	it("reserves consumerOrigin as a built-in name", () => {
+		expectCode(
+			catchError(() =>
+				create({
+					tag: "reserved-consumer-origin",
+					url: HOST_URL,
+					props: { consumerOrigin: prop.string() },
+				}),
+			),
+			"VALIDATION",
+			'Prop "consumerOrigin" is reserved',
+		);
+	});
+
+	it("wraps a component validate failure as VALIDATION with the original as cause", async () => {
+		harness = createIframeIntegrationHarness();
+		const reason = new RangeError("Amount must be positive");
+		const Component = create({
+			tag: "validate-cause",
+			url: HOST_URL,
+			props: { amount: prop.number() },
+			validate: () => {
+				throw reason;
+			},
+		});
+		const error = await Component({ amount: -1 })
+			.render(createContainer())
+			.catch((caught: unknown) => caught);
+		expectCode(error, "VALIDATION", "Amount must be positive");
+		expect((error as Error).cause).toBe(reason);
+	});
+
+	it("passes errors thrown by URL functions and templates through unchanged", async () => {
+		harness = createIframeIntegrationHarness();
+		class TenantError extends Error {}
+		const urlError = new TenantError("no tenant");
+		const UrlComponent = create({
+			tag: "user-url-error",
+			url: () => {
+				throw urlError;
+			},
+			hostOrigins: "*",
+		});
+		await expect(UrlComponent().render(createContainer())).rejects.toBe(
+			urlError,
+		);
+
+		const templateError = new TenantError("template failed");
+		const TemplateComponent = create({
+			tag: "user-template-error",
+			url: HOST_URL,
+			prerenderTemplate: () => {
+				throw templateError;
+			},
+		});
+		await expect(TemplateComponent().render(createContainer())).rejects.toBe(
+			templateError,
+		);
+	});
+
+	it("rejects render with CANCELLED when close() interrupts it", async () => {
+		harness = createIframeIntegrationHarness();
+		const Component = create({ tag: "cancelled-render", url: HOST_URL });
+		const instance = Component();
+		const rendering = instance.render(createContainer());
+		await instance.close();
+		const error = await rendering.catch((caught: unknown) => caught);
+		expectCode(error, "CANCELLED");
+		expectCode(
+			await instance.updateProps({}).catch((caught: unknown) => caught),
+			"CLOSED",
+		);
+		expectCode(
+			await instance
+				.render(createContainer())
+				.catch((caught: unknown) => caught),
+			"CLOSED",
+		);
+	});
+
+	it("reports a host schema rejection as INIT_TIMEOUT whose cause carries the host's VALIDATION", async () => {
+		harness = createIframeIntegrationHarness();
+		const activeHarness = harness;
+		const Component = create({
+			tag: "host-rejection-code",
+			url: HOST_URL,
+			props: { amount: prop.number() },
+			initTimeout: 300,
+		});
+		const container = createContainer();
+		const instance = Component({ amount: 5 });
+		const consumerErrors: unknown[] = [];
+		instance.event.on("error", (error) => {
+			consumerErrors.push(error);
+		});
+		vi.spyOn(console, "error").mockImplementation(() => {});
+		const rendering = instance.render(container);
+		void rendering.catch(() => {});
+		activeHarness.attachHostToIframe(
+			await activeHarness.waitForIframe(container),
+		);
+
+		const host = activeHarness.bootstrapHost({ amount: prop.string() });
+		if (!host) throw new Error("Expected a host");
+		const hostErrors: unknown[] = [];
+		host.on("error", (error) => {
+			hostErrors.push(error);
+		});
+		expectCode(
+			await host.ready.catch((caught: unknown) => caught),
+			"VALIDATION",
+		);
+
+		const error = await rendering.catch((caught: unknown) => caught);
+		expectCode(error, "INIT_TIMEOUT", "Expected string, got number");
+		expectCode((error as Error).cause, "VALIDATION");
+		expect(consumerErrors).toEqual([error]);
+		for (const hostError of hostErrors) expect(hostError).toBeInstanceOf(Error);
+	});
+
+	it("rejects initHost with ORIGIN_REJECTED for a consumer outside consumerOrigins", async () => {
+		harness = createIframeIntegrationHarness();
+		const activeHarness = harness;
+		const Component = create({ tag: "origin-rejected-host", url: HOST_URL });
+		const container = createContainer();
+		void Component()
+			.render(container)
+			.catch(() => {});
+		activeHarness.attachHostToIframe(
+			await activeHarness.waitForIframe(container),
+		);
+		const error = catchError(() =>
+			activeHarness.bootstrapHost(Component, {
+				consumerOrigins: "https://partner.example.com",
+			}),
+		);
+		expectCode(error, "ORIGIN_REJECTED", "is not allowed by consumerOrigins");
+		expect(getHost()).toBeNull();
+	});
+
+	it("carries the host's VALIDATION code to a rejected updateProps()", async () => {
+		harness = createIframeIntegrationHarness();
+		const Component = create({
+			tag: "update-rejection-code",
+			url: HOST_URL,
+			props: { amount: prop.number() },
+		});
+		const container = createContainer();
+		const instance = Component({ amount: 1 });
+		const rendering = instance.render(container);
+		vi.spyOn(console, "error").mockImplementation(() => {});
+		await harness.bootstrapIframeHost(container, {
+			amount: prop.number().max(10),
+		});
+		await rendering;
+
+		const error = await instance
+			.updateProps({ amount: 50 })
+			.catch((caught: unknown) => caught);
+		expectCode(error, "VALIDATION");
+	});
+
+	it("rejects a throwing remote callback with a plain Error that carries no code", async () => {
+		harness = createIframeIntegrationHarness();
+		const Component = create({
+			tag: "callback-error-code",
+			url: HOST_URL,
+			props: {
+				onPlain: prop.function<() => void>(),
+				onCoded: prop.function<() => void>(),
+			},
+		});
+		const container = createContainer();
+		const rendering = Component({
+			onPlain: () => {
+				throw new Error("plain failure");
+			},
+			onCoded: () => {
+				throw new ForgeFrameError("CAPACITY", "coded failure");
+			},
+		}).render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			Component,
+		);
+		await rendering;
+
+		for (const [call, message] of [
+			[hostProps.onPlain, "plain failure"],
+			[hostProps.onCoded, "coded failure"],
+		] as const) {
+			const error = await harness.withHostGlobalsAsync(() =>
+				call().catch((caught: unknown) => caught),
+			);
+			expect(error).toBeInstanceOf(Error);
+			expect(error).not.toBeInstanceOf(ForgeFrameError);
+			expect((error as Error).message).toBe(message);
+			expect(error).not.toHaveProperty("code");
+		}
+	});
+
+	it("emits VALIDATION for a rejected export, rejects export(), and drops its callbacks", async () => {
+		harness = createIframeIntegrationHarness();
+		const Component = create({
+			tag: "export-rejection-code",
+			url: HOST_URL,
+			exports: prop.object({ ready: prop.boolean() }),
+		});
+		const container = createContainer();
+		const instance = Component();
+		const errors: unknown[] = [];
+		instance.event.on("error", (error) => {
+			errors.push(error);
+		});
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(container, {});
+		await rendering;
+		const bridge = (
+			getHost() as unknown as {
+				bridge: { localFunctions: Map<string, unknown> };
+			}
+		).bridge;
+
+		await harness.withHostGlobalsAsync(() =>
+			hostProps.export({ ready: true, refresh: () => 1 }),
+		);
+		const retained = bridge.localFunctions.size;
+		const error = await harness.withHostGlobalsAsync(() =>
+			hostProps
+				.export({ ready: "yes", extra: () => 2, more: () => 3 })
+				.catch((caught: unknown) => caught),
+		);
+
+		expectCode(error, "VALIDATION");
+		expect(errors).toHaveLength(1);
+		expectCode(errors[0], "VALIDATION");
+		expect(instance.exports).toMatchObject({ ready: true });
+		expect(bridge.localFunctions.size).toBe(retained);
+	});
+});

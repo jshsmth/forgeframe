@@ -1,3 +1,4 @@
+import { ForgeFrameError } from "../errors";
 import type { OriginMatcher } from "../types/utility";
 import { matchOrigin } from "../window/helpers";
 
@@ -18,19 +19,22 @@ export function resolveComponentHostUrl(
 	try {
 		resolved = new URL(value, baseUrl);
 	} catch {
-		throw new Error(
+		throw new ForgeFrameError(
+			"VALIDATION",
 			`Invalid component URL "${value}". Must be a valid absolute or relative URL.`,
 		);
 	}
 
 	if (!ALLOWED_HOST_PROTOCOLS.has(resolved.protocol)) {
-		throw new Error(
+		throw new ForgeFrameError(
+			"VALIDATION",
 			`Invalid component URL protocol "${resolved.protocol}". Only http: and https: are supported.`,
 		);
 	}
 
 	if (allowedOrigins && !matchOrigin(allowedOrigins, resolved.origin)) {
-		throw new Error(
+		throw new ForgeFrameError(
+			"ORIGIN_REJECTED",
 			`Component URL origin "${resolved.origin}" is not allowed by the component's hostOrigins.`,
 		);
 	}

@@ -1,3 +1,5 @@
+import { ForgeFrameError } from "../errors";
+
 /** CSS properties whose numeric values are counts, ratios, or other unitless values. */
 const UNITLESS_CSS_PROPERTIES = new Set([
 	"animation",
@@ -121,12 +123,16 @@ export function assertIframeAttributeNames(attributes: unknown): void {
 	for (const key of Object.keys(attributes)) {
 		const name = key.toLowerCase();
 		if (name === "sandbox") {
-			throw new Error(
+			throw new ForgeFrameError(
+				"VALIDATION",
 				`Iframe attribute "${key}" is not allowed; set the component's sandbox option instead`,
 			);
 		}
 		if (MANAGED_IFRAME_ATTRIBUTES.has(name)) {
-			throw new Error(`Iframe attribute "${key}" is managed by ForgeFrame`);
+			throw new ForgeFrameError(
+				"VALIDATION",
+				`Iframe attribute "${key}" is managed by ForgeFrame`,
+			);
 		}
 	}
 }
@@ -162,14 +168,18 @@ const REQUIRED_SANDBOX_TOKENS: ReadonlyArray<readonly [string, string]> = [
 export function assertSandboxOption(value: unknown): void {
 	if (value === undefined || value === false) return;
 	if (typeof value !== "string") {
-		throw new Error(
+		throw new ForgeFrameError(
+			"VALIDATION",
 			"Component sandbox must be a string of sandbox tokens, or false to write no sandbox attribute",
 		);
 	}
 	const tokens = new Set(value.toLowerCase().split(/[\t\n\f\r ]+/));
 	for (const [token, reason] of REQUIRED_SANDBOX_TOKENS) {
 		if (!tokens.has(token)) {
-			throw new Error(`Component sandbox must include "${token}": ${reason}`);
+			throw new ForgeFrameError(
+				"VALIDATION",
+				`Component sandbox must include "${token}": ${reason}`,
+			);
 		}
 	}
 }

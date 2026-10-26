@@ -24,7 +24,16 @@ describe("Unknown error normalization", () => {
 			},
 		);
 		for (const value of [Object.create(null), uncoercible, uninspectable]) {
-			expect(normalizeError(value).message).toBe("Unknown error");
+			const error = normalizeError(value);
+			expect(error.message).toBe("Unknown error");
+			expect(error.cause).toBe(value);
 		}
+	});
+
+	it("keeps a thrown value that is not an Error as the cause", () => {
+		const error = normalizeError("plain failure");
+		expect(error).toBeInstanceOf(Error);
+		expect(error.message).toBe("plain failure");
+		expect(error.cause).toBe("plain failure");
 	});
 });

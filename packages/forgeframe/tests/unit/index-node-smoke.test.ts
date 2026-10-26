@@ -16,7 +16,7 @@ describe("Index node smoke", () => {
 
 		const publicEntrypoint = await import("@/index");
 		const {
-			PopupOpenError,
+			ForgeFrameError,
 			VERSION,
 			create,
 			createReactComponent,
@@ -39,10 +39,14 @@ describe("Index node smoke", () => {
 			"PropSchema",
 			"StringSchema",
 			"ObjectSchema",
+			"PopupOpenError",
 		]) {
 			expect(publicEntrypoint).not.toHaveProperty(removed);
 		}
-		expect(typeof PopupOpenError).toBe("function");
+		expect(new ForgeFrameError("CLOSED", "gone")).toMatchObject({
+			name: "ForgeFrameError",
+			code: "CLOSED",
+		});
 		expect(typeof VERSION).toBe("string");
 		expect(typeof prop.string).toBe("function");
 		expect(typeof createReactComponent).toBe("function");

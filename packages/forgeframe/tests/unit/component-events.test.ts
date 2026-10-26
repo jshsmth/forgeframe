@@ -8,6 +8,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { clearComponents, create } from "@/core/component";
+import { ForgeFrameError } from "@/errors";
 import type { Dimensions } from "@/types";
 
 const SIZE: Dimensions = { width: 10, height: 20 };
@@ -213,7 +214,8 @@ describe("instance.event", () => {
 						() => {},
 					),
 				).toThrow(
-					new TypeError(
+					new ForgeFrameError(
+						"VALIDATION",
 						`The "${removed}" event was removed in ForgeFrame 2; subscribe to "${replacement}" instead`,
 					),
 				);
@@ -233,7 +235,12 @@ describe("instance.event", () => {
 		expect(() =>
 			// @ts-expect-error JavaScript callers can pass any handler.
 			instance.event.once("resize", "not a function"),
-		).toThrow(new TypeError('The "resize" event handler must be a function'));
+		).toThrow(
+			new ForgeFrameError(
+				"VALIDATION",
+				'The "resize" event handler must be a function',
+			),
+		);
 	});
 
 	it("emits focus only when a frame is mounted or a popup is open", async () => {

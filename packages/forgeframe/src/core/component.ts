@@ -9,6 +9,7 @@
  */
 
 import { CONTEXT } from "../constants";
+import { ForgeFrameError } from "../errors";
 import { hasOwnDeclaredField } from "../props/definition-checks";
 import { isStandardSchema } from "../props/schema";
 import {
@@ -66,7 +67,10 @@ function validateComponentOptions<P>(options: ComponentOptions<P>): void {
 	assertExportsSchema(options.exports);
 	validateStaticComponentUrl(options);
 	if (hasRegisteredComponent(options.tag)) {
-		throw new Error(`Component "${options.tag}" is already registered`);
+		throw new ForgeFrameError(
+			"VALIDATION",
+			`Component "${options.tag}" is already registered`,
+		);
 	}
 }
 
@@ -81,29 +85,37 @@ function assertComponentFields<P>(options: ComponentOptions<P>): void {
 		options === null ||
 		Array.isArray(options)
 	) {
-		throw new Error("Component options must be an object");
+		throw new ForgeFrameError(
+			"VALIDATION",
+			"Component options must be an object",
+		);
 	}
 	if (!options.tag) {
-		throw new Error("Component tag is required");
+		throw new ForgeFrameError("VALIDATION", "Component tag is required");
 	}
 
 	if (
 		typeof options.tag !== "string" ||
 		!/^[a-z][a-z0-9-]*$/.test(options.tag)
 	) {
-		throw new Error(
+		throw new ForgeFrameError(
+			"VALIDATION",
 			`Invalid component tag "${options.tag}". Must start with lowercase letter and contain only lowercase letters, numbers, and hyphens.`,
 		);
 	}
 
 	if (!options.url) {
-		throw new Error("Component url is required");
+		throw new ForgeFrameError("VALIDATION", "Component url is required");
 	}
 	if (typeof options.url !== "string" && typeof options.url !== "function") {
-		throw new Error("Component url must be a string or a function");
+		throw new ForgeFrameError(
+			"VALIDATION",
+			"Component url must be a string or a function",
+		);
 	}
 	if (typeof options.url === "function" && options.hostOrigins === undefined) {
-		throw new Error(
+		throw new ForgeFrameError(
+			"VALIDATION",
 			"Component hostOrigins is required when url is a function: list the host origins the function may return, or pass '*' to trust any http(s) origin.",
 		);
 	}
@@ -114,7 +126,8 @@ function assertComponentFields<P>(options: ComponentOptions<P>): void {
 			options.initTimeout < 0 ||
 			options.initTimeout > 2147483647)
 	) {
-		throw new Error(
+		throw new ForgeFrameError(
+			"VALIDATION",
 			"Component initTimeout must be a finite number between 0 and 2147483647 milliseconds",
 		);
 	}
@@ -123,7 +136,10 @@ function assertComponentFields<P>(options: ComponentOptions<P>): void {
 		options.cspNonce !== undefined &&
 		(typeof options.cspNonce !== "string" || options.cspNonce === "")
 	) {
-		throw new Error("Component cspNonce must be a non-empty string");
+		throw new ForgeFrameError(
+			"VALIDATION",
+			"Component cspNonce must be a non-empty string",
+		);
 	}
 }
 
@@ -132,7 +148,8 @@ function assertComponentMatchers<P>(options: ComponentOptions<P>): void {
 	if (options.hostOrigins !== undefined)
 		assertOriginMatcher(options.hostOrigins, "Component hostOrigins");
 	if ((options.peers as unknown) === false) {
-		throw new Error(
+		throw new ForgeFrameError(
+			"VALIDATION",
 			"Component peers must be true or an origin matcher; omit it to keep peer discovery off",
 		);
 	}
@@ -166,14 +183,16 @@ const REMOVED_COMPONENT_OPTIONS: Readonly<Record<string, string>> = {
 function assertNoRemovedComponentOptions(options: unknown): void {
 	if (typeof options !== "object" || options === null) return;
 	for (const [option, message] of Object.entries(REMOVED_COMPONENT_OPTIONS)) {
-		if (hasOwnDeclaredField(options, option)) throw new Error(message);
+		if (hasOwnDeclaredField(options, option))
+			throw new ForgeFrameError("VALIDATION", message);
 	}
 }
 
 /** Checks that the optional `exports` option is a Standard Schema. */
 function assertExportsSchema(exports: unknown): void {
 	if (exports !== undefined && !isStandardSchema(exports)) {
-		throw new Error(
+		throw new ForgeFrameError(
+			"VALIDATION",
 			"Component exports must be a Standard Schema, such as prop.object({ ... }) or a Zod object",
 		);
 	}

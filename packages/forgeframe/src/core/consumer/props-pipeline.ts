@@ -1,3 +1,4 @@
+import { ForgeFrameError } from "../../errors";
 import {
 	buildUnnormalizedProps,
 	normalizeProps,
@@ -127,8 +128,25 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
 		);
 		const props = mergeNormalizedPatch(this.props, normalized);
 		this.validateSnapshot(inputProps, props, new Set(Object.keys(normalized)));
-		this.options.validate?.({ props });
+		this.validateComponent(props);
 		return { inputProps, props };
+	}
+
+	/**
+	 * Runs the component's `validate` option. Its rejection becomes a
+	 * `VALIDATION` error that keeps the thrown value as `cause`.
+	 */
+	validateComponent(props: P): void {
+		if (!this.options.validate) return;
+		try {
+			this.options.validate({ props });
+		} catch (error) {
+			throw new ForgeFrameError(
+				"VALIDATION",
+				`Component "${this.options.tag}" validate() rejected the props: ${normalizeError(error).message}`,
+				{ cause: error },
+			);
+		}
 	}
 
 	/**

@@ -8,6 +8,7 @@
  * declaration checks read fields through the same own-field rule.
  */
 
+import { ForgeFrameError } from "../errors";
 import { assertOriginMatcher } from "../utils/origin-pattern";
 import { isStandardSchema } from "./schema";
 
@@ -92,14 +93,16 @@ function readDeclaredField(target: object, key: string): unknown {
 export function assertPropDefinitions(definitions: object): void {
 	for (const key of Object.keys(definitions)) {
 		if (!isDataField(definitions, key)) {
-			throw new Error(
+			throw new ForgeFrameError(
+				"VALIDATION",
 				`Prop "${key}" must be declared as a data field, not a getter or setter`,
 			);
 		}
 		const definition = readDeclaredField(definitions, key);
 		if (definition === undefined || isStandardSchema(definition)) continue;
 		if (typeof definition !== "object" || definition === null) {
-			throw new Error(
+			throw new ForgeFrameError(
+				"VALIDATION",
 				`Prop "${key}" must be a schema or a { schema } definition`,
 			);
 		}
@@ -120,27 +123,31 @@ const DELIVERY_FIELDS = [
 function assertWrappedPropDefinition(key: string, definition: object): void {
 	for (const field of DELIVERY_FIELDS) {
 		if (field in definition && !isDataField(definition, field)) {
-			throw new Error(
+			throw new ForgeFrameError(
+				"VALIDATION",
 				`Prop "${key}" ${field} must be declared as an own data field, not a getter, setter or inherited field`,
 			);
 		}
 	}
 	for (const [option, replacement] of Object.entries(REMOVED_PROP_OPTIONS)) {
 		if (hasOwnDeclaredField(definition, option)) {
-			throw new Error(
+			throw new ForgeFrameError(
+				"VALIDATION",
 				`Prop "${key}" uses the removed "${option}" option. ${replacement}`,
 			);
 		}
 	}
 	if (!isStandardSchema(readDeclaredField(definition, "schema"))) {
-		throw new Error(
+		throw new ForgeFrameError(
+			"VALIDATION",
 			`Prop "${key}" needs a schema. Use prop.any() for a value that is deliberately unchecked.`,
 		);
 	}
 	const deliverTo = readDeclaredField(definition, "deliverTo");
 	if (deliverTo !== undefined && deliverTo !== "same-origin") {
 		if (Array.isArray(deliverTo) && deliverTo.includes("same-origin")) {
-			throw new Error(
+			throw new ForgeFrameError(
+				"VALIDATION",
 				`Prop "${key}" deliverTo cannot list 'same-origin' in an array; pass deliverTo: 'same-origin' on its own, or list origins only`,
 			);
 		}
@@ -153,7 +160,8 @@ function assertWrappedPropDefinition(key: string, definition: object): void {
 			typeof parameter !== "boolean" &&
 			(typeof parameter !== "string" || parameter.trim() === "")
 		) {
-			throw new Error(
+			throw new ForgeFrameError(
+				"VALIDATION",
 				`Prop "${key}" ${option} must be a boolean or a non-empty parameter name. To encode a value, pass the encoded string as its own prop, or build the URL in a url(props) function.`,
 			);
 		}

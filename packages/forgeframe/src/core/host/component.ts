@@ -8,6 +8,7 @@
  * reach it only through the `Host` object that `initHost()` returns.
  */
 
+import { ForgeFrameError } from "../../errors";
 import { EventEmitter } from "../../events/emitter";
 import { validateExports } from "../../props/exports";
 import type { StandardSchemaV1 } from "../../props/schema";
@@ -17,6 +18,7 @@ import type { OriginMatcher } from "../../types/utility";
 import { normalizeError } from "../../utils/error";
 import type { HostBootstrapData, WindowNamePayload } from "../../window/types";
 import { assertAllowedConsumerOrigin } from "./consumer-origin-policy";
+import { toHandshakeFailure } from "./handshake-failure";
 import { HostPropsRuntime } from "./props-runtime";
 import {
 	resolveConsumerWindow,
@@ -24,6 +26,22 @@ import {
 } from "./security";
 import { HostTransport } from "./transport";
 import type { HostRuntimeOptions } from "./types";
+
+/**
+ * Checks the shape of the consumer's BOOTSTRAP response.
+ * @throws ForgeFrameError `VALIDATION` unless it carries a props object
+ */
+function assertBootstrapResponse(
+	data: unknown,
+): asserts data is HostBootstrapData {
+	const props = (data as Partial<HostBootstrapData> | null | undefined)?.props;
+	if (typeof props !== "object" || props === null || Array.isArray(props)) {
+		throw new ForgeFrameError(
+			"VALIDATION",
+			"Invalid consumer bootstrap response",
+		);
+	}
+}
 
 export class HostComponent<P extends Record<string, unknown>> {
 	public event: EventEmitter<HostEvents>;
@@ -149,7 +167,10 @@ export class HostComponent<P extends Record<string, unknown>> {
 			throw error;
 		}
 		if (this.destroyed)
-			throw new Error("Host destroyed before bootstrap completed");
+			throw new ForgeFrameError(
+				"CLOSED",
+				"Host destroyed before bootstrap completed",
+			);
 		return this.propsRuntime.hostProps;
 	}
 
@@ -164,15 +185,11 @@ export class HostComponent<P extends Record<string, unknown>> {
 		try {
 			const data = await this.transport.requestBootstrap();
 			if (this.destroyed)
-				throw new Error("Host destroyed before bootstrap completed");
-			if (
-				!data ||
-				typeof data.props !== "object" ||
-				data.props === null ||
-				Array.isArray(data.props)
-			) {
-				throw new Error("Invalid consumer bootstrap response");
-			}
+				throw new ForgeFrameError(
+					"CLOSED",
+					"Host destroyed before bootstrap completed",
+				);
+			assertBootstrapResponse(data);
 			// Defence in depth: the origin was checked before BOOTSTRAP was sent, and
 			// the messenger accepts this response only from that origin.
 			assertAllowedConsumerOrigin(
@@ -182,9 +199,10 @@ export class HostComponent<P extends Record<string, unknown>> {
 			);
 			return data;
 		} catch (error) {
-			if (!this.destroyed)
-				this.transport.emitInitFailure(normalizeError(error));
-			throw error;
+			if (this.destroyed) throw error;
+			const failure = toHandshakeFailure(error);
+			this.transport.emitInitFailure(failure);
+			throw failure;
 		}
 	}
 

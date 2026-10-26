@@ -5,7 +5,7 @@
  * through the real popup messaging pipeline.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { create, PopupOpenError, prop } from "@/index";
+import { create, ForgeFrameError, prop } from "@/index";
 import type { PropsDefinition } from "@/types";
 import {
 	createPopupIntegrationHarness,
@@ -186,7 +186,7 @@ describe("Popup host handshake integration", () => {
 		expect(closeSpy).toHaveBeenCalledOnce();
 	});
 
-	it("should reject render() with PopupOpenError when the browser blocks the popup", async () => {
+	it("should reject render() with POPUP_BLOCKED when the browser blocks the popup", async () => {
 		harness = createPopupIntegrationHarness();
 		harness.blockNextPopup();
 
@@ -200,9 +200,9 @@ describe("Popup host handshake integration", () => {
 
 		const instance = PopupComponent({});
 
-		await expect(instance.render(container, "popup")).rejects.toBeInstanceOf(
-			PopupOpenError,
-		);
+		const rejection = instance.render(container, "popup");
+		await expect(rejection).rejects.toBeInstanceOf(ForgeFrameError);
+		await expect(rejection).rejects.toMatchObject({ code: "POPUP_BLOCKED" });
 		expect(container.childElementCount).toBe(0);
 		expect(harness.getLastPopupOpen()).toBeNull();
 	});

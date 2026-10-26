@@ -14,6 +14,7 @@ import {
 	initHost,
 } from "@/core/host";
 import * as hostSecurity from "@/core/host/security";
+import { ForgeFrameError } from "@/errors";
 import { buildWindowName } from "@/window/name-payload";
 import type { WindowNamePayload } from "@/window/types";
 import { requireValue } from "../require-value";
@@ -166,7 +167,11 @@ describe("Host branch coverage and edge paths", () => {
 	it("reports INIT delivery failures on the host error event", async () => {
 		window.name = buildWindowName(createPayload());
 		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
-		const error = new Error("init send failed");
+		// The messenger rejects an unacknowledged INIT as CLOSED.
+		const error = new ForgeFrameError(
+			"CLOSED",
+			'Message "forgeframe_init" timed out after 10000ms',
+		);
 		const sendSpy = vi
 			.spyOn(Messenger.prototype, "send")
 			.mockResolvedValueOnce({ props: {} })
@@ -192,10 +197,13 @@ describe("Host branch coverage and edge paths", () => {
 			undefined,
 			undefined,
 		);
-		expect(errors[0]).toBeInstanceOf(Error);
+		expect(errors[0]).toBeInstanceOf(ForgeFrameError);
 		expect(errors[0]).toMatchObject({
-			message: "Failed to initialize host component: init send failed",
-			cause: error,
+			code: "INIT_TIMEOUT",
+			message: expect.stringContaining(
+				"Failed to initialize host component: The consumer did not complete the handshake",
+			),
+			cause: { code: "INIT_TIMEOUT", cause: error },
 		});
 		expect(consoleSpy).toHaveBeenCalledWith(
 			"Failed to send init message:",
@@ -282,7 +290,7 @@ describe("Host branch coverage and edge paths", () => {
 		const addEventListenerSpy = vi.spyOn(window, "addEventListener");
 		const removeEventListenerSpy = vi.spyOn(window, "removeEventListener");
 		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockImplementation(() => {
-			throw new Error("Could not resolve consumer window");
+			throw new ForgeFrameError("CLOSED", "Could not resolve consumer window");
 		});
 
 		const host = initHost({ consumerOrigins: "*" });

@@ -1,3 +1,4 @@
+import { ForgeFrameError } from "../../errors";
 import type { StandardSchemaV1Issue, StandardSchemaV1Result } from "../schema";
 import type { InferUnionSchemaInput, InferUnionSchemaOutput } from "./base";
 import {
@@ -137,7 +138,10 @@ export class UnionSchema<
 		super();
 
 		if (schemas.length === 0) {
-			throw new Error("prop.union() requires at least one schema");
+			throw new ForgeFrameError(
+				"VALIDATION",
+				"prop.union() requires at least one schema",
+			);
 		}
 
 		const branches: PropSchema<unknown, unknown>[] = [];

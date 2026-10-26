@@ -11,6 +11,7 @@ import { CONTEXT, MESSAGE_NAME } from "@/constants";
 import type { ConsumerTransportHandlers } from "@/core/consumer/transport";
 import { ConsumerTransport } from "@/core/consumer/transport";
 import type { NormalizedOptions } from "@/core/consumer/types";
+import { ForgeFrameError } from "@/errors";
 import { prop } from "@/props/prop";
 import type { Dimensions, PeerInfo } from "@/types";
 import { createDeferred } from "@/utils/promise";
@@ -403,11 +404,20 @@ describe("ConsumerTransport", () => {
 			"consumer-transport-component",
 			vi.fn(),
 		);
-		(transport as unknown as { hostInitFailure: Error }).hostInitFailure =
-			new Error("Host initialization failed: bad props");
-		const firstRejection = expect(first).rejects.toThrow(
-			/within 25ms\. Host initialization failed: bad props \(25ms\)$/,
+		const hostFailure = new ForgeFrameError(
+			"VALIDATION",
+			"Host initialization failed: bad props",
 		);
+		(transport as unknown as { hostInitFailure: Error }).hostInitFailure =
+			hostFailure;
+		const firstRejection = expect(first).rejects.toMatchObject({
+			name: "ForgeFrameError",
+			code: "INIT_TIMEOUT",
+			message: expect.stringMatching(
+				/within 25ms\. Host initialization failed: bad props$/,
+			),
+			cause: hostFailure,
+		});
 		await vi.advanceTimersByTimeAsync(25);
 		await firstRejection;
 

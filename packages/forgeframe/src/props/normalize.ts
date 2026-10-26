@@ -9,6 +9,7 @@
  * props reach a host through postMessage, the query string, or a POST body.
  */
 
+import { ForgeFrameError } from "../errors";
 import type { PropDefinition, PropDelivery } from "../types/props";
 import { isDate, isPlainObject } from "../utils/realm-values";
 import { assertDefinedArrayEntries } from "../utils/wire-value";
@@ -232,7 +233,8 @@ function assertSelfAccepting(
 		outcome.status === "changed"
 			? "the schema changed the value"
 			: `the schema rejected it: ${outcome.issues}`;
-	throw new Error(
+	throw new ForgeFrameError(
+		"VALIDATION",
 		`Validation failed: ${key}: the prop schema must accept its own output unchanged, because ForgeFrame validates delivered values with the same schema; ${reason}. ${SELF_ACCEPTANCE_MIGRATIONS}`,
 	);
 }
@@ -246,10 +248,14 @@ function assertValidatesUnchanged(
 	key: string,
 ): void {
 	if (outcome.status === "rejected") {
-		throw new Error(`Validation failed: ${outcome.issues}`);
+		throw new ForgeFrameError(
+			"VALIDATION",
+			`Validation failed: ${outcome.issues}`,
+		);
 	}
 	if (outcome.status === "changed") {
-		throw new Error(
+		throw new ForgeFrameError(
+			"VALIDATION",
 			`Validation failed: ${key}: value no longer matches its normalized schema output`,
 		);
 	}

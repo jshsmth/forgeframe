@@ -8,26 +8,9 @@ import {
 	closePopup,
 	focusPopup,
 	openPopup,
-	PopupOpenError,
 	resizePopup,
 	watchPopupClose,
 } from "@/render/popup";
-
-describe("PopupOpenError", () => {
-	it("should create error with default message", () => {
-		const error = new PopupOpenError();
-
-		expect(error.message).toBe("Popup blocked by browser");
-		expect(error.name).toBe("PopupOpenError");
-		expect(error instanceof Error).toBe(true);
-	});
-
-	it("should create error with custom message", () => {
-		const error = new PopupOpenError("Custom popup error");
-
-		expect(error.message).toBe("Custom popup error");
-	});
-});
 
 describe("openPopup", () => {
 	let originalOpen: typeof window.open;
@@ -91,7 +74,7 @@ describe("openPopup", () => {
 		expect(features).toContain("scrollbars=yes");
 	});
 
-	it("should throw PopupOpenError when popup is blocked", () => {
+	it("should throw POPUP_BLOCKED when popup is blocked", () => {
 		window.open = vi.fn().mockReturnValue(null);
 
 		expect(() =>
@@ -100,7 +83,12 @@ describe("openPopup", () => {
 				name: "test-popup",
 				dimensions: { width: 500, height: 600 },
 			}),
-		).toThrow(PopupOpenError);
+		).toThrow(
+			expect.objectContaining({
+				name: "ForgeFrameError",
+				code: "POPUP_BLOCKED",
+			}),
+		);
 	});
 
 	it.each([
@@ -114,7 +102,7 @@ describe("openPopup", () => {
 				},
 			},
 		],
-	])("should throw PopupOpenError for a %s popup window", (_label, mockWin) => {
+	])("should throw POPUP_BLOCKED for a %s popup window", (_label, mockWin) => {
 		window.open = vi.fn().mockReturnValue(mockWin);
 
 		expect(() =>
@@ -123,7 +111,7 @@ describe("openPopup", () => {
 				name: "test-popup",
 				dimensions: { width: 500, height: 600 },
 			}),
-		).toThrow(PopupOpenError);
+		).toThrow(expect.objectContaining({ code: "POPUP_BLOCKED" }));
 	});
 
 	it("should handle string dimensions", () => {

@@ -8,6 +8,7 @@
  */
 
 import { MESSAGE_TYPE } from "../constants";
+import { wireErrorCode } from "../errors";
 import type { Message } from "./types";
 
 /**
@@ -65,7 +66,9 @@ export function deserializeMessage(data: unknown): Message | null {
 				(!message.error ||
 					typeof message.error !== "object" ||
 					Array.isArray(message.error) ||
-					typeof message.error.message !== "string"))
+					typeof message.error.message !== "string" ||
+					(message.error.code !== undefined &&
+						typeof message.error.code !== "string")))
 		) {
 			return null;
 		}
@@ -128,6 +131,7 @@ export function createResponseMessage(
 		error: error
 			? {
 					message: error.message,
+					code: wireErrorCode(error),
 				}
 			: undefined,
 	};

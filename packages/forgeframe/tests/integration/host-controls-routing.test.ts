@@ -153,7 +153,10 @@ describe("Host controls and routing integration", () => {
 		);
 		await expect(
 			harness.withHostGlobalsAsync(() => hostProps.export(oversized)),
-		).rejects.toThrow("500 distinct callback limit");
+		).rejects.toMatchObject({
+			code: "CAPACITY",
+			message: expect.stringContaining("500 distinct callback limit"),
+		});
 		expect(instance.exports).toBe(first);
 		await expect(first.m0?.()).resolves.toBe(0);
 		await expect(first.m499?.()).resolves.toBe(499);
@@ -481,7 +484,10 @@ describe("Host controls and routing integration", () => {
 		};
 		await expect(
 			harness.withHostGlobalsAsync(() => hostProps.getPeerInstances()),
-		).rejects.toThrow("500 distinct callback limit");
+		).rejects.toMatchObject({
+			code: "CAPACITY",
+			message: expect.stringContaining("500 distinct callback limit"),
+		});
 		await expect(held.initial()).resolves.toBe(42);
 		sibling.exports = { initial, next: () => 7 };
 		const recovered = await harness.withHostGlobalsAsync(() =>

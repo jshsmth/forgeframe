@@ -59,10 +59,10 @@ export function createDeferred<T>(): Deferred<T> {
  * @typeParam T - The type of value the promise will resolve to
  * @param promise - The promise to wrap with a timeout
  * @param ms - The timeout duration in milliseconds
- * @param message - Custom error message for timeout (defaults to 'Operation timed out')
+ * @param createError - Builds the rejection when the timeout is exceeded
  * @returns A new promise that resolves with the original value or rejects on timeout
  *
- * @throws Error when the timeout is exceeded before the promise resolves
+ * @throws The error `createError` builds, when the timeout is exceeded before the promise resolves
  *
  * @remarks
  * This is useful for adding time constraints to operations that might hang
@@ -75,7 +75,7 @@ export function createDeferred<T>(): Deferred<T> {
  *   const result = await promiseTimeout(
  *     fetchData(),
  *     5000,
- *     'Data fetch timed out'
+ *     () => new Error('Data fetch timed out (5000ms)'),
  *   );
  * } catch (error) {
  *   console.error(error.message); // "Data fetch timed out (5000ms)"
@@ -87,12 +87,11 @@ export function createDeferred<T>(): Deferred<T> {
 export function promiseTimeout<T>(
 	promise: Promise<T>,
 	ms: number,
-	message: string | (() => string) = "Operation timed out",
+	createError: () => Error,
 ): Promise<T> {
 	return new Promise((resolve, reject) => {
 		const timeoutId = setTimeout(() => {
-			const text = typeof message === "function" ? message() : message;
-			reject(new Error(`${text} (${ms}ms)`));
+			reject(createError());
 		}, ms);
 
 		promise

@@ -799,3 +799,23 @@ const AnyDefault = create({
 });
 // @ts-expect-error prop.any() is required, so the props argument is too
 void AnyDefault();
+
+// The origin-named options, and the removed names they replace.
+create({
+	tag: "renamed-component-options",
+	url: (props) => `https://example.com/${props.id}`,
+	hostOrigins: ["https://example.com"],
+	initTimeout: 5000,
+	context: "popup",
+	props: { id: prop.string() },
+});
+// @ts-expect-error domain was renamed hostOrigins
+create({ tag: "removed-domain", url: "https://example.com", domain: "*" });
+// @ts-expect-error timeout was renamed initTimeout
+create({ tag: "removed-timeout", url: "https://example.com", timeout: 1 });
+create({
+	tag: "removed-default-context",
+	url: "https://example.com",
+	// @ts-expect-error defaultContext was renamed context
+	defaultContext: "popup",
+});

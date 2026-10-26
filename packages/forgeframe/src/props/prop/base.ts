@@ -2,6 +2,7 @@ import { isDate, isPlainObject } from "../../utils/realm-values";
 
 export { isPlainObject } from "../../utils/realm-values";
 
+import { ForgeFrameError } from "../../errors";
 import {
 	isAsyncSchemaResult,
 	isStandardSchema,
@@ -30,7 +31,8 @@ export function validateSchemaSync<T>(
 	const result = schema["~standard"].validate(value);
 
 	if (isAsyncSchemaResult(result)) {
-		throw new Error(
+		throw new ForgeFrameError(
+			"VALIDATION",
 			"Async schema validation is not supported. Use synchronous schemas.",
 		);
 	}
@@ -85,7 +87,10 @@ export function validateDateBound(date: Date, method: "min" | "max"): number {
 	const time = date.getTime();
 
 	if (Number.isNaN(time)) {
-		throw new Error(`prop.date().${method}() requires a valid Date`);
+		throw new ForgeFrameError(
+			"VALIDATION",
+			`prop.date().${method}() requires a valid Date`,
+		);
 	}
 
 	return time;
@@ -261,7 +266,8 @@ function copyDefaultEntry(
  * @internal
  */
 export function assertNestedSchema(schema: unknown, message: string): void {
-	if (!isStandardSchema(schema)) throw new TypeError(message);
+	if (!isStandardSchema(schema))
+		throw new ForgeFrameError("VALIDATION", message);
 }
 
 /**

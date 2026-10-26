@@ -7,6 +7,7 @@
  * peer consumer instances without keeping that logic inside the façade.
  */
 
+import { ForgeFrameError } from "../../errors";
 import type { PeerInfo, PeersOption } from "../../types/runtime";
 import { isOpaqueOrigin } from "../../utils/origin";
 import { matchOrigin } from "../../window/helpers";
@@ -81,7 +82,8 @@ export function assertPeersEnabled(
 	request: Pick<ConsumerPeerRequest, "tag" | "peers">,
 ): void {
 	if (request.peers === undefined) {
-		throw new Error(
+		throw new ForgeFrameError(
+			"VALIDATION",
 			`Peer discovery is not enabled for component "${request.tag}". Set peers: true, or an origin matcher, in its create() options.`,
 		);
 	}

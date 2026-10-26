@@ -9,6 +9,7 @@
  * names the v2 call shape.
  */
 
+import { ForgeFrameError } from "../../errors";
 import { EMPTY_PROP_DEFINITIONS } from "../../props/definitions";
 import type { StandardSchemaV1 } from "../../props/schema";
 import type { PropsDefinition } from "../../types/props";
@@ -38,14 +39,17 @@ export interface HostStartOptions {
 }
 
 /** Builds an argument error that ends with the v2 call shapes. */
-function callShapeError(message: string): TypeError {
-	return new TypeError(`${message} Use ${INIT_HOST_CALL_SHAPE}.`);
+function callShapeError(message: string): ForgeFrameError {
+	return new ForgeFrameError(
+		"VALIDATION",
+		`${message} Use ${INIT_HOST_CALL_SHAPE}.`,
+	);
 }
 
 /**
  * Checks the call shape and resolves what the host starts with.
  *
- * @throws TypeError for a bare call, a non-ForgeFrame component, v1
+ * @throws ForgeFrameError `VALIDATION` for a bare call, a non-ForgeFrame component, v1
  * positional arguments, an unknown option, or an invalid option value
  */
 export function readInitHostArguments(

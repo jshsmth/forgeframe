@@ -16,10 +16,18 @@ import {
 	isPopup,
 } from "../../window/helpers";
 
-export const CONSUMER_WINDOW_RESOLUTION_ERROR =
-	"Could not resolve consumer window";
+const CONSUMER_WINDOW_RESOLUTION_ERROR = "Could not resolve consumer window";
+
+/**
+ * Whether a start-up error means this window has no consumer: the only
+ * `CLOSED` error {@link resolveConsumerWindow} and the host constructor raise.
+ */
+export function isConsumerWindowUnavailable(error: unknown): boolean {
+	return hasErrorCode(error, "CLOSED");
+}
 export { CONSUMER_ORIGIN_VERIFICATION_ERROR } from "./consumer-origin-policy";
 
+import { ForgeFrameError, hasErrorCode } from "../../errors";
 import { validateMessagingConsumerContext } from "./consumer-origin-policy";
 
 export function resolveConsumerWindow(hostWindow: Window = window): Window {
@@ -37,7 +45,7 @@ export function resolveConsumerWindow(hostWindow: Window = window): Window {
 		}
 	}
 
-	throw new Error(CONSUMER_WINDOW_RESOLUTION_ERROR);
+	throw new ForgeFrameError("CLOSED", CONSUMER_WINDOW_RESOLUTION_ERROR);
 }
 
 /**

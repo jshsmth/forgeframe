@@ -8,6 +8,7 @@
  * schema must return a valid value unchanged, as prop schemas must.
  */
 
+import { ForgeFrameError } from "../errors";
 import {
 	type UnchangedValidationOutcome,
 	validateUnchanged,
@@ -36,10 +37,14 @@ export function validateExports(
  */
 function assertExportsUnchanged(outcome: UnchangedValidationOutcome): void {
 	if (outcome.status === "rejected") {
-		throw new Error(`Validation failed: ${outcome.issues}`);
+		throw new ForgeFrameError(
+			"VALIDATION",
+			`Validation failed: ${outcome.issues}`,
+		);
 	}
 	if (outcome.status === "changed") {
-		throw new Error(
+		throw new ForgeFrameError(
+			"VALIDATION",
 			"Validation failed: exports: the exports schema must return the exported value unchanged, because ForgeFrame keeps exports as received; remove transforms, keep unknown keys, and use prop.function() for methods (Zod's z.function() wraps them)",
 		);
 	}

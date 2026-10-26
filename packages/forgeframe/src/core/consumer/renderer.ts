@@ -1,5 +1,6 @@
 import type { ContextType } from "../../constants";
 import { CONTEXT } from "../../constants";
+import { ForgeFrameError } from "../../errors";
 import {
 	createIframeElement,
 	destroyIframe,
@@ -101,7 +102,10 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
 	 */
 	resolveContainer(container?: string | HTMLElement): HTMLElement {
 		if (!container) {
-			throw new Error("Container is required for rendering");
+			throw new ForgeFrameError(
+				"VALIDATION",
+				"Container is required for rendering",
+			);
 		}
 
 		const element =
@@ -109,13 +113,16 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
 				? document.querySelector<HTMLElement>(container)
 				: container;
 		if (!element) {
-			throw new Error(`Container "${container}" not found`);
+			throw new ForgeFrameError(
+				"VALIDATION",
+				`Container "${container}" not found`,
+			);
 		}
 
 		// A detached iframe has no browsing context: it never loads, and a POST
 		// form targeting its name would open an untracked top-level window.
 		if (this.context === CONTEXT.IFRAME && !element.isConnected) {
-			throw new Error(DETACHED_IFRAME_CONTAINER_ERROR);
+			throw new ForgeFrameError("VALIDATION", DETACHED_IFRAME_CONTAINER_ERROR);
 		}
 		return element;
 	}
@@ -316,13 +323,16 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
 		hasBodyParams: boolean,
 	): Window | null {
 		if (!this.iframe) {
-			throw new Error("Iframe not created during prerender");
+			throw new ForgeFrameError(
+				"CLOSED",
+				"Iframe not created during prerender",
+			);
 		}
 
 		params.assertActive();
 		// Templates and lifecycle callbacks can detach the mount after resolution.
 		if (!this.iframe.isConnected) {
-			throw new Error(DETACHED_IFRAME_CONTAINER_ERROR);
+			throw new ForgeFrameError("VALIDATION", DETACHED_IFRAME_CONTAINER_ERROR);
 		}
 		if (hasBodyParams) {
 			params.submitBodyForm(this.iframe.name, url, bodyParams);
@@ -410,7 +420,8 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
 		const doc = this.container?.ownerDocument ?? document;
 		const root = doc.body ?? doc.documentElement;
 		if (!root) {
-			throw new Error(
+			throw new ForgeFrameError(
+				"VALIDATION",
 				"Document root is unavailable for bodyParam form submission",
 			);
 		}

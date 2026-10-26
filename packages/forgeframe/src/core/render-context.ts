@@ -4,6 +4,7 @@
  */
 
 import { CONTEXT, type ContextType } from "../constants";
+import { ForgeFrameError } from "../errors";
 
 /**
  * Selects the requested context, or the fallback when none is given, and
@@ -22,7 +23,10 @@ export function resolveRenderContext(
 ): ContextType {
 	const selected = context ?? fallback;
 	if (selected !== CONTEXT.IFRAME && selected !== CONTEXT.POPUP) {
-		throw new Error(`${label} must be "iframe" or "popup"`);
+		throw new ForgeFrameError(
+			"VALIDATION",
+			`${label} must be "iframe" or "popup"`,
+		);
 	}
 	return selected;
 }

@@ -10,6 +10,7 @@
 
 import type { ContextType } from "../constants";
 import { CONTEXT, EVENT } from "../constants";
+import { ForgeFrameError } from "../errors";
 import { createEventSubscriber, EventEmitter } from "../events/emitter";
 import {
 	getPropsForHost,
@@ -223,11 +224,14 @@ export class ConsumerComponent<
 
 	private assertRenderAllowed(): void {
 		if (this.destroyed) {
-			throw new Error("Component has been destroyed");
+			throw new ForgeFrameError("CLOSED", "Component has been destroyed");
 		}
 
 		if (this.rendered) {
-			throw new Error("Component has already been rendered");
+			throw new ForgeFrameError(
+				"VALIDATION",
+				"Component has already been rendered",
+			);
 		}
 	}
 
@@ -322,7 +326,7 @@ export class ConsumerComponent<
 	private validateForRender(): void {
 		this.propsPipeline.revalidateSchemaValues();
 		this.assertRenderActive();
-		this.options.validate?.({ props: this.propsPipeline.props });
+		this.propsPipeline.validateComponent(this.propsPipeline.props);
 		this.assertRenderActive();
 	}
 
@@ -386,7 +390,8 @@ export class ConsumerComponent<
 		const hostWindow = this.transport.hostWindow;
 		if (this.renderer.context === CONTEXT.POPUP && !hostWindow) return;
 		if (!this.renderer.resize(dimensions, hostWindow)) {
-			throw new Error(
+			throw new ForgeFrameError(
+				"VALIDATION",
 				`Cannot resize the popup for component "${this.options.tag}": the browser blocks resizing a cross-origin window. Call hostProps.resize() from the host instead.`,
 			);
 		}
@@ -465,6 +470,9 @@ export class ConsumerComponent<
 			assertStableRenderedOrigin: (nextHostOrigin) =>
 				this.assertStableRenderedOrigin(nextHostOrigin),
 			validateTransportProps: (props, hostOrigin) => {
+				// Teardown clears the host origins, so a closed instance reports
+				// itself closed before an origin is chosen.
+				this.assertPropsUpdateActive();
 				validatePropsForHostTransport(
 					props,
 					this.options.props,
@@ -492,7 +500,10 @@ export class ConsumerComponent<
 	/** Queued updates must recheck lifecycle state before running user code. @internal */
 	private assertPropsUpdateActive(): void {
 		if (this.destroyed || this.closing) {
-			throw new Error("Cannot update props after the component has closed");
+			throw new ForgeFrameError(
+				"CLOSED",
+				"Cannot update props after the component has closed",
+			);
 		}
 	}
 
@@ -508,7 +519,8 @@ export class ConsumerComponent<
 			openedHostOrigin &&
 			nextHostOrigin !== openedHostOrigin
 		) {
-			throw new Error(
+			throw new ForgeFrameError(
+				"ORIGIN_REJECTED",
 				`Cannot change component URL origin after render (from "${openedHostOrigin}" to "${nextHostOrigin}")`,
 			);
 		}
@@ -733,7 +745,8 @@ export class ConsumerComponent<
 
 	/** Returns an error describing intentional cancellation of an in-flight render. @internal */
 	private createRenderCancellationError(): Error {
-		return new Error(
+		return new ForgeFrameError(
+			"CANCELLED",
 			`Component "${this.options.tag}" was closed before rendering completed`,
 		);
 	}
@@ -860,7 +873,8 @@ export class ConsumerComponent<
 		this.destroyed = true;
 
 		this.transport.rejectPendingInit(
-			new Error(
+			new ForgeFrameError(
+				"CLOSED",
 				`Component "${this.options.tag}" was destroyed before initialization completed`,
 			),
 		);

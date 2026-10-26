@@ -15,6 +15,7 @@ import {
 import { type MessageHandler, Messenger } from "../../communication/messenger";
 import type { ContextType } from "../../constants";
 import { MESSAGE_NAME } from "../../constants";
+import { errorFromWire, ForgeFrameError } from "../../errors";
 import { getPropsForHost, serializeProps } from "../../props";
 import { createDeliveryTarget } from "../../props/normalize";
 import type { SerializedProps } from "../../props/types";
@@ -280,10 +281,14 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 				initPromise.promise,
 				timeout,
 				() =>
-					`Host component "${tag}" (uid: ${this.uid}) did not initialize within ${timeout}ms. ` +
-					(this.hostInitFailure?.message ??
-						"Check that the host page loads correctly and calls the initialization code, " +
-							"and that consumer and host run the same ForgeFrame major version."),
+					new ForgeFrameError(
+						"INIT_TIMEOUT",
+						`Host component "${tag}" (uid: ${this.uid}) did not initialize within ${timeout}ms. ` +
+							(this.hostInitFailure?.message ??
+								"Check that the host page loads correctly and calls the initialization code, " +
+									"and that consumer and host run the same ForgeFrame major version."),
+						{ cause: this.hostInitFailure ?? undefined },
+					),
 			);
 		} catch (err) {
 			onError(err as Error);
@@ -305,7 +310,10 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 			MESSAGE_NAME.BOOTSTRAP,
 			async (data, source) => {
 				if (!data || typeof data.sessionId !== "string" || !data.sessionId) {
-					throw new Error("Invalid host bootstrap request");
+					throw new ForgeFrameError(
+						"VALIDATION",
+						"Invalid host bootstrap request",
+					);
 				}
 				const resetLocalReferences =
 					this.localReferenceSessionId !== null &&
@@ -317,7 +325,10 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 					// Calls into the replaced host session can never be answered.
 					this.bridge.rejectRemoteCalls(
 						source.window,
-						new Error("Host reconnected before the call completed"),
+						new ForgeFrameError(
+							"CLOSED",
+							"Host reconnected before the call completed",
+						),
 					);
 				}
 				const snapshot = await handlers.onBootstrap(
@@ -392,21 +403,27 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 			return { success: true };
 		});
 
-		this.onHostControl<{ message: string; initFailed?: boolean }>(
-			MESSAGE_NAME.ERROR,
-			async (errorData) => {
-				const error = new Error(errorData.message);
-				// The host can still retry initialization on the same page, so a
-				// pending handshake keeps waiting and reports this reason once, at
-				// its timeout. Outside a handshake the failure is reported now.
-				if (errorData.initFailed === true && this.initPromise) {
-					this.hostInitFailure = error;
-				} else {
-					handlers.onError(error);
-				}
-				return { success: true };
-			},
-		);
+		this.onHostControl<{
+			message: string;
+			initFailed?: boolean;
+			code?: string;
+		}>(MESSAGE_NAME.ERROR, async (errorData) => {
+			// An initialization failure keeps its code; an error the host
+			// application reports is a plain Error.
+			const error =
+				errorData.initFailed === true
+					? errorFromWire(errorData.message, errorData.code)
+					: new Error(errorData.message);
+			// The host can still retry initialization on the same page, so a
+			// pending handshake keeps waiting and reports this reason once, at
+			// its timeout. Outside a handshake the failure is reported now.
+			if (errorData.initFailed === true && this.initPromise) {
+				this.hostInitFailure = error;
+			} else {
+				handlers.onError(error);
+			}
+			return { success: true };
+		});
 
 		this.onHostControl<unknown>(
 			MESSAGE_NAME.EXPORT,

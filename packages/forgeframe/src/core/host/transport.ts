@@ -15,13 +15,14 @@ import {
 } from "../../communication/bridge";
 import { Messenger } from "../../communication/messenger";
 import { CONTEXT, EVENT, MESSAGE_NAME } from "../../constants";
+import { ForgeFrameError, hasErrorCode, wireErrorCode } from "../../errors";
 import type { SerializedProps } from "../../props/types";
 import { resizePopup } from "../../render/popup";
 import type { GetPeerInstancesOptions, PeerInfo } from "../../types/runtime";
-import { normalizeError } from "../../utils/error";
 import { generateShortUID } from "../../utils/uid";
 import { getOrigin, waitForWindowFocus } from "../../window/helpers";
 import type { HostBootstrapData } from "../../window/types";
+import { toHandshakeFailure } from "./handshake-failure";
 import { assertPeerInstancesOptions } from "./peer-instances-options";
 import type { HostTransportOptions, HostTransportPropsHandler } from "./types";
 
@@ -143,13 +144,15 @@ export class HostTransport {
 		});
 	}
 
-	/** Reports a failed start or INIT delivery on the host `error` event. */
-	emitInitFailure(error: Error): void {
+	/** Reports a failed start or INIT delivery on the host `error` event, keeping its code. */
+	emitInitFailure(error: ForgeFrameError): void {
 		this.options.event.emit(
 			EVENT.ERROR,
-			new Error(`Failed to initialize host component: ${error.message}`, {
-				cause: error,
-			}),
+			new ForgeFrameError(
+				error.code,
+				`Failed to initialize host component: ${error.message}`,
+				{ cause: error },
+			),
 		);
 	}
 
@@ -163,6 +166,7 @@ export class HostTransport {
 		void this.sendMessage(MESSAGE_NAME.ERROR, {
 			message: `Host initialization failed: ${error.message}`,
 			initFailed: true,
+			code: wireErrorCode(error),
 		}).catch(() => undefined);
 	}
 
@@ -190,7 +194,10 @@ export class HostTransport {
 			});
 			this.bridge.finishBatch();
 		} catch (error) {
-			if (deliveryAttempted) this.bridge.finishBatch(true);
+			// The consumer keeps its previous exports when it rejects this one,
+			// so only an export that may have been stored retains both batches.
+			if (deliveryAttempted && !hasErrorCode(error, "VALIDATION"))
+				this.bridge.finishBatch(true);
 			else this.bridge.abortBatch();
 			throw error;
 		}
@@ -254,7 +261,7 @@ export class HostTransport {
 		} catch (error) {
 			// Teardown rejects pending work; that is not an initialization failure.
 			if (this.destroyed) return;
-			this.emitInitFailure(normalizeError(error));
+			this.emitInitFailure(toHandshakeFailure(error));
 			console.error("Failed to send init message:", error);
 		}
 	}

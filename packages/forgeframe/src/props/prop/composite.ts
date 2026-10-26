@@ -1,3 +1,4 @@
+import { ForgeFrameError } from "../../errors";
 import type { StandardSchemaV1Issue, StandardSchemaV1Result } from "../schema";
 import type {
 	InferSchemaInput,
@@ -239,7 +240,8 @@ export class ObjectSchema<
 	constructor(shape: Record<string, PropSchema<unknown, unknown>>) {
 		super();
 		if (typeof shape !== "object" || shape === null || Array.isArray(shape)) {
-			throw new TypeError(
+			throw new ForgeFrameError(
+				"VALIDATION",
 				"prop.object(shape) requires a shape. Use prop.record(value) for dictionaries, or prop.any<T>() for an object that is deliberately unchecked.",
 			);
 		}
