@@ -8,6 +8,7 @@
  * pure policy in `consumer-origin-policy.ts` to select the messaging target.
  */
 
+import { ForgeFrameError, hasErrorCode } from "../../errors";
 import type { OriginMatcher } from "../../types/utility";
 import {
 	getConsumer,
@@ -15,20 +16,15 @@ import {
 	isIframe,
 	isPopup,
 } from "../../window/helpers";
+import { validateMessagingConsumerContext } from "./consumer-origin-policy";
 
 const CONSUMER_WINDOW_RESOLUTION_ERROR = "Could not resolve consumer window";
 
-/**
- * Whether a start-up error means this window has no consumer: the only
- * `CLOSED` error {@link resolveConsumerWindow} and the host constructor raise.
- */
+/** Whether {@link resolveConsumerWindow} failed because this window has no consumer. */
 export function isConsumerWindowUnavailable(error: unknown): boolean {
 	return hasErrorCode(error, "CLOSED");
 }
 export { CONSUMER_ORIGIN_VERIFICATION_ERROR } from "./consumer-origin-policy";
-
-import { ForgeFrameError, hasErrorCode } from "../../errors";
-import { validateMessagingConsumerContext } from "./consumer-origin-policy";
 
 export function resolveConsumerWindow(hostWindow: Window = window): Window {
 	if (isIframe(hostWindow)) {

@@ -334,8 +334,8 @@ export function create(
 	 * @param props - Props to pass to the component instance
 	 * @returns A new component instance
 	 */
-	// biome-ignore lint/complexity/useArrowFunction: Preserve the factory's regular-function behavior for JavaScript callers.
-	const Component = function (
+	// A named regular function keeps the factory's name and `new` behavior for JavaScript callers.
+	const factory = function Component(
 		props?: RuntimeProps,
 	): ComponentInstance<RuntimeProps> {
 		return createTrackedInstance(props);
@@ -343,14 +343,14 @@ export function create(
 
 	// A fresh frozen snapshot per read keeps callers from desynchronizing the
 	// factory list from the global instance index.
-	Object.defineProperty(Component, "instances", {
+	Object.defineProperty(factory, "instances", {
 		get: () => Object.freeze([...instances]),
 		enumerable: true,
 	});
 
-	registerComponent(Component, runtimeOptions);
+	registerComponent(factory, runtimeOptions);
 
-	return Component;
+	return factory;
 }
 
 /**

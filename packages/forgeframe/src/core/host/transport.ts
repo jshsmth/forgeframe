@@ -194,9 +194,7 @@ export class HostTransport {
 			});
 			this.bridge.finishBatch();
 		} catch (error) {
-			// The consumer keeps its previous exports when it rejects this one,
-			// so only an export that may have been stored retains both batches.
-			if (deliveryAttempted && !hasErrorCode(error, "VALIDATION"))
+			if (exportMayBeStored(deliveryAttempted, error))
 				this.bridge.finishBatch(true);
 			else this.bridge.abortBatch();
 			throw error;
@@ -280,4 +278,16 @@ export class HostTransport {
 			onDeliveryAttempt,
 		);
 	}
+}
+
+/**
+ * Whether a failed export may still have reached the consumer's state, so its
+ * callbacks must stay callable. A consumer that rejected the export with
+ * `VALIDATION` kept its previous exports instead.
+ */
+function exportMayBeStored(
+	deliveryAttempted: boolean,
+	error: unknown,
+): boolean {
+	return deliveryAttempted && !hasErrorCode(error, "VALIDATION");
 }

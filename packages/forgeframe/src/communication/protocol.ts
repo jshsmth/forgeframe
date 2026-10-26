@@ -85,7 +85,7 @@ export function deserializeMessage(data: unknown): Message | null {
  * @param id - Unique message identifier
  * @param name - Message name/type
  * @param data - Message payload
- * @param source - Source metadata containing the shared component channel UID and sender domain
+ * @param source - Source metadata containing the shared component channel UID and sender origin (the wire field keeps the name `domain`)
  * @returns A formatted request message
  *
  * @internal
@@ -110,7 +110,7 @@ export function createRequestMessage(
  *
  * @param requestId - The ID of the request being responded to
  * @param data - Response payload
- * @param source - Source metadata containing the shared component channel UID and sender domain
+ * @param source - Source metadata containing the shared component channel UID and sender origin (the wire field keeps the name `domain`)
  * @param error - Optional error if the request failed
  * @returns A formatted response message
  *

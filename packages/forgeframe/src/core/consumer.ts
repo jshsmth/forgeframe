@@ -123,6 +123,9 @@ export class ConsumerComponent<
 	/** @internal */
 	private closing = false;
 
+	/** Whether the host or the user closed the other window, not this page. @internal */
+	private closedFromOutside = false;
+
 	/** Completion shared by direct and reentrant close requests. @internal */
 	private closePromise: Promise<void> | null = null;
 
@@ -341,6 +344,16 @@ export class ConsumerComponent<
 		this.activeRenderTask?.reject(this.createRenderCancellationError());
 		void this.performClose().then(closeTask.resolve, closeTask.reject);
 		return closeTask.promise;
+	}
+
+	/**
+	 * Closes for the host's `close()` or a popup the user closed, so an
+	 * in-flight render rejects with `CLOSED` rather than `CANCELLED`.
+	 * @internal
+	 */
+	private closeFromOutside(): Promise<void> {
+		if (!this.closePromise && !this.destroyed) this.closedFromOutside = true;
+		return this.close();
 	}
 
 	/** Completes the one admitted close operation before its shared promise settles. */
@@ -607,14 +620,6 @@ export class ConsumerComponent<
 	}
 
 	/**
-	 * Ensures the messenger trusts the origin for a resolved host URL.
-	 * @internal
-	 */
-	private syncTrustedOriginForUrl(url: string): void {
-		this.transport.syncTrustedOriginForUrl(url);
-	}
-
-	/**
 	 * Resolves a container selector or element to an HTMLElement.
 	 * @internal
 	 */
@@ -648,7 +653,7 @@ export class ConsumerComponent<
 	 * @internal
 	 */
 	private async open(baseUrl: string): Promise<void> {
-		this.syncTrustedOriginForUrl(baseUrl);
+		this.transport.syncTrustedOriginForUrl(baseUrl);
 		const openedHostOrigin = this.resolveUrlOrigin(baseUrl);
 		this.transport.activeHostOrigin = null;
 
@@ -662,7 +667,7 @@ export class ConsumerComponent<
 				submitBodyForm: (target, actionUrl, params) =>
 					this.submitBodyForm(target, actionUrl, params),
 				onPopupClose: () => {
-					void this.close();
+					void this.closeFromOutside();
 				},
 				registerCleanup: (cleanupFn) => {
 					this.cleanup.register(cleanupFn);
@@ -744,10 +749,17 @@ export class ConsumerComponent<
 
 	/** Returns an error describing intentional cancellation of an in-flight render. @internal */
 	private createRenderCancellationError(): Error {
-		return new ForgeFrameError(
-			"CANCELLED",
-			`Component "${this.options.tag}" was closed before rendering completed`,
-		);
+		// Only this page's own close() cancels; a host or user close means the
+		// other window is gone.
+		return this.closedFromOutside
+			? new ForgeFrameError(
+					"CLOSED",
+					`Component "${this.options.tag}" was closed by its host or the user before rendering completed`,
+				)
+			: new ForgeFrameError(
+					"CANCELLED",
+					`Component "${this.options.tag}" was closed before rendering completed`,
+				);
 	}
 
 	/** Returns whether close/destroy has cancelled the active render operation. @internal */
@@ -789,7 +801,7 @@ export class ConsumerComponent<
 			onReconnect: () => {
 				this.exports = undefined;
 			},
-			onClose: async () => this.close(),
+			onClose: async () => this.closeFromOutside(),
 			onResize: (dimensions) => this.resizeForHost(dimensions),
 			onFocus: () => this.focus(),
 			onShow: () => this.show(),

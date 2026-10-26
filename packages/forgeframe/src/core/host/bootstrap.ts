@@ -193,21 +193,26 @@ function startHostRuntime(
 	payload: WindowNamePayload,
 	start: HostStartOptions,
 ): HostComponent<Record<string, unknown>> | null {
-	let runtime: HostComponent<Record<string, unknown>>;
+	let consumerWindow: Window;
 	try {
-		runtime = new HostComponent(payload, {
-			props: start.props,
-			exportsSchema: start.exportsSchema,
-			consumerOrigins: start.consumerOrigins,
-			autoInit: start.autoInit,
-			onDestroy: () => {
-				if (hostInstance === runtime) hostInstance = null;
-			},
-		});
+		consumerWindow = resolveConsumerWindow();
 	} catch (error) {
 		if (isConsumerWindowUnavailable(error)) return null;
 		throw error;
 	}
+	const runtime: HostComponent<Record<string, unknown>> = new HostComponent(
+		payload,
+		{
+			props: start.props,
+			exportsSchema: start.exportsSchema,
+			consumerOrigins: start.consumerOrigins,
+			consumerWindow,
+			autoInit: start.autoInit,
+			onDestroy: () => {
+				if (hostInstance === runtime) hostInstance = null;
+			},
+		},
+	);
 	hostInstance = runtime;
 	// Registered before the caller can observe ready, so a rejection handler
 	// can retry immediately.

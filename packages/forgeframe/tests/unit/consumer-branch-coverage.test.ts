@@ -23,10 +23,11 @@ type ConsumerInternals = {
 		hostWindow: Window | null;
 		attachHostWindow(hostWindow: Window | null, openedHostOrigin: string): void;
 		openedHostOrigin: string | null;
+		syncTrustedOriginForUrl(url: string): void;
 		messenger: {
 			allowedOrigins: Set<string>;
 			allowedOriginPatterns: RegExp[];
-			addTrustedOrigin: (domain: string) => void;
+			addTrustedOrigin: (origin: string) => void;
 			send: (...args: unknown[]) => Promise<unknown>;
 		};
 	};
@@ -44,7 +45,6 @@ type ConsumerInternals = {
 	};
 	options: Record<string, unknown>;
 	resolveUrlOrigin: (url: string) => string | null;
-	syncTrustedOriginForUrl: (url: string) => void;
 	resolveContainer: (container?: string | HTMLElement) => HTMLElement;
 	checkEligibility: () => void;
 	prerender: () => Promise<void>;
@@ -261,11 +261,16 @@ describe("Consumer branch coverage and edge paths", () => {
 		).toThrow("is not allowed by the component's hostOrigins");
 	});
 
-	it("should reject invalid URLs during trusted-domain sync", () => {
+	it("should reject invalid URLs during trusted-origin sync", () => {
 		const consumer = createConsumer();
 		expect(() =>
-			getInternals(consumer).syncTrustedOriginForUrl("http://%"),
-		).toThrow("Invalid component URL");
+			getInternals(consumer).transport.syncTrustedOriginForUrl("http://%"),
+		).toThrow(
+			expect.objectContaining({
+				code: "VALIDATION",
+				message: expect.stringContaining("Invalid component URL"),
+			}),
+		);
 	});
 
 	it("should prune stale function refs after each host serialization batch", async () => {

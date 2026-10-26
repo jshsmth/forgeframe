@@ -127,7 +127,12 @@ describe("Array prop transport", () => {
 			} else {
 				await expect(
 					instance.updateProps({ record: invalid() }),
-				).rejects.toThrow("Cannot serialize undefined array entry");
+				).rejects.toMatchObject({
+					code: "VALIDATION",
+					message: expect.stringContaining(
+						"Cannot serialize undefined array entry",
+					),
+				});
 				await instance.updateProps({});
 			}
 			const rendering = instance.render(container);
@@ -323,7 +328,12 @@ describe("Array prop transport", () => {
 			instance.updateProps({
 				record: { toJSON: () => ({ items: [undefined] }) },
 			}),
-		).rejects.toThrow("Cannot serialize undefined array entry");
+		).rejects.toMatchObject({
+			code: "VALIDATION",
+			message: expect.stringContaining(
+				"Cannot serialize undefined array entry",
+			),
+		});
 		expect(hostProps.record).toEqual({ items: ["encoded"] });
 		await instance.updateProps({
 			record: { toJSON: () => ({ items: ["recovered"] }) },
@@ -438,7 +448,12 @@ describe("Array prop transport", () => {
 			harness.withHostGlobalsAsync(() =>
 				hostProps.export({ items: [undefined] }),
 			),
-		).rejects.toThrow("Cannot serialize undefined array entry");
+		).rejects.toMatchObject({
+			code: "VALIDATION",
+			message: expect.stringContaining(
+				"Cannot serialize undefined array entry",
+			),
+		});
 		expect(instance.exports).toEqual({ items: ["initial"] });
 		await harness.withHostGlobalsAsync(() =>
 			hostProps.export({ items: ["recovered"] }),

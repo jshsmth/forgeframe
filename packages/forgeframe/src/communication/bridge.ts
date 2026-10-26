@@ -3,7 +3,7 @@
  * Function bridge for cross-domain function calls.
  *
  * @remarks
- * This module enables passing functions as props across domain boundaries
+ * This module enables passing functions as props across window boundaries
  * by converting them to references that can be called via postMessage.
  */
 

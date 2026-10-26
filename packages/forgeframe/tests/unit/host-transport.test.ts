@@ -266,9 +266,9 @@ describe("HostTransport", () => {
 	});
 
 	it("should return sibling results from the messenger and fall back to an empty array", async () => {
-		let activeDomain = "https://consumer.example.com";
+		let activeOrigin = "https://consumer.example.com";
 		const { transport, consumerWindow } = createTransport({
-			getConsumerOrigin: () => activeDomain,
+			getConsumerOrigin: () => activeOrigin,
 		});
 		const sendSpy = vi.spyOn(transport.messenger, "send");
 
@@ -289,7 +289,7 @@ describe("HostTransport", () => {
 			{ options: { allTags: true } },
 		);
 
-		activeDomain = "https://updated.example.com";
+		activeOrigin = "https://updated.example.com";
 		sendSpy.mockResolvedValueOnce(undefined);
 
 		await expect(transport.getPeerInstances()).resolves.toEqual([]);

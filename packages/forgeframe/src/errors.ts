@@ -29,15 +29,16 @@ export type ForgeFrameErrorCode =
 	| "CLOSED"
 	| "CAPACITY";
 
-const ERROR_CODES: ReadonlySet<string> = new Set<ForgeFrameErrorCode>([
-	"POPUP_BLOCKED",
-	"INIT_TIMEOUT",
-	"VALIDATION",
-	"ORIGIN_REJECTED",
-	"CANCELLED",
-	"CLOSED",
-	"CAPACITY",
-]);
+/** Every code once; the record type fails to compile if one is missing. */
+const ERROR_CODES: Readonly<Record<ForgeFrameErrorCode, true>> = {
+	POPUP_BLOCKED: true,
+	INIT_TIMEOUT: true,
+	VALIDATION: true,
+	ORIGIN_REJECTED: true,
+	CANCELLED: true,
+	CLOSED: true,
+	CAPACITY: true,
+};
 
 /**
  * An error ForgeFrame raised, with a `code` to branch on.
@@ -85,7 +86,7 @@ export class ForgeFrameError extends Error {
 export function isForgeFrameErrorCode(
 	value: unknown,
 ): value is ForgeFrameErrorCode {
-	return typeof value === "string" && ERROR_CODES.has(value);
+	return typeof value === "string" && Object.hasOwn(ERROR_CODES, value);
 }
 
 /**

@@ -45,4 +45,27 @@ describe("Component navigation URLs", () => {
 			).toBe(expected);
 		},
 	);
+
+	it.each([
+		["http://%", "VALIDATION", "Invalid component URL"],
+		["javascript:alert(1)", "VALIDATION", "Invalid component URL protocol"],
+		[
+			"https://attacker.example/widget",
+			"ORIGIN_REJECTED",
+			"is not allowed by the component's hostOrigins",
+		],
+	])("should reject %s with %s", (input, code, message) => {
+		expect(() =>
+			resolveComponentHostUrl(
+				input,
+				"https://host.example/page",
+				"https://host.example",
+			),
+		).toThrow(
+			expect.objectContaining({
+				code,
+				message: expect.stringContaining(message),
+			}),
+		);
+	});
 });

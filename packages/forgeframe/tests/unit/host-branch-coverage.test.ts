@@ -59,6 +59,7 @@ function createHost({
 	return new HostComponent(payload, {
 		props: "unchecked",
 		consumerOrigins: "*",
+		consumerWindow,
 		autoInit,
 	});
 }
@@ -167,11 +168,8 @@ describe("Host branch coverage and edge paths", () => {
 	it("reports INIT delivery failures on the host error event", async () => {
 		window.name = buildWindowName(createPayload());
 		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
-		// The messenger rejects an unacknowledged INIT as CLOSED.
-		const error = new ForgeFrameError(
-			"CLOSED",
-			'Message "forgeframe_init" timed out after 10000ms',
-		);
+		// A consumer that answers INIT with CLOSED keeps that code.
+		const error = new ForgeFrameError("CLOSED", "Component has been destroyed");
 		const sendSpy = vi
 			.spyOn(Messenger.prototype, "send")
 			.mockResolvedValueOnce({ props: {} })
@@ -199,11 +197,10 @@ describe("Host branch coverage and edge paths", () => {
 		);
 		expect(errors[0]).toBeInstanceOf(ForgeFrameError);
 		expect(errors[0]).toMatchObject({
-			code: "INIT_TIMEOUT",
-			message: expect.stringContaining(
-				"Failed to initialize host component: The consumer did not complete the handshake",
-			),
-			cause: { code: "INIT_TIMEOUT", cause: error },
+			code: "CLOSED",
+			message:
+				"Failed to initialize host component: Component has been destroyed",
+			cause: error,
 		});
 		expect(consoleSpy).toHaveBeenCalledWith(
 			"Failed to send init message:",

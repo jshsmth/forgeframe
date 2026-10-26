@@ -70,7 +70,7 @@ describe("playground cross-window text", () => {
 		expect(document.getElementById("host-uid")?.textContent).toBe(
 			`${markup.slice(0, 12)}...`,
 		);
-		expect(document.getElementById("consumer-domain")?.textContent).toBe(
+		expect(document.getElementById("consumer-origin")?.textContent).toBe(
 			markup,
 		);
 		const update = '<b data-injected="update">updated</b>';

@@ -20,10 +20,7 @@ import type { HostBootstrapData, WindowNamePayload } from "../../window/types";
 import { assertAllowedConsumerOrigin } from "./consumer-origin-policy";
 import { toHandshakeFailure } from "./handshake-failure";
 import { HostPropsRuntime } from "./props-runtime";
-import {
-	resolveConsumerWindow,
-	resolveMessagingConsumerContext,
-} from "./security";
+import { resolveMessagingConsumerContext } from "./security";
 import { HostTransport } from "./transport";
 import type { HostRuntimeOptions } from "./types";
 
@@ -82,7 +79,7 @@ export class HostComponent<P extends Record<string, unknown>> {
 		let propsRuntime: HostPropsRuntime<P> | null = null;
 
 		try {
-			this.consumerWindow = resolveConsumerWindow();
+			this.consumerWindow = options.consumerWindow;
 
 			// The bootstrap exchange verifies this target before any props arrive.
 			this.consumerOrigin = resolveMessagingConsumerContext({

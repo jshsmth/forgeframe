@@ -240,12 +240,14 @@ function assertSelfAccepting(
 }
 
 /**
- * Throws when a trust boundary finds a normalized value its schema rejects
- * or changes.
+ * Throws `VALIDATION` when a trust boundary finds a value its schema rejects
+ * (with the schema's issues) or changes (with `changedMessage`). Props and
+ * exports share it.
+ * @internal
  */
-function assertValidatesUnchanged(
+export function assertValidatesUnchanged(
 	outcome: UnchangedValidationOutcome,
-	key: string,
+	changedMessage: string,
 ): void {
 	if (outcome.status === "rejected") {
 		throw new ForgeFrameError(
@@ -256,7 +258,7 @@ function assertValidatesUnchanged(
 	if (outcome.status === "changed") {
 		throw new ForgeFrameError(
 			"VALIDATION",
-			`Validation failed: ${key}: value no longer matches its normalized schema output`,
+			`Validation failed: ${changedMessage}`,
 		);
 	}
 }
@@ -367,7 +369,7 @@ export function validateNormalizedProps(
 		if (excluded?.has(key)) continue;
 		assertValidatesUnchanged(
 			validateUnchanged(definition.schema, readSuppliedProp(props, key), key),
-			key,
+			`${key}: value no longer matches its normalized schema output`,
 		);
 	}
 }

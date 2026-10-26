@@ -4,7 +4,7 @@
  *
  * @remarks
  * This module handles serializing and deserializing props for transfer
- * between consumer and host windows across domain boundaries.
+ * between consumer and host windows across origin boundaries.
  */
 
 import {

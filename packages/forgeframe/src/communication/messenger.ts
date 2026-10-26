@@ -62,6 +62,28 @@ function isPendingResponseSourceMatch(
 	return sourceWin === pending.targetWin && origin === pending.expectedOrigin;
 }
 
+/** Timeouts this messenger raised itself, never errors received from a peer. */
+const acknowledgementTimeouts = new WeakSet<Error>();
+
+/** Rejects a request the other window never answered as `CLOSED`. */
+function createAcknowledgementTimeout(name: string, timeout: number): Error {
+	const error = new ForgeFrameError(
+		"CLOSED",
+		`Message "${name}" timed out after ${timeout}ms`,
+	);
+	acknowledgementTimeouts.add(error);
+	return error;
+}
+
+/**
+ * Whether an error is a messenger's own timeout waiting for an answer, as
+ * opposed to a `CLOSED` error the other window sent back.
+ * @internal
+ */
+export function isAcknowledgementTimeout(error: unknown): boolean {
+	return error instanceof Error && acknowledgementTimeouts.has(error);
+}
+
 /**
  * Resolves a message target to the exact origin that receives it and answers.
  * URL-like targets normalize to their origin, as `postMessage` does.
@@ -291,12 +313,7 @@ export class Messenger {
 				? undefined
 				: setTimeout(() => {
 						this.pending.delete(id);
-						deferred.reject(
-							new ForgeFrameError(
-								"CLOSED",
-								`Message "${name}" timed out after ${timeout}ms`,
-							),
-						);
+						deferred.reject(createAcknowledgementTimeout(name, timeout));
 					}, timeout);
 
 		this.pending.set(id, {

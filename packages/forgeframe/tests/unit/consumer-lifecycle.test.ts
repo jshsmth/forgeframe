@@ -766,7 +766,7 @@ describe("Consumer lifecycle behavior", () => {
 		]);
 	});
 
-	it("should drop GET_PEERS from opaque-origin hosts even when domain is '*'", async () => {
+	it("should drop GET_PEERS from opaque-origin hosts even when hostOrigins is '*'", async () => {
 		const OpaqueComponent = create({
 			tag: "peer-scope-opaque",
 			peers: true,

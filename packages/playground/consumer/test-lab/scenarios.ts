@@ -185,11 +185,11 @@ async function runSecurityScenario(
 
 	results.push(
 		await expectFailure(
-			"Rejects a URL outside the domain policy",
+			"Rejects a URL outside hostOrigins",
 			() =>
 				Promise.resolve(
 					create({
-						tag: uniqueTag("domain"),
+						tag: uniqueTag("origin"),
 						url: HOST_URL,
 						hostOrigins: "https://blocked.example.com",
 					}),
@@ -218,7 +218,7 @@ async function runSecurityScenario(
 
 	const allowedContainer = createContainer(sandbox);
 	const AllowedComponent = create({
-		tag: uniqueTag("allowed-domain"),
+		tag: uniqueTag("allowed-origin"),
 		url: HOST_URL,
 		hostOrigins: new URL(HOST_URL).origin,
 		dimensions: { width: "100%", height: 420 },

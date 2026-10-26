@@ -408,12 +408,7 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 			initFailed?: boolean;
 			code?: string;
 		}>(MESSAGE_NAME.ERROR, async (errorData) => {
-			// An initialization failure keeps its code; an error the host
-			// application reports is a plain Error.
-			const error =
-				errorData.initFailed === true
-					? errorFromWire(errorData.message, errorData.code)
-					: new Error(errorData.message);
+			const error = readHostError(errorData);
 			// The host can still retry initialization on the same page, so a
 			// pending handshake keeps waiting and reports this reason once, at
 			// its timeout. Outside a handshake the failure is reported now.
@@ -543,4 +538,18 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 		this.bridge.destroy();
 		this.peerBridge.destroy();
 	}
+}
+
+/**
+ * Rebuilds an ERROR notice. An initialization failure keeps its code; an error
+ * the host application reports with `reportError()` is a plain `Error`.
+ */
+function readHostError(data: {
+	message: string;
+	initFailed?: boolean;
+	code?: string;
+}): Error {
+	return data.initFailed === true
+		? errorFromWire(data.message, data.code)
+		: new Error(data.message);
 }

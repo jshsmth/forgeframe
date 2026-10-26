@@ -35,6 +35,8 @@ export interface HostRuntimeOptions<P> {
 	exportsSchema?: StandardSchemaV1;
 	/** Checked against the selected consumer origin before BOOTSTRAP is sent. */
 	consumerOrigins: OriginMatcher;
+	/** The parent or opener window, resolved before the runtime is built. */
+	consumerWindow: Window;
 	/** Sends INIT as soon as `ready` resolves; otherwise INIT waits for `init()`. */
 	autoInit?: boolean;
 	/** Runs first in `destroy()`, before resources are released. */

@@ -23,6 +23,15 @@ import type { HostPropDefinitions } from "./types";
 const INIT_HOST_CALL_SHAPE =
 	"initHost(Component, { consumerOrigins }) or initHost({ props, consumerOrigins })";
 
+/**
+ * Removed `initHost()` option names, each with its replacement, so they can
+ * be retired in one place.
+ */
+const REMOVED_INIT_HOST_OPTIONS: Readonly<Record<string, string>> = {
+	allowedConsumerDomains:
+		'initHost() option "allowedConsumerDomains" was renamed to consumerOrigins.',
+};
+
 /** What a valid `initHost()` call starts the host with. */
 export interface HostStartOptions {
 	/** The tag the component form requires; absent for the tag-agnostic form. */
@@ -102,11 +111,8 @@ function readInitHostOptions(
 				"initHost(Component, options) does not take props; the component supplies its own prop definitions.",
 			);
 		}
-		if (key === "allowedConsumerDomains") {
-			throw callShapeError(
-				'initHost() option "allowedConsumerDomains" was renamed to consumerOrigins.',
-			);
-		}
+		if (Object.hasOwn(REMOVED_INIT_HOST_OPTIONS, key))
+			throw callShapeError(REMOVED_INIT_HOST_OPTIONS[key] as string);
 		if (key !== "consumerOrigins" && key !== "autoInit" && key !== "props") {
 			throw callShapeError(`initHost() does not accept the "${key}" option.`);
 		}

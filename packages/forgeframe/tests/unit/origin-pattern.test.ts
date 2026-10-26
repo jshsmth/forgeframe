@@ -1,12 +1,12 @@
 /**
- * Unit tests for wildcard domain helpers in `@/utils/origin-pattern`.
+ * Unit tests for wildcard origin helpers in `@/utils/origin-pattern`.
  *
  * Covers wildcard compilation caching/eviction and stateless `RegExp`
  * evaluation for global and sticky patterns.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-async function loadDomainPatternModule() {
+async function loadOriginPatternModule() {
 	vi.resetModules();
 	return import("@/utils/origin-pattern");
 }
@@ -17,14 +17,14 @@ afterEach(() => {
 
 describe("compileWildcardOriginPattern", () => {
 	it("should return null for exact domain strings without wildcards", async () => {
-		const { compileWildcardOriginPattern } = await loadDomainPatternModule();
+		const { compileWildcardOriginPattern } = await loadOriginPatternModule();
 
 		expect(compileWildcardOriginPattern("https://example.com")).toBeNull();
 	});
 
 	it("should cache compiled wildcard patterns and escape literal metacharacters", async () => {
 		const { compileWildcardOriginPattern, testOriginRegExpStateless } =
-			await loadDomainPatternModule();
+			await loadOriginPatternModule();
 
 		const pattern = "https://*.example.com:8443/path?foo=bar+baz";
 		const compiled = compileWildcardOriginPattern(pattern);
@@ -58,7 +58,7 @@ describe("compileWildcardOriginPattern", () => {
 	});
 
 	it("should evict the oldest wildcard pattern once the cache limit is exceeded", async () => {
-		const { compileWildcardOriginPattern } = await loadDomainPatternModule();
+		const { compileWildcardOriginPattern } = await loadOriginPatternModule();
 
 		const oldestPattern = "https://host-0.*.example.com";
 		const oldestCompiled = compileWildcardOriginPattern(oldestPattern);
@@ -86,7 +86,7 @@ describe("compileWildcardOriginPattern", () => {
 
 describe("testOriginRegExpStateless", () => {
 	it("should test exact regular expressions directly", async () => {
-		const { testOriginRegExpStateless } = await loadDomainPatternModule();
+		const { testOriginRegExpStateless } = await loadOriginPatternModule();
 
 		const pattern = /^https:\/\/trusted\.example\.com$/;
 
@@ -99,7 +99,7 @@ describe("testOriginRegExpStateless", () => {
 	});
 
 	it("should strip the global flag before testing without mutating lastIndex", async () => {
-		const { testOriginRegExpStateless } = await loadDomainPatternModule();
+		const { testOriginRegExpStateless } = await loadOriginPatternModule();
 
 		const pattern = /trusted\.example\.com/gi;
 		pattern.lastIndex = 8;
@@ -115,7 +115,7 @@ describe("testOriginRegExpStateless", () => {
 	});
 
 	it("should strip the sticky flag before testing without mutating lastIndex", async () => {
-		const { testOriginRegExpStateless } = await loadDomainPatternModule();
+		const { testOriginRegExpStateless } = await loadOriginPatternModule();
 
 		const pattern = /trusted\.example\.com/iy;
 		pattern.lastIndex = 5;

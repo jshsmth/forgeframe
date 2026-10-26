@@ -976,8 +976,8 @@ describe("Messenger", () => {
 			const handler = vi.fn().mockReturnValue({ ok: true });
 			messenger.on("test-remove-array", handler);
 
-			const regexDomain = /^https:\/\/.*\.remove-array\.com$/;
-			messenger.addTrustedOrigin(["https://remove-array.com", regexDomain]);
+			const regexOrigin = /^https:\/\/.*\.remove-array\.com$/;
+			messenger.addTrustedOrigin(["https://remove-array.com", regexOrigin]);
 
 			const source = { postMessage: vi.fn() } as unknown as Window;
 			const stringRequest = createRequestMessage(
@@ -1009,7 +1009,7 @@ describe("Messenger", () => {
 			await new Promise((resolve) => setTimeout(resolve, 0));
 			expect(handler).toHaveBeenCalledTimes(2);
 
-			messenger.removeTrustedOrigin(["https://remove-array.com", regexDomain]);
+			messenger.removeTrustedOrigin(["https://remove-array.com", regexOrigin]);
 			dispatchMessage(
 				serializeMessage(stringRequest),
 				source,

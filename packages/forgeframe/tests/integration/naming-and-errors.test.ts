@@ -194,6 +194,32 @@ describe("Origin naming and error codes", () => {
 		);
 	});
 
+	it("rejects render with CLOSED when the host closes during the handshake", async () => {
+		harness = createIframeIntegrationHarness();
+		const activeHarness = harness;
+		const Component = create({ tag: "host-closed-render", url: HOST_URL });
+		const container = createContainer();
+		const rendering = Component().render(container);
+		void rendering.catch(() => {});
+		activeHarness.attachHostToIframe(
+			await activeHarness.waitForIframe(container),
+		);
+		const host = activeHarness.bootstrapHost(Component, { autoInit: false });
+		if (!host) throw new Error("Expected a host");
+		const hostProps = await activeHarness.withHostGlobalsAsync(
+			() => host.ready,
+		);
+		await activeHarness
+			.withHostGlobalsAsync(() => hostProps.close())
+			.catch(() => {});
+
+		expectCode(
+			await rendering.catch((caught: unknown) => caught),
+			"CLOSED",
+			"closed by its host or the user",
+		);
+	});
+
 	it("reports a host schema rejection as INIT_TIMEOUT whose cause carries the host's VALIDATION", async () => {
 		harness = createIframeIntegrationHarness();
 		const activeHarness = harness;

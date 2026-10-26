@@ -250,7 +250,7 @@ export async function runInstancesScenario(
 const hostControlExports = prop.object({
 	runControls:
 		prop.function<
-			() => Promise<{ consumerDomain: string; parentMatched: boolean }>
+			() => Promise<{ consumerOrigin: string; parentMatched: boolean }>
 		>(),
 	requestClose: prop.function<() => Promise<boolean>>(),
 });
@@ -325,8 +325,8 @@ export async function runHostControlsScenario(
 			assertResult(
 				"Host sees the verified consumer window and origin",
 				controlResult.parentMatched &&
-					controlResult.consumerDomain === window.location.origin,
-				`parent matched: ${controlResult.parentMatched}; origin: ${controlResult.consumerDomain}`,
+					controlResult.consumerOrigin === window.location.origin,
+				`parent matched: ${controlResult.parentMatched}; origin: ${controlResult.consumerOrigin}`,
 			),
 		);
 
@@ -379,7 +379,7 @@ export async function runTransportScenario(
 		await waitForExports(trustInstance, () => trustInstance.exports?.observed);
 		results.push(
 			assertResult(
-				"Trusted-domain props reach an allowed host",
+				"Trusted-origin props reach an allowed host",
 				trustInstance.exports?.observed.trustedValue === "trusted-host-value",
 				`host observed: ${String(trustInstance.exports?.observed.trustedValue)}`,
 			),
@@ -1028,7 +1028,7 @@ export async function runStressScenario(
 const popupExports = prop.object({
 	popupReady: prop.boolean(),
 	hasOpener: prop.boolean(),
-	consumerDomain: prop.string(),
+	consumerOrigin: prop.string(),
 	resizeSelf:
 		prop.function<
 			(dimensions: { width: number; height: number }) => Promise<void>
@@ -1082,8 +1082,8 @@ export async function runPopupScenario(
 		results.push(
 			assertResult(
 				"Popup verifies its consumer origin",
-				instance.exports?.consumerDomain === window.location.origin,
-				`consumer origin: ${String(instance.exports?.consumerDomain)}`,
+				instance.exports?.consumerOrigin === window.location.origin,
+				`consumer origin: ${String(instance.exports?.consumerOrigin)}`,
 			),
 		);
 

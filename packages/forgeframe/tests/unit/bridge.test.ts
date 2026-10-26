@@ -338,9 +338,13 @@ describe("FunctionBridge", () => {
 
 			bridge.removeLocal(ref.__id__);
 
-			await expect(messenger.simulateCall(ref.__id__, [])).rejects.toThrow(
-				`Function with id "${ref.__id__}" not found`,
-			);
+			// A retired reference is CLOSED: the callback it named is gone.
+			await expect(
+				messenger.simulateCall(ref.__id__, []),
+			).rejects.toMatchObject({
+				code: "CLOSED",
+				message: `Function with id "${ref.__id__}" not found`,
+			});
 		});
 	});
 

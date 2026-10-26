@@ -312,7 +312,7 @@ test.beforeAll(async () => {
 				import {initHost,prop} from "/library.js";
 				const consumerOrigins = ${JSON.stringify(req.url === "/any-consumer" ? "*" : ["https://excluded.example"])};
 				const host = initHost({props:{label:prop.string()}, consumerOrigins});
-				host.ready.then(props => { window.consumerDomain = props.consumerOrigin; window.label = props.label; window.ready = true; },
+				host.ready.then(props => { window.consumerOrigin = props.consumerOrigin; window.label = props.label; window.ready = true; },
 					error => { window.failure = error.message; });
 				</script>`,
 				);
@@ -2528,10 +2528,10 @@ test("a host with '*' admits a real cross-origin consumer and binds its exact or
 	await frame.waitForFunction(() => (window as { ready?: boolean }).ready);
 	expect(
 		await frame.evaluate(() => ({
-			consumerDomain: (window as { consumerDomain?: string }).consumerDomain,
+			consumerOrigin: (window as { consumerOrigin?: string }).consumerOrigin,
 			label: (window as { label?: string }).label,
 		})),
-	).toEqual({ consumerDomain: consumerOrigin, label: "public" });
+	).toEqual({ consumerOrigin, label: "public" });
 });
 
 test("a host whose allowlist excludes the consumer refuses it and the render times out", async ({

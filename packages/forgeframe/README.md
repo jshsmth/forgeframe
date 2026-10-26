@@ -542,7 +542,7 @@ const Checkout = create({
 - `queryParam` appends the value to the query string before any `#fragment`, keeping existing parameters and the fragment.
 - `bodyParam` sends the value in a hidden-form `POST` when the iframe or popup first loads. Later `updateProps()` calls use postMessage.
 - POST field names such as `submit`, `remove`, and `appendChild` do not interfere with submission or cleanup.
-- `Date` values are sent as ISO strings and other object values are JSON-stringified. Functions, `undefined`, `null`, and invalid dates are skipped. To send a custom encoding, pass the encoded string as its own prop, or build the URL in a `url(props)` function with a `domain` allowlist.
+- `Date` values are sent as ISO strings and other object values are JSON-stringified. Functions, `undefined`, `null`, and invalid dates are skipped. To send a custom encoding, pass the encoded string as its own prop, or build the URL in a `url(props)` function with a `hostOrigins` allowlist.
 - Iframe containers must be attached to the document when rendering, so a `bodyParam` POST always targets the rendered frame.
 - `sendToHost` and `deliverTo` also apply to query and body parameters, matched against the pinned host URL's origin. Same-origin status is verified only after the host loads, so `deliverTo: 'same-origin'` props are never in the initial request.
 - Never put credentials, bearer tokens, session identifiers, or sensitive personal data in `queryParam`. URLs leak through browser history, referrers, analytics, and server logs.
@@ -634,7 +634,7 @@ In iframe mode, ForgeFrame sets `sandbox="allow-scripts allow-same-origin allow-
 - `initHost(Component, { consumerOrigins, autoInit? })` takes the component returned by `create()`. It validates props with the component's schemas, infers their types, and throws if the window was opened for another component's tag.
 - `initHost({ props?, consumerOrigins, autoInit? })` accepts a window opened for any tag, for hosts that serve many components. `props` are host prop definitions, and the host receives only the props they declare; without them, every delivered field is kept, unvalidated. With shared prop definitions, this form also keeps `create()` and the consumer runtime out of a size-sensitive host bundle.
 
-`consumerOrigins` is required in both forms; omitting it throws in every environment, before `initHost()` looks for a consumer, so a host page cannot ship open by accident. It takes a string, a `RegExp`, or an array of them (see [Domain Security](#domain-security)). Pass `'*'` only for a host that any site may embed. An empty array allows none, so configuration that resolves to no origins fails closed. A disallowed consumer makes `initHost()` throw before any props are requested.
+`consumerOrigins` is required in both forms; omitting it throws in every environment, before `initHost()` looks for a consumer, so a host page cannot ship open by accident. It takes a string, a `RegExp`, or an array of them (see [Origin Security](#origin-security)). Pass `'*'` only for a host that any site may embed. An empty array allows none, so configuration that resolves to no origins fails closed. A disallowed consumer makes `initHost()` throw before any props are requested.
 
 `initHost()` returns a `Host` object:
 
@@ -675,7 +675,7 @@ if (host) {
 }
 ```
 
-`init()` returns nothing and is safe to call twice, before `ready` resolves (INIT then waits for it), or after `destroy()`. It sends nothing if `ready` rejects. INIT delivery failures are reported through `host.on('error')`. If the host never calls `init()`, the consumer's `render()` rejects at its `timeout`. Reading `hostProps` never sends INIT.
+`init()` returns nothing and is safe to call twice, before `ready` resolves (INIT then waits for it), or after `destroy()`. It sends nothing if `ready` rejects. INIT delivery failures are reported through `host.on('error')`. If the host never calls `init()`, the consumer's `render()` rejects at its `initTimeout` with `INIT_TIMEOUT`. Reading `hostProps` never sends INIT.
 
 A tag-agnostic host types its props from its definitions, keyed by the props it receives:
 
@@ -1001,7 +1001,7 @@ const host = initHost(SecureComponent, {
 const publicHost = initHost(PublicWidget, { consumerOrigins: '*' });
 ```
 
-The host verifies the consumer by requiring a response from the expected parent or opener window at its exact origin. Verification works with `Referrer-Policy: no-referrer` and after full-page host navigation. If the origin is not allowed, `initHost()` throws before any props are requested, and the consumer's `render()` rejects at its `timeout`; if the consumer cannot complete the handshake, `ready` rejects. The allowlist belongs to the host that enforces it, so `create()` throws if it still receives the removed `allowedConsumerDomains` option. As defence in depth, a host can also send a `Content-Security-Policy: frame-ancestors` header; ForgeFrame does not set it.
+The host verifies the consumer by requiring a response from the expected parent or opener window at its exact origin. Verification works with `Referrer-Policy: no-referrer` and after full-page host navigation. If the origin is not allowed, `initHost()` throws `ORIGIN_REJECTED` before any props are requested, and the consumer's `render()` rejects at its `initTimeout` with `INIT_TIMEOUT`; if the consumer cannot complete the handshake, `ready` rejects. The allowlist belongs to the host that enforces it, so `create()` throws if it still receives the removed `allowedConsumerDomains` option. As defence in depth, a host can also send a `Content-Security-Policy: frame-ancestors` header; ForgeFrame does not set it.
 
 #### Sandbox
 
@@ -1097,7 +1097,7 @@ try {
 | `VALIDATION` | Invalid options, props, arguments or calls; values that cannot cross windows; payloads from another ForgeFrame major version | `create()`, `initHost()`, `render()`, `updateProps()`, `resize()` of a cross-origin popup, the host's `export()`, `host.ready` |
 | `ORIGIN_REJECTED` | A trust policy refused an origin or a window: a URL outside `hostOrigins`, a consumer outside `consumerOrigins`, a host origin change after render, a call from an unexpected window | `render()`, `updateProps()`, `initHost()` |
 | `CANCELLED` | Your own `close()`, or an unmount by the React wrapper, interrupted `render()` | `render()` |
-| `CLOSED` | The instance, the host or the other window is gone or no longer answering, including a retired callback reference and an acknowledgement that timed out after initialization | `render()` and `updateProps()` after close, remote calls, host controls, `host.ready` |
+| `CLOSED` | The instance, the host or the other window is gone or no longer answering, including the host's `close()` or the user closing the popup during `render()`, a retired callback reference, and an acknowledgement that timed out after initialization | `render()` and `updateProps()` after close, remote calls, host controls, `host.ready` |
 | `CAPACITY` | A size limit was reached: 500 distinct callbacks per snapshot, the 1,000-reference recovery pool, the 500-reference peer relay, or the `window.name` payload size | `render()`, `updateProps()`, remote calls, `getPeerInstances()` |
 
 Codes cross windows: a prop update the host rejects arrives as `VALIDATION`, as a local rejection does. A remote callback that throws reaches the caller as a plain `Error` with its message and no code, because the failure is the application's. An error the host reports with `hostProps.reportError()` is also a plain `Error`.
@@ -1506,7 +1506,7 @@ await closeAll()                             // Close every live instance of eve
 ### Instance Lifecycle
 
 - **URL resolution.** Relative component URLs resolve against `document.baseURI`, including any `<base href>`. `render()` validates and pins the absolute URL before loading callbacks run and uses it for navigation and prop delivery checks, so changing the document base during a callback cannot redirect the initial request.
-- **Closing during render.** Calling `close()` while `render()` is in flight cancels the render, removes its loading and host elements, and stops any iframe or popup that has not opened yet. The render promise rejects with a `CANCELLED` [`ForgeFrameError`](#errors).
+- **Closing during render.** Calling `close()` while `render()` is in flight cancels the render, removes its loading and host elements, and stops any iframe or popup that has not opened yet. The render promise rejects with a `CANCELLED` [`ForgeFrameError`](#errors); when the host's `close()` or the user closing the popup ends the render instead, it rejects with `CLOSED`.
 - **Repeated close.** Repeated or reentrant `close()` calls wait for the same operation, including deregistration and the `closed` event; `close`, `closed` and cleanup run once. If a failed render already started destruction, `close()` waits for that teardown without emitting `close`.
 
 ### Iframe Styles and Loading
