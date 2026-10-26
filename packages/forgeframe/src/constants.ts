@@ -1,42 +1,30 @@
+import type { EventType } from "./types/events";
+
 /**
- * Rendering context types for components.
+ * A rendering context: an iframe or a popup window.
  *
  * @remarks
- * Components can be rendered as either iframes or popups.
  * The context determines how the host window is created and managed.
  *
  * @public
+ */
+export type ContextType = "iframe" | "popup";
+
+/**
+ * Rendering context names used internally.
+ * @internal
  */
 export const CONTEXT = {
 	/** Render component in an iframe */
 	IFRAME: "iframe",
 	/** Render component in a popup window */
 	POPUP: "popup",
-} as const;
+} as const satisfies Record<string, ContextType>;
 
 /**
- * Union type of valid rendering contexts.
- * @public
- */
-export type ContextType = (typeof CONTEXT)[keyof typeof CONTEXT];
-
-/**
- * Component lifecycle event names.
- *
- * @remarks
- * These events are emitted during the component lifecycle and can be
- * listened to via `instance.event.on(EVENT.RENDERED, handler)`.
- *
- * @example
- * ```typescript
- * const instance = MyComponent({ prop: 'value' });
- * instance.event.on(EVENT.RENDERED, () => {
- *   console.log('Component is ready!');
- * });
- * instance.render('#container');
- * ```
- *
- * @public
+ * Consumer lifecycle event names used internally; `EventType` is the public
+ * union.
+ * @internal
  */
 export const EVENT = {
 	/** Emitted when rendering starts, before any frame or placeholder exists */
@@ -57,13 +45,7 @@ export const EVENT = {
 	FOCUS: "focus",
 	/** Emitted when host exports arrive */
 	EXPORTS: "exports",
-} as const;
-
-/**
- * Union type of valid event names.
- * @public
- */
-export type EventType = (typeof EVENT)[keyof typeof EVENT];
+} as const satisfies Record<string, EventType>;
 
 /**
  * Internal message types for the cross-domain communication protocol.

@@ -276,7 +276,7 @@ function fadeOut(element: HTMLElement, duration = 200): Promise<void> {
  * @example
  * ```typescript
  * const prerender = container.querySelector('.prerender');
- * const iframe = createIframeElement({ name, dimensions });
+ * const iframe = createIframeElement({ name, dimensions, sandbox: resolveIframeSandbox(undefined) });
  * container.appendChild(iframe);
  *
  * await swapPrerenderContent(prerender, iframe, () => !hidden);

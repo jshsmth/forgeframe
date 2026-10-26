@@ -11,11 +11,15 @@
 
 import { PROTOCOL_VERSION } from "../../constants";
 import { createEventSubscriber } from "../../events/emitter";
+import type { InferProps } from "../../types/props";
 import type {
-	AnyFactoryInput,
-	ForgeFrameComponent,
+	AnyComponent,
+	CheckedPropsDefinition,
+	ExportsOf,
 	Host,
+	InferablePropsDefinition,
 	InitHostOptions,
+	PropsOf,
 } from "../../types/runtime";
 import { hasBrowserWindow } from "../../utils/browser";
 import {
@@ -128,20 +132,19 @@ const HOST_ALREADY_ACTIVE_ERROR =
  * when the consumer runs another ForgeFrame major version.
  * @public
  */
-export function initHost<
-	P extends Record<string, unknown>,
-	X,
-	RequireProps extends boolean,
->(
-	component: ForgeFrameComponent<P, X, RequireProps, AnyFactoryInput>,
+export function initHost<C extends AnyComponent>(
+	component: C,
 	options: Omit<InitHostOptions, "props">,
-): Host<P> | null;
+): Host<PropsOf<C>, ExportsOf<C>> | null;
 /**
  * Starts the host runtime for a window opened for any tag.
  *
  * @remarks
  * For hosts that serve many components. `props` validates the consumer's
- * props and types them; without it, delivered props are not validated. It
+ * props, and their types are inferred from it; without it, delivered props
+ * are not validated and are typed `Record<string, unknown>`. This form has no
+ * exports schema, so `export()` sends any value and the consumer validates
+ * it. It
  * otherwise behaves like `initHost(Component, options)`: await `ready` before
  * reading consumer props, and only one host can be active in a window.
  *
@@ -165,9 +168,11 @@ export function initHost<
  * version.
  * @public
  */
-export function initHost<
-	P extends Record<string, unknown> = Record<string, unknown>,
->(options: InitHostOptions<P>): Host<P> | null;
+export function initHost<const D extends InferablePropsDefinition = never>(
+	options: Omit<InitHostOptions, "props"> & {
+		props?: D & CheckedPropsDefinition<D>;
+	},
+): Host<[D] extends [never] ? Record<string, unknown> : InferProps<D>> | null;
 export function initHost(...args: unknown[]): Host | null {
 	const start = readInitHostArguments(args);
 	if (!hasBrowserWindow()) return null;
@@ -197,6 +202,7 @@ function startHostRuntime(
 	try {
 		runtime = new HostComponent(payload, {
 			props: start.props,
+			exports: start.exports,
 			consumerOrigins: start.consumerOrigins,
 			autoInit: start.autoInit,
 			onDestroy: () => {

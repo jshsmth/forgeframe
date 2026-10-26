@@ -103,10 +103,11 @@ describe("Cross-realm prop and export delivery", () => {
 		const definitions = {
 			payload: prop.any<{ values: string[] }>(),
 		};
-		const Component = create<typeof definitions, { values: string[] }>({
+		const Component = create({
 			tag: "array-method-values",
 			url: "https://host.example.com/widget",
 			props: definitions,
+			exports: prop.any<{ values: string[] }>(),
 		});
 		const instance = Component({
 			payload: { values: array("initial", true) },
@@ -137,10 +138,11 @@ describe("Cross-realm prop and export delivery", () => {
 			metadata: prop.record(prop.string()),
 			payload: prop.any<Payload>(),
 		};
-		const Component = create<typeof definitions, { payload: Payload }>({
+		const Component = create({
 			tag: "foreign-realm-values",
 			url: "https://host.example.com/widget",
 			props: definitions,
+			exports: prop.object({ payload: prop.any<Payload>() }),
 		});
 		const initial = foreignValues("2026-10-01T00:00:00.000Z", "initial");
 		expect(initial.createdAt).not.toBeInstanceOf(Date);

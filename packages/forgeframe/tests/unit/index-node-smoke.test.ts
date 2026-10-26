@@ -16,7 +16,6 @@ describe("Index node smoke", () => {
 
 		const publicEntrypoint = await import("@/index");
 		const {
-			CONTEXT,
 			PopupOpenError,
 			VERSION,
 			create,
@@ -33,10 +32,16 @@ describe("Index node smoke", () => {
 			"getHostProps",
 			"isEmbedded",
 			"PROP_SERIALIZATION",
+			// Literal unions and type-only schema classes replace these values.
+			"CONTEXT",
+			"EVENT",
+			"isStandardSchema",
+			"PropSchema",
+			"StringSchema",
+			"ObjectSchema",
 		]) {
 			expect(publicEntrypoint).not.toHaveProperty(removed);
 		}
-		expect(CONTEXT.IFRAME).toBe("iframe");
 		expect(typeof PopupOpenError).toBe("function");
 		expect(typeof VERSION).toBe("string");
 		expect(typeof prop.string).toBe("function");

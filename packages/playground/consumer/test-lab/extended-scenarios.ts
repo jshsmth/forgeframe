@@ -1,5 +1,4 @@
 import {
-	CONTEXT,
 	type ComponentEvents,
 	closeAll,
 	create,
@@ -13,27 +12,10 @@ const HOST_URL = import.meta.env.VITE_HOST_URL || "https://localhost:5174/";
 const HOST_ORIGIN = new URL(HOST_URL).origin;
 let tagCounter = 0;
 
-interface ConfigurationProps extends Record<string, unknown> {
-	scenario: string;
-	variant: string;
-	label: string;
-	tier: string;
-	enabled: boolean;
-	count: number;
-}
-
-interface ConfigurationExports {
-	observed: Record<string, unknown>;
-}
-
-interface ConfigurationInput extends Record<string, unknown> {
-	scenario: string;
-	variant: string;
-	label: string;
-	tier?: string;
-	enabled: boolean;
-	count: number;
-}
+/** The host reports what it observed, so the scenario can compare it. */
+const observedExports = prop.object({
+	observed: prop.any<Record<string, unknown>>(),
+});
 
 export async function runConfigurationScenario(
 	sandbox: HTMLElement,
@@ -43,11 +25,8 @@ export async function runConfigurationScenario(
 
 	let containerTemplateCalls = 0;
 	let prerenderTemplateCalls = 0;
-	const Component = create<
-		ConfigurationProps,
-		ConfigurationExports,
-		ConfigurationInput
-	>({
+	const Component = create({
+		exports: observedExports,
 		tag: uniqueTag("configuration"),
 		url: (props) =>
 			`${HOST_URL}?scenario=configuration&variant=${encodeURIComponent(props.variant)}`,
@@ -169,23 +148,19 @@ export async function runConfigurationScenario(
 	return results;
 }
 
-interface InstanceProps extends Record<string, unknown> {
-	scenario: string;
-	label: string;
-}
-
-interface InstanceExports {
-	instanceLabel: string;
-	peerUids: string[];
-	peerCount: number;
-}
+const instanceExports = prop.object({
+	instanceLabel: prop.string(),
+	peerUids: prop.array(prop.string()),
+	peerCount: prop.number(),
+});
 
 export async function runInstancesScenario(
 	sandbox: HTMLElement,
 ): Promise<TestResult[]> {
 	const results: TestResult[] = [];
 	const tag = uniqueTag("instances");
-	const Component = create<InstanceProps, InstanceExports>({
+	const Component = create({
+		exports: instanceExports,
 		tag,
 		url: `${HOST_URL}?scenario=instances`,
 		// The host lists its peers, so this component opts in to discovery.
@@ -272,17 +247,13 @@ export async function runInstancesScenario(
 	return results;
 }
 
-interface HostControlProps extends Record<string, unknown> {
-	scenario: string;
-}
-
-interface HostControlExports {
-	runControls: () => Promise<{
-		consumerDomain: string;
-		parentMatched: boolean;
-	}>;
-	requestClose: () => Promise<boolean>;
-}
+const hostControlExports = prop.object({
+	runControls:
+		prop.function<
+			() => Promise<{ consumerDomain: string; parentMatched: boolean }>
+		>(),
+	requestClose: prop.function<() => Promise<boolean>>(),
+});
 
 export async function runHostControlsScenario(
 	sandbox: HTMLElement,
@@ -293,7 +264,8 @@ export async function runHostControlsScenario(
 	let focusEvents = 0;
 	let closeEvents = 0;
 	let closedEvents = 0;
-	const Component = create<HostControlProps, HostControlExports>({
+	const Component = create({
+		exports: hostControlExports,
 		tag: uniqueTag("host-controls"),
 		url: `${HOST_URL}?scenario=host-controls`,
 		dimensions: { width: "100%", height: 320 },
@@ -375,28 +347,13 @@ export async function runHostControlsScenario(
 	return results;
 }
 
-interface TrustPolicyProps extends Record<string, unknown> {
-	scenario: string;
-	trustedValue: string;
-	blockedValue: string;
-	privateValue: string;
-}
-
-interface PostTransportProps extends Record<string, unknown> {
-	scenario: string;
-	bodySecret: string;
-}
-
-interface TransportExports {
-	observed: Record<string, unknown>;
-}
-
 export async function runTransportScenario(
 	sandbox: HTMLElement,
 ): Promise<TestResult[]> {
 	const results: TestResult[] = [];
 	const trustContainer = createContainer(sandbox);
-	const TrustComponent = create<TrustPolicyProps, TransportExports>({
+	const TrustComponent = create({
+		exports: observedExports,
 		tag: uniqueTag("trust-policy"),
 		url: `${HOST_URL}?scenario=transport`,
 		dimensions: { width: "100%", height: 320 },
@@ -452,7 +409,8 @@ export async function runTransportScenario(
 	}
 
 	const postContainer = createContainer(sandbox);
-	const PostComponent = create<PostTransportProps, TransportExports>({
+	const PostComponent = create({
+		exports: observedExports,
 		tag: uniqueTag("post-transport"),
 		url: `${HOST_URL}?scenario=transport`,
 		dimensions: { width: "100%", height: 320 },
@@ -496,15 +454,10 @@ export async function runTransportScenario(
 	return results;
 }
 
-interface ReliabilityProps extends Record<string, unknown> {
-	scenario: string;
-	label: string;
-}
-
-interface ReliabilityExports {
-	ready: boolean;
-	readState: () => Promise<{ label: string; uid: string }>;
-}
+const reliabilityExports = prop.object({
+	ready: prop.boolean(),
+	readState: prop.function<() => Promise<{ label: string; uid: string }>>(),
+});
 
 export async function runReliabilityScenario(
 	sandbox: HTMLElement,
@@ -512,7 +465,8 @@ export async function runReliabilityScenario(
 	const results: TestResult[] = [];
 	let countRenderUrlCalls = false;
 	let renderUrlCalls = 0;
-	const Component = create<ReliabilityProps, ReliabilityExports>({
+	const Component = create({
+		exports: reliabilityExports,
 		tag: uniqueTag("reliability"),
 		url: () => {
 			if (!countRenderUrlCalls) {
@@ -659,19 +613,12 @@ export async function runReliabilityScenario(
 	return results;
 }
 
-interface CommonActionsProps extends Record<string, unknown> {
-	scenario: string;
-	label: string;
-	count: number;
-	onAction: (message: string) => void;
-}
-
-interface CommonActionsExports {
-	ready: boolean;
-	getSnapshot: () => Promise<{ label: string; count: number }>;
-	addToCount: (amount: number) => Promise<number>;
-	notifyConsumer: (message: string) => Promise<boolean>;
-}
+const commonActionsExports = prop.object({
+	ready: prop.boolean(),
+	getSnapshot: prop.function<() => Promise<{ label: string; count: number }>>(),
+	addToCount: prop.function<(amount: number) => Promise<number>>(),
+	notifyConsumer: prop.function<(message: string) => Promise<boolean>>(),
+});
 
 export async function runCommonActionsScenario(
 	sandbox: HTMLElement,
@@ -681,7 +628,8 @@ export async function runCommonActionsScenario(
 	let callbackMessage = "";
 	let focusEvents = 0;
 	let closeEvents = 0;
-	const Component = create<CommonActionsProps, CommonActionsExports>({
+	const Component = create({
+		exports: commonActionsExports,
 		tag: uniqueTag("common-actions"),
 		url: `${HOST_URL}?scenario=common-actions`,
 		dimensions: { width: "100%", height: 320 },
@@ -803,7 +751,8 @@ export async function runRedirectScenario(
 	let callbackMessage = "";
 	const redirectUrl = new URL("/redirect.html", window.location.origin);
 	redirectUrl.searchParams.set("scenario", "common-actions");
-	const Component = create<CommonActionsProps, CommonActionsExports>({
+	const Component = create({
+		exports: commonActionsExports,
 		tag: uniqueTag("redirect"),
 		url: redirectUrl.toString(),
 		domain: [window.location.origin, HOST_ORIGIN],
@@ -881,7 +830,8 @@ export async function runTimeoutRecoveryScenario(
 ): Promise<TestResult[]> {
 	const results: TestResult[] = [];
 	const timeoutContainer = createContainer(sandbox);
-	const TimeoutComponent = create<ReliabilityProps, ReliabilityExports>({
+	const TimeoutComponent = create({
+		exports: reliabilityExports,
 		tag: uniqueTag("timeout"),
 		url: `${HOST_URL}?scenario=reliability&initDelay=300`,
 		timeout: 100,
@@ -921,7 +871,8 @@ export async function runTimeoutRecoveryScenario(
 	await timedOut.close().catch(() => undefined);
 
 	const recoveryContainer = createContainer(sandbox);
-	const RecoveryComponent = create<ReliabilityProps, ReliabilityExports>({
+	const RecoveryComponent = create({
+		exports: reliabilityExports,
 		tag: uniqueTag("timeout-recovery"),
 		url: `${HOST_URL}?scenario=reliability`,
 		dimensions: { width: "100%", height: 260 },
@@ -968,7 +919,8 @@ export async function runStressScenario(
 	sandbox: HTMLElement,
 ): Promise<TestResult[]> {
 	const results: TestResult[] = [];
-	const Component = create<ReliabilityProps, ReliabilityExports>({
+	const Component = create({
+		exports: reliabilityExports,
 		tag: uniqueTag("stress"),
 		url: `${HOST_URL}?scenario=reliability`,
 		dimensions: { width: "100%", height: 180 },
@@ -1073,16 +1025,15 @@ export async function runStressScenario(
 	return results;
 }
 
-interface PopupProps extends Record<string, unknown> {
-	scenario: string;
-}
-
-interface PopupExports {
-	popupReady: boolean;
-	hasOpener: boolean;
-	consumerDomain: string;
-	resizeSelf: (dimensions: { width: number; height: number }) => Promise<void>;
-}
+const popupExports = prop.object({
+	popupReady: prop.boolean(),
+	hasOpener: prop.boolean(),
+	consumerDomain: prop.string(),
+	resizeSelf:
+		prop.function<
+			(dimensions: { width: number; height: number }) => Promise<void>
+		>(),
+});
 
 export async function runPopupScenario(
 	sandbox: HTMLElement,
@@ -1092,10 +1043,11 @@ export async function runPopupScenario(
 	let focusEvents = 0;
 	let resizeEvents = 0;
 	let closeEvents = 0;
-	const Component = create<PopupProps, PopupExports>({
+	const Component = create({
+		exports: popupExports,
 		tag: uniqueTag("popup"),
 		url: `${HOST_URL}?scenario=popup`,
-		defaultContext: CONTEXT.POPUP,
+		defaultContext: "popup",
 		dimensions: { width: 520, height: 420 },
 		props: { scenario: prop.string() },
 	});
@@ -1177,24 +1129,19 @@ interface CheckoutReceipt {
 	amount: number;
 }
 
-interface CheckoutProps extends Record<string, unknown> {
-	scenario: string;
-	sessionId: string;
-	amount: number;
-	status: string;
-	onApproved: (receipt: CheckoutReceipt) => void;
-}
-
-interface CheckoutExports {
-	checkoutReady: boolean;
-	submitPayment: (token: string) => Promise<
-		CheckoutReceipt & {
-			status: string;
-			tokenAccepted: boolean;
-			sessionId: string;
-		}
-	>;
-}
+const checkoutExports = prop.object({
+	checkoutReady: prop.boolean(),
+	submitPayment:
+		prop.function<
+			(token: string) => Promise<
+				CheckoutReceipt & {
+					status: string;
+					tokenAccepted: boolean;
+					sessionId: string;
+				}
+			>
+		>(),
+});
 
 export async function runCheckoutE2EScenario(
 	sandbox: HTMLElement,
@@ -1203,7 +1150,8 @@ export async function runCheckoutE2EScenario(
 	const container = createContainer(sandbox);
 	const lifecycle: string[] = [];
 	let approvedReceipt: CheckoutReceipt | undefined;
-	const Component = create<CheckoutProps, CheckoutExports>({
+	const Component = create({
+		exports: checkoutExports,
 		tag: uniqueTag("checkout"),
 		url: `${HOST_URL}?scenario=checkout-e2e`,
 		dimensions: { width: "100%", height: 420 },

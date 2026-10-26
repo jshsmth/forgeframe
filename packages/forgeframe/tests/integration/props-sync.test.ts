@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { unregisterComponent } from "@/core/component";
 import { getHost } from "@/core/host/bootstrap";
-import { create, EVENT, prop } from "@/index";
+import { create, prop } from "@/index";
 import type { PropsDefinition } from "@/types";
 import {
 	createIframeIntegrationHarness,
@@ -176,9 +176,7 @@ describe("Props sync integration", () => {
 		});
 		const instance = Component({ amount: 1 });
 		const rendering = instance.render(container);
-		const { host, hostProps } = await harness.bootstrapIframeHost<{
-			amount: number;
-		}>(container, {
+		const { host, hostProps } = await harness.bootstrapIframeHost(container, {
 			amount: prop.number().min(0),
 		});
 		await rendering;
@@ -325,7 +323,7 @@ describe("Props sync integration", () => {
 		});
 		const instance = Component({ title: "initial" });
 		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost<{ title: string }>(
+		const { hostProps } = await harness.bootstrapIframeHost(
 			container,
 			definitions,
 		);
@@ -504,7 +502,7 @@ describe("Props sync integration", () => {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 		const validate = vi.fn();
-		const Component = create<SyncProps>({
+		const Component = create({
 			tag: "integration-close-during-props-sync",
 			url: "https://host.example.com/widget",
 			props: SYNC_PROP_DEFINITIONS,
@@ -540,11 +538,12 @@ describe("Props sync integration", () => {
 
 	it("treats explicitly undefined definitions as omitted through creation, bootstrap and updates", async () => {
 		harness = createIframeIntegrationHarness();
-		const definitions: PropsDefinition<{ title: string; message: string }> = {
+		// JavaScript callers may leave an entry undefined, as conditional definitions do.
+		const definitions = {
 			title: undefined,
 			message: prop.string(),
-		};
-		const Component = create<{ title: string; message: string }>({
+		} as unknown as PropsDefinition<{ title: string; message: string }>;
+		const Component = create({
 			tag: "integration-undefined-definition",
 			url: "https://host.example.com/widget",
 			props: definitions,
@@ -570,10 +569,10 @@ describe("Props sync integration", () => {
 	it("drops a delivered value whose host definition entry is undefined, like an undeclared one", async () => {
 		harness = createIframeIntegrationHarness();
 		const consumerDefinitions = { beta: prop.string(), title: prop.string() };
-		const hostDefinitions: PropsDefinition<{ beta: string; title: string }> = {
+		const hostDefinitions = {
 			beta: undefined,
 			title: prop.string(),
-		};
+		} as unknown as PropsDefinition<{ beta: string; title: string }>;
 		const Component = create({
 			tag: "integration-host-undefined-definition",
 			url: "https://host.example.com/widget",
@@ -671,7 +670,7 @@ describe("Props sync integration", () => {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 
-		const SyncComponent = create<SyncProps>({
+		const SyncComponent = create({
 			tag: "integration-props-sync-component",
 			url: "https://host.example.com/widget",
 			props: SYNC_PROP_DEFINITIONS,
@@ -746,7 +745,7 @@ describe("Props sync integration", () => {
 		const initialDate = new Date("2026-01-02T03:04:05.678Z");
 		const updatedDate = new Date("2026-02-03T04:05:06.789Z");
 
-		const DateSyncComponent = create<DateSyncProps>({
+		const DateSyncComponent = create({
 			tag: "integration-date-props-sync-component",
 			url: "https://host.example.com/widget",
 			props: DATE_SYNC_PROP_DEFINITIONS,
@@ -815,7 +814,7 @@ describe("undefined in factory input and updates", () => {
 		});
 		const instance = Component(input as never);
 		const committed: Record<string, unknown>[] = [];
-		instance.event.on(EVENT.PROPS, (props) => {
+		instance.event.on("props", (props) => {
 			committed.push({ ...props });
 		});
 		const rendering = instance.render(container);

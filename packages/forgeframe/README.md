@@ -153,24 +153,23 @@ The host starts with `initHost(Component, { consumerOrigins })` and reads its pr
 `create()` returns a reusable component factory. Export it so the host page can import the same definition.
 
 ```typescript
-import { create, prop } from 'forgeframe';
+import { create, prop, type PropsOf } from 'forgeframe';
 
-type LoginProps = {
-  email?: string;
-  onLogin: (user: { id: number; name: string }) => void;
-  onCancel?: () => void;
-};
-
-export const LoginForm = create<LoginProps>({
+export const LoginForm = create({
   tag: 'login-form',
   url: 'https://auth.example.com/login',
   dimensions: { width: 400, height: 350 },
   props: {
     email: prop.string().optional(),
     onLogin: prop.function<(user: { id: number; name: string }) => void>(),
-    onCancel: prop.function().optional(),
+    onCancel: prop.function<() => void>().optional(),
   },
+  exports: prop.object({
+    reset: prop.function<() => void>(),
+  }),
 });
+
+export type LoginProps = PropsOf<typeof LoginForm>;
 ```
 
 <details>
@@ -179,7 +178,9 @@ export const LoginForm = create<LoginProps>({
 - **`tag`** (required): unique identifier for the component.
 - **`url`** (required): URL of the host page.
 - **`dimensions`**: width and height of the iframe or popup. Iframes accept CSS units. Popups accept numbers, numeric strings, or `px` strings; any other unit falls back to 500 pixels when opening, or to the current size when resizing.
-- **`props`**: schemas for the props passed to the host.
+- **`props`**: schemas for the props passed to the host. TypeScript infers the props from them: `onLogin` is required, so `LoginForm()` without props does not compile.
+- **`exports`**: a schema for what the host passes to `hostProps.export()`. It types `instance.exports`, and the consumer rejects exports that do not match.
+- **`PropsOf<typeof LoginForm>`**: reads the props type back from the component; see [TypeScript](#typescript).
 
 </details>
 
@@ -510,7 +511,7 @@ AmountComponent(); // Host receives the default, 1
 
 A host evaluates `sendToHost` and `deliverTo` itself, with its own origin and the verified consumer origin, to decide which props it expects. Props it is not meant to receive are neither required nor accepted: a cross-origin host can share definitions that include a required `'same-origin'` secret, and fields for those props, or for `sendToHost: false` props, are discarded from bootstrap and update snapshots before decoding or validation, even if a stale or misconfigured consumer sends them. Discarded values never reach `hostProps`, `hostProps.consumer.props`, or prop notifications. The same applies to fields the host does not declare at all, including entries set to `undefined`, so no unvalidated value enters host state. Only a tag-agnostic `initHost({ consumerOrigins })` host without `props` keeps every field, unvalidated.
 
-Prefer inferred component and React-wrapper types. The factory input can be wider than the host props, because defaults make keys optional and coercions accept more types. When you annotate a component, pass that input type as the `Input` parameter of `ForgeFrameComponent` or `ForgeFrameComponentInstance`; React wrappers infer it. Definition types such as `PropsDefinition<P>` are typed by the props alone, so a defaulted schema fits without an input type.
+Component and React-wrapper types are inferred from the schemas. The factory input can be wider than the host props, because defaults make keys optional and coercions accept more types; read it with `InputOf<typeof C>` and the props with `PropsOf<typeof C>` (see [TypeScript](#typescript)). Definition types such as `PropsDefinition<P>` are typed by the props alone, so a defaulted schema fits without an input type.
 
 Transport notes:
 
@@ -738,7 +739,20 @@ Peer discovery is opt-in. A component that sets `peers: true` in `create()` lets
 
 ### Exporting Data to Consumer
 
-The host can export data and methods for the consumer to call.
+The host can export data and methods for the consumer to call. Describe them with the component's `exports` schema, which types both sides and is checked on every export.
+
+> **`Shared definition`**
+
+```typescript
+export const MyComponent = create({
+  tag: 'my-component',
+  url: 'https://widgets.example.com/form',
+  exports: prop.object({
+    validate: prop.function<() => boolean>(),
+    getFormData: prop.function<() => { email: string }>(),
+  }),
+});
+```
 
 > **`Host`**
 
@@ -752,14 +766,16 @@ await host.hostProps.export({
 > **`Consumer`**
 
 ```typescript
-const instance = MyComponent({ /* props */ });
+const instance = MyComponent();
 await instance.render('#container');
 
-const isValid = await instance.exports.validate();
-const data = await instance.exports.getFormData();
+const isValid = await instance.exports?.validate(); // Promise<boolean>
+const data = await instance.exports?.getFormData();
 ```
 
-`export()` is the one way to send data to the consumer; it bridges functions and `Date` values. To push events instead, call a callback prop the consumer passed in.
+`export()` is the one way to send data to the consumer; it bridges functions and `Date` values, and exported methods always return promises on the consumer. To push events instead, call a callback prop the consumer passed in.
+
+The consumer validates each export against `exports` before it replaces `instance.exports` and emits `exports`. An invalid export keeps the previous exports, rejects the host's `export()` with the schema's message, and emits `error` on the consumer. A host started with `initHost(MyComponent, ...)` checks its exports before sending them, so the rejection happens at the host's call site; the tag-agnostic `initHost({ consumerOrigins })` has no exports schema and leaves the check to the consumer. The schema validates only: like a prop schema, it must return a valid value unchanged, so transforms are rejected. Describe methods with `prop.function()`, because Zod's `z.function()` returns a wrapper rather than the exported function, and keep unknown keys (Zod objects strip them unless declared loose). Without `exports`, exports are `unknown` and not validated.
 
 ---
 
@@ -1252,7 +1268,7 @@ The same applies to `onDisplay`, `onRender`, `onPrerender`, `onPrerendered`, `on
 
 **Host error payload.** Before: an `Error` or `{ type: 'init_failed', message, error }`. After: always an `Error`; a wrapped failure is on `error.cause`.
 
-**Event constants and types.** Before: `EVENT.PRERENDER`, `EVENT.PRERENDERED`, `EVENT.DISPLAY`, `EVENT.DESTROY`, and `EventEmitterInterface`. After: `EVENT.RENDER`, `EVENT.RENDERED`, `EVENT.CLOSED`, and `EVENT.EXPORTS`, with `EventSubscriber<ComponentEvents<Props, Exports>>` for `instance.event` and `HostEvents` for the host.
+**Event constants and types.** Before: `EVENT.PRERENDER`, `EVENT.PRERENDERED`, `EVENT.DISPLAY`, `EVENT.DESTROY`, and `EventEmitterInterface`. After: plain event names such as `'render'`, `'rendered'`, `'closed'` and `'exports'` (the `EVENT` object is gone; see [Types and inference](#types-and-inference)), with `EventSubscriber<ComponentEvents<Props, Exports>>` for `instance.event` and `HostEvents` for the host.
 
 ### Prop definitions
 
@@ -1269,7 +1285,7 @@ The schema is now the only source of a prop's presence, default and value; the o
 | Host decorator | `{ schema, hostDecorate: ({ value }) => ... }` | Transform on the host after receipt, or pass a separate derived prop |
 | Per-prop validator | `{ schema, validate: ({ value }) => ... }` | A schema refinement (for example Zod `.refine`), or the component's `validate({ props })` for cross-prop rules |
 | Alias | `email: { schema: prop.string(), alias: 'userEmail' }` with `Widget({ userEmail })` | `email: prop.string()` with `Widget({ email: legacy.userEmail })` |
-| Alias types | `create<P, X, I, SchemaInputs>`, `ConsumerPropsInput`, `ConsumerPropsUpdate` | `create<P, X, Input>`; factory input is inferred from schemas |
+| Alias types | `create<P, X, I, SchemaInputs>`, `ConsumerPropsInput`, `ConsumerPropsUpdate` | Removed; the factory input is inferred from schemas (`InputOf<typeof C>`) |
 | Same-origin only | `{ schema, sameDomain: true }` | `{ schema, deliverTo: 'same-origin' }` |
 | Listed host origins | `{ schema, trustedDomains: ['https://a.example'] }` | `{ schema, deliverTo: 'https://a.example' }`, or a `RegExp`, or an array |
 | Encoded query/body value | `queryParam: ({ value }) => encode(value)` | Pass the encoded string as its own prop with `queryParam: 'name'`, or build the URL in a `url(props)` function |
@@ -1285,9 +1301,9 @@ The schema is now the only source of a prop's presence, default and value; the o
 | Required input whose output may be `undefined` | `{ schema: z.string().transform((v) => v \|\| undefined), outputSchema: z.string().optional() }` | `z.string().optional()` and pass `value \|\| undefined`, or keep `z.string()` and treat `''` as empty in the host |
 | Consumer-only transform | `{ schema: z.string().transform((href) => new URL(href)), outputSchema: z.instanceof(URL), sendToHost: false }` | `{ schema: z.url(), sendToHost: false }` and compute `new URL(props.target)` inside `url(props)` |
 | `outputSchema` option | Validation-only schema for normalized values | Removed; `create()` and `initHost()` throw for it |
-| Definition types | `PropsDefinition<P, I>`, `HostPropsDefinition<P, I>`, `PropDefinition<Output, Input>`, `ComponentOptions<P, SchemaInputs>`, `InitHostOptions<P, SchemaInputs>` | `PropsDefinition<P>`, `HostPropsDefinition<P>`, `PropDefinition<Output>`, `ComponentOptions<P>`, `InitHostOptions<P>`; defaulted schemas fit without an input type |
-| Host typing | `initHost<P, SchemaInputs>({ props, consumerOrigins })` | `initHost(Component, { consumerOrigins })` infers `P`; the tag-agnostic form takes `PropsDefinition<P>` |
-| Component input generic | `ForgeFrameComponent<P, X, RequireProps, SchemaInputs>` | Same position, renamed `Input`: the factory input inferred from schemas |
+| Definition types | `PropsDefinition<P, I>`, `HostPropsDefinition<P, I>`, `PropDefinition<Output, Input>`, `ComponentOptions<P, SchemaInputs>`, `InitHostOptions<P, SchemaInputs>` | `PropsDefinition<P>`, `PropDefinition<Output>`, `ComponentOptions<P>`, `InitHostOptions<P>`; defaulted schemas fit without an input type |
+| Host typing | `initHost<P, SchemaInputs>({ props, consumerOrigins })` | `initHost(Component, { consumerOrigins })` infers the props; the tag-agnostic form infers them from `props` |
+| Component input generic | `ForgeFrameComponent<P, X, RequireProps, SchemaInputs>` | `Component<Props, Input, Exports>`; see [Types and inference](#types-and-inference) |
 | Getter-defined prop entry | Read when props were normalized | `create()` and `initHost()` throw; declare entries as plain fields |
 
 A host that shares definitions with a `deliverTo` prop no longer requires that prop when it is withheld from the host's origin, and it discards the field if a consumer sends it anyway.
@@ -1317,6 +1333,32 @@ A host that shares definitions with a `deliverTo` prop no longer requires that p
 | Empty matchers | `domain: []`, `peerDomains: []` and `deliverTo: []` were accepted and matched nothing | They throw; `consumerOrigins: []` still admits no consumer | Remove the option, or list the origins |
 | Static iframe attributes | `name`, `src` and `srcdoc` in a static `attributes` object rejected `render()` | `create()` throws for them, and for `sandbox`; a computed `attributes` function is still checked at render | Remove the attribute |
 | `ComponentOptions` type | An interface | A type alias over `ComponentBaseOptions` and the `url`/`domain` union `ComponentUrlOptions`, so it can no longer be augmented by declaration merging; `Partial<ComponentOptions>` spreads over the union | Use `ComponentBaseOptions` for options other than `url` and `domain` |
+
+### Types and inference
+
+`create()` has one signature and takes no type arguments: props, factory input and exports are inferred from the schemas, and calling a factory without props fails to compile when a prop is required. Renamed types fail loudly instead of reinterpreting their parameters.
+
+| Area | v1 | v2 |
+|---|---|---|
+| Explicit props type | `create<LoginProps>({ ... })` | `create({ ... })`; derive the type with `type LoginProps = PropsOf<typeof LoginForm>`, or check definitions with `props: { ... } satisfies PropsDefinition<LoginProps>` |
+| Explicit exports type | `create<Props, Exports>({ ... })` | `create({ ..., exports: prop.object({ ... }) })`; `ExportsOf<typeof C>` |
+| Input and alias generics | `create<P, X, I, SchemaInputs>` | Removed; the input is inferred (`InputOf<typeof C>`) |
+| Component type | `ForgeFrameComponent<P, X, I, RequireProps, SchemaInputs>` | `Component<Props, Input, Exports>`, or `typeof C` |
+| Instance type | `ForgeFrameComponentInstance<P, X, I, SchemaInputs>` | `ComponentInstance<Props, Input, Exports>` |
+| Host props type | `HostProps<P>` with a hand-written `P` | `HostPropsOf<typeof C>` (or `host.hostProps` from `initHost(C)`) |
+| Host definitions type | `HostPropsDefinition<P>` | `PropsDefinition<P>` |
+| Definition map keys | `PropsDefinition<P>` entries were optional | Every key of `P` needs an entry, so `satisfies` reports a missing definition; declare an optional prop with an optional schema |
+| Inference types | `InferPropsDefinition<D>`, `InferPropsDefinitionInput<D>` | `InferProps<D>`, `InferInput<D>` |
+| Schema output type | `InferSchemaOutput<S>` | `StandardSchemaV1.InferOutput<S>` (and `StandardSchemaV1.InferInput<S>`) |
+| Removed types | `SchemaPropDefinition`, `PropDefinitionEntry`, `InferObjectShape`, `InferObjectInputShape`, `Prop` | Use `PropDefinition`, `PropsDefinition`, `InferProps`; `typeof prop` |
+| Schema classes | `import { StringSchema } from 'forgeframe'`, `new StringSchema()`, `x instanceof ObjectSchema` | `import type { StringSchema } from 'forgeframe'`; build with `prop.string()`; no `instanceof` |
+| Schema detection | `isStandardSchema(value)` | Check `'~standard' in value` yourself, or let ForgeFrame validate |
+| Context constants | `CONTEXT.POPUP` | `'popup'` (type `ContextType`) |
+| Event constants | `EVENT.RENDERED` | `'rendered'` (type `EventType`) |
+| Exports validation | Not validated | Validated against `exports`; invalid exports reject the host's `export()`, keep the previous exports and emit `error` |
+| `hostProps.export()` type | `export<X>(exports: X)` | Typed by the component's `exports` schema; any value without one |
+| React generics | `createReactComponent<P, X, E, I, RequireProps, SchemaInputs>` | `createReactComponent<typeof C, E>`, normally inferred; wrapper props come from `InputOf<typeof C>` |
+| Enum literal types | `prop.enum(['a', 'b'])` could widen to `string` under a contextual type | Always `'a' \| 'b'` |
 
 ### Props are always JSON
 
@@ -1353,10 +1395,7 @@ import {
   closeAll,             // Close every live instance
   initHost,             // Start the host runtime; await host.ready before reading props
   isHost,               // Whether a host is active or this window holds a ForgeFrame payload
-  isStandardSchema,     // Check if value is a Standard Schema
   prop,                 // Prop schema builders
-  CONTEXT,              // Context constants (IFRAME, POPUP)
-  EVENT,                // Event name constants
   PopupOpenError,       // Popup blocker/open failures
   VERSION,              // Library version
   createReactComponent, // React adapter
@@ -1366,7 +1405,7 @@ import {
 
 ### Component Options
 
-Each `props` entry is either a Standard Schema or a `PropDefinition` object that wraps a schema with transport options (`sendToHost`, `deliverTo`, `queryParam`, `bodyParam`). An entry set to `undefined` is treated as omitted, so the prop is neither normalized nor sent.
+Each `props` entry is either a Standard Schema or a `PropDefinition` object that wraps a schema with transport options (`sendToHost`, `deliverTo`, `queryParam`, `bodyParam`). At runtime an entry set to `undefined` is treated as omitted, so the prop is neither normalized nor sent; the types expect a schema for every entry, so declare an optional prop with an optional schema instead. Contexts and event names are plain strings (`'iframe'`, `'popup'`, `'rendered'`), typed as `ContextType` and `EventType`.
 
 ```typescript
 interface ComponentOptions<P> {
@@ -1374,6 +1413,7 @@ interface ComponentOptions<P> {
   url: string | ((props: P) => string);
   dimensions?: { width?: number | string; height?: number | string } | ((props: P) => { width?: number | string; height?: number | string });
   props?: PropsDefinition<P>;
+  exports?: StandardSchemaV1;  // What the host exports; types instance.exports and is validated
   defaultContext?: 'iframe' | 'popup';
   containerTemplate?: (ctx: TemplateContext<P>) => HTMLElement | null;
   prerenderTemplate?: (ctx: TemplateContext<P>) => HTMLElement | null;
@@ -1423,57 +1463,102 @@ Numeric `style` values become pixels, except for unitless CSS properties, which 
 
 ## TypeScript
 
-ForgeFrame is written in TypeScript and exports all types.
+ForgeFrame is written in TypeScript. `create()` takes no type arguments: props, factory input and exports are inferred from the `props` and `exports` schemas, and the props argument is required exactly when a prop schema rejects `undefined`.
 
 ```typescript
 import {
   create,
   initHost,
   prop,
-  PropSchema,
-  StringSchema,
-  NumberSchema,
-  BooleanSchema,
-  FunctionSchema,
-  ArraySchema,
-  ObjectSchema,
   createReactComponent,
   withReactComponent,
+  type Component,
+  type ComponentInstance,
+  type PropsOf,
+  type InputOf,
+  type ExportsOf,
+  type HostPropsOf,
+  type PropsDefinition,
+  type PropDefinition,
+  type InferProps,
+  type InferInput,
   type ComponentOptions,
-  type ForgeFrameComponent,
-  type ForgeFrameComponentInstance,
+  type ComponentBaseOptions,
+  type ComponentUrlOptions,
   type Host,
   type HostProps,
   type InitHostOptions,
+  type RemoteValue,
   type StandardSchemaV1,
-  type TemplateContext,
-  type Dimensions,
+  type StringSchema,      // Schema classes are types; build schemas with prop.*
+  type ObjectSchema,
+  type ContextType,       // 'iframe' | 'popup'
+  type EventType,         // 'render' | 'rendered' | ... | 'exports'
   type ComponentEvents,
   type EventHandler,
   type EventSubscriber,
   type HostEvents,
+  type TemplateContext,
+  type Dimensions,
   type GetPeerInstancesOptions,
   type PeerInfo,
-  type ComponentBaseOptions,
-  type ComponentUrlOptions,
 } from 'forgeframe';
 ```
 
-### Typing Host hostProps
+### Typing helpers
 
-`initHost(Component, ...)` infers the host props from the component, so the host needs no `Window` augmentation or separate interface. Annotate helpers that receive the props with `HostProps<P>`.
+Read the pieces of a component back from `typeof Component`:
+
+| Helper | Type |
+|---|---|
+| `PropsOf<typeof C>` | The normalized props the host receives |
+| `InputOf<typeof C>` | What the factory and `updateProps()` accept; wider than the props for defaults and coercions |
+| `ExportsOf<typeof C>` | The `exports` schema's output, or `unknown` |
+| `HostPropsOf<typeof C>` | The host's `hostProps`: props, built-in controls, and `export()` typed by the exports schema |
+
+`Component<Props, Input = Props, Exports = unknown>` and `ComponentInstance<Props, Input = Props, Exports = unknown>` annotate factories and instances; `instance.exports` is `RemoteValue<Exports>`, whose methods return promises. For a schema's own types, use `StandardSchemaV1.InferOutput<typeof schema>` and `StandardSchemaV1.InferInput<typeof schema>`.
+
+To start from a hand-written interface, check the definitions against it with `satisfies`. `PropsDefinition<P>` needs an entry for every key of `P`, and each schema's output must match: a required key rejects a schema that may produce `undefined`. Give an optional key an optional schema too; a required schema there still type-checks, but the inferred props then make the key required.
 
 ```typescript
-import { initHost, type HostProps } from 'forgeframe';
-import { MyComponent, type MyProps } from './my-component';
+import { create, prop, type PropsDefinition } from 'forgeframe';
 
-function submit(props: HostProps<MyProps>) {
+interface LoginProps {
+  email: string;
+  rememberMe: boolean;
+  onLogin: (user: { id: string }) => void;
+}
+
+const loginProps = {
+  email: prop.string().email(),
+  rememberMe: prop.boolean().default(false),
+  onLogin: prop.function<(user: { id: string }) => void>(),
+} satisfies PropsDefinition<LoginProps>; // A missing or mistyped entry is a compile error
+
+export const LoginForm = create({
+  tag: 'login-form',
+  url: 'https://auth.example.com/login',
+  props: loginProps,
+});
+```
+
+Definitions built at runtime, such as from configuration, can be typed as `PropsDefinition<MyProps>`, and `create()` infers `MyProps` from them.
+
+### Typing Host hostProps
+
+`initHost(Component, ...)` infers the host props and the `export()` type from the component, so the host needs no `Window` augmentation or separate interface. Annotate helpers that receive the props with `HostPropsOf<typeof Component>`. The tag-agnostic `initHost({ props, consumerOrigins })` infers the props from the definitions it is given.
+
+```typescript
+import { initHost, type HostPropsOf } from 'forgeframe';
+import { MyComponent } from './my-component';
+
+function submit(props: HostPropsOf<typeof MyComponent>) {
   return props.onSubmit({ email: 'user@example.com' });
 }
 
 const host = initHost(MyComponent, { consumerOrigins: ['https://app.example.com'] });
 if (host) {
-  const props = await host.ready; // HostProps<MyProps>
+  const props = await host.ready; // HostPropsOf<typeof MyComponent>
   props.name;
   props.close;
   props.resize;

@@ -3,10 +3,10 @@
  */
 
 import type { ContextType } from "../constants";
-import type { InferOutput, StandardSchemaV1 } from "../props/schema";
+import type { StandardSchemaV1 } from "../props/schema";
 import type { ComponentEvents, EventSubscriber, HostEvents } from "./events";
 import type {
-	InferPropsDefinition,
+	InferProps,
 	PropDefinition,
 	PropsDefinition,
 	SelfAcceptanceError,
@@ -79,47 +79,21 @@ export type RemoteValue<T> = T extends (...args: never[]) => Promise<unknown>
 				: T;
 
 /**
- * Stands for any factory input where only the props type matters: a factory
- * or instance with any input is assignable to one typed with this.
+ * A definition map from which `create()` and `initHost()` infer props.
+ *
+ * @remarks
+ * Entries are objects (schemas, callable schemas and wrapped definitions), so
+ * a plain props type passed as a type argument fails here. Their shape is
+ * checked by {@link CheckedPropsDefinition} rather than by this constraint: a
+ * schema constraint would give generic builders such as `prop.any()` a
+ * contextual type and widen their inferred type.
  * @internal
  */
-export type AnyFactoryInput = never;
+export type InferablePropsDefinition = Record<string, object>;
 
-/** A schema-backed definition map from which `create()` can infer props. @internal */
-export type InferablePropsDefinition = Record<
-	string,
-	| StandardSchemaV1<unknown, unknown>
-	| { schema: StandardSchemaV1<unknown, unknown> }
->;
-
-type ContextualSchemaMap = Record<string, StandardSchemaV1>;
-
-/** Extracts each entry's schema for contextual callback inference. @internal */
-type InferContextualSchemas<D extends InferablePropsDefinition> = {
-	[K in keyof D]: D[K] extends StandardSchemaV1
-		? D[K]
-		: D[K] extends { schema: infer Schema extends StandardSchemaV1 }
-			? Schema
-			: never;
-};
-
-/** A wrapped inferred definition whose schema types its callbacks. @internal */
-type ContextualWrappedPropDefinition<Schema extends StandardSchemaV1> = Omit<
-	PropDefinition<InferOutput<Schema>>,
-	"schema"
-> & {
-	schema: Schema;
-};
-
-/**
- * A concise schema entry. Only expose Standard Schema metadata for contextual
- * typing so library methods do not conflict with wrapped prop options.
- * @internal
- */
-type ContextualDirectSchema<Schema extends StandardSchemaV1> = Pick<
-	Schema,
-	"~standard"
->;
+/** Reported where a prop entry is neither a schema nor a `{ schema }` definition. @internal */
+export type PropEntryError =
+	"ForgeFrame: a prop entry must be a Standard Schema or a { schema } definition";
 
 /** Whether a schema's output is valid input to the same schema. @internal */
 type IsSelfAccepting<Schema> =
@@ -129,46 +103,67 @@ type IsSelfAccepting<Schema> =
 			: false
 		: true;
 
+/** The transport options a wrapped entry is checked against. @internal */
+type WrappedPropOptions = Omit<PropDefinition, "schema">;
+
 /**
- * Reports a schema that does not accept its own output at the offending
- * entry, or at its wrapped `schema` field.
+ * Reports, at the offending entry or its wrapped `schema` field, an entry that
+ * is not schema-backed or whose schema does not accept its own output.
  * @internal
  */
-export type SelfAcceptingPropsDefinition<D> = {
+export type CheckedPropsDefinition<D> = {
 	[K in keyof D]: D[K] extends StandardSchemaV1
 		? IsSelfAccepting<D[K]> extends true
 			? unknown
 			: SelfAcceptanceError
-		: D[K] extends { schema: infer Schema }
+		: D[K] extends { schema: infer Schema extends StandardSchemaV1 }
 			? IsSelfAccepting<Schema> extends true
-				? unknown
+				? WrappedPropOptions
 				: { schema: SelfAcceptanceError }
-			: unknown;
+			: D[K] extends StandardSchemaV1 | { schema: StandardSchemaV1 }
+				? unknown
+				: PropEntryError;
 };
 
-/** Contextual callback types inferred from each entry's schema. @internal */
-type ContextualPropsDefinition<S extends ContextualSchemaMap> = {
-	[K in keyof S]?:
-		| ContextualDirectSchema<S[K]>
-		| ContextualWrappedPropDefinition<S[K]>;
-};
+/**
+ * Reported where an `exports` schema's output is not valid input to the same
+ * schema.
+ * @internal
+ */
+export type ExportsSelfAcceptanceError =
+	"ForgeFrame: an exports schema's output must be valid input to the same schema";
 
-/** Component options whose prop values are inferred from their schemas. @internal */
+/** Reports an `exports` value that is not a self-accepting Standard Schema. @internal */
+type CheckedExportsSchema<S> = S extends undefined
+	? unknown
+	: S extends StandardSchemaV1
+		? IsSelfAccepting<S> extends true
+			? unknown
+			: ExportsSelfAcceptanceError
+		: "ForgeFrame: exports must be a Standard Schema";
+
+/** The exports type an optional `exports` schema describes. @internal */
+export type InferExports<S> = S extends StandardSchemaV1
+	? StandardSchemaV1.InferOutput<S>
+	: unknown;
+
+/** Component options whose prop and exports types are inferred from their schemas. @internal */
 export type InferredComponentOptions<
 	D extends InferablePropsDefinition,
-	ContextualSchemas extends ContextualSchemaMap = InferContextualSchemas<D>,
-> = Omit<ComponentBaseOptions<InferPropsDefinition<D>>, "props"> &
-	ComponentUrlOptions<InferPropsDefinition<D>> & {
-		props: D &
-			ContextualPropsDefinition<ContextualSchemas> &
-			SelfAcceptingPropsDefinition<D>;
+	S,
+> = Omit<ComponentBaseOptions<InferProps<D>>, "props" | "exports"> &
+	ComponentUrlOptions<InferProps<D>> & {
+		props?: D & CheckedPropsDefinition<D>;
+		exports?: S & CheckedExportsSchema<S>;
 	};
 
-/** Arguments accepted by a component factory based on required input keys. @internal */
-type ComponentFactoryArguments<
-	RequireProps extends boolean,
-	Input,
-> = RequireProps extends true ? [props: Input] : [props?: Input];
+/**
+ * The factory's arguments: the props argument is required exactly when a key
+ * of the input is required.
+ * @internal
+ */
+type ComponentFactoryArguments<Input> =
+	Record<PropertyKey, never> extends Input ? [props?: Input] : [props: Input];
 
 /**
  * Configuration options for creating a component.
@@ -251,6 +246,28 @@ export interface ComponentBaseOptions<P = Record<string, unknown>> {
 	 * Prop definitions for validation and delivery to the host.
 	 */
 	props?: PropsDefinition<P>;
+
+	/**
+	 * Standard Schema for the value the host passes to `hostProps.export()`.
+	 *
+	 * @remarks
+	 * `create()` infers `instance.exports` and the host's `export()` parameter
+	 * from it. The consumer validates every export against it before replacing
+	 * `instance.exports`: invalid exports keep the previous ones, reject the
+	 * host's `export()` and emit `error`. A host started with
+	 * `initHost(Component, ...)` checks its exports before sending them. Like a
+	 * prop schema, it must return a valid value unchanged, so transforms are
+	 * rejected. Omitted, exports are `unknown` and not validated.
+	 *
+	 * @example
+	 * ```typescript
+	 * exports: prop.object({
+	 *   validate: prop.function<() => boolean>(),
+	 *   ready: prop.boolean(),
+	 * }),
+	 * ```
+	 */
+	exports?: StandardSchemaV1;
 
 	/**
 	 * Default dimensions for the component.
@@ -343,16 +360,24 @@ export interface ComponentBaseOptions<P = Record<string, unknown>> {
 }
 
 /**
+ * A component's `peers` option: omitted, `true`, or an origin matcher.
+ * @internal
+ */
+export type PeersOption = ComponentBaseOptions["peers"];
+
+/**
  * Instance of a rendered component.
  *
- * @typeParam P - The props type for the component
- * @typeParam X - The type of exports from the host
+ * @typeParam Props - The normalized props the host receives
  * @typeParam Input - The factory input, inferred from the prop schemas: defaults
  * make keys optional and coercions accept wider types than the props
+ * @typeParam Exports - The value the host exports, from the `exports` schema
  *
  * @remarks
  * Component instances are created by calling the component factory function
- * and provide methods to control the rendered component.
+ * and provide methods to control the rendered component. Annotate with
+ * `ComponentInstance<PropsOf<typeof C>, InputOf<typeof C>, ExportsOf<typeof C>>`,
+ * or let TypeScript infer the type from the factory call.
  *
  * @example
  * ```typescript
@@ -364,10 +389,10 @@ export interface ComponentBaseOptions<P = Record<string, unknown>> {
  *
  * @public
  */
-export interface ForgeFrameComponentInstance<
-	P = Record<string, unknown>,
-	X = unknown,
-	Input = P,
+export interface ComponentInstance<
+	Props = Record<string, unknown>,
+	Input = Props,
+	Exports = unknown,
 > {
 	/**
 	 * Unique instance identifier.
@@ -436,22 +461,23 @@ export interface ForgeFrameComponentInstance<
 	 * @remarks
 	 * Both return an unsubscribe function. Only ForgeFrame emits these events.
 	 */
-	readonly event: EventSubscriber<ComponentEvents<P, X>>;
+	readonly event: EventSubscriber<ComponentEvents<Props, Exports>>;
 
 	/**
-	 * Data exported from the host component via `hostProps.export()`.
+	 * Data exported from the host component via `hostProps.export()`, once
+	 * it has passed the component's `exports` schema.
 	 */
-	exports?: RemoteValue<X>;
+	exports?: RemoteValue<Exports>;
 }
 
 /**
  * Component factory function and static properties.
  *
- * @typeParam P - The props type for the component
- * @typeParam X - The type of exports from the host
- * @typeParam RequireProps - Whether the factory requires a props argument
+ * @typeParam Props - The normalized props the host receives
  * @typeParam Input - The factory input, inferred from the prop schemas: defaults
- * make keys optional and coercions accept wider types than the props
+ * make keys optional and coercions accept wider types than the props. The
+ * props argument is required exactly when a key of `Input` is required.
+ * @typeParam Exports - The value the host exports, from the `exports` schema
  *
  * @remarks
  * This is the return type of `create()`. Call it to create consumer
@@ -462,7 +488,7 @@ export interface ForgeFrameComponentInstance<
  * ```typescript
  * import { create, initHost } from 'forgeframe';
  *
- * const MyComponent = create<MyProps>({ ... });
+ * const MyComponent = create({ ... });
  *
  * // In the consumer: create an instance
  * const instance = MyComponent({ name: 'World' });
@@ -474,11 +500,10 @@ export interface ForgeFrameComponentInstance<
  *
  * @public
  */
-export interface ForgeFrameComponent<
-	P = Record<string, unknown>,
-	X = unknown,
-	RequireProps extends boolean = false,
-	Input = P,
+export interface Component<
+	Props = Record<string, unknown>,
+	Input = Props,
+	Exports = unknown,
 > {
 	/**
 	 * Create a new component instance with props.
@@ -487,8 +512,8 @@ export interface ForgeFrameComponent<
 	 * @returns New component instance
 	 */
 	(
-		...args: ComponentFactoryArguments<RequireProps, Input>
-	): ForgeFrameComponentInstance<P, X, Input>;
+		...args: ComponentFactoryArguments<Input>
+	): ComponentInstance<Props, Input, Exports>;
 
 	/**
 	 * Live instances of this component, in creation order.
@@ -497,8 +522,68 @@ export interface ForgeFrameComponent<
 	 * Each read returns a new frozen snapshot. A held snapshot does not update,
 	 * so read it again after closing instances.
 	 */
-	readonly instances: readonly ForgeFrameComponentInstance<P, X, Input>[];
+	readonly instances: readonly ComponentInstance<Props, Input, Exports>[];
 }
+
+/**
+ * Any component returned by `create()`, whatever its props, input and exports.
+ * @internal
+ */
+// biome-ignore lint/suspicious/noExplicitAny: Matches every component; the factory input is contravariant.
+export type AnyComponent = Component<any, any, any>;
+
+/**
+ * The normalized props a component's host receives.
+ *
+ * @example
+ * ```typescript
+ * type LoginProps = PropsOf<typeof LoginForm>;
+ * ```
+ *
+ * @public
+ */
+export type PropsOf<C extends AnyComponent> =
+	C extends Component<infer Props, infer _Input, infer _Exports>
+		? Props
+		: never;
+
+/**
+ * What a component's factory and `updateProps()` accept.
+ *
+ * @public
+ */
+export type InputOf<C extends AnyComponent> =
+	C extends Component<infer _Props, infer Input, infer _Exports>
+		? Input
+		: never;
+
+/**
+ * The output of a component's `exports` schema, or `unknown` without one.
+ *
+ * @public
+ */
+export type ExportsOf<C extends AnyComponent> =
+	C extends Component<infer _Props, infer _Input, infer Exports>
+		? Exports
+		: never;
+
+/**
+ * The `hostProps` type of a component's host: its props, the built-in
+ * controls, and `export()` typed by its `exports` schema.
+ *
+ * @example
+ * ```typescript
+ * function submit(props: HostPropsOf<typeof PaymentForm>) {
+ *   return props.onSuccess({ id: 'txn_1' });
+ * }
+ * ```
+ *
+ * @public
+ */
+export type HostPropsOf<C extends AnyComponent> = HostProps<
+	PropsOf<C>,
+	ExportsOf<C>
+>;
 
 /**
  * A peer component instance that `getPeerInstances()` lists.
@@ -534,6 +619,8 @@ export interface GetPeerInstancesOptions {
  * Built-in properties and methods available on hostProps.
  *
  * @typeParam P - The props type for the component
+ * @typeParam Exports - The value `export()` accepts, from the component's
+ * `exports` schema; any value when `unknown`
  *
  * @remarks
  * These are the framework-provided properties that are always available
@@ -541,7 +628,10 @@ export interface GetPeerInstancesOptions {
  *
  * @public
  */
-export interface HostPropsBuiltins<P = Record<string, unknown>> {
+export interface HostPropsBuiltins<
+	P = Record<string, unknown>,
+	Exports = unknown,
+> {
 	/** Unique instance ID */
 	uid: string;
 
@@ -623,10 +713,15 @@ export interface HostPropsBuiltins<P = Record<string, unknown>> {
 	/**
 	 * Export data/methods to the consumer.
 	 *
+	 * @remarks
+	 * The consumer validates the value against the component's `exports`
+	 * schema and rejects an invalid one, keeping its previous exports. A host
+	 * started with `initHost(Component, ...)` checks it before sending.
+	 *
 	 * @param exports - Data to export
-	 * @returns Promise that resolves when export is complete
+	 * @returns Promise that resolves when the consumer has accepted the export
 	 */
-	export: <X>(exports: X) => Promise<void>;
+	export(exports: Exports): Promise<void>;
 
 	/**
 	 * The consumer's current prop snapshot.
@@ -665,6 +760,7 @@ export interface HostPropsBuiltins<P = Record<string, unknown>> {
  * value `initHost()` returned.
  *
  * @typeParam P - The props type for the component
+ * @typeParam Exports - The value `export()` accepts; any value when `unknown`
  *
  * @remarks
  * The hostProps object (short for "host properties") contains all props passed
@@ -674,16 +770,16 @@ export interface HostPropsBuiltins<P = Record<string, unknown>> {
  *
  * The name "hostProps" reflects that these are the props available to the host
  * (the embedded iframe/popup), passed from the consumer (the embedding app).
- * `initHost(Component, ...)` infers `P` from the component; use this type to
- * annotate helpers that receive the props.
+ * `initHost(Component, ...)` infers both parameters from the component. To
+ * annotate helpers that receive the props, use `HostPropsOf<typeof Component>`.
  *
  * @example
  * ```typescript
  * // In host window with typed props
- * import { initHost, type HostProps } from 'forgeframe';
- * import { MyComponent, type MyProps } from './my-component';
+ * import { initHost, type HostPropsOf } from 'forgeframe';
+ * import { MyComponent } from './my-component';
  *
- * function submit(props: HostProps<MyProps>) {
+ * function submit(props: HostPropsOf<typeof MyComponent>) {
  *   // Call consumer callbacks
  *   return props.onSubmit({ success: true });
  * }
@@ -704,8 +800,10 @@ export interface HostPropsBuiltins<P = Record<string, unknown>> {
  *
  * @public
  */
-export type HostProps<P = Record<string, unknown>> = RemoteValue<P> &
-	HostPropsBuiltins<P>;
+export type HostProps<
+	P = Record<string, unknown>,
+	Exports = unknown,
+> = RemoteValue<P> & HostPropsBuiltins<P, Exports>;
 
 /**
  * Options for `initHost()`.
@@ -753,6 +851,8 @@ export interface InitHostOptions<P = Record<string, unknown>> {
  *
  * @typeParam P - The host props type, inferred from the component passed to
  * `initHost()`
+ * @typeParam Exports - The value `hostProps.export()` accepts, inferred from
+ * the component's `exports` schema
  *
  * @example
  * ```typescript
@@ -767,7 +867,7 @@ export interface InitHostOptions<P = Record<string, unknown>> {
  *
  * @public
  */
-export interface Host<P = Record<string, unknown>> {
+export interface Host<P = Record<string, unknown>, Exports = unknown> {
 	/**
 	 * Resolves to {@link Host.hostProps} once the consumer's verified bootstrap
 	 * has passed the host schemas.
@@ -778,7 +878,7 @@ export interface Host<P = Record<string, unknown>> {
 	 * destroyed first. A rejected start releases the host, so `initHost()` can
 	 * be called again.
 	 */
-	readonly ready: Promise<HostProps<P>>;
+	readonly ready: Promise<HostProps<P, Exports>>;
 
 	/**
 	 * The live host props object.
@@ -788,7 +888,7 @@ export interface Host<P = Record<string, unknown>> {
 	 * consumer props after awaiting `ready`. Its identity never changes, and
 	 * later prop updates are applied to it.
 	 */
-	readonly hostProps: HostProps<P>;
+	readonly hostProps: HostProps<P, Exports>;
 
 	/**
 	 * Sends INIT to the consumer, which resolves its `render()`.

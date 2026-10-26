@@ -36,7 +36,7 @@ export interface PlaygroundConfig {
 	};
 }
 
-// Dynamic props - any user-defined props plus the host-facing callback
+// Dynamic props - any user-defined props plus the optional host-facing callback
 export type DynamicProps = Record<string, unknown> & {
-	onGreet: (message: string) => void;
+	onGreet?: (message: string) => void;
 };

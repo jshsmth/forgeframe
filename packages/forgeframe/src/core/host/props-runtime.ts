@@ -17,7 +17,7 @@ import {
 } from "../../props/normalize";
 import { deserializeProps } from "../../props/serialize";
 import type { SerializedProps } from "../../props/types";
-import type { HostPropsDefinition } from "../../types/props";
+import type { PropsDefinition } from "../../types/props";
 import type { HostProps, RemoteValue } from "../../types/runtime";
 import { normalizeError } from "../../utils/error";
 import { getDomain } from "../../window/helpers";
@@ -56,14 +56,14 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
 	/** This host's own origin, read once when the host starts. */
 	private readonly hostOrigin = getDomain();
 	/** Definitions of the props this host expects, selected on first use. */
-	private deliveredPropDefinitions?: HostPropsDefinition<P>;
+	private deliveredPropDefinitions?: Partial<PropsDefinition<P>>;
 
 	/**
 	 * @param propDefinitions - The host's definitions, or `undefined` for a
 	 * tag-agnostic host without `props`, which accepts every field unchecked
 	 */
 	constructor(
-		private readonly propDefinitions: HostPropsDefinition<P> | undefined,
+		private readonly propDefinitions: PropsDefinition<P> | undefined,
 		private options: HostPropsRuntimeOptions,
 	) {}
 
@@ -238,11 +238,10 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
 	 * `deliverTo` excludes this host are never delivered, so they are neither
 	 * required nor accepted.
 	 */
-	private expectedDefinitions(): HostPropsDefinition<P> {
+	private expectedDefinitions(): Partial<PropsDefinition<P>> {
 		// Both origins are fixed once the host starts, so the selection is too.
 		this.deliveredPropDefinitions ??= getDeliveredPropDefinitions(
-			this.propDefinitions ??
-				(EMPTY_PROP_DEFINITIONS as HostPropsDefinition<P>),
+			this.propDefinitions ?? (EMPTY_PROP_DEFINITIONS as PropsDefinition<P>),
 			createDeliveryTarget(this.hostOrigin, this.options.getConsumerDomain()),
 		);
 		return this.deliveredPropDefinitions;

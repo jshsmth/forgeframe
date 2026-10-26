@@ -6,7 +6,7 @@
  * `await host.ready`.
  */
 
-import { create, type HostProps, initHost, prop } from "forgeframe";
+import { create, type Host, type HostProps, initHost, prop } from "forgeframe";
 import { requireValue } from "../require-value";
 import { consumerUrl } from "./consumer-url";
 
@@ -21,6 +21,7 @@ const NestedChildComponent = create({
 	url: `${hostOrigin}/?scenario=nested-child`,
 	dimensions: { width: "100%", height: 240 },
 	props: { scenario: prop.string().optional() },
+	exports: prop.object({ nestedChildReady: prop.boolean() }),
 });
 
 /**
@@ -418,10 +419,7 @@ function renderEmbedded(hostProps: HostProps<MyProps>) {
 			await hostProps.export({
 				nestedReady: true,
 				childTag: NESTED_CHILD_TAG,
-				childExportReady: Boolean(
-					(childInstance.exports as { nestedChildReady?: boolean } | undefined)
-						?.nestedChildReady,
-				),
+				childExportReady: Boolean(childInstance.exports?.nestedChildReady),
 			});
 			return;
 		}
@@ -484,7 +482,9 @@ const initDelay =
 
 const initializeHostPage = async () => {
 	// This page serves many tags, so it uses the tag-agnostic form.
-	const host = initHost<MyProps>({ consumerOrigins });
+	// This form has no definitions, so props arrive unvalidated; the cast
+	// names the props the playground consumer sends.
+	const host = initHost({ consumerOrigins }) as Host<MyProps> | null;
 	if (host) {
 		renderEmbedded(await host.ready);
 	} else {

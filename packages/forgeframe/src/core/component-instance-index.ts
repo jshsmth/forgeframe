@@ -7,11 +7,7 @@
  * can be performed without scanning the full component registry.
  */
 
-import type {
-	AnyFactoryInput,
-	ForgeFrameComponentInstance,
-} from "../types/runtime";
-import type { PeersOption } from "./consumer/peers";
+import type { ComponentInstance, PeersOption } from "../types/runtime";
 
 /** Internal accessors the index requires in addition to the public instance API. @internal */
 export interface IndexedInstanceAccess {
@@ -23,10 +19,7 @@ export interface IndexedInstanceAccess {
 	getPeers(): PeersOption;
 }
 
-export type IndexedComponentInstance = ForgeFrameComponentInstance<
-	Record<string, unknown>,
-	unknown
-> &
+export type IndexedComponentInstance = ComponentInstance &
 	IndexedInstanceAccess;
 
 const componentInstanceIndexByUid = new Map<
@@ -42,15 +35,13 @@ const componentInstanceIndexByTag = new Map<
  * Adds an instance to the internal lookup index.
  * @internal
  */
-export function indexComponentInstance<P extends Record<string, unknown>, X>(
+export function indexComponentInstance(
 	tag: string,
-	instance: ForgeFrameComponentInstance<P, X, AnyFactoryInput> &
-		IndexedInstanceAccess,
+	instance: IndexedComponentInstance,
 ): void {
-	const indexedInstance = instance as IndexedComponentInstance;
-	const existing = componentInstanceIndexByUid.get(indexedInstance.uid);
+	const existing = componentInstanceIndexByUid.get(instance.uid);
 	if (existing) {
-		removeIndexedComponentInstance(indexedInstance.uid);
+		removeIndexedComponentInstance(instance.uid);
 	}
 
 	let instancesByUid = componentInstanceIndexByTag.get(tag);
@@ -59,10 +50,10 @@ export function indexComponentInstance<P extends Record<string, unknown>, X>(
 		componentInstanceIndexByTag.set(tag, instancesByUid);
 	}
 
-	instancesByUid.set(indexedInstance.uid, indexedInstance);
-	componentInstanceIndexByUid.set(indexedInstance.uid, {
+	instancesByUid.set(instance.uid, instance);
+	componentInstanceIndexByUid.set(instance.uid, {
 		tag,
-		instance: indexedInstance,
+		instance: instance,
 	});
 }
 

@@ -57,7 +57,7 @@ const steps = [
 		description:
 			"Harbor initializes the trusted host channel, reads validated props, mounts its form and awaits onReady(). Pip observes that remote invocation.",
 		source: "provider",
-		needle: "const host = initHost<PaymentProps>",
+		needle: "const host = initHost({",
 		lines: 30,
 	},
 	{
@@ -174,7 +174,7 @@ export function initTechnicalView(): void {
 			renderSource();
 			const needle =
 				target === "create"
-					? "create<PaymentProps>"
+					? "create({"
 					: target === "initHost"
 						? "const host = initHost"
 						: target === "onResult"

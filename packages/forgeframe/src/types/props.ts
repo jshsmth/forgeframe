@@ -2,11 +2,7 @@
  * Shared public prop-system types.
  */
 
-import type {
-	InferInput,
-	InferOutput,
-	StandardSchemaV1,
-} from "../props/schema";
+import type { StandardSchemaV1 } from "../props/schema";
 import type { DomainMatcher } from "./utility";
 
 /**
@@ -97,43 +93,45 @@ export type SelfAcceptanceError =
 	"ForgeFrame: a prop schema's output must be valid input to the same schema";
 
 /**
- * A prop entry accepted by {@link PropsDefinition}.
- *
- * @remarks
- * ForgeFrame accepts Standard Schema implementations directly for concise
- * declarations. Use {@link PropDefinition} when transport options are also
- * required.
- *
- * @public
- */
-export type PropDefinitionEntry<Output = unknown> =
-	| PropDefinition<Output>
-	| StandardSchemaV1<unknown, Output>;
-
-/**
- * Map of prop names to their definitions.
+ * Map of prop names to their definitions: a Standard Schema, or a
+ * {@link PropDefinition} when transport options are needed too.
  *
  * @typeParam P - The normalized props type for the component
  *
  * @remarks
- * Entries are checked against the props they produce. A defaulted or coercing
- * schema fits without a separate input type. TypeScript cannot check here that
- * a schema accepts its own output, so the runtime checks it when props are
- * normalized; `create()` with inferred props also checks it at compile time.
+ * Every key of `P` needs an entry, so `satisfies PropsDefinition<MyProps>`
+ * reports a missing definition. Each entry is checked against the value it
+ * produces: a required key rejects a schema whose output may be `undefined`.
+ * Give an optional key an optional schema as well; `InferProps` otherwise
+ * makes it required. A defaulted or coercing schema fits without
+ * a separate input type. TypeScript cannot check here that a schema accepts
+ * its own output, so the runtime checks it when props are normalized;
+ * `create()` also checks it at compile time.
+ *
+ * @example
+ * ```typescript
+ * import { prop, type PropsDefinition } from 'forgeframe';
+ *
+ * interface LoginProps {
+ *   email: string;
+ *   rememberMe: boolean;
+ *   ref?: string;
+ * }
+ *
+ * const props = {
+ *   email: prop.string().email(),
+ *   rememberMe: prop.boolean().default(false),
+ *   ref: { schema: prop.string().optional(), queryParam: true },
+ * } satisfies PropsDefinition<LoginProps>;
+ * ```
  *
  * @public
  */
 export type PropsDefinition<P> = {
-	[K in keyof P]?: PropDefinitionEntry<P[K]>;
+	[K in keyof Required<P>]:
+		| PropDefinition<P[K]>
+		| StandardSchemaV1<unknown, P[K]>;
 };
-
-/**
- * Prop definitions consumed by the host after values have been normalized.
- *
- * @typeParam P - The normalized props exposed to host code
- * @public
- */
-export type HostPropsDefinition<P> = PropsDefinition<P>;
 
 /** Extracts the schema of a direct or wrapped prop-definition entry. @internal */
 type PropDefinitionSchema<D> = D extends StandardSchemaV1
@@ -176,7 +174,7 @@ type RequiredPropDefinitionKeys<D extends Record<string, unknown>> = Exclude<
  * @typeParam D - A map of prop names to schema-backed definitions.
  * @public
  */
-export type InferPropsDefinition<D extends Record<string, unknown>> = {
+export type InferProps<D extends Record<string, unknown>> = {
 	[K in RequiredPropDefinitionKeys<D>]: InferPropDefinitionValue<D[K]>;
 } & {
 	[K in OptionalPropDefinitionKeys<D>]?: InferPropDefinitionValue<D[K]>;
@@ -197,61 +195,18 @@ type RequiredPropDefinitionInputKeys<D extends Record<string, unknown>> =
  * Infers consumer input props from direct or wrapped Standard Schemas.
  *
  * @remarks
- * Unlike {@link InferPropsDefinition}, this type uses each schema's accepted
+ * Unlike {@link InferProps}, this type uses each schema's accepted
  * input. A key is optional exactly when its schema accepts `undefined`, so the
  * compiler and the runtime agree on which props are required.
  *
  * @typeParam D - A map of prop names to schema-backed definitions.
  * @public
  */
-export type InferPropsDefinitionInput<D extends Record<string, unknown>> = {
+export type InferInput<D extends Record<string, unknown>> = {
 	[K in RequiredPropDefinitionInputKeys<D>]: InferPropDefinitionInput<D[K]>;
 } & {
 	[K in OptionalPropDefinitionInputKeys<D>]?: InferPropDefinitionInput<D[K]>;
 };
-
-/**
- * Infers the output type from a Standard Schema.
- *
- * @typeParam S - The Standard Schema type
- *
- * @example
- * ```typescript
- * import { z } from 'zod';
- * const schema = z.object({ name: z.string() });
- * type User = InferSchemaOutput<typeof schema>; // { name: string }
- * ```
- *
- * @public
- */
-export type InferSchemaOutput<S extends StandardSchemaV1> = InferOutput<S>;
-
-/**
- * Helper type for creating schema-based prop definitions with full type inference.
- *
- * @typeParam S - The Standard Schema type
- *
- * @remarks
- * Resolves to {@link SelfAcceptanceError} when `S`'s output is not valid input
- * to `S`, so no definition can be built from such a schema.
- *
- * @example
- * ```typescript
- * import { z } from 'zod';
- *
- * const userSchema = z.object({ name: z.string(), age: z.number() });
- *
- * type UserPropDef = SchemaPropDefinition<typeof userSchema>;
- * // A PropDefinition whose schema is userSchema.
- * ```
- *
- * @public
- */
-export type SchemaPropDefinition<S extends StandardSchemaV1> = [
-	InferOutput<S>,
-] extends [InferInput<S>]
-	? Omit<PropDefinition<InferOutput<S>>, "schema"> & { schema: S }
-	: SelfAcceptanceError;
 
 // Re-export StandardSchemaV1 for convenience
 export type { StandardSchemaV1 } from "../props/schema";

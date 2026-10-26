@@ -205,7 +205,7 @@ function renderForm(props: HostProps<PaymentProps>): void {
  */
 async function start(): Promise<void> {
 	try {
-		const host = initHost<PaymentProps>({
+		const host = initHost({
 			props: paymentProps,
 			consumerOrigins: [consumerOrigin],
 		});

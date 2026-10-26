@@ -653,7 +653,7 @@ describe("Consumer lifecycle behavior", () => {
 	});
 
 	it("should ignore spoofed GET_SIBLINGS from a different trusted window and accept the opened host window", async () => {
-		const PeerComponent = create<{ amount: number }>({
+		const PeerComponent = create({
 			tag: "peer-siblings-component",
 			peers: true,
 			url: "https://host.example.com/peer",

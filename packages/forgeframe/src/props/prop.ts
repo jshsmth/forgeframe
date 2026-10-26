@@ -18,10 +18,7 @@ export {
 	RecordSchema,
 	TupleSchema,
 } from "./prop/composite";
-export {
-	type Prop,
-	prop,
-} from "./prop/factory";
+export { prop } from "./prop/factory";
 
 export {
 	EnumSchema,

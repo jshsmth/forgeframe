@@ -149,38 +149,31 @@ export interface StandardSchemaV1PathSegment {
 // ============================================================================
 
 /**
- * Infers the input type from a Standard Schema.
- *
- * @typeParam Schema - The Standard Schema type
+ * Type helpers that read a Standard Schema's input and output types, copied
+ * from `@standard-schema/spec`.
  *
  * @example
  * ```typescript
+ * import type { StandardSchemaV1 } from 'forgeframe';
  * import { z } from 'zod';
- * const schema = z.string().email();
- * type Input = InferInput<typeof schema>; // string
+ *
+ * const schema = z.object({ name: z.string() });
+ * type User = StandardSchemaV1.InferOutput<typeof schema>; // { name: string }
  * ```
  *
  * @public
  */
-export type InferInput<Schema extends StandardSchemaV1> =
-	Schema extends StandardSchemaV1<infer I, unknown> ? I : never;
+export declare namespace StandardSchemaV1 {
+	/** Infers the input type of a Standard Schema. */
+	export type InferInput<Schema extends StandardSchemaV1> = NonNullable<
+		Schema["~standard"]["types"]
+	>["input"];
 
-/**
- * Infers the output type from a Standard Schema.
- *
- * @typeParam Schema - The Standard Schema type
- *
- * @example
- * ```typescript
- * import { z } from 'zod';
- * const schema = z.string().transform(s => s.length);
- * type Output = InferOutput<typeof schema>; // number
- * ```
- *
- * @public
- */
-export type InferOutput<Schema extends StandardSchemaV1> =
-	Schema extends StandardSchemaV1<unknown, infer O> ? O : never;
+	/** Infers the output type of a Standard Schema. */
+	export type InferOutput<Schema extends StandardSchemaV1> = NonNullable<
+		Schema["~standard"]["types"]
+	>["output"];
+}
 
 // ============================================================================
 // Validation Utilities
@@ -205,7 +198,7 @@ export type InferOutput<Schema extends StandardSchemaV1> =
  * }
  * ```
  *
- * @public
+ * @internal
  */
 export function isStandardSchema(value: unknown): value is StandardSchemaV1 {
 	return (

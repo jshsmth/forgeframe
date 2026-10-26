@@ -92,12 +92,12 @@ describe("Function prop bridge integration", () => {
 		const activeHarness = harness;
 		const container = document.createElement("div");
 		document.body.append(container);
-		const Component = create<
-			Record<string, never>,
-			{ wait: () => Promise<never> }
-		>({
+		const Component = create({
 			tag: "integration-reconnect-pending-call",
 			url: "https://host.example.com/widget",
+			exports: prop.object({
+				wait: prop.function<() => Promise<never>>(),
+			}),
 		});
 		const instance = Component();
 		const rendering = instance.render(container);
@@ -129,12 +129,12 @@ describe("Function prop bridge integration", () => {
 		const activeHarness = harness;
 		const container = document.createElement("div");
 		document.body.append(container);
-		const Component = create<
-			Record<string, never>,
-			{ wait: () => Promise<never> }
-		>({
+		const Component = create({
 			tag: "integration-unresponsive-host-call",
 			url: "https://host.example.com/widget",
+			exports: prop.object({
+				wait: prop.function<() => Promise<never>>(),
+			}),
 		});
 		const instance = Component();
 		const rendering = instance.render(container);
@@ -171,12 +171,12 @@ describe("Function prop bridge integration", () => {
 		const activeHarness = harness;
 		const container = document.createElement("div");
 		document.body.append(container);
-		const Component = create<
-			Record<string, never>,
-			{ wait: () => Promise<string> }
-		>({
+		const Component = create({
 			tag: "integration-destroy-pending-calls",
 			url: "https://host.example.com/widget",
+			exports: prop.object({
+				wait: prop.function<() => Promise<string>>(),
+			}),
 		});
 		const instance = Component();
 		const rendering = instance.render(container);
@@ -325,10 +325,11 @@ describe("Function prop bridge integration", () => {
 				return 42;
 			};
 			const definitions = { run: prop.function<typeof run>() };
-			const Component = create<{ run: typeof run }, { run: typeof run }>({
+			const Component = create({
 				tag: "integration-uncoercible-callback",
 				url: "https://host.example.com/widget",
 				props: definitions,
+				exports: prop.object(definitions),
 			});
 			const container = document.createElement("div");
 			document.body.append(container);
@@ -365,9 +366,10 @@ describe("Function prop bridge integration", () => {
 		});
 		const instance = Component({});
 		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost<{
-			callback: () => number;
-		}>(container, definitions);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			definitions,
+		);
 		await rendering;
 		expect(callback).not.toHaveBeenCalled();
 		await expect(hostProps.callback()).resolves.toBe(42);
@@ -564,9 +566,10 @@ describe("Function prop bridge integration", () => {
 		let result: unknown = cyclic;
 		const instance = Component({ getResult: () => result });
 		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost<{
-			getResult: () => unknown;
-		}>(container, definitions);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			definitions,
+		);
 		await rendering;
 
 		await expect(hostProps.getResult()).rejects.toThrow(
@@ -582,7 +585,7 @@ describe("Function prop bridge integration", () => {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 
-		const CallbackComponent = create<CallbackBridgeProps>({
+		const CallbackComponent = create({
 			tag: "integration-function-prop-bridge-component",
 			url: "https://host.example.com/widget",
 			props: CALLBACK_PROP_DEFINITIONS,

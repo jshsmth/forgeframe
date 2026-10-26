@@ -147,6 +147,20 @@ test.beforeAll(async () => {
 				</script>`,
 				);
 			}
+			if (req.url === "/rejected-export") {
+				return respond(
+					res,
+					`<!doctype html><script type="module">
+				import {initHost} from '/library.js';
+				const host = initHost({consumerOrigins:['${consumerOrigin}']});
+				await host.ready;
+				await host.hostProps.export({ready:true});
+				try { await host.hostProps.export({ready:'yes'}); window.rejection = 'none'; }
+				catch (error) { window.rejection = error.message; }
+				window.ready = true;
+				</script>`,
+				);
+			}
 			if (req.url === "/hidden-on-ready") {
 				return respond(
 					res,
@@ -342,7 +356,7 @@ async function mount(
 			const libraryUrl = "/library.js";
 			const { create, prop } = await import(libraryUrl);
 			const reviewWindow = window as unknown as {
-				instance: import("../../src/types").ForgeFrameComponentInstance<
+				instance: import("../../src/types").ComponentInstance<
 					Record<string, unknown>
 				>;
 				outcome: Promise<string>;
@@ -398,7 +412,7 @@ async function prepareDelivery(
 				base.href = `${scenario === "base" ? attackerOrigin : hostOrigin}/nested/`;
 				document.head.appendChild(base);
 				const reviewWindow = window as unknown as {
-					instance: import("../../src/types").ForgeFrameComponentInstance<
+					instance: import("../../src/types").ComponentInstance<
 						Record<string, unknown>
 					>;
 					outcome: Promise<string>;
@@ -698,7 +712,7 @@ test("lazy iframe applies a show requested before frame creation", async ({
 	const outcome = await page.evaluate(
 		async ({ hostOrigin }) => {
 			const libraryUrl = "/library.js";
-			const { create, prop, EVENT } = await import(libraryUrl);
+			const { create, prop } = await import(libraryUrl);
 			const instance = create({
 				tag: "lazy-iframe-early-show",
 				url: `${hostOrigin}/delivery`,
@@ -712,7 +726,7 @@ test("lazy iframe applies a show requested before frame creation", async ({
 				},
 				props: { count: prop.number(), allowed: prop.string() },
 			})({ count: 7, allowed: "early-show-value" });
-			instance.event.on(EVENT.RENDER, () => instance.show());
+			instance.event.on("render", () => instance.show());
 			return instance.render("#mount").then(
 				() => "ready",
 				(error: Error) => error.message,
@@ -945,7 +959,8 @@ test("preserves foreign-window dates and ordinary records", async ({
 			})({ createdAt, config, record });
 			(
 				window as unknown as {
-					instance: import("../../src/types").ForgeFrameComponentInstance<
+					instance: import("../../src/types").ComponentInstance<
+						Record<string, unknown>,
 						Record<string, unknown>,
 						{ createdAt: Date; record: Record<string, string> }
 					>;
@@ -1006,7 +1021,8 @@ test("preserves foreign-window dates and ordinary records", async ({
 		await page.evaluate(() => {
 			const exported = (
 				window as unknown as {
-					instance: import("../../src/types").ForgeFrameComponentInstance<
+					instance: import("../../src/types").ComponentInstance<
+						Record<string, unknown>,
 						Record<string, unknown>,
 						{ createdAt: Date; record: Record<string, string> }
 					>;
@@ -1140,7 +1156,7 @@ for (const context of ["iframe", "popup"] as const) {
 					},
 				});
 				const review = window as unknown as {
-					instance: import("../../src/types").ForgeFrameComponentInstance<
+					instance: import("../../src/types").ComponentInstance<
 						Record<string, unknown>
 					>;
 					outcome: Promise<string>;
@@ -1200,7 +1216,7 @@ for (const context of ["iframe", "popup"] as const) {
 		await page.evaluate(() =>
 			(
 				window as unknown as {
-					instance: import("../../src/types").ForgeFrameComponentInstance<
+					instance: import("../../src/types").ComponentInstance<
 						Record<string, unknown>
 					>;
 				}
@@ -1214,7 +1230,7 @@ for (const context of ["iframe", "popup"] as const) {
 		await page.evaluate(() =>
 			(
 				window as unknown as {
-					instance: import("../../src/types").ForgeFrameComponentInstance<
+					instance: import("../../src/types").ComponentInstance<
 						Record<string, unknown>
 					>;
 				}
@@ -1399,8 +1415,8 @@ test("concurrent widgets isolate props and callbacks and survive a peer closing"
 		onComplete: () => number;
 	};
 	type Widgets = {
-		first: import("../../src/types").ForgeFrameComponentInstance<WidgetProps>;
-		second: import("../../src/types").ForgeFrameComponentInstance<WidgetProps>;
+		first: import("../../src/types").ComponentInstance<WidgetProps>;
+		second: import("../../src/types").ComponentInstance<WidgetProps>;
 	};
 	await page.goto(consumerOrigin);
 	await page.evaluate(async (hostOrigin) => {
@@ -1983,7 +1999,7 @@ for (const context of ["iframe", "popup"] as const) {
 				const libraryUrl = "/library.js";
 				const { create, prop } = await import(libraryUrl);
 				const reviewWindow = window as unknown as {
-					instance: import("../../src/types").ForgeFrameComponentInstance<
+					instance: import("../../src/types").ComponentInstance<
 						Record<string, unknown>
 					>;
 					armed: boolean;
@@ -2138,6 +2154,56 @@ for (const context of ["iframe", "popup"] as const) {
 }
 
 for (const context of ["iframe", "popup"] as const) {
+	test(`${context} keeps the previous exports when the consumer rejects an export`, async ({
+		page,
+	}) => {
+		await page.goto(consumerOrigin);
+		const opening =
+			context === "popup" ? page.waitForEvent("popup") : Promise.resolve(page);
+		await page.evaluate(
+			async ({ hostOrigin, context }) => {
+				const libraryUrl = "/library.js";
+				const { create, prop }: typeof import("../../src/index") = await import(
+					libraryUrl
+				);
+				const instance = create({
+					tag: "rejected-export-browser",
+					url: `${hostOrigin}/rejected-export`,
+					exports: prop.object({ ready: prop.boolean() }),
+				})();
+				const errors: string[] = [];
+				instance.event.on("error", (error) => {
+					errors.push(error.message);
+				});
+				Object.assign(window, { instance, errors });
+				await instance.render("#mount", context);
+			},
+			{ hostOrigin, context },
+		);
+		const hostPage = await opening;
+		const host =
+			context === "popup"
+				? hostPage
+				: page
+						.frames()
+						.find((frame) => frame.url() === `${hostOrigin}/rejected-export`);
+		if (!host) throw new Error("Missing host");
+		await host.waitForFunction(() => "ready" in window);
+		const rejection = await host.evaluate(
+			() => (window as unknown as { rejection: string }).rejection,
+		);
+		expect(rejection).toContain("Validation failed: exports.ready");
+		expect(
+			await page.evaluate(() => {
+				const state = window as unknown as {
+					instance: { exports: unknown };
+					errors: string[];
+				};
+				return { exports: state.instance.exports, errors: state.errors };
+			}),
+		).toEqual({ exports: { ready: true }, errors: [rejection] });
+	});
+
 	test(`${context} emits exports and keeps cspNonce on the consumer`, async ({
 		page,
 	}) => {
@@ -2289,7 +2355,7 @@ for (const context of ["iframe", "popup"] as const) {
 			await page.evaluate(async () => {
 				const instance = (
 					window as unknown as {
-						instance: import("../../src/types").ForgeFrameComponentInstance;
+						instance: import("../../src/types").ComponentInstance;
 					}
 				).instance;
 				let destroyed = false;

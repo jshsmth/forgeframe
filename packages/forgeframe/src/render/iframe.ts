@@ -81,7 +81,7 @@ export function createIframeElement(
  *
  * @example
  * ```typescript
- * const iframe = createIframeElement({ name, dimensions });
+ * const iframe = createIframeElement({ name, dimensions, sandbox: resolveIframeSandbox(undefined) });
  * // Later, when done with the iframe:
  * destroyIframe(iframe);
  * ```

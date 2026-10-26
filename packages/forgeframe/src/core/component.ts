@@ -10,23 +10,19 @@
 
 import { CONTEXT } from "../constants";
 import { hasOwnDeclaredField } from "../props/definition-checks";
-import type { StandardSchemaV1 } from "../props/schema";
+import { isStandardSchema } from "../props/schema";
 import {
 	assertIframeAttributeNames,
 	assertSandboxOption,
 } from "../render/iframe-configuration";
+import type { InferInput, InferProps } from "../types/props";
 import type {
-	InferPropsDefinition,
-	InferPropsDefinitionInput,
-	PropsDefinition,
-} from "../types/props";
-import type {
+	Component,
+	ComponentInstance,
 	ComponentOptions,
-	ForgeFrameComponent,
-	ForgeFrameComponentInstance,
 	InferablePropsDefinition,
+	InferExports,
 	InferredComponentOptions,
-	SelfAcceptingPropsDefinition,
 } from "../types/runtime";
 import { hasBrowserWindow } from "../utils/browser";
 import { assertDomainMatcher } from "../utils/domain-pattern";
@@ -63,6 +59,7 @@ function validateComponentOptions<P>(options: ComponentOptions<P>): void {
 	assertSandboxOption(options.sandbox);
 	assertIframeAttributeNames(options.attributes);
 	assertPropDefinitionsObject(options.props ?? {});
+	assertExportsSchema(options.exports);
 	validateStaticComponentUrl(options);
 	if (hasRegisteredComponent(options.tag)) {
 		throw new Error(`Component "${options.tag}" is already registered`);
@@ -170,6 +167,15 @@ function assertNoRemovedComponentOptions(options: object): void {
 	}
 }
 
+/** Checks that the optional `exports` option is a Standard Schema. */
+function assertExportsSchema(exports: unknown): void {
+	if (exports !== undefined && !isStandardSchema(exports)) {
+		throw new Error(
+			"Component exports must be a Standard Schema, such as prop.object({ ... }) or a Zod object",
+		);
+	}
+}
+
 /** Resolves static URLs using the browser's navigation base when available. */
 function validateStaticComponentUrl<P>(options: ComponentOptions<P>): void {
 	// Validate URL format if it's a string (can't validate function URLs at definition time)
@@ -204,6 +210,9 @@ function staticUrlValidationContext(
 	};
 }
 
+/** Props as the runtime handles them, after inference has done its work. */
+type RuntimeProps = Record<string, unknown>;
+
 /** Removes one identity from the factory-owned list. */
 function removeTrackedInstance<T>(instances: T[], instance: T): void {
 	const index = instances.indexOf(instance);
@@ -219,8 +228,15 @@ function removeTrackedInstance<T>(instances: T[], instance: T): void {
  * Defining a component never starts a host; a host page passes the factory to
  * `initHost()`.
  *
- * @typeParam P - The props type for the component
- * @typeParam X - The exports type that the host can expose
+ * Props, factory input and exports are inferred from the `props` and
+ * `exports` schemas; `create()` takes no type arguments. The props argument
+ * is required exactly when a prop schema rejects `undefined`. To check the
+ * definitions against a hand-written interface, write
+ * `props: { ... } satisfies PropsDefinition<MyProps>`, or derive the type
+ * with `PropsOf<typeof MyComponent>`.
+ *
+ * @typeParam D - The prop definitions, inferred from `props`
+ * @typeParam S - The `exports` schema, inferred from `exports`
  * @param options - Component configuration options
  * @returns A component factory function
  *
@@ -235,63 +251,39 @@ function removeTrackedInstance<T>(instances: T[], instance: T): void {
  *     email: prop.string(),
  *     onLogin: prop.function<(user: { id: string }) => void>(),
  *   },
+ *   exports: prop.object({ reset: prop.function<() => void>() }),
  * });
  *
  * const instance = LoginComponent({ email: 'user@example.com', onLogin: () => {} });
  * await instance.render('#container');
+ * await instance.exports?.reset();
  * ```
  *
  * @public
  */
 export function create<
-	const D extends InferablePropsDefinition,
-	X = unknown,
-	ContextualSchemas extends Record<string, StandardSchemaV1> = {
-		[K in keyof D]: D[K] extends StandardSchemaV1
-			? D[K]
-			: D[K] extends { schema: infer Schema extends StandardSchemaV1 }
-				? Schema
-				: never;
-	},
+	const D extends InferablePropsDefinition = Record<never, never>,
+	const S = undefined,
 >(
-	options: InferredComponentOptions<D, ContextualSchemas>,
-): ForgeFrameComponent<
-	InferPropsDefinition<D>,
-	X,
-	Record<PropertyKey, never> extends InferPropsDefinitionInput<D>
-		? false
-		: true,
-	InferPropsDefinitionInput<D>
->;
-export function create<
-	P extends Record<string, unknown> = Record<string, unknown>,
-	X = unknown,
-	Input = P,
-	D extends PropsDefinition<P> = PropsDefinition<P>,
->(
-	options: ComponentOptions<P> & {
-		props?: D & SelfAcceptingPropsDefinition<D>;
-	},
-): ForgeFrameComponent<P, X, false, Input>;
-export function create<
-	P extends Record<string, unknown> = Record<string, unknown>,
-	X = unknown,
-	Input = P,
->(options: ComponentOptions<P>): ForgeFrameComponent<P, X, false, Input> {
+	options: InferredComponentOptions<D, S>,
+): Component<InferProps<D>, InferInput<D>, InferExports<S>>;
+export function create(
+	options: ComponentOptions<Record<string, unknown>>,
+): Component<Record<string, unknown>> {
 	validateComponentOptions(options);
 	const runtimeOptions = options;
 
-	const instances: ForgeFrameComponentInstance<P, X, Input>[] = [];
+	const instances: ComponentInstance<RuntimeProps>[] = [];
 	const componentTag = options.tag;
 
-	function untrackInstance(instance: ConsumerComponent<P, X, Input>): void {
+	function untrackInstance(instance: ConsumerComponent<RuntimeProps>): void {
 		removeTrackedInstance(instances, instance);
 		removeIndexedComponentInstance(instance.uid);
 	}
 
 	function trackInstance(
-		instance: ConsumerComponent<P, X, Input>,
-	): ConsumerComponent<P, X, Input> {
+		instance: ConsumerComponent<RuntimeProps>,
+	): ConsumerComponent<RuntimeProps> {
 		if (instance.isDestroyed()) {
 			return instance;
 		}
@@ -304,10 +296,10 @@ export function create<
 	}
 
 	function createTrackedInstance(
-		props?: Input,
-	): ConsumerComponent<P, X, Input> {
+		props?: RuntimeProps,
+	): ConsumerComponent<RuntimeProps> {
 		return trackInstance(
-			new ConsumerComponent<P, X, Input>(
+			new ConsumerComponent<RuntimeProps>(
 				runtimeOptions,
 				props,
 				untrackInstance,
@@ -322,10 +314,10 @@ export function create<
 	 */
 	// biome-ignore lint/complexity/useArrowFunction: Preserve the factory's regular-function behavior for JavaScript callers.
 	const Component = function (
-		props?: Input,
-	): ForgeFrameComponentInstance<P, X, Input> {
+		props?: RuntimeProps,
+	): ComponentInstance<RuntimeProps> {
 		return createTrackedInstance(props);
-	} as unknown as ForgeFrameComponent<P, X, false, Input>;
+	} as Component<RuntimeProps>;
 
 	// A fresh frozen snapshot per read keeps callers from desynchronizing the
 	// factory list from the global instance index.
@@ -342,8 +334,6 @@ export function create<
 /**
  * Retrieves a registered component by its tag name.
  *
- * @typeParam P - The props type for the component
- * @typeParam X - The exports type that the host can expose
  * @param tag - The unique tag identifier of the component
  * @returns The component factory function, or undefined if not found
  *
@@ -357,14 +347,8 @@ export function create<
  *
  * @internal
  */
-export function getComponent<
-	P extends Record<string, unknown> = Record<string, unknown>,
-	X = unknown,
-	Input = P,
->(tag: string): ForgeFrameComponent<P, X, false, Input> | undefined {
-	return getRegisteredComponent<P, X>(tag) as
-		| ForgeFrameComponent<P, X, false, Input>
-		| undefined;
+export function getComponent(tag: string): Component | undefined {
+	return getRegisteredComponent(tag);
 }
 
 /**

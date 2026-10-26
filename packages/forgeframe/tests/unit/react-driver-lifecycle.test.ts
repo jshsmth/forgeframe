@@ -7,6 +7,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createReactComponent } from "@/drivers/react";
 import {
+	asComponent,
 	createDeferredPromise,
 	createForgeFrameComponentMock,
 	createReactHarness,
@@ -22,7 +23,7 @@ describe("createReactComponent lifecycle integration", () => {
 		const { React, effects } = createReactHarness();
 		const { component } = createForgeFrameComponentMock();
 
-		const ReactComponent = createReactComponent(component as never, {
+		const ReactComponent = createReactComponent(asComponent(component), {
 			React: React as never,
 		});
 		ReactComponent({ amount: 10 });
@@ -37,7 +38,7 @@ describe("createReactComponent lifecycle integration", () => {
 	it("keeps the committed container ref callback when a render with another ref is discarded", () => {
 		const { React } = createReactHarness();
 		const { component } = createForgeFrameComponentMock();
-		const render = createReactComponent(component as never, {
+		const render = createReactComponent(asComponent(component), {
 			React: React as never,
 		}) as unknown as (
 			props: Record<string, unknown>,
@@ -66,7 +67,7 @@ describe("createReactComponent lifecycle integration", () => {
 		Object.defineProperty(component, "name", { value: "LifecycleComponent" });
 		const container = document.createElement("div");
 
-		const ReactComponent = createReactComponent(component as never, {
+		const ReactComponent = createReactComponent(asComponent(component), {
 			React: React as never,
 		});
 
@@ -110,7 +111,7 @@ describe("createReactComponent lifecycle integration", () => {
 		Object.defineProperty(component, "name", { value: "LifecycleComponent" });
 		const container = document.createElement("div");
 
-		const ReactComponent = createReactComponent(component as never, {
+		const ReactComponent = createReactComponent(asComponent(component), {
 			React: React as never,
 		});
 
@@ -150,7 +151,7 @@ describe("createReactComponent lifecycle integration", () => {
 		Object.defineProperty(component, "name", { value: "LifecycleComponent" });
 		const container = document.createElement("div");
 
-		const ReactComponent = createReactComponent(component as never, {
+		const ReactComponent = createReactComponent(asComponent(component), {
 			React: React as never,
 		});
 
@@ -194,7 +195,7 @@ describe("createReactComponent lifecycle integration", () => {
 		Object.defineProperty(component, "name", { value: "LifecycleComponent" });
 		const container = document.createElement("div");
 
-		const ReactComponent = createReactComponent(component as never, {
+		const ReactComponent = createReactComponent(asComponent(component), {
 			React: React as never,
 		});
 
@@ -235,7 +236,7 @@ describe("createReactComponent lifecycle integration", () => {
 		const { component, unsubscribes } = createForgeFrameComponentMock();
 		const onClose = vi.fn();
 
-		const ReactComponent = createReactComponent(component as never, {
+		const ReactComponent = createReactComponent(asComponent(component), {
 			React: React as never,
 		});
 		ReactComponent({ amount: 1, onClose });
@@ -260,7 +261,7 @@ describe("createReactComponent lifecycle integration", () => {
 		);
 		instance.render.mockReturnValueOnce(deferredRender.promise);
 
-		const ReactComponent = createReactComponent(component as never, {
+		const ReactComponent = createReactComponent(asComponent(component), {
 			React: React as never,
 		});
 		ReactComponent({ amount: 1, onClose, onError });
@@ -281,7 +282,7 @@ describe("createReactComponent lifecycle integration", () => {
 		const { React, refs, effects } = createReactHarness();
 		const { component, instance } = createForgeFrameComponentMock();
 
-		const ReactComponent = createReactComponent(component as never, {
+		const ReactComponent = createReactComponent(asComponent(component), {
 			React: React as never,
 		});
 
@@ -310,7 +311,7 @@ describe("createReactComponent lifecycle integration", () => {
 		const renderError = new Error("render failed");
 		instance.render.mockRejectedValueOnce(renderError);
 
-		const ReactComponent = createReactComponent(component as never, {
+		const ReactComponent = createReactComponent(asComponent(component), {
 			React: React as never,
 		});
 		ReactComponent({ amount: 1, onError });
@@ -330,7 +331,7 @@ describe("createReactComponent lifecycle integration", () => {
 		const renderError = new Error("render failed");
 		instance.render.mockReturnValueOnce(deferredRender.promise);
 
-		const ReactComponent = createReactComponent(component as never, {
+		const ReactComponent = createReactComponent(asComponent(component), {
 			React: React as never,
 		});
 		ReactComponent({ amount: 1 });
@@ -379,7 +380,7 @@ describe("createReactComponent lifecycle integration", () => {
 		Object.defineProperty(component, "name", { value: "LifecycleComponent" });
 		const container = document.createElement("div");
 
-		const ReactComponent = createReactComponent(component as never, {
+		const ReactComponent = createReactComponent(asComponent(component), {
 			React: React as never,
 		});
 

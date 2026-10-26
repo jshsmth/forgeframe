@@ -1,7 +1,4 @@
-import type {
-	AnyFactoryInput,
-	ForgeFrameComponentInstance,
-} from "../../types/runtime";
+import type { ComponentInstance } from "../../types/runtime";
 
 /**
  * Compares own enumerable string keys and their values using `Object.is`.
@@ -51,18 +48,15 @@ export interface ReactPropQueue {
 }
 
 /** Per-instance state for serializing React prop updates. @internal */
-export interface ReactPropSyncState<P extends Record<string, unknown>, X>
-	extends ReactPropQueue {
-	instance: ForgeFrameComponentInstance<P, X, AnyFactoryInput>;
+export interface ReactPropSyncState extends ReactPropQueue {
+	instance: ComponentInstance;
 	renderReady: boolean;
 	draining: boolean;
 	active: boolean;
 }
 
 /** Prevents a completed or failed instance from retaining further prop work. @internal */
-export function deactivatePropSyncState<P extends Record<string, unknown>, X>(
-	state: ReactPropSyncState<P, X>,
-): void {
+export function deactivatePropSyncState(state: ReactPropSyncState): void {
 	state.active = false;
 	state.queue.length = 0;
 }
@@ -157,9 +151,9 @@ export function enqueuePropSnapshot(
  * @param onError - Error observer that must isolate its own failures so draining can continue.
  * @internal
  */
-export async function drainPropUpdates<P extends Record<string, unknown>, X>(
-	state: ReactPropSyncState<P, X>,
-	isCurrentSyncState: (state: ReactPropSyncState<P, X>) => boolean,
+export async function drainPropUpdates(
+	state: ReactPropSyncState,
+	isCurrentSyncState: (state: ReactPropSyncState) => boolean,
 	onError: (error: Error) => void,
 ): Promise<void> {
 	if (state.draining || !state.renderReady || !isCurrentSyncState(state)) {
@@ -176,10 +170,7 @@ export async function drainPropUpdates<P extends Record<string, unknown>, X>(
 			}
 
 			try {
-				await state.instance.updateProps(
-					// The wrapper's props were typed by the factory input.
-					update.payload as never,
-				);
+				await state.instance.updateProps(update.payload);
 			} catch (err) {
 				if (!isCurrentSyncState(state)) {
 					return;

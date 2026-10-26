@@ -136,8 +136,9 @@ export const prop = {
 	 * @param values - Allowed values.
 	 * @returns A new enum schema.
 	 */
-	enum: <T extends string | number>(values: readonly T[]): EnumSchema<T> =>
-		new EnumSchema(values),
+	enum: <const T extends string | number>(
+		values: readonly T[],
+	): EnumSchema<T> => new EnumSchema(values),
 
 	/**
 	 * Creates a union schema that accepts any matching branch.
@@ -167,10 +168,3 @@ export const prop = {
 	 */
 	any: <T = NonNullable<unknown> | null>(): AnySchema<T> => new AnySchema<T>(),
 } as const;
-
-/**
- * Type alias for the prop factory namespace.
- *
- * @public
- */
-export type Prop = typeof prop;

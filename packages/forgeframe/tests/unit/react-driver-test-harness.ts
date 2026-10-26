@@ -2,6 +2,12 @@
  * Shared deterministic hook and component mocks for React driver tests.
  */
 import { vi } from "vitest";
+import type { Component } from "@/types";
+
+/** Types a mocked factory as a component whose props are not checked. */
+export function asComponent(mock: unknown): Component {
+	return mock as Component;
+}
 
 export function createReactHarness() {
 	const refs: Array<{ current: unknown }> = [];

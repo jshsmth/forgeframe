@@ -8,11 +8,7 @@ import {
 
 declare const React: typeof import("react");
 
-interface Props extends Record<string, unknown> {
-	label: string;
-}
-
-const Component = create<Props>({
+const Component = create({
 	tag: "react-typecheck",
 	url: "https://example.com",
 	props: {
@@ -20,7 +16,8 @@ const Component = create<Props>({
 	},
 });
 
-const ReactComponent = createReactComponent<Props, unknown, ReactElement>(
+// The type parameters are the component and the React element type.
+const ReactComponent = createReactComponent<typeof Component, ReactElement>(
 	Component,
 	{ React },
 );

@@ -202,7 +202,7 @@ for (const context of ["iframe", "popup"] as const) {
 					onGreet: (message: string) => log(message, "success"),
 				});
 				const state = window as unknown as {
-					instance: import("../../src/types").ForgeFrameComponentInstance<
+					instance: import("../../src/types").ComponentInstance<
 						Record<string, unknown>
 					>;
 					outcome: Promise<void>;
@@ -246,7 +246,7 @@ for (const context of ["iframe", "popup"] as const) {
 		await page.evaluate(async () => {
 			await (
 				window as unknown as {
-					instance: import("../../src/types").ForgeFrameComponentInstance<
+					instance: import("../../src/types").ComponentInstance<
 						Record<string, unknown>
 					>;
 				}

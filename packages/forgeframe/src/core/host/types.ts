@@ -12,9 +12,10 @@ import type { FunctionBridge } from "../../communication/bridge";
 import type { MessageHandler } from "../../communication/messenger";
 import type { ContextType } from "../../constants";
 import type { EventEmitter } from "../../events/emitter";
+import type { StandardSchemaV1 } from "../../props/schema";
 import type { SerializedProps } from "../../props/types";
 import type { HostEvents } from "../../types/events";
-import type { HostPropsDefinition } from "../../types/props";
+import type { PropsDefinition } from "../../types/props";
 import type { GetPeerInstancesOptions, PeerInfo } from "../../types/runtime";
 import type { Dimensions, DomainMatcher } from "../../types/utility";
 
@@ -22,7 +23,9 @@ export type VerifiedMessageSource = Parameters<MessageHandler>[1];
 
 export interface HostRuntimeOptions<P> {
 	/** Validate the consumer's props; without them, props are not validated. */
-	props?: HostPropsDefinition<P>;
+	props?: PropsDefinition<P>;
+	/** Checks each export before it is sent; without it, exports are sent unchecked. */
+	exports?: StandardSchemaV1;
 	/** Checked against the selected consumer origin before BOOTSTRAP is sent. */
 	consumerOrigins: DomainMatcher;
 	/** Sends INIT as soon as `ready` resolves; otherwise INIT waits for `init()`. */

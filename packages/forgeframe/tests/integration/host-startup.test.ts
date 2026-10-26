@@ -10,7 +10,7 @@ import { deserializeMessage } from "@/communication/protocol";
 import { MESSAGE_NAME } from "@/constants";
 import { deleteRegisteredComponent } from "@/core/component-registry";
 import { HOST_PROPS_BUILTIN_KEYS } from "@/core/host/builtin-keys";
-import { create, EVENT, initHost, isHost, prop } from "@/index";
+import { create, initHost, isHost, prop } from "@/index";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
@@ -366,7 +366,7 @@ describe("Explicit host start-up", () => {
 				timeout: 300,
 			});
 			const errors: string[] = [];
-			instance.event.on(EVENT.ERROR, (error) => {
+			instance.event.on("error", (error) => {
 				errors.push((error as Error).message);
 			});
 			vi.spyOn(console, "error").mockImplementation(() => {});

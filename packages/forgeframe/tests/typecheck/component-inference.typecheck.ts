@@ -1,28 +1,38 @@
 /**
  * Compile-time assertions for schema-backed component definitions.
  *
- * Covers inferred and explicit props, third-party Standard Schemas, wrapped
+ * Covers inferred props, input and exports, the type helpers that read them
+ * back, `satisfies PropsDefinition<P>`, third-party Standard Schemas, wrapped
  * definitions whose presence and defaults come from their schemas, the removed
- * prop options, callbacks, read-only instance tracking, and the removed
- * zoid-era APIs.
+ * prop options and types, callbacks, read-only instance tracking, and the
+ * removed zoid-era APIs.
  */
 import * as v from "valibot";
 import { z } from "zod";
 import {
+	type Component,
+	type ComponentInstance,
 	type ComponentOptions,
 	closeAll,
 	create,
 	createReactComponent,
-	type ForgeFrameComponent,
-	type ForgeFrameComponentInstance,
-	type HostPropsDefinition,
+	type ExportsOf,
+	type InputOf,
 	initHost,
 	type PropDefinition,
 	type PropsDefinition,
+	type PropsOf,
 	prop,
-	type SchemaPropDefinition,
 	withReactComponent,
 } from "../../src";
+
+/** Whether each type is assignable to the other. */
+type IsEquivalent<A, B> = [A] extends [B]
+	? [B] extends [A]
+		? true
+		: false
+	: false;
+type Assert<T extends true> = T;
 
 const InferredComponent = create({
 	tag: "inferred-component",
@@ -83,54 +93,157 @@ const callableHostName: string | undefined = initHost(CallableSchemaComponent, {
 })?.hostProps.name;
 void callableHostName;
 
-interface ExplicitProps extends Record<string, unknown> {
-	label: string;
-	enabled: boolean;
-	onChange: (enabled: boolean) => void;
+// create() takes no type arguments: types come from the schemas.
+interface LoginProps {
+	email: string;
+	rememberMe: boolean;
+	ref?: string;
+	onLogin: (user: { id: string }) => void;
 }
 
-interface ExplicitExports {
-	ready: boolean;
-}
-
-declare const ExplicitlyRequiredFactory: ForgeFrameComponent<
-	{ label: string },
-	unknown,
-	true
->;
-void ExplicitlyRequiredFactory({ label: "ready" });
-// @ts-expect-error the third generic still makes the props argument required
-void ExplicitlyRequiredFactory();
-
-const ExplicitComponent = create<ExplicitProps, ExplicitExports>({
-	tag: "explicit-component",
+create<
+	// @ts-expect-error a props interface is not a definitions map; drop the type argument
+	LoginProps
+>({
+	tag: "explicit-type-argument-component",
 	url: "https://example.com/explicit",
-	props: {
-		label: prop.string(),
-		enabled: prop.boolean(),
-		onChange: prop.function<(enabled: boolean) => void>(),
-	},
+	props: { email: prop.string() },
 });
 
-void ExplicitComponent({
-	label: "ready",
-	enabled: true,
-	onChange: (_enabled) => undefined,
+// satisfies checks hand-written interfaces against the definitions.
+const loginDefinitions = {
+	email: prop.string().email(),
+	rememberMe: prop.boolean().default(false),
+	ref: { schema: prop.string().optional(), queryParam: true },
+	onLogin: prop.function<(user: { id: string }) => void>(),
+} satisfies PropsDefinition<LoginProps>;
+const LoginForm = create({
+	tag: "satisfies-login-component",
+	url: "https://example.com/login",
+	props: loginDefinitions,
 });
+export const loginPropsRoundTrip: Assert<
+	IsEquivalent<PropsOf<typeof LoginForm>, LoginProps>
+> = true;
 
-interface ExplicitDefinedOutputProps extends Record<string, unknown> {
-	label: string;
-}
+const missingDefinition = {
+	email: prop.string(),
+	rememberMe: prop.boolean(),
+	ref: prop.string().optional(),
+	// @ts-expect-error satisfies reports a missing definition (onLogin)
+} satisfies PropsDefinition<LoginProps>;
+void missingDefinition;
 
-create<ExplicitDefinedOutputProps>({
-	tag: "explicit-defined-output-component",
-	url: "https://example.com/explicit-defined-output",
-	props: {
-		label: {
-			// @ts-expect-error explicit normalized props must include every schema output
-			schema: z.string().transform(() => undefined),
-		},
-	},
+const mismatchedDefinition = {
+	// @ts-expect-error satisfies reports a schema whose output does not match
+	email: prop.number(),
+	rememberMe: prop.boolean(),
+	ref: prop.string().optional(),
+	onLogin: prop.function<(user: { id: string }) => void>(),
+} satisfies PropsDefinition<LoginProps>;
+void mismatchedDefinition;
+
+const optionalForRequired = {
+	// @ts-expect-error a required key rejects a schema that may produce undefined
+	email: prop.string().optional(),
+	rememberMe: prop.boolean(),
+	ref: prop.string().optional(),
+	onLogin: prop.function<(user: { id: string }) => void>(),
+} satisfies PropsDefinition<LoginProps>;
+void optionalForRequired;
+
+// Enum values keep their literal types under satisfies.
+const outcomeDefinitions = {
+	outcome: prop.enum(["success", "decline"]),
+} satisfies PropsDefinition<{ outcome: "success" | "decline" }>;
+void outcomeDefinitions;
+
+// Third-party schemas are checked the same way.
+const thirdPartyDefinitions = {
+	email: z.string().email(),
+	rememberMe: v.optional(v.boolean(), false),
+	ref: { schema: z.string().optional(), bodyParam: "ref" },
+	onLogin: prop.function<(user: { id: string }) => void>(),
+} satisfies PropsDefinition<LoginProps>;
+void thirdPartyDefinitions;
+
+const thirdPartyMismatch = {
+	// @ts-expect-error a Zod schema whose output does not match is reported
+	email: z.number(),
+	// @ts-expect-error a Valibot schema whose output does not match is reported
+	rememberMe: v.string(),
+	ref: z.string().optional(),
+	onLogin: prop.function<(user: { id: string }) => void>(),
+} satisfies PropsDefinition<LoginProps>;
+void thirdPartyMismatch;
+
+// PropsOf and InputOf read a component's props and factory input.
+type LoginInput = InputOf<typeof LoginForm>;
+export const loginInputKeepsRequiredKeys: Assert<
+	IsEquivalent<
+		LoginInput,
+		{
+			email: string;
+			onLogin: (user: { id: string }) => void;
+		} & {
+			rememberMe?: boolean | undefined;
+			ref?: string | undefined;
+		}
+	>
+> = true;
+// @ts-expect-error InputOf keeps required keys required
+const missingLoginInput: LoginInput = { email: "a@example.com" };
+void missingLoginInput;
+const loginInstance: ComponentInstance<
+	PropsOf<typeof LoginForm>,
+	InputOf<typeof LoginForm>,
+	ExportsOf<typeof LoginForm>
+> = LoginForm({ email: "a@example.com", onLogin: () => undefined });
+void loginInstance;
+const loginComponent: Component<LoginProps, LoginInput> = LoginForm;
+void loginComponent;
+// Without an exports schema, exports are unknown.
+export const loginExportsUnknown: Assert<
+	IsEquivalent<ExportsOf<typeof LoginForm>, unknown>
+> = true;
+
+// An exports schema types instance.exports and ExportsOf.
+const ExportingComponent = create({
+	tag: "exporting-component",
+	url: "https://example.com/exporting",
+	exports: prop.object({
+		validate: prop.function<() => boolean>(),
+		ready: prop.boolean(),
+	}),
+});
+export const exportsInferred: Assert<
+	IsEquivalent<
+		ExportsOf<typeof ExportingComponent>,
+		{ validate: () => boolean; ready: boolean }
+	>
+> = true;
+const exportingInstance = ExportingComponent();
+const validated: Promise<boolean> | undefined =
+	exportingInstance.exports?.validate();
+const ready: boolean | undefined = exportingInstance.exports?.ready;
+void validated;
+void ready;
+// @ts-expect-error exports only carry what the schema declares
+void exportingInstance.exports?.missing;
+
+const zodExportsComponent = create({
+	tag: "zod-exports-component",
+	url: "https://example.com/zod-exports",
+	exports: z.object({ total: z.number() }),
+});
+const total: number | undefined = zodExportsComponent().exports?.total;
+void total;
+
+create({
+	tag: "transforming-exports-component",
+	url: "https://example.com/transforming-exports",
+	// @ts-expect-error an exports schema's output must be valid input to the same schema
+	exports: z.string().transform(Number),
 });
 
 const ExternalSchemaComponent = create({
@@ -221,19 +334,8 @@ const removedSerializationDefinition: PropDefinition = {
 };
 void removedSerializationDefinition;
 
-void create<{ profile: Record<string, unknown> }>({
-	tag: "removed-serialization-component",
-	url: "https://example.com/removed-serialization",
-	props: {
-		profile: {
-			schema: prop.any<Record<string, unknown>>(),
-			// @ts-expect-error explicit-generic definitions reject the removed serialization option
-			serialization: "json",
-		},
-	},
-});
-// The inferred create() overload captures a literal's extra keys, so it does
-// not report serialization at compile time; create() rejects it at runtime.
+// create() captures a literal's extra keys, so it does not report
+// serialization at compile time; create() rejects it at runtime.
 
 const removedPropOptions: PropDefinition<string>[] = [
 	// @ts-expect-error required was removed; the schema decides presence
@@ -315,16 +417,47 @@ const removedOutputSchemaDefinition: PropDefinition<number> = {
 };
 void removedOutputSchemaDefinition;
 
-// @ts-expect-error SchemaPropDefinition is unusable for a type-changing schema
-const typeChangingSchemaDefinition: SchemaPropDefinition<
+// @ts-expect-error SchemaPropDefinition was removed; use PropDefinition
+type RemovedSchemaPropDefinition = import("../../src").SchemaPropDefinition<
 	typeof typeChangingSchema
-> = { schema: typeChangingSchema };
-void typeChangingSchemaDefinition;
+>;
+// @ts-expect-error PropDefinitionEntry was removed; use PropsDefinition
+type RemovedPropDefinitionEntry = import("../../src").PropDefinitionEntry;
+// @ts-expect-error HostPropsDefinition was removed; use PropsDefinition
+type RemovedHostPropsDefinition = import("../../src").HostPropsDefinition<{
+	count: number;
+}>;
+// @ts-expect-error InferPropsDefinition was renamed InferProps
+type RemovedInferPropsDefinition = import("../../src").InferPropsDefinition<
+	Record<string, never>
+>;
+// @ts-expect-error InferPropsDefinitionInput was renamed InferInput
+type RemovedInferPropsInput = import("../../src").InferPropsDefinitionInput<
+	Record<string, never>
+>;
+// @ts-expect-error ForgeFrameComponent was renamed Component
+type RemovedForgeFrameComponent = import("../../src").ForgeFrameComponent;
+// @ts-expect-error ForgeFrameComponentInstance was renamed ComponentInstance
+type RemovedInstance = import("../../src").ForgeFrameComponentInstance;
+// @ts-expect-error InferObjectShape is internal
+type RemovedInferObjectShape = import("../../src").InferObjectShape<
+	Record<string, never>
+>;
+export type RemovedDefinitionTypes = [
+	RemovedSchemaPropDefinition,
+	RemovedPropDefinitionEntry,
+	RemovedHostPropsDefinition,
+	RemovedInferPropsDefinition,
+	RemovedInferPropsInput,
+	RemovedForgeFrameComponent,
+	RemovedInstance,
+	RemovedInferObjectShape,
+];
 
 const coercedSchemaDefinition = {
 	schema: z.coerce.number(),
 	queryParam: true,
-} satisfies SchemaPropDefinition<ReturnType<typeof z.coerce.number>>;
+} satisfies PropDefinition<number>;
 void coercedSchemaDefinition;
 
 // Coercing and union-accepting schemas take a wider input than they produce.
@@ -365,11 +498,7 @@ void coercingInstance.updateProps({ unknownProp: 1 });
 void CoercingComponent({ amount: "41", startsAt: 1 });
 
 // Any props value is valid factory input.
-type ComponentPropsOf<C> =
-	C extends ForgeFrameComponent<infer P, unknown, boolean, infer _Input>
-		? P
-		: never;
-declare const coercingProps: ComponentPropsOf<typeof CoercingComponent>;
+declare const coercingProps: PropsOf<typeof CoercingComponent>;
 const coercedAmount: number = coercingProps.amount;
 void coercedAmount;
 void CoercingComponent(coercingProps);
@@ -396,7 +525,7 @@ void defaultedDefinitions;
 const outputCompatibleHostDefinitions = {
 	label: { schema: z.string() },
 	count: prop.number().default(0),
-} satisfies HostPropsDefinition<{ label: string; count: number }>;
+} satisfies PropsDefinition<{ label: string; count: number }>;
 void outputCompatibleHostDefinitions;
 
 const outputTypedHost = initHost({
@@ -417,61 +546,37 @@ type TwoParameterOptions = ComponentOptions<
 
 export type { TwoParameterOptions };
 
-// Explicit factories keep an optional factory-input parameter.
-type ExplicitCoercedProps = { amount: number };
-type ExplicitCoercedInput = { amount: number | string };
-const ExplicitCoercedComponent = create<
-	ExplicitCoercedProps,
-	unknown,
-	ExplicitCoercedInput
->({
-	tag: "explicit-coerced-component",
-	url: "https://example.com/explicit-coerced",
-	props: { amount: z.coerce.number() },
-});
-const explicitCoercedInstance = ExplicitCoercedComponent({ amount: "2" });
-const explicitlyTypedCoercedComponent: ForgeFrameComponent<
-	ExplicitCoercedProps,
-	unknown,
-	false,
-	ExplicitCoercedInput
-> = ExplicitCoercedComponent;
-const explicitlyTypedCoercedInstance: ForgeFrameComponentInstance<
-	ExplicitCoercedProps,
-	unknown,
-	ExplicitCoercedInput
-> = explicitCoercedInstance;
-void explicitlyTypedCoercedComponent({ amount: 2 });
-void explicitlyTypedCoercedInstance.updateProps({ amount: "3" });
-void ExplicitCoercedComponent.instances[0]?.updateProps({ amount: "3" });
+// InputOf is the factory input, wider than the props for coercions.
+type CoercingInput = InputOf<typeof CoercingComponent>;
+const coercingInput: CoercingInput = { amount: "2", startsAt: new Date() };
+void CoercingComponent(coercingInput);
+void CoercingComponent.instances[0]?.updateProps({ amount: "3" });
 // @ts-expect-error updates use the factory input type
-void explicitCoercedInstance.updateProps({ amount: true });
+void coercingInstance.updateProps({ startsAt: 1 });
+const typedCoercingComponent: Component<
+	PropsOf<typeof CoercingComponent>,
+	CoercingInput
+> = CoercingComponent;
+void typedCoercingComponent({ amount: 2, startsAt: new Date() });
 
 const CoercingReactComponent = createReactComponent(CoercingComponent, {
 	React: {} as never,
 });
 void CoercingReactComponent({ amount: "4", startsAt: "2026-11-01T09:00:00Z" });
-const ExplicitGenericCoercedReactComponent = createReactComponent<
-	ExplicitCoercedProps,
-	unknown,
-	unknown,
-	false,
-	ExplicitCoercedInput
->(ExplicitCoercedComponent, { React: {} as never });
-void ExplicitGenericCoercedReactComponent({ amount: "4" });
-
 const createBoundReactComponent = withReactComponent({} as never);
-const BoundCoercedReactComponent = createBoundReactComponent(
-	ExplicitCoercedComponent,
-);
-void BoundCoercedReactComponent({ amount: "4" });
+const BoundCoercedReactComponent = createBoundReactComponent(CoercingComponent);
+void BoundCoercedReactComponent({ amount: "4", startsAt: new Date() });
 // @ts-expect-error React wrappers preserve the factory input type
-void CoercingReactComponent({ amount: true });
+void CoercingReactComponent({ amount: 4, startsAt: 1 });
 // @ts-expect-error curried React wrappers preserve the factory input type
-void BoundCoercedReactComponent({ amount: true });
+void BoundCoercedReactComponent({ amount: 4, startsAt: 1 });
 
-// @ts-expect-error aliases were removed; factories accept only defined keys
-void ExplicitCoercedComponent({ amount: "2", legacyAmount: "2" });
+void CoercingComponent({
+	amount: "2",
+	startsAt: new Date(),
+	// @ts-expect-error aliases were removed; factories accept only defined keys
+	legacyAmount: "2",
+});
 
 const WrappedZodComponent = create({
 	tag: "wrapped-zod-component",
@@ -561,8 +666,15 @@ const OptionalOnlyComponent = create({
 
 void OptionalOnlyComponent();
 
-// Explicit component factories preserve the existing optional argument API.
-void ExplicitComponent();
+// A component without props takes no props argument.
+const Propless = create({
+	tag: "propless-component",
+	url: "https://example.com/propless",
+});
+void Propless();
+export const proplessProps: Assert<
+	IsEquivalent<keyof PropsOf<typeof Propless>, never>
+> = true;
 
 // Callback defaults are factories, in direct and wrapped definitions.
 const onCancel = (): void => {};
@@ -588,10 +700,8 @@ const TrackedComponent = create({
 	props: { label: prop.string() },
 });
 
-const instancesSnapshot: readonly ForgeFrameComponentInstance<
-	{ label: string },
-	unknown
->[] = TrackedComponent.instances;
+const instancesSnapshot: readonly ComponentInstance<{ label: string }>[] =
+	TrackedComponent.instances;
 void instancesSnapshot;
 // @ts-expect-error instances is a read-only snapshot; close instances instead.
 TrackedComponent.instances.push(TrackedComponent({ label: "extra" }));
@@ -656,3 +766,41 @@ export type RemovedPublicApi = [
 	RemovedPropsInput,
 	RemovedPropsUpdate,
 ];
+
+// Wrapped transport options are checked inside create() too.
+create({
+	tag: "typed-wrapped-options",
+	url: "https://example.com/wrapped-options",
+	props: {
+		secret: { schema: prop.string(), deliverTo: "same-origin" },
+		partner: {
+			schema: prop.string(),
+			deliverTo: ["https://a.example", /^https:\/\/b\./],
+		},
+		ref: { schema: prop.string().optional(), queryParam: "ref" },
+		// @ts-expect-error deliverTo takes 'same-origin' or an origin matcher
+		bad: { schema: prop.string(), deliverTo: 42 },
+	},
+});
+// 'same-origin' inside a deliverTo array is a string the types cannot single
+// out; create() rejects it at runtime (prop-definition-checks.test.ts).
+const sameOriginInArray: PropDefinition<string> = {
+	schema: prop.string(),
+	deliverTo: ["same-origin", "https://a.example"],
+};
+void sameOriginInArray;
+
+// A props type literal as a type argument fails too, with or without props.
+create<
+	// @ts-expect-error props types are not definitions maps; drop the type argument
+	{ amount: number }
+>({ tag: "typed-explicit-literal", url: "https://example.com/literal" });
+
+// prop.any() keeps its default type inside create().
+const AnyDefault = create({
+	tag: "typed-any-default",
+	url: "https://example.com/any-default",
+	props: { payload: prop.any() },
+});
+// @ts-expect-error prop.any() is required, so the props argument is too
+void AnyDefault();
