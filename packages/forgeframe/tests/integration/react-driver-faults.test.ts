@@ -6,7 +6,8 @@
  * updates and remounts can be ordered exactly. Covers stale render and update
  * results after a `context` remount, prop sync stopping after a failed render,
  * updates committed during `render()`, a throwing `instanceRef` callback,
- * failed-update resync and single retries, and an `onError` that throws.
+ * failed-update resync and single retries, an `onError` that throws, and a
+ * reserved wrapper name declared as `undefined`.
  */
 
 import { createReactComponent } from "forgeframe/react";
