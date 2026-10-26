@@ -21,8 +21,8 @@ import type { SerializedProps } from "../../props/types";
 import type { PropsDefinition } from "../../types/props";
 import type {
 	GetPeerInstancesOptions,
+	PeerInfo,
 	RemoteValue,
-	SiblingInfo,
 } from "../../types/runtime";
 import type { Dimensions, DomainMatcher } from "../../types/utility";
 import { createDeferred, promiseTimeout } from "../../utils/promise";
@@ -32,7 +32,7 @@ import {
 	createWindowPayload,
 } from "../../window/name-payload";
 import type { HostBootstrapData } from "../../window/types";
-import type { ConsumerSiblingRequest } from "./siblings";
+import type { ConsumerPeerRequest } from "./peers";
 import type { NormalizedOptions } from "./types";
 
 type VerifiedMessageSource = Parameters<MessageHandler>[1];
@@ -54,9 +54,9 @@ export interface ConsumerTransportHandlers<X> {
 	onHide: () => Promise<void>;
 	onError: (error: Error) => void;
 	onExport: (exports: RemoteValue<X>) => void;
-	onGetSiblings: (
-		request: ConsumerSiblingRequest,
-	) => SiblingInfo[] | Promise<SiblingInfo[]>;
+	onGetPeers: (
+		request: ConsumerPeerRequest,
+	) => PeerInfo[] | Promise<PeerInfo[]>;
 }
 
 /**
@@ -82,8 +82,8 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 	/** Browser-verified origin of the initialized host window. */
 	public activeHostDomain: string | null = null;
 
-	/** Dynamic origin currently trusted due to resolved URL. */
-	public dynamicUrlTrustedOrigin: string | null = null;
+	/** Static URL origin currently trusted when no `domain` is configured. */
+	public staticUrlTrustedOrigin: string | null = null;
 
 	/** Deferred host initialization handshake promise. */
 	public initPromise: ReturnType<typeof createDeferred<void>> | null = null;
@@ -132,27 +132,29 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 			typeof this.options.url === "string"
 				? this.resolveUrlOrigin(this.options.url)
 				: null;
-		if (hostOrigin) this.dynamicUrlTrustedOrigin = hostOrigin;
+		if (hostOrigin) this.staticUrlTrustedOrigin = hostOrigin;
 		return collectTrustedDomains(this.options.domain, hostOrigin);
 	}
 
 	/**
 	 * Ensures the messenger trusts the origin for a resolved host URL.
+	 *
+	 * @remarks
+	 * A configured `domain` is the whole trust policy, and every resolved URL
+	 * was checked against it. Without one the URL is static (`create()`
+	 * requires `domain` for a function URL), and a relative URL's origin
+	 * follows the document base, so the trusted origin moves with it.
 	 */
 	syncTrustedDomainForUrl(url: string): void {
+		if (this.options.domain !== undefined) return;
 		const origin = this.resolveUrlOrigin(url);
-		const previousOrigin = this.dynamicUrlTrustedOrigin;
-		if (this.options.domain) {
-			this.dynamicUrlTrustedOrigin = origin;
-			return;
-		}
-
+		const previousOrigin = this.staticUrlTrustedOrigin;
 		if (previousOrigin && previousOrigin !== origin) {
 			this.messenger.removeTrustedDomain(previousOrigin);
 		}
 
 		this.messenger.addTrustedDomain(origin);
-		this.dynamicUrlTrustedOrigin = origin;
+		this.staticUrlTrustedOrigin = origin;
 	}
 
 	/**
@@ -425,13 +427,15 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 		this.onHostControl<{ options?: GetPeerInstancesOptions } | undefined>(
 			MESSAGE_NAME.GET_SIBLINGS,
 			async (request, source) => {
-				// Scope discovery to this instance and the browser-verified host origin;
-				// claimed uid/tag fields could otherwise reach other origins' exports.
-				const peers = await handlers.onGetSiblings({
+				// Scope discovery to this instance, its own peers setting and the
+				// browser-verified host origin; claimed uid/tag fields could
+				// otherwise reach other origins' exports.
+				const peers = await handlers.onGetPeers({
 					uid: this.uid,
 					tag: this.options.tag,
+					peers: this.options.peers,
 					hostDomain: source.domain,
-					anyConsumer: request?.options?.anyConsumer === true,
+					allTags: request?.options?.allTags === true,
 				});
 				this.peerBridge.startBatch("append");
 				try {
@@ -500,7 +504,7 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 		this.hostWindow = null;
 		this.openedHostDomain = null;
 		this.activeHostDomain = null;
-		this.dynamicUrlTrustedOrigin = null;
+		this.staticUrlTrustedOrigin = null;
 	}
 
 	/**

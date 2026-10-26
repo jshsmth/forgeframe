@@ -277,7 +277,7 @@ describe("HostTransport", () => {
 		]);
 
 		await expect(
-			transport.getPeerInstances({ anyConsumer: true }),
+			transport.getPeerInstances({ allTags: true }),
 		).resolves.toEqual([
 			{ uid: "peer-1", tag: "host-transport-component", open: true },
 		]);
@@ -286,7 +286,7 @@ describe("HostTransport", () => {
 			consumerWindow,
 			"https://consumer.example.com",
 			MESSAGE_NAME.GET_SIBLINGS,
-			{ options: { anyConsumer: true } },
+			{ options: { allTags: true } },
 		);
 
 		activeDomain = "https://updated.example.com";
@@ -300,6 +300,26 @@ describe("HostTransport", () => {
 			{ options: undefined },
 		);
 	});
+
+	it.each([
+		[
+			{ anyConsumer: true },
+			'getPeerInstances() option "anyConsumer" was renamed. Use { allTags: true } to include other component tags.',
+		],
+		[{ allTags: "yes" }, "getPeerInstances() allTags must be a boolean"],
+		[null, "getPeerInstances() options must be an object"],
+	])(
+		"rejects invalid peer options %j before sending",
+		async (options, message) => {
+			const { transport } = createTransport();
+			const sendSpy = vi.spyOn(transport.messenger, "send");
+
+			await expect(
+				transport.getPeerInstances(options as never),
+			).rejects.toThrow(message);
+			expect(sendSpy).not.toHaveBeenCalled();
+		},
+	);
 
 	it("should serialize overlapping function export batches in call order", async () => {
 		const { transport } = createTransport();

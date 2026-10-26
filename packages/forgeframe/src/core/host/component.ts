@@ -9,9 +9,7 @@
  */
 
 import { EventEmitter } from "../../events/emitter";
-import { EMPTY_PROP_DEFINITIONS } from "../../props/definitions";
 import type { HostEvents } from "../../types/events";
-import type { HostPropsDefinition } from "../../types/props";
 import type { HostProps } from "../../types/runtime";
 import type { DomainMatcher } from "../../types/utility";
 import { normalizeError } from "../../utils/error";
@@ -82,28 +80,25 @@ export class HostComponent<P extends Record<string, unknown>> {
 			});
 			this.transport = transport;
 
-			propsRuntime = new HostPropsRuntime(
-				options.props ?? (EMPTY_PROP_DEFINITIONS as HostPropsDefinition<P>),
-				{
-					uid: this.uid,
-					tag: this.tag,
-					event: this.event,
-					controls: {
-						close: () => this.transport.close(),
-						focus: () => this.transport.focus(),
-						resize: (dimensions) => this.transport.resize(dimensions),
-						show: () => this.transport.show(),
-						hide: () => this.transport.hide(),
-						reportError: (error) => this.transport.reportError(error),
-						exportData: <T>(exports: T) => this.transport.exportData(exports),
-						getPeerInstances: (options) =>
-							this.transport.getPeerInstances(options),
-					},
-					getConsumerWindow: () => this.consumerWindow,
-					getConsumerDomain: () => this.consumerDomain,
-					getBridge: () => this.transport.bridge,
+			propsRuntime = new HostPropsRuntime(options.props, {
+				uid: this.uid,
+				tag: this.tag,
+				event: this.event,
+				controls: {
+					close: () => this.transport.close(),
+					focus: () => this.transport.focus(),
+					resize: (dimensions) => this.transport.resize(dimensions),
+					show: () => this.transport.show(),
+					hide: () => this.transport.hide(),
+					reportError: (error) => this.transport.reportError(error),
+					exportData: <T>(exports: T) => this.transport.exportData(exports),
+					getPeerInstances: (options) =>
+						this.transport.getPeerInstances(options),
 				},
-			);
+				getConsumerWindow: () => this.consumerWindow,
+				getConsumerDomain: () => this.consumerDomain,
+				getBridge: () => this.transport.bridge,
+			});
 			this.propsRuntime = propsRuntime;
 			Object.defineProperties(this, {
 				messenger: {

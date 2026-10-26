@@ -8,7 +8,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { deserializeMessage } from "@/communication/protocol";
 import { getHost } from "@/core/host/bootstrap";
 import { create, EVENT, prop } from "@/index";
-import type { PropsDefinition } from "@/types";
+import type {
+	ComponentBaseOptions,
+	ComponentOptions,
+	ComponentUrlOptions,
+	PropsDefinition,
+} from "@/types";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
@@ -349,6 +354,7 @@ describe("Consumer/host handshake integration", () => {
 
 describe("Prop updates requested during render", () => {
 	let harness: IframeIntegrationHarness | null = null;
+	type Props = { amount: number };
 	const definitions = { amount: prop.number() };
 
 	afterEach(async () => {
@@ -372,16 +378,19 @@ describe("Prop updates requested during render", () => {
 		return { host, notifications };
 	}
 
-	function setup(options: Partial<Parameters<typeof create>[0]> = {}) {
+	function setup(
+		options: Partial<ComponentBaseOptions<Props>> &
+			Partial<ComponentUrlOptions<Props>> = {},
+	) {
 		harness = createIframeIntegrationHarness();
 		const container = document.createElement("div");
 		document.body.append(container);
-		const Component = create({
+		const Component = create<Props>({
 			tag: `render-hold-${Math.random().toString(36).slice(2)}`,
 			url: "https://host.example.com/widget",
 			props: definitions,
-			...options,
-		});
+			...(options as Partial<ComponentBaseOptions<Props>>),
+		} as ComponentOptions<Props>);
 		return { Component, container };
 	}
 
@@ -427,6 +436,7 @@ describe("Prop updates requested during render", () => {
 				if (rendering) queueOnce(3);
 				return "https://host.example.com/widget";
 			},
+			domain: "https://host.example.com",
 			validate: () => {
 				if (rendering) queueOnce(2);
 			},
@@ -460,10 +470,11 @@ describe("Prop updates requested during render", () => {
 
 	it("rejects a queued update that changes the URL origin", async () => {
 		const { Component, container } = setup({
-			url: (props: Record<string, unknown>) =>
+			url: (props) =>
 				props.amount === 2
 					? "https://other.example.com/widget"
 					: "https://host.example.com/widget",
+			domain: ["https://host.example.com", "https://other.example.com"],
 		});
 		const instance = Component({ amount: 1 });
 		const rendering = instance.render(container);

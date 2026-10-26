@@ -70,9 +70,11 @@ export { isStandardSchema } from "./props/schema";
 export { PopupOpenError } from "./render/popup";
 // Type exports
 export type {
-	ComponentEvents,
 	// Component types
+	ComponentBaseOptions,
+	ComponentEvents,
 	ComponentOptions,
+	ComponentUrlOptions,
 	ContainerTemplate,
 	// Utility types
 	Dimensions,
@@ -94,6 +96,7 @@ export type {
 	InferPropsDefinitionInput,
 	InferSchemaOutput,
 	InitHostOptions,
+	PeerInfo,
 	PrerenderTemplate,
 	// Props types
 	PropDefinition,
@@ -102,7 +105,6 @@ export type {
 	PropsDefinition,
 	RemoteValue,
 	SchemaPropDefinition,
-	SiblingInfo,
 	// Standard Schema types
 	StandardSchemaV1,
 	// Template types

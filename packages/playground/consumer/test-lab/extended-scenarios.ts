@@ -188,6 +188,8 @@ export async function runInstancesScenario(
 	const Component = create<InstanceProps, InstanceExports>({
 		tag,
 		url: `${HOST_URL}?scenario=instances`,
+		// The host lists its peers, so this component opts in to discovery.
+		peers: true,
 		dimensions: { width: "100%", height: 300 },
 		props: {
 			scenario: prop.string(),

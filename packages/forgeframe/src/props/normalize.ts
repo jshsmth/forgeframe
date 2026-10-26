@@ -156,9 +156,8 @@ function readSuppliedProp(props: object, key: string): unknown {
 /**
  * Returns whether a definitions object declares a prop: an own entry whose
  * value is not `undefined`.
- * @internal
  */
-export function isDeclaredProp(definitions: object, key: string): boolean {
+function isDeclaredProp(definitions: object, key: string): boolean {
 	return (
 		hasOwn(definitions, key) &&
 		(definitions as Record<string, unknown>)[key] !== undefined
@@ -166,21 +165,18 @@ export function isDeclaredProp(definitions: object, key: string): boolean {
 }
 
 /**
- * Keeps the wire fields a host expects: undeclared fields, and fields for
- * declared props that are delivered to this host. Returns `props` itself
- * when nothing is dropped.
+ * Keeps the wire fields a host expects: fields for declared props delivered
+ * to this host. Undeclared fields, including those for definition entries set
+ * to `undefined`, are dropped, so no unvalidated value reaches host state.
+ * Returns `props` itself when nothing is dropped.
  * @internal
  */
 export function selectExpectedFields<T extends Record<string, unknown>>(
 	props: T,
-	definitions: object,
 	deliveredDefinitions: object,
 ): T {
 	const entries = Object.entries(props);
-	const expected = entries.filter(
-		([key]) =>
-			!isDeclaredProp(definitions, key) || hasOwn(deliveredDefinitions, key),
-	);
+	const expected = entries.filter(([key]) => hasOwn(deliveredDefinitions, key));
 	return expected.length === entries.length
 		? props
 		: (Object.fromEntries(expected) as T);

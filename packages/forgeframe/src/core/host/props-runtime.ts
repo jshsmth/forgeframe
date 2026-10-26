@@ -8,6 +8,7 @@
  */
 
 import { EVENT } from "../../constants";
+import { EMPTY_PROP_DEFINITIONS } from "../../props/definitions";
 import {
 	createDeliveryTarget,
 	getDeliveredPropDefinitions,
@@ -57,8 +58,12 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
 	/** Definitions of the props this host expects, selected on first use. */
 	private deliveredPropDefinitions?: HostPropsDefinition<P>;
 
+	/**
+	 * @param propDefinitions - The host's definitions, or `undefined` for a
+	 * tag-agnostic host without `props`, which accepts every field unchecked
+	 */
 	constructor(
-		private readonly propDefinitions: HostPropsDefinition<P>,
+		private readonly propDefinitions: HostPropsDefinition<P> | undefined,
 		private options: HostPropsRuntimeOptions,
 	) {}
 
@@ -216,17 +221,16 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
 	}
 
 	/**
-	 * Discards fields for defined props this host does not expect. An
-	 * `undefined` definition entry counts as undeclared, so its field is kept.
+	 * Discards every field this host does not expect: undeclared fields,
+	 * including those of `undefined` definition entries, and declared props
+	 * that are not delivered to this host. A host without definitions keeps
+	 * every field.
 	 */
 	private filterUndeliveredProps<T extends Record<string, unknown>>(
 		props: T,
 	): T {
-		return selectExpectedFields(
-			props,
-			this.propDefinitions,
-			this.expectedDefinitions(),
-		);
+		if (this.propDefinitions === undefined) return props;
+		return selectExpectedFields(props, this.expectedDefinitions());
 	}
 
 	/**
@@ -237,7 +241,8 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
 	private expectedDefinitions(): HostPropsDefinition<P> {
 		// Both origins are fixed once the host starts, so the selection is too.
 		this.deliveredPropDefinitions ??= getDeliveredPropDefinitions(
-			this.propDefinitions,
+			this.propDefinitions ??
+				(EMPTY_PROP_DEFINITIONS as HostPropsDefinition<P>),
 			createDeliveryTarget(this.hostOrigin, this.options.getConsumerDomain()),
 		);
 		return this.deliveredPropDefinitions;

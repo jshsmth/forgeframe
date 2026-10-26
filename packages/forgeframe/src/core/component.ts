@@ -9,11 +9,12 @@
  */
 
 import { CONTEXT } from "../constants";
-import {
-	assertPropDefinitions,
-	hasOwnDeclaredField,
-} from "../props/definition-checks";
+import { hasOwnDeclaredField } from "../props/definition-checks";
 import type { StandardSchemaV1 } from "../props/schema";
+import {
+	assertIframeAttributeNames,
+	assertSandboxOption,
+} from "../render/iframe-configuration";
 import type {
 	InferPropsDefinition,
 	InferPropsDefinitionInput,
@@ -45,26 +46,35 @@ import {
 	registerComponent,
 } from "./component-registry";
 import { ConsumerComponent } from "./consumer";
-import { assertNoReservedPropDefinitions } from "./host/builtin-keys";
+import { assertPropDefinitionsObject } from "./host/builtin-keys";
 
 /**
  * Validates component configuration options.
  *
  * @param options - The component options to validate
- * @throws Error if tag is missing, invalid, or already registered
- * @throws Error if url is missing
+ * @throws Error if an option is missing or invalid, or the tag is already
+ * registered
  * @internal
  */
 function validateComponentOptions<P>(options: ComponentOptions<P>): void {
-	assertComponentShape(options);
+	assertComponentFields(options);
+	assertNoRemovedComponentOptions(options);
+	assertComponentMatchers(options);
+	assertSandboxOption(options.sandbox);
+	assertIframeAttributeNames(options.attributes);
+	assertPropDefinitionsObject(options.props ?? {});
 	validateStaticComponentUrl(options);
 	if (hasRegisteredComponent(options.tag)) {
 		throw new Error(`Component "${options.tag}" is already registered`);
 	}
 }
 
-/** Checks component declaration policy without browser or registry access. */
-function assertComponentShape<P>(options: ComponentOptions<P>): void {
+/**
+ * Checks the shape of each scalar component option, without browser or
+ * registry access. Matchers, the sandbox, attributes and prop definitions
+ * have their own checks.
+ */
+function assertComponentFields<P>(options: ComponentOptions<P>): void {
 	if (
 		typeof options !== "object" ||
 		options === null ||
@@ -91,6 +101,11 @@ function assertComponentShape<P>(options: ComponentOptions<P>): void {
 	if (typeof options.url !== "string" && typeof options.url !== "function") {
 		throw new Error("Component url must be a string or a function");
 	}
+	if (typeof options.url === "function" && options.domain === undefined) {
+		throw new Error(
+			"Component domain is required when url is a function: list the host origins the function may return, or pass '*' to trust any http(s) origin.",
+		);
+	}
 	if (
 		options.defaultContext !== undefined &&
 		options.defaultContext !== CONTEXT.IFRAME &&
@@ -116,18 +131,19 @@ function assertComponentShape<P>(options: ComponentOptions<P>): void {
 	) {
 		throw new Error("Component cspNonce must be a non-empty string");
 	}
+}
 
-	assertNoRemovedComponentOptions(options);
-
-	for (const option of ["domain", "peerDomains"] as const) {
-		if (options[option] !== undefined)
-			assertDomainMatcher(options[option], `Component ${option}`);
+/** Checks the `domain` and `peers` origin matchers. */
+function assertComponentMatchers<P>(options: ComponentOptions<P>): void {
+	if (options.domain !== undefined)
+		assertDomainMatcher(options.domain, "Component domain");
+	if ((options.peers as unknown) === false) {
+		throw new Error(
+			"Component peers must be true or an origin matcher; omit it to keep peer discovery off",
+		);
 	}
-
-	if (options.props) {
-		assertNoReservedPropDefinitions(options.props);
-		assertPropDefinitions(options.props);
-	}
+	if (options.peers !== undefined && options.peers !== true)
+		assertDomainMatcher(options.peers, "Component peers");
 }
 
 /**
@@ -143,6 +159,8 @@ const REMOVED_COMPONENT_OPTIONS: Readonly<Record<string, string>> = {
 		'Component option "eligible" was removed. Throw from the component validate({ props }) option instead.',
 	children:
 		'Component option "children" was removed. Import child components in the host page and render them there; each child host calls initHost(Child, { consumerOrigins }).',
+	peerDomains:
+		'Component option "peerDomains" was removed. Peer discovery is opt-in: set peers: true for same-origin peers, or peers: <origin matcher> to also admit those host origins.',
 };
 
 /** Throws a migration error for any removed component option. */

@@ -202,7 +202,9 @@ async function runSecurityScenario(
 	const ReservedComponent = create({
 		tag: uniqueTag("reserved-attribute"),
 		url: HOST_URL,
-		attributes: { srcdoc: "<p>override</p>" },
+		// Static attributes are checked by create(); a computed one is checked
+		// at render, before any iframe exists.
+		attributes: () => ({ srcdoc: "<p>override</p>" }),
 	});
 	const reservedInstance = ReservedComponent();
 	results.push(

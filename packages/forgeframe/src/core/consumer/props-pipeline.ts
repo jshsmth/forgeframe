@@ -52,8 +52,6 @@ export interface ConsumerPropsUpdateHooks<P extends Record<string, unknown>> {
 	resolveUrlOrigin: (url: string) => string;
 	assertStableRenderedOrigin: (nextHostOrigin: string) => void;
 	validateTransportProps: (props: P, hostOrigin: string) => void;
-	isRendered: () => boolean;
-	syncTrustedDomainForUrl: (url: string) => void;
 	shouldSendPropsToHost: () => boolean;
 	sendPropsUpdateToHost: (nextProps: P) => Promise<void>;
 	emitPropsUpdated: (nextProps: P) => void;
@@ -172,10 +170,6 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
 			hooks.assertActive();
 
 			this.commitCandidate(candidate);
-
-			if (!hooks.isRendered()) {
-				hooks.syncTrustedDomainForUrl(resolvedUrl);
-			}
 
 			if (hooks.shouldSendPropsToHost()) {
 				await hooks.sendPropsUpdateToHost(candidate.props);

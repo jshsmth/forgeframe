@@ -214,6 +214,7 @@ export function validateSchemaPresence<T>(
  * @internal
  */
 export function copyDefaultValue<T>(value: T): T {
+	if (typeof value !== "object" || value === null) return value;
 	return copyDefaultEntry(value, new WeakMap()) as T;
 }
 
@@ -241,7 +242,14 @@ function copyDefaultEntry(
 		const copy: Record<string, unknown> = {};
 		copies.set(value, copy);
 		for (const [key, entry] of Object.entries(value)) {
-			copy[key] = copyDefaultEntry(entry, copies);
+			// Define, not assign: an own `__proto__` key must stay an own key
+			// rather than replace the copy's prototype.
+			Object.defineProperty(copy, key, {
+				value: copyDefaultEntry(entry, copies),
+				enumerable: true,
+				writable: true,
+				configurable: true,
+			});
 		}
 		return copy;
 	}

@@ -102,6 +102,41 @@ describe("Messenger", () => {
 			}
 		});
 
+		it.each([
+			["'*'", "*"],
+			["a match-all RegExp", /.*/],
+		] as const)(
+			"never trusts an opaque origin, even through %s",
+			async (_label, trusted) => {
+				const open = new Messenger(
+					"open-uid",
+					mockWindow,
+					"https://consumer.com",
+					trusted,
+				);
+				const handler = vi.fn(() => ({ ok: true }));
+				open.on("probe", handler);
+				try {
+					dispatchMessage(
+						serializeMessage(
+							createRequestMessage(
+								"opaque-wildcard-request",
+								"probe",
+								{},
+								{ uid: "open-uid", domain: "null" },
+							),
+						),
+						{ postMessage: vi.fn() } as unknown as Window,
+						"null",
+					);
+					await Promise.resolve();
+					expect(handler).not.toHaveBeenCalled();
+				} finally {
+					open.destroy();
+				}
+			},
+		);
+
 		it("defers its listener until listen() and attaches it once", () => {
 			const deferredWindow = {
 				addEventListener: vi.fn(),

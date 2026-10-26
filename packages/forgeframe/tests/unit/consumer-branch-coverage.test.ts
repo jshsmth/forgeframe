@@ -485,36 +485,50 @@ describe("Consumer branch coverage and edge paths", () => {
 		);
 	});
 
-	it("should preserve an explicit sandbox when creating iframe element", () => {
+	it.each([
+		[
+			"the default",
+			undefined,
+			"allow-scripts allow-same-origin allow-forms allow-popups",
+		],
+		[
+			"a custom string",
+			"allow-scripts allow-same-origin",
+			"allow-scripts allow-same-origin",
+		],
+		["false", false, null],
+	] as const)(
+		"writes %s sandbox when creating the iframe element",
+		(_label, sandbox, expected) => {
+			const consumer = createConsumer(sandbox === undefined ? {} : { sandbox });
+
+			const iframe = (
+				consumer as unknown as {
+					createIframeElement: (windowName: string) => HTMLIFrameElement;
+				}
+			).createIframeElement("window-name");
+
+			expect(iframe.getAttribute("sandbox")).toBe(expected);
+		},
+	);
+
+	it("rejects a computed sandbox attribute before creating the iframe", () => {
+		const createElement = vi.spyOn(document, "createElement");
 		const consumer = createConsumer({
-			attributes: {
-				sandbox: "allow-scripts allow-forms",
-			},
+			attributes: () =>
+				({ SandBox: "allow-scripts" }) as Record<string, string>,
 		});
 
-		const iframe = (
-			consumer as unknown as {
-				createIframeElement: (windowName: string) => HTMLIFrameElement;
-			}
-		).createIframeElement("window-name");
-
-		expect(iframe.getAttribute("sandbox")).toBe("allow-scripts allow-forms");
-	});
-
-	it("should preserve an explicit empty sandbox when creating iframe element", () => {
-		const consumer = createConsumer({
-			attributes: {
-				sandbox: "",
-			},
-		});
-
-		const iframe = (
-			consumer as unknown as {
-				createIframeElement: (windowName: string) => HTMLIFrameElement;
-			}
-		).createIframeElement("window-name");
-
-		expect(iframe.getAttribute("sandbox")).toBe("");
+		expect(() =>
+			(
+				consumer as unknown as {
+					createIframeElement: (windowName: string) => HTMLIFrameElement;
+				}
+			).createIframeElement("window-name"),
+		).toThrow(
+			`Iframe attribute "SandBox" is not allowed; set the component's sandbox option instead`,
+		);
+		expect(createElement).not.toHaveBeenCalledWith("iframe");
 	});
 
 	it("should open popup context and register popup close watcher cleanup", async () => {

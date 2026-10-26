@@ -10,7 +10,6 @@ import {
 	getOpener,
 	isIframe,
 	isPopup,
-	isSameDomain,
 	isWindowClosed,
 	matchDomain,
 } from "@/window/helpers";
@@ -29,22 +28,6 @@ describe("getDomain", () => {
 		} as unknown as Window;
 
 		expect(getDomain(crossOriginWin)).toBe("");
-	});
-});
-
-describe("isSameDomain", () => {
-	it("should return true for same origin", () => {
-		expect(isSameDomain(window, window)).toBe(true);
-	});
-
-	it("should return false for cross-origin window", () => {
-		const crossOriginWin = {
-			get location() {
-				throw new Error("Cross-origin access denied");
-			},
-		} as unknown as Window;
-
-		expect(isSameDomain(crossOriginWin)).toBe(false);
 	});
 });
 

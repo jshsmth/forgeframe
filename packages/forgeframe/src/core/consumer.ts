@@ -28,7 +28,7 @@ import type {
 	ForgeFrameComponentInstance,
 	RemoteValue,
 } from "../types/runtime";
-import type { Dimensions, DomainMatcher } from "../types/utility";
+import type { Dimensions } from "../types/utility";
 import { CleanupManager } from "../utils/cleanup";
 import { createDeferred, type Deferred } from "../utils/promise";
 import { generateUID } from "../utils/uid";
@@ -37,13 +37,14 @@ import {
 	CONSUMER_EVENT_NAMES,
 	describeUnknownConsumerEvent,
 } from "./consumer/events";
+import type { PeersOption } from "./consumer/peers";
+import { getPeerInstances } from "./consumer/peers";
 import { selectUpdateDeliveryOrigin } from "./consumer/prop-update";
 import {
 	ConsumerPropsPipeline,
 	type ConsumerPropsUpdateHooks,
 } from "./consumer/props-pipeline";
 import { ConsumerRenderer } from "./consumer/renderer";
-import { getSiblingInstances } from "./consumer/siblings";
 import { ConsumerTransport } from "./consumer/transport";
 import type { NormalizedOptions } from "./consumer/types";
 
@@ -480,8 +481,6 @@ export class ConsumerComponent<
 					),
 				);
 			},
-			isRendered: () => this.rendered,
-			syncTrustedDomainForUrl: (url) => this.syncTrustedDomainForUrl(url),
 			shouldSendPropsToHost: () => this.transport.isHostConnected(),
 			sendPropsUpdateToHost: (nextProps) =>
 				this.sendPropsUpdateToHost(nextProps),
@@ -541,9 +540,9 @@ export class ConsumerComponent<
 		return this.transport.openedHostDomain;
 	}
 
-	/** Returns other host origins allowed to discover this instance as a peer. @internal */
-	getPeerDomains(): DomainMatcher | undefined {
-		return this.options.peerDomains;
+	/** Returns the component's `peers` option. @internal */
+	getPeers(): PeersOption {
+		return this.options.peers;
 	}
 
 	/**
@@ -786,7 +785,7 @@ export class ConsumerComponent<
 				this.exports = exports;
 				this.#emitter.emit(EVENT.EXPORTS, exports);
 			},
-			onGetSiblings: (request) => getSiblingInstances(request),
+			onGetPeers: (request) => getPeerInstances(request),
 		});
 	}
 

@@ -107,6 +107,7 @@ test("peer exports retain callable methods and dates across independent prop upd
 			const { create, prop } = library;
 			const Component = create({
 				tag: "browser-peer-exports",
+				peers: true,
 				url: `${hostOrigin}/host`,
 				props: {
 					label: prop.string(),
@@ -128,6 +129,7 @@ test("peer exports retain callable methods and dates across independent prop upd
 			});
 			const Other = create({
 				tag: "browser-other-peer",
+				peers: true,
 				url: `${hostOrigin}/host`,
 				props: {
 					label: prop.string(),
@@ -248,11 +250,11 @@ test("peer exports retain callable methods and dates across independent prop upd
 			const state = window as unknown as {
 				props: {
 					getPeerInstances(options?: {
-						anyConsumer: boolean;
+						allTags: boolean;
 					}): Promise<Array<{ tag: string; exports?: unknown }>>;
 				};
 			};
-			const peers = await state.props.getPeerInstances({ anyConsumer: true });
+			const peers = await state.props.getPeerInstances({ allTags: true });
 			return Promise.all(
 				peers.map(async (peer) => ({
 					tag: peer.tag,
@@ -281,11 +283,11 @@ async function readyFrame(page: Page, selector: string): Promise<Frame> {
 }
 
 /** Runs inside a host frame: discovers every peer and calls each peer's export. */
-function discoverAnyConsumerPeers() {
+function discoverAllTagPeers() {
 	return (
 		window as unknown as {
 			props: {
-				getPeerInstances(options?: { anyConsumer: boolean }): Promise<
+				getPeerInstances(options?: { allTags: boolean }): Promise<
 					Array<{
 						tag: string;
 						exports?: { nested: { run(value: string): Promise<string> } };
@@ -294,7 +296,7 @@ function discoverAnyConsumerPeers() {
 			};
 		}
 	).props
-		.getPeerInstances({ anyConsumer: true })
+		.getPeerInstances({ allTags: true })
 		.then((peers) =>
 			Promise.all(
 				peers.map(async (peer) => ({
@@ -322,11 +324,13 @@ test("peer discovery does not expose exports across host origins", async ({
 			};
 			const Local = create({
 				tag: "browser-origin-local",
+				peers: true,
 				url: `${hostOrigin}/host`,
 				props,
 			});
 			const Foreign = create({
 				tag: "browser-origin-foreign",
+				peers: true,
 				url: `${foreignHostOrigin}/host`,
 				props,
 			});
@@ -351,13 +355,13 @@ test("peer discovery does not expose exports across host origins", async ({
 	await readyFrame(page, "#sibling");
 	const foreign = await readyFrame(page, "#other");
 
-	expect(await requester.evaluate(discoverAnyConsumerPeers)).toEqual([
+	expect(await requester.evaluate(discoverAllTagPeers)).toEqual([
 		{ tag: "browser-origin-local", result: "sibling:probe" },
 	]);
-	expect(await foreign.evaluate(discoverAnyConsumerPeers)).toEqual([]);
+	expect(await foreign.evaluate(discoverAllTagPeers)).toEqual([]);
 });
 
-test("peerDomains admits a named host origin to discover a component's peers", async ({
+test("a peers matcher admits a named host origin to discover a component's peers", async ({
 	page,
 }) => {
 	await page.goto(consumerOrigin);
@@ -374,6 +378,7 @@ test("peerDomains admits a named host origin to discover a component's peers", a
 			};
 			const Local = create({
 				tag: "browser-peer-domains-local",
+				peers: true,
 				url: `${hostOrigin}/host`,
 				props,
 			});
@@ -381,10 +386,11 @@ test("peerDomains admits a named host origin to discover a component's peers", a
 				tag: "browser-peer-domains-partner",
 				url: `${foreignHostOrigin}/host`,
 				props,
-				peerDomains: hostOrigin,
+				peers: hostOrigin,
 			});
 			const Private = create({
 				tag: "browser-peer-domains-private",
+				peers: true,
 				url: `${foreignHostOrigin}/host`,
 				props,
 			});
@@ -410,13 +416,81 @@ test("peerDomains admits a named host origin to discover a component's peers", a
 	const partner = await readyFrame(page, "#other");
 
 	// Only the partner admits the local origin; the private component does not.
-	expect(await local.evaluate(discoverAnyConsumerPeers)).toEqual([
+	expect(await local.evaluate(discoverAllTagPeers)).toEqual([
 		{ tag: "browser-peer-domains-partner", result: "partner:probe" },
 	]);
 	// The opt-in is one-way: the partner sees its same-origin peer, not the local host.
-	expect(await partner.evaluate(discoverAnyConsumerPeers)).toEqual([
+	expect(await partner.evaluate(discoverAllTagPeers)).toEqual([
 		{ tag: "browser-peer-domains-private", result: "private:probe" },
 	]);
+});
+
+test("components without peers neither discover nor appear to others", async ({
+	page,
+}) => {
+	await page.goto(consumerOrigin);
+	await page.evaluate(
+		async ({ hostOrigin }) => {
+			const libraryUrl = "/library.js";
+			const library: typeof import("../../src/index") = await import(
+				libraryUrl
+			);
+			const { create, prop } = library;
+			const props = {
+				label: prop.string(),
+				onRun: prop.function<(value: string) => string>(),
+			};
+			const Shared = create({
+				tag: "browser-peers-opted-in",
+				peers: true,
+				url: `${hostOrigin}/host`,
+				props,
+			});
+			const Private = create({
+				tag: "browser-peers-opted-out",
+				url: `${hostOrigin}/host`,
+				props,
+			});
+			await Promise.all([
+				Shared({
+					label: "requester",
+					onRun: (value: string) => `requester:${value}`,
+				}).render("#requester"),
+				Shared({
+					label: "shared",
+					onRun: (value: string) => `shared:${value}`,
+				}).render("#sibling"),
+				Private({
+					label: "private",
+					onRun: (value: string) => `private:${value}`,
+				}).render("#other"),
+			]);
+		},
+		{ hostOrigin },
+	);
+	const requester = await readyFrame(page, "#requester");
+	await readyFrame(page, "#sibling");
+	const privateHost = await readyFrame(page, "#other");
+
+	expect(await requester.evaluate(discoverAllTagPeers)).toEqual([
+		{ tag: "browser-peers-opted-in", result: "shared:probe" },
+	]);
+	expect(
+		await privateHost.evaluate(async () => {
+			try {
+				await (
+					window as unknown as {
+						props: { getPeerInstances(): Promise<unknown[]> };
+					}
+				).props.getPeerInstances();
+			} catch (error) {
+				return error instanceof Error ? error.message : String(error);
+			}
+			return "unexpected success";
+		}),
+	).toBe(
+		'Peer discovery is not enabled for component "browser-peers-opted-out". Set peers: true, or an origin matcher, in its create() options.',
+	);
 });
 
 test("callback defaults and atomic capacity recovery", async ({ page }) => {

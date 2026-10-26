@@ -15,7 +15,8 @@ export interface NormalizedOptions<P extends Record<string, unknown>> {
 	dimensions: Dimensions | ((props: P) => Dimensions);
 	timeout: number;
 	domain?: ComponentOptions<P>["domain"];
-	peerDomains?: ComponentOptions<P>["peerDomains"];
+	peers?: ComponentOptions<P>["peers"];
+	sandbox?: ComponentOptions<P>["sandbox"];
 	containerTemplate?: ComponentOptions<P>["containerTemplate"];
 	prerenderTemplate?: ComponentOptions<P>["prerenderTemplate"];
 	validate?: ComponentOptions<P>["validate"];

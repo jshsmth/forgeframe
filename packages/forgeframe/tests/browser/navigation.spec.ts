@@ -278,6 +278,30 @@ test.beforeAll(async () => {
 				)
 			)
 				return respondToDelivery(req, res);
+			if (req.url === "/opaque-host") {
+				// A CSP sandbox without allow-same-origin gives the document an
+				// opaque origin, as an iframe sandbox without it would.
+				res.setHeader("Content-Security-Policy", "sandbox allow-scripts");
+				return respond(
+					res,
+					`<!doctype html><script type="module">
+				const { initHost, prop } = await import("${attackerOrigin}/library.js");
+				const host = initHost({props:{label:prop.string()}, consumerOrigins:"*"});
+				host?.ready.then(() => { window.ready = true; }, () => {});
+				</script>`,
+				);
+			}
+			if (req.url === "/any-consumer" || req.url === "/excluded-consumer")
+				return respond(
+					res,
+					`<!doctype html><script type="module">
+				import {initHost,prop} from "/library.js";
+				const consumerOrigins = ${JSON.stringify(req.url === "/any-consumer" ? "*" : ["https://excluded.example"])};
+				const host = initHost({props:{label:prop.string()}, consumerOrigins});
+				host.ready.then(props => { window.consumerDomain = props.getConsumerDomain(); window.label = props.label; window.ready = true; },
+					error => { window.failure = error.message; });
+				</script>`,
+				);
 			if (req.url === "/allowed-host")
 				return respond(
 					res,
@@ -2406,3 +2430,126 @@ for (const context of ["iframe", "popup"] as const) {
 		);
 	});
 }
+
+test("a host with '*' admits a real cross-origin consumer and binds its exact origin", async ({
+	page,
+}) => {
+	await page.goto(consumerOrigin);
+	const outcome = await page.evaluate(async (hostOrigin) => {
+		const libraryUrl = "/library.js";
+		const { create, prop } = await import(libraryUrl);
+		return create({
+			tag: "browser-any-consumer",
+			url: `${hostOrigin}/any-consumer`,
+			props: { label: prop.string() },
+		})({ label: "public" })
+			.render("#mount")
+			.then(
+				() => "rendered",
+				(error: Error) => error.message,
+			);
+	}, attackerOrigin);
+	expect(outcome).toBe("rendered");
+	const frame = await (
+		await page.locator("#mount iframe").elementHandle()
+	)?.contentFrame();
+	if (!frame) throw new Error("Missing host frame");
+	await frame.waitForFunction(() => (window as { ready?: boolean }).ready);
+	expect(
+		await frame.evaluate(() => ({
+			consumerDomain: (window as { consumerDomain?: string }).consumerDomain,
+			label: (window as { label?: string }).label,
+		})),
+	).toEqual({ consumerDomain: consumerOrigin, label: "public" });
+});
+
+test("a host whose allowlist excludes the consumer refuses it and the render times out", async ({
+	page,
+}) => {
+	await page.goto(consumerOrigin);
+	const outcome = await page.evaluate(async (hostOrigin) => {
+		const libraryUrl = "/library.js";
+		const { create, prop } = await import(libraryUrl);
+		return create({
+			tag: "browser-excluded-consumer",
+			url: `${hostOrigin}/excluded-consumer`,
+			props: { label: prop.string() },
+			timeout: 1500,
+		})({ label: "blocked" })
+			.render("#mount")
+			.then(
+				() => "rendered",
+				(error: Error) => error.message,
+			);
+	}, attackerOrigin);
+	expect(outcome).toContain('Host component "browser-excluded-consumer"');
+	expect(outcome).toContain("did not initialize within 1500ms");
+});
+
+for (const [label, sandbox, expected] of [
+	[
+		"the default sandbox",
+		undefined,
+		"allow-scripts allow-same-origin allow-forms allow-popups",
+	],
+	[
+		"a custom sandbox that keeps allow-same-origin",
+		"allow-scripts allow-same-origin",
+		"allow-scripts allow-same-origin",
+	],
+	["no sandbox for false", false, null],
+] as const) {
+	test(`${label} completes the handshake in a real engine`, async ({
+		page,
+	}) => {
+		await page.goto(consumerOrigin);
+		const result = await page.evaluate(
+			async ({ hostOrigin, sandbox }) => {
+				const libraryUrl = "/library.js";
+				const { create, prop } = await import(libraryUrl);
+				const outcome = await create({
+					tag: "browser-sandbox",
+					url: `${hostOrigin}/any-consumer`,
+					props: { label: prop.string() },
+					...(sandbox === undefined ? {} : { sandbox }),
+				})({ label: "sandboxed" })
+					.render("#mount")
+					.then(
+						() => "rendered",
+						(error: Error) => error.message,
+					);
+				return {
+					outcome,
+					sandbox:
+						document.querySelector("#mount iframe")?.getAttribute("sandbox") ??
+						null,
+				};
+			},
+			{ hostOrigin: attackerOrigin, sandbox },
+		);
+		expect(result).toEqual({ outcome: "rendered", sandbox: expected });
+	});
+}
+
+test("'*' on the consumer never admits a host with an opaque origin", async ({
+	page,
+}) => {
+	await page.goto(consumerOrigin);
+	const outcome = await page.evaluate(async (hostOrigin) => {
+		const libraryUrl = "/library.js";
+		const { create, prop } = await import(libraryUrl);
+		return create({
+			tag: "browser-opaque-host",
+			url: () => `${hostOrigin}/opaque-host`,
+			domain: "*",
+			props: { label: prop.string() },
+			timeout: 1500,
+		})({ label: "opaque" })
+			.render("#mount")
+			.then(
+				() => "rendered",
+				(error: Error) => error.message,
+			);
+	}, attackerOrigin);
+	expect(outcome).toContain("did not initialize within 1500ms");
+});

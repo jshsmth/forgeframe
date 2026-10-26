@@ -8,6 +8,7 @@ import {
 	resizeIframe,
 	showIframe,
 } from "../../render/iframe";
+import { resolveIframeSandbox } from "../../render/iframe-configuration";
 import {
 	closePopup,
 	focusPopup,
@@ -289,6 +290,7 @@ export class ConsumerRenderer<P extends Record<string, unknown>> {
 			dimensions,
 			attributes,
 			style,
+			sandbox: resolveIframeSandbox(this.options.sandbox),
 		});
 	}
 

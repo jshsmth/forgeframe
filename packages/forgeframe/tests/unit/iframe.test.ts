@@ -18,6 +18,7 @@ describe("createIframeElement", () => {
 		const iframe = createIframeElement({
 			name: "test-iframe",
 			dimensions: { width: 400, height: 300 },
+			sandbox: null,
 		});
 
 		expect(iframe.tagName).toBe("IFRAME");
@@ -32,6 +33,7 @@ describe("createIframeElement", () => {
 		const iframe = createIframeElement({
 			name: "test-iframe",
 			dimensions: { width: 100, height: 100 },
+			sandbox: null,
 		});
 
 		expect(iframe.getAttribute("frameborder")).toBe("0");
@@ -43,6 +45,7 @@ describe("createIframeElement", () => {
 		const iframe = createIframeElement({
 			name: "test-iframe",
 			dimensions: { width: 100, height: 100 },
+			sandbox: null,
 			attributes: {
 				allow: "payment",
 				title: "Payment Widget",
@@ -60,44 +63,52 @@ describe("createIframeElement", () => {
 				createIframeElement({
 					name: "trusted-bootstrap",
 					dimensions: { width: 100, height: 100 },
+					sandbox: null,
 					attributes: { [attribute]: "attacker-controlled" },
 				}),
 			).toThrow(`Iframe attribute "${attribute}" is managed by ForgeFrame`);
 		},
 	);
 
-	it.each(["Sandbox", "SANDBOX"])(
-		"keeps a %s attribute instead of widening it to the default sandbox",
+	it.each(["sandbox", "Sandbox", "SANDBOX"])(
+		"rejects a %s attribute and points to the sandbox option",
 		(attribute) => {
-			const iframe = createIframeElement({
-				name: "test-iframe",
-				dimensions: { width: 100, height: 100 },
-				attributes: { [attribute]: "allow-scripts" },
-			});
-
-			expect(iframe.getAttribute("sandbox")).toBe("allow-scripts");
-		},
-	);
-
-	it.each(["sandbox", "Sandbox"])(
-		"applies the default sandbox when %s is false, which writes no attribute",
-		(attribute) => {
-			const iframe = createIframeElement({
-				name: "test-iframe",
-				dimensions: { width: 100, height: 100 },
-				attributes: { [attribute]: false },
-			});
-
-			expect(iframe.getAttribute("sandbox")).toBe(
-				"allow-scripts allow-same-origin allow-forms allow-popups",
+			expect(() =>
+				createIframeElement({
+					name: "test-iframe",
+					dimensions: { width: 100, height: 100 },
+					attributes: { [attribute]: "allow-scripts" },
+					sandbox: null,
+				}),
+			).toThrow(
+				`Iframe attribute "${attribute}" is not allowed; set the component's sandbox option instead`,
 			);
 		},
 	);
+
+	it("writes the resolved sandbox verbatim, or none for null", () => {
+		const sandboxed = createIframeElement({
+			name: "test-iframe",
+			dimensions: { width: 100, height: 100 },
+			sandbox: "allow-scripts allow-same-origin",
+		});
+		const unsandboxed = createIframeElement({
+			name: "test-iframe",
+			dimensions: { width: 100, height: 100 },
+			sandbox: null,
+		});
+
+		expect(sandboxed.getAttribute("sandbox")).toBe(
+			"allow-scripts allow-same-origin",
+		);
+		expect(unsandboxed.hasAttribute("sandbox")).toBe(false);
+	});
 
 	it("should apply custom styles", () => {
 		const iframe = createIframeElement({
 			name: "test-iframe",
 			dimensions: { width: 100, height: 100 },
+			sandbox: null,
 			style: {
 				borderRadius: "12px",
 			},
@@ -110,6 +121,7 @@ describe("createIframeElement", () => {
 		const iframe = createIframeElement({
 			name: "styled-frame",
 			dimensions: { width: 100, height: 100 },
+			sandbox: null,
 			style: {
 				zIndex: 10,
 				lineHeight: 1.5,
@@ -130,6 +142,7 @@ describe("createIframeElement", () => {
 		const iframe = createIframeElement({
 			name: "test-iframe",
 			dimensions: { width: 100, height: 100 },
+			sandbox: null,
 			attributes: {
 				title: undefined as unknown as string,
 			},
@@ -142,6 +155,7 @@ describe("createIframeElement", () => {
 		const iframe = createIframeElement({
 			name: "test-iframe",
 			dimensions: { width: "100%", height: "auto" },
+			sandbox: null,
 		});
 
 		expect(iframe.style.width).toBe("100%");
@@ -165,6 +179,7 @@ describe("destroyIframe", () => {
 		const iframe = createIframeElement({
 			name: "test",
 			dimensions: { width: 100, height: 100 },
+			sandbox: null,
 		});
 		container.appendChild(iframe);
 		iframe.src = url;

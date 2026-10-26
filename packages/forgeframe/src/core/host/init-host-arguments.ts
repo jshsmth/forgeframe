@@ -9,13 +9,13 @@
  * names the v2 call shape.
  */
 
-import { assertPropDefinitions } from "../../props/definition-checks";
+import { EMPTY_PROP_DEFINITIONS } from "../../props/definitions";
 import type { HostPropsDefinition } from "../../types/props";
 import type { ForgeFrameComponent } from "../../types/runtime";
 import type { DomainMatcher } from "../../types/utility";
 import { assertDomainMatcher } from "../../utils/domain-pattern";
 import { getComponentOptions } from "../component-registry";
-import { assertNoReservedPropDefinitions } from "./builtin-keys";
+import { assertPropDefinitionsObject } from "./builtin-keys";
 
 /** The v2 call shapes that argument errors name. */
 const INIT_HOST_CALL_SHAPE =
@@ -25,6 +25,10 @@ const INIT_HOST_CALL_SHAPE =
 export interface HostStartOptions {
 	/** The tag the component form requires; absent for the tag-agnostic form. */
 	componentTag?: string;
+	/**
+	 * The definitions the host validates with; absent only for a tag-agnostic
+	 * host without `props`, which accepts every field unchecked.
+	 */
 	props?: HostPropsDefinition<Record<string, unknown>>;
 	consumerOrigins: DomainMatcher;
 	autoInit: boolean;
@@ -61,9 +65,9 @@ export function readInitHostArguments(
 		return {
 			...options,
 			componentTag: componentOptions.tag,
-			props: componentOptions.props as
-				| HostPropsDefinition<Record<string, unknown>>
-				| undefined,
+			// A component without props declares none, so its host accepts none.
+			props: (componentOptions.props ??
+				EMPTY_PROP_DEFINITIONS) as HostPropsDefinition<Record<string, unknown>>,
 		};
 	}
 	if (args.length > 1) {
@@ -97,11 +101,15 @@ function readInitHostOptions(
 	const { consumerOrigins, autoInit, props } = value as Record<string, unknown>;
 	if (consumerOrigins === undefined) {
 		throw callShapeError(
-			"initHost() requires consumerOrigins, the consumer origins allowed to embed this host; pass '*' to allow any origin.",
+			"initHost() requires consumerOrigins, the consumer origins allowed to embed this host; pass '*' to allow any origin. See https://github.com/jshsmth/forgeframe#domain-security.",
 		);
 	}
 	try {
-		assertDomainMatcher(consumerOrigins, "initHost() consumerOrigins");
+		assertDomainMatcher(
+			consumerOrigins,
+			"initHost() consumerOrigins",
+			"allowed",
+		);
 	} catch (error) {
 		throw callShapeError(`${(error as Error).message}.`);
 	}
@@ -114,8 +122,7 @@ function readInitHostOptions(
 				"initHost() props must be a prop definitions object.",
 			);
 		}
-		assertNoReservedPropDefinitions(props);
-		assertPropDefinitions(props);
+		assertPropDefinitionsObject(props);
 	}
 	return {
 		consumerOrigins: consumerOrigins as DomainMatcher,

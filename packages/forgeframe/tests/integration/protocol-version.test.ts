@@ -52,6 +52,7 @@ describe("Bootstrap protocol version", () => {
 		const definitions = { amount: prop.number() };
 		const Component = create({
 			tag: "protocol-version-metadata",
+			peers: true,
 			url: "https://host.example.com/widget",
 			props: definitions,
 		});
@@ -84,13 +85,13 @@ describe("Bootstrap protocol version", () => {
 		expect(init[0]?.data).toEqual({ sessionId: expect.any(String) });
 
 		await expect(
-			hostProps.getPeerInstances({ anyConsumer: true }),
+			hostProps.getPeerInstances({ allTags: true }),
 		).resolves.toEqual([]);
 		const siblings = readPostedRequests(posted).filter(
 			(message) => message?.name === MESSAGE_NAME.GET_SIBLINGS,
 		);
 		expect(siblings.map((message) => message?.data)).toEqual([
-			{ options: { anyConsumer: true } },
+			{ options: { allTags: true } },
 		]);
 	});
 

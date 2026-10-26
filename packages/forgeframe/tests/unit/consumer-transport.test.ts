@@ -12,7 +12,7 @@ import type { ConsumerTransportHandlers } from "@/core/consumer/transport";
 import { ConsumerTransport } from "@/core/consumer/transport";
 import type { NormalizedOptions } from "@/core/consumer/types";
 import { prop } from "@/props/prop";
-import type { Dimensions, SiblingInfo } from "@/types";
+import type { Dimensions, PeerInfo } from "@/types";
 import { createDeferred } from "@/utils/promise";
 import {
 	callConsumerCallback,
@@ -109,7 +109,7 @@ function createHandlers() {
 		onHide: vi.fn(async () => {}),
 		onError: vi.fn((_error: Error) => {}),
 		onExport: vi.fn((_exports: unknown) => {}),
-		onGetSiblings: vi.fn(async (_request): Promise<SiblingInfo[]> => []),
+		onGetPeers: vi.fn(async (_request): Promise<PeerInfo[]> => []),
 	} satisfies ConsumerTransportHandlers<{ ready: boolean }>;
 }
 
@@ -272,23 +272,6 @@ describe("ConsumerTransport", () => {
 
 		expect(removeSpy).not.toHaveBeenCalled();
 		expect(addSpy).not.toHaveBeenCalled();
-		expect(transport.dynamicUrlTrustedOrigin).toBe(
-			"https://dynamic-next.example.com",
-		);
-
-		removeSpy.mockClear();
-		addSpy.mockClear();
-		transport.dynamicUrlTrustedOrigin = "https://explicit.example.com";
-
-		transport.syncTrustedDomainForUrl(
-			"https://dynamic-final.example.com/widget",
-		);
-
-		expect(removeSpy).not.toHaveBeenCalled();
-		expect(addSpy).not.toHaveBeenCalled();
-		expect(transport.dynamicUrlTrustedOrigin).toBe(
-			"https://dynamic-final.example.com",
-		);
 	});
 
 	it("should retain both callback snapshots after a props delivery attempt fails", async () => {
