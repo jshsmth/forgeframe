@@ -5,13 +5,41 @@ import {
 	validateNormalizedProps,
 } from "../../props/normalize";
 import { normalizeError } from "../../utils/error";
-import { createDeferred } from "../../utils/promise";
-import { definedInputKeys, mergePropPatch } from "./prop-update";
+import { createDeferred, type Deferred } from "../../utils/promise";
+import {
+	definedInputKeys,
+	mergeNormalizedPatch,
+	mergePropPatch,
+	selectNormalizationKeys,
+} from "./prop-update";
 import type { NormalizedOptions } from "./types";
 
-interface NextPropsSnapshot<P> {
-	nextInputProps: Record<string, unknown>;
-	nextProps: P;
+/** A validated update that has not been committed yet. */
+interface PropsCandidate<P> {
+	inputProps: Record<string, unknown>;
+	props: P;
+}
+
+/**
+ * A render attempt's place in the props queue.
+ * @internal
+ */
+export interface RenderHold {
+	/** Earlier prop work the render waits for, or `null` when nothing is pending. */
+	earlierWork: Promise<void> | null;
+	/** Lets held updates run once the attempt has settled. Safe to call twice. */
+	release: () => void;
+}
+
+/** Queue state of an active render hold. */
+interface ActiveRenderHold {
+	gate: Deferred<void>;
+	/** Queue tail the hold installed; another tail means updates are held. */
+	tail: Promise<void> | null;
+	/** Earlier work, then the render's own reads, which run ahead of held updates. */
+	ownWork: Promise<void>;
+	/** Entries of `ownWork` still running: the earlier work and each own read. */
+	unsettled: number;
 }
 
 /**
@@ -53,7 +81,10 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
 	private pendingNormalizationError: { error: unknown } | null = null;
 
 	/** Settled tail of all admitted prop work, including disconnected updates. */
-	public pendingPropsUpdate: Promise<void> | null = null;
+	private pendingPropsUpdate: Promise<void> | null = null;
+
+	/** The render attempt holding the queue, if any. */
+	private renderHold: ActiveRenderHold | null = null;
 
 	constructor(
 		private options: NormalizedOptions<P>,
@@ -89,36 +120,34 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
 	 * Prepares a validated candidate without committing the current snapshot.
 	 * Schema transforms and the component `validate` may run user code.
 	 */
-	buildNextProps(patch: Record<string, unknown>): NextPropsSnapshot<P> {
-		const nextInputProps = mergePropPatch(this.inputProps, patch);
-		const nextProps = (
-			this.pendingNormalizationError
-				? normalizeProps(nextInputProps, this.options.props)
-				: {
-						...this.props,
-						...normalizeProps(
-							nextInputProps,
-							this.options.props,
-							new Set(Object.keys(patch)),
-						),
-					}
-		) as P;
-		this.validateSnapshot(nextInputProps, nextProps);
-		this.options.validate?.({ props: nextProps });
-		return { nextInputProps, nextProps };
+	buildCandidate(patch: Record<string, unknown>): PropsCandidate<P> {
+		const inputProps = mergePropPatch(this.inputProps, patch);
+		const normalized = normalizeProps(
+			inputProps,
+			this.options.props,
+			selectNormalizationKeys(patch, this.pendingNormalizationError !== null),
+		);
+		const props = mergeNormalizedPatch(this.props, normalized);
+		this.validateSnapshot(inputProps, props, new Set(Object.keys(normalized)));
+		this.options.validate?.({ props });
+		return { inputProps, props };
 	}
 
-	/** Rechecks supplied inputs, then each normalized output contract. */
+	/**
+	 * Rechecks supplied inputs, then each normalized output contract.
+	 * Keys an update has just normalized were checked by normalization.
+	 */
 	private validateSnapshot(
 		inputProps: Record<string, unknown>,
 		props: P,
+		normalizedKeys?: ReadonlySet<string>,
 	): void {
 		revalidatePropInputs(
 			inputProps,
 			this.options.props,
-			definedInputKeys(inputProps),
+			definedInputKeys(inputProps, normalizedKeys),
 		);
-		validateNormalizedProps(props, this.options.props);
+		validateNormalizedProps(props, this.options.props, normalizedKeys);
 	}
 
 	/**
@@ -135,44 +164,113 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
 	): Promise<void> {
 		return this.queuePropsUpdate(async () => {
 			hooks.assertActive();
-			const { nextInputProps, nextProps } = this.buildNextProps(newProps);
-			const resolvedUrl = hooks.resolveUrl(nextProps);
+			const candidate = this.buildCandidate(newProps);
+			const resolvedUrl = hooks.resolveUrl(candidate.props);
 			const nextHostOrigin = hooks.resolveUrlOrigin(resolvedUrl);
 			hooks.assertStableRenderedOrigin(nextHostOrigin);
-			hooks.validateTransportProps(nextProps, nextHostOrigin);
+			hooks.validateTransportProps(candidate.props, nextHostOrigin);
 			hooks.assertActive();
 
-			this.commitSnapshot({ nextInputProps, nextProps });
+			this.commitCandidate(candidate);
 
 			if (!hooks.isRendered()) {
 				hooks.syncTrustedDomainForUrl(resolvedUrl);
 			}
 
 			if (hooks.shouldSendPropsToHost()) {
-				await hooks.sendPropsUpdateToHost(nextProps);
+				await hooks.sendPropsUpdateToHost(candidate.props);
 			}
 			hooks.assertActive();
-			hooks.emitPropsUpdated(nextProps);
+			hooks.emitPropsUpdated(candidate.props);
 		});
 	}
 
 	/** Commits only a completely validated, origin-checked candidate. */
-	private commitSnapshot(snapshot: NextPropsSnapshot<P>): void {
-		this.inputProps = snapshot.nextInputProps;
-		this.props = snapshot.nextProps;
+	private commitCandidate(candidate: PropsCandidate<P>): void {
+		this.inputProps = candidate.inputProps;
+		this.props = candidate.props;
 		this.pendingNormalizationError = null;
 	}
 
 	/**
-	 * Reads validated current props through the same queue as updates and host sync.
-	 * The read follows settlement of earlier work, including rejected updates, so
-	 * bootstrap serialization cannot overlap a preceding function-bridge batch.
+	 * Reads validated current props in queue order.
+	 *
+	 * @remarks
+	 * During a render attempt the read is the render's own work, so it runs
+	 * inside the hold, ahead of held updates. Otherwise it queues behind earlier
+	 * work, including rejected updates. Either way, bootstrap serialization
+	 * cannot overlap another function-bridge batch.
 	 */
 	readCurrentProps<R>(read: (props: P) => R): Promise<R> {
-		return this.queuePropsUpdate(async () => {
+		const readSnapshot = async () => {
 			this.revalidateSchemaValues();
 			return read(this.props);
-		});
+		};
+		const hold = this.renderHold;
+		return hold
+			? this.appendOwnWork(hold, hold.ownWork.then(readSnapshot))
+			: this.queuePropsUpdate(readSnapshot);
+	}
+
+	/**
+	 * Places a render attempt's hold at the tail of the props queue.
+	 *
+	 * @remarks
+	 * The render waits for `earlierWork`, so every update admitted earlier is
+	 * in its snapshot. Updates admitted later wait behind the hold in call
+	 * order, without running user code, until `release`.
+	 */
+	holdForRender(): RenderHold {
+		const earlierWork = this.pendingPropsUpdate;
+		const hold: ActiveRenderHold = {
+			gate: createDeferred<void>(),
+			tail: null,
+			ownWork: Promise.resolve(),
+			unsettled: 0,
+		};
+		if (earlierWork) this.appendOwnWork(hold, earlierWork);
+		this.renderHold = hold;
+		hold.tail = this.trackPendingUpdate(
+			hold.ownWork.then(() => hold.gate.promise),
+		);
+		return { earlierWork, release: () => this.releaseRenderHold(hold) };
+	}
+
+	/** Extends the hold's own work, counting the entry until it settles. */
+	private appendOwnWork<R>(
+		hold: ActiveRenderHold,
+		work: Promise<R>,
+	): Promise<R> {
+		hold.unsettled += 1;
+		const settle = () => {
+			hold.unsettled -= 1;
+		};
+		hold.ownWork = work.then(settle, settle);
+		return work;
+	}
+
+	/**
+	 * Releases a hold once its own work has settled. With nothing held or
+	 * running, the queue is idle at once, so the next update starts
+	 * synchronously as it would without a render.
+	 */
+	private releaseRenderHold(hold: ActiveRenderHold): void {
+		if (this.renderHold !== hold) return;
+		this.renderHold = null;
+		if (this.pendingPropsUpdate === hold.tail && hold.unsettled === 0) {
+			this.pendingPropsUpdate = null;
+		}
+		void hold.ownWork.then(hold.gate.resolve);
+	}
+
+	/**
+	 * Forgets queued work at teardown. A render hold is released at once, so
+	 * every held update settles; each rejects when its turn checks activity.
+	 */
+	abandonPending(): void {
+		this.pendingPropsUpdate = null;
+		this.renderHold?.gate.resolve();
+		this.renderHold = null;
 	}
 
 	/**
@@ -203,7 +301,7 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
 	/**
 	 * Tracks a promise as the active queued update and clears it when settled.
 	 */
-	private trackPendingUpdate(updatePromise: Promise<unknown>): void {
+	private trackPendingUpdate(updatePromise: Promise<unknown>): Promise<void> {
 		const settledUpdate = updatePromise.then(
 			() => undefined,
 			() => undefined,
@@ -216,5 +314,6 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
 				this.pendingPropsUpdate = null;
 			}
 		});
+		return settledUpdate;
 	}
 }

@@ -1,14 +1,9 @@
 /**
- * Removes a prop's supplied value so normalization can apply its fallback again.
- * Unlike explicit `undefined`, this marker deletes the key from the next snapshot.
- * @internal
- */
-export const PROP_RESET = Symbol("forgeframe.prop-reset");
-
-/**
  * Applies canonical keys to a shallow copy without mutating either input.
- * `PROP_RESET` deletes a key; explicit `undefined` remains an own property.
- * Nested values retain their original references.
+ * A key whose patch value is `undefined` is not supplied, so it is deleted:
+ * normalization then applies its schema default again, leaves an optional
+ * prop without a value, or rejects a required one. Nested values retain their
+ * original references.
  * @internal
  */
 export function mergePropPatch(
@@ -17,20 +12,64 @@ export function mergePropPatch(
 ): Record<string, unknown> {
 	const next = { ...previous };
 	for (const [key, value] of Object.entries(patch)) {
-		if (value === PROP_RESET) Reflect.deleteProperty(next, key);
+		if (value === undefined) Reflect.deleteProperty(next, key);
 		else next[key] = value;
 	}
 	return next;
 }
 
-/** Selects defined own inputs for schema revalidation. @internal */
+/**
+ * Selects the keys an update must normalize: every defined key while a
+ * construction failure is pending, otherwise only the patched keys.
+ * @internal
+ */
+export function selectNormalizationKeys(
+	patch: Record<string, unknown>,
+	hasPendingNormalizationError: boolean,
+): ReadonlySet<string> | undefined {
+	return hasPendingNormalizationError ? undefined : new Set(Object.keys(patch));
+}
+
+/**
+ * Overlays freshly normalized values on the current normalized snapshot.
+ * Normalization returns every selected defined key, including those without a
+ * value, so a reset key replaces its previous value.
+ * @internal
+ */
+export function mergeNormalizedPatch<P extends Record<string, unknown>>(
+	current: P,
+	normalized: Record<string, unknown>,
+): P {
+	return { ...current, ...normalized };
+}
+
+/**
+ * Selects defined own inputs for schema revalidation, skipping keys that the
+ * current update has just normalized.
+ * @internal
+ */
 export function definedInputKeys(
 	props: Record<string, unknown>,
-	candidates: Iterable<string> = Object.keys(props),
+	excluded?: ReadonlySet<string>,
 ): Set<string> {
 	return new Set(
-		[...candidates].filter(
-			(key) => Object.hasOwn(props, key) && props[key] !== undefined,
+		Object.keys(props).filter(
+			(key) => props[key] !== undefined && !excluded?.has(key),
 		),
 	);
+}
+
+/**
+ * Chooses the origin an update is delivered to: the host's verified or opened
+ * origin once rendered, otherwise the origin of the URL the update resolves.
+ * A rendered instance whose origins teardown has cleared falls back to the
+ * URL origin; the update then rejects as closed.
+ * @internal
+ */
+export function selectUpdateDeliveryOrigin(
+	rendered: boolean,
+	hostOrigin: string | null,
+	nextUrlOrigin: string,
+): string {
+	return (rendered && hostOrigin) || nextUrlOrigin;
 }

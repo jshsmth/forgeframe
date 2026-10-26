@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { getHost } from "@/core/host/bootstrap";
-import { create, prop } from "@/index";
+import { create, EVENT, prop } from "@/index";
 import type { PropsDefinition } from "@/types";
 import {
 	createIframeIntegrationHarness,
@@ -574,6 +574,32 @@ describe("Props sync integration", () => {
 		expect(container.querySelector("iframe")).toBeNull();
 	});
 
+	it("keeps a delivered value whose host definition entry is undefined, like an undeclared one", async () => {
+		harness = createIframeIntegrationHarness();
+		const consumerDefinitions = { beta: prop.string(), title: prop.string() };
+		const hostDefinitions: PropsDefinition<{ beta: string; title: string }> = {
+			beta: undefined,
+			title: prop.string(),
+		};
+		const Component = create({
+			tag: "integration-host-undefined-definition",
+			url: "https://host.example.com/widget",
+			props: consumerDefinitions,
+		});
+		const instance = Component({ beta: "on", title: "initial" });
+		const container = document.createElement("div");
+		document.body.append(container);
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			hostDefinitions,
+		);
+		await rendering;
+		expect(hostProps.beta).toBe("on");
+		await instance.updateProps({ beta: "off" });
+		expect(hostProps.beta).toBe("off");
+	});
+
 	it("prevents stale cancellation handles from removing a new subscription for the same callback", async () => {
 		harness = createIframeIntegrationHarness();
 		const definitions = { title: prop.string() };
@@ -725,5 +751,158 @@ describe("Props sync integration", () => {
 		expect(onProps.mock.calls[0][0].publishedAt.toISOString()).toBe(
 			updatedDate.toISOString(),
 		);
+	});
+});
+
+describe("undefined in factory input and updates", () => {
+	let harness: IframeIntegrationHarness | null = null;
+
+	afterEach(async () => {
+		await harness?.cleanup();
+		harness = null;
+		vi.restoreAllMocks();
+	});
+
+	const defaultLabel = () => "default-label";
+	const definitions = {
+		title: prop.string(),
+		theme: prop.string().default("light"),
+		note: prop.string().optional(),
+		label: prop.function<() => string>().default(() => defaultLabel),
+		empty: prop.string().nullable().optional(),
+	};
+
+	async function renderWith(input: Record<string, unknown>) {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const Component = create({
+			tag: `undefined-rule-${Math.random().toString(36).slice(2)}`,
+			url: "https://host.example.com/widget",
+			props: definitions,
+		});
+		const instance = Component(input as never);
+		const committed: Record<string, unknown>[] = [];
+		instance.event.on(EVENT.PROPS, (props) => {
+			committed.push({ ...props });
+		});
+		const rendering = instance.render(container);
+		const { hostProps } = await harness.bootstrapIframeHost(
+			container,
+			definitions,
+		);
+		await rendering;
+		const notifications: Record<string, unknown>[] = [];
+		hostProps.onProps((props) => notifications.push({ ...props }));
+		return { instance, hostProps, committed, notifications };
+	}
+
+	it("resets a prop to its schema default", async () => {
+		const { instance, hostProps, committed, notifications } = await renderWith({
+			title: "t",
+			theme: "dark",
+		});
+		expect(hostProps.theme).toBe("dark");
+		await instance.updateProps({ theme: undefined });
+		expect(hostProps.theme).toBe("light");
+		expect(notifications.at(-1)?.theme).toBe("light");
+		expect(committed.at(-1)?.theme).toBe("light");
+	});
+
+	it("resets a callback prop to its default callback", async () => {
+		const { instance, hostProps } = await renderWith({
+			title: "t",
+			label: () => "custom",
+		});
+		await expect(hostProps.label()).resolves.toBe("custom");
+		await instance.updateProps({ label: undefined });
+		await expect(hostProps.label()).resolves.toBe("default-label");
+	});
+
+	it("keeps a key left out, including after a reset, and sets a reset prop again", async () => {
+		const { instance, hostProps } = await renderWith({
+			title: "t",
+			theme: "dark",
+			note: "kept",
+		});
+		await instance.updateProps({ title: "u" });
+		expect(hostProps.theme).toBe("dark");
+		expect(hostProps.note).toBe("kept");
+		await instance.updateProps({ note: undefined });
+		expect(Object.hasOwn(hostProps, "note")).toBe(false);
+		expect(Object.hasOwn(hostProps.consumer.props, "note")).toBe(false);
+		await instance.updateProps({ title: "v" });
+		expect(Object.hasOwn(hostProps, "note")).toBe(false);
+		await instance.updateProps({ note: "again" });
+		expect(hostProps.note).toBe("again");
+	});
+
+	it("rejects undefined for a required prop and leaves both snapshots unchanged", async () => {
+		const { instance, hostProps, committed, notifications } = await renderWith({
+			title: "t",
+		});
+		await expect(instance.updateProps({ title: undefined })).rejects.toThrow(
+			"Validation failed: title: Required",
+		);
+		expect(hostProps.title).toBe("t");
+		expect(notifications).toEqual([]);
+		expect(committed).toEqual([]);
+		await instance.updateProps({ title: "next" });
+		expect(hostProps.title).toBe("next");
+	});
+
+	it("delivers null as a value", async () => {
+		const { instance, hostProps, notifications } = await renderWith({
+			title: "t",
+			empty: "x",
+		});
+		await instance.updateProps({ empty: null });
+		expect(Object.hasOwn(hostProps, "empty")).toBe(true);
+		expect(hostProps.empty).toBeNull();
+		expect(notifications.at(-1)).toHaveProperty("empty", null);
+	});
+
+	it("treats undefined in the factory input like a key left out", async () => {
+		const { hostProps } = await renderWith({
+			title: "t",
+			theme: undefined,
+			note: undefined,
+		});
+		expect(hostProps.theme).toBe("light");
+		expect(Object.hasOwn(hostProps, "note")).toBe(false);
+		expect(Object.hasOwn(hostProps.consumer.props, "note")).toBe(false);
+	});
+});
+
+describe("close during render", () => {
+	it("cancels the render and rejects held updates without validating or reaching a host", async () => {
+		const harness = createIframeIntegrationHarness();
+		try {
+			const container = document.createElement("div");
+			document.body.append(container);
+			const validate = vi.fn();
+			const Component = create({
+				tag: "close-during-render-hold",
+				url: "https://host.example.com/widget",
+				props: { amount: prop.number() },
+				validate,
+			});
+			const instance = Component({ amount: 1 });
+			const rendering = instance.render(container);
+			const held = instance.updateProps({ amount: 2 });
+			const heldRejected = expect(held).rejects.toThrow(
+				"Cannot update props after the component has closed",
+			);
+			const renderRejected = expect(rendering).rejects.toThrow(
+				"was closed before rendering completed",
+			);
+			await instance.close();
+			await renderRejected;
+			await heldRejected;
+			expect(validate).toHaveBeenCalledTimes(1);
+			expect(container.querySelector("iframe")).toBeNull();
+		} finally {
+			await harness.cleanup();
+		}
 	});
 });

@@ -1,4 +1,3 @@
-import { PROP_RESET } from "../../core/consumer/prop-update";
 import type {
 	AnyFactoryInput,
 	ForgeFrameComponentInstance,
@@ -37,7 +36,7 @@ export function shallowEqualProps(
 export interface ReactPropUpdate {
 	/** Committed snapshot used for equality checks after acknowledgement. */
 	desired: Record<string, unknown>;
-	/** Snapshot plus reset markers for omitted keys known to this mounted instance. */
+	/** Snapshot plus `undefined` for omitted keys known to this mounted instance. */
 	payload: Record<string, unknown>;
 	retryOnFailure: boolean;
 }
@@ -46,7 +45,7 @@ export interface ReactPropUpdate {
 export interface ReactPropQueue {
 	/** Last acknowledged snapshot; `null` permits resubmission after failure. */
 	comparableProps: Record<string, unknown> | null;
-	/** Keys observed across commits, including updates that have not succeeded. */
+	/** Keys observed with a defined value across commits, including updates that have not succeeded. */
 	knownKeys: Set<string>;
 	queue: ReactPropUpdate[];
 }
@@ -68,17 +67,24 @@ export function deactivatePropSyncState<P extends Record<string, unknown>, X>(
 	state.queue.length = 0;
 }
 
-/** Creates a shallow, stable snapshot of the component props for one React commit. @internal */
+/**
+ * Creates a shallow, stable snapshot of the component props for one React commit.
+ * Keys whose value is `undefined` are dropped, so passing `undefined` and
+ * leaving a prop out produce the same snapshot.
+ * @internal
+ */
 export function snapshotProps(
 	props: Record<string, unknown>,
 ): Record<string, unknown> {
-	return { ...props };
+	return Object.fromEntries(
+		Object.entries(props).filter(([, value]) => value !== undefined),
+	);
 }
 
 /**
- * Builds a self-contained update payload, resetting every previously observed missing key.
+ * Builds a self-contained update payload that sends `undefined` for every
+ * previously observed key the commit no longer has, which resets it in core.
  * Mutates `knownKeys` to include this commit and retains `desired` by reference.
- * Explicit `undefined` is supplied data and does not become a reset marker.
  * @internal
  */
 export function buildPropUpdate(
@@ -93,7 +99,7 @@ export function buildPropUpdate(
 
 	for (const key of knownKeys) {
 		if (!Object.hasOwn(desired, key)) {
-			payload[key] = PROP_RESET;
+			payload[key] = undefined;
 		}
 	}
 

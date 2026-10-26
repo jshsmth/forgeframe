@@ -13,7 +13,6 @@ import {
 import { CONTEXT, EVENT, MESSAGE_NAME } from "@/constants";
 import { clearComponents, closeAll, create } from "@/core/component";
 import { ConsumerComponent } from "@/core/consumer";
-import { PROP_RESET } from "@/core/consumer/prop-update";
 import { getSiblingInstances } from "@/core/consumer/siblings";
 import { prop } from "@/props/prop";
 import * as popupRender from "@/render/popup";
@@ -1000,7 +999,7 @@ describe("Consumer lifecycle behavior", () => {
 		).rejects.toThrow('Container "#missing-container" not found');
 	});
 
-	it("should share one in-flight render and reject prop mutation during bootstrap", async () => {
+	it("should share one in-flight render and queue prop updates until it settles", async () => {
 		const consumer = createConsumer();
 		const internal = getInternals(consumer);
 		const container = document.createElement("div");
@@ -1018,17 +1017,22 @@ describe("Consumer lifecycle behavior", () => {
 
 		const firstRender = consumer.render(container);
 		const secondRender = consumer.render(container);
+		const settled: string[] = [];
+		const update = consumer.updateProps({ value: "racing" }).then(() => {
+			settled.push("update");
+		});
+		void firstRender.then(() => settled.push("render"));
 
-		await expect(consumer.updateProps({ value: "racing" })).rejects.toThrow(
-			"Cannot update props while the component is rendering",
-		);
-		expect(prerenderSpy).toHaveBeenCalledTimes(1);
+		await vi.waitFor(() => expect(prerenderSpy).toHaveBeenCalledTimes(1));
+		expect(settled).toEqual([]);
 
 		releasePrerender?.();
 		await expect(Promise.all([firstRender, secondRender])).resolves.toEqual([
 			undefined,
 			undefined,
 		]);
+		await update;
+		expect(settled).toEqual(["render", "update"]);
 		expect(openSpy).toHaveBeenCalledTimes(1);
 	});
 
@@ -1064,15 +1068,13 @@ describe("Consumer lifecycle behavior", () => {
 			expect(reentrantRender).toBeDefined();
 			expect(propUpdateResult).toBeDefined();
 		});
-		await expect(propUpdateResult).resolves.toBe(
-			"Cannot update props while the component is rendering",
-		);
 		expect(prerenderSpy).toHaveBeenCalledTimes(1);
 
 		releasePrerender?.();
 		await expect(
 			Promise.all([firstRender, reentrantRender as Promise<void>]),
 		).resolves.toEqual([undefined, undefined]);
+		await expect(propUpdateResult).resolves.toBe("resolved");
 		expect(openSpy).toHaveBeenCalledTimes(1);
 	});
 
@@ -1302,44 +1304,6 @@ describe("Consumer lifecycle behavior", () => {
 		await expect(consumer.updateProps({ amount: undefined })).rejects.toThrow(
 			"Validation failed: amount: Required",
 		);
-	});
-
-	it("should reapply configured defaults for props omitted by React", async () => {
-		const optionalDefault = vi.fn(() => "optional-default");
-		const stableDefault = vi.fn(() => "stable-default");
-		const consumer = createConsumer(
-			{
-				props: {
-					optionalLabel: prop.string().optional().default(optionalDefault),
-					requiredLabel: prop.string().default("required-default"),
-					stableLabel: prop.string().default(stableDefault),
-				},
-			},
-			{
-				optionalLabel: "custom-optional",
-				requiredLabel: "custom-required",
-			},
-		);
-		const internal = getInternals(consumer);
-
-		await consumer.updateProps({
-			optionalLabel: PROP_RESET,
-			requiredLabel: PROP_RESET,
-		} as never);
-
-		expect(internal.propsPipeline.props).toMatchObject({
-			optionalLabel: "optional-default",
-			requiredLabel: "required-default",
-			stableLabel: "stable-default",
-		});
-		expect(internal.propsPipeline.inputProps).not.toHaveProperty(
-			"optionalLabel",
-		);
-		expect(internal.propsPipeline.inputProps).not.toHaveProperty(
-			"requiredLabel",
-		);
-		expect(optionalDefault).toHaveBeenCalledTimes(1);
-		expect(stableDefault).toHaveBeenCalledTimes(1);
 	});
 
 	it("should reject updateProps when a prop violates its schema", async () => {

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { MESSAGE_NAME } from "@/constants";
 import { ConsumerComponent } from "@/core/consumer";
+import { ConsumerPropsPipeline } from "@/core/consumer/props-pipeline";
 import { prop } from "@/props/prop";
 import type { ComponentOptions } from "@/types";
 
@@ -25,21 +25,9 @@ function internals(consumer: ConsumerComponent<Record<string, unknown>>) {
 	return consumer as unknown as {
 		propsPipeline: {
 			props: Record<string, unknown>;
-			pendingPropsUpdate: Promise<void> | null;
 		};
 		renderer: { iframe: HTMLIFrameElement };
 		waitForHost: () => Promise<void>;
-		transport: {
-			messenger: {
-				handlers: Map<
-					string,
-					(
-						data: unknown,
-						source: { uid: string; window: Window; domain: string },
-					) => Promise<{ props: Record<string, unknown> }>
-				>;
-			};
-		};
 	};
 }
 afterEach(async () => {
@@ -106,54 +94,6 @@ describe("Disconnected consumer prop queue", () => {
 			expect.objectContaining({ count: 3 }),
 		]);
 		expect(internals(consumer).propsPipeline.props.count).toBe(3);
-	});
-
-	it("should drain admitted updates before query, body, and bootstrap snapshots", async () => {
-		const consumer = consumerWith(
-			{
-				props: {
-					count: { schema: prop.number(), queryParam: true },
-					bodyCount: { schema: prop.number(), bodyParam: true },
-				},
-			},
-			{ count: 0, bodyCount: 0 },
-		);
-		const internal = internals(consumer);
-		const submit = vi
-			.spyOn(HTMLFormElement.prototype, "submit")
-			.mockImplementation(function (this: HTMLFormElement) {
-				expect(this.action).toBe("https://host.example/widget?count=2");
-				expect(
-					this.querySelector<HTMLInputElement>('input[name="bodyCount"]')
-						?.value,
-				).toBe("2");
-			});
-		let bootstrap: Record<string, unknown> | undefined;
-		vi.spyOn(internal, "waitForHost").mockImplementation(async () => {
-			const handler = internal.transport.messenger.handlers.get(
-				MESSAGE_NAME.BOOTSTRAP,
-			);
-			const response = await handler?.(
-				{ sessionId: "queue-session" },
-				{
-					uid: consumer.uid,
-					window: internal.renderer.iframe.contentWindow as Window,
-					domain: "https://host.example",
-				},
-			);
-			bootstrap = response?.props;
-		});
-		const container = document.createElement("div");
-		document.body.appendChild(container);
-		const first = consumer.updateProps({ count: 1, bodyCount: 1 });
-		const second = consumer.updateProps({ count: 2, bodyCount: 2 });
-		const rendering = consumer.render(container);
-		await expect(consumer.updateProps({ count: 3 })).rejects.toThrow(
-			"while the component is rendering",
-		);
-		await Promise.all([first, second, rendering]);
-		expect(submit).toHaveBeenCalledOnce();
-		expect(bootstrap).toMatchObject({ count: 2, bodyCount: 2 });
 	});
 
 	it.each(["outer", "nested"])(
@@ -243,5 +183,50 @@ describe("Disconnected consumer prop queue", () => {
 		});
 		expect(validate).toHaveBeenCalledTimes(1);
 		expect(container.children).toHaveLength(0);
+	});
+
+	it("keeps the queue busy when a render hold is released before earlier work settles", async () => {
+		const pipeline = new ConsumerPropsPipeline<Record<string, unknown>>(
+			{
+				tag: "hold-release-order",
+				url: "https://host.example/widget",
+				props: { amount: prop.number() },
+				defaultContext: "iframe",
+				dimensions: { width: 1, height: 1 },
+				timeout: 1,
+			},
+			{ amount: 1 },
+		);
+		let releaseSend: (() => void) | undefined;
+		const sent: number[] = [];
+		const hooks = {
+			assertActive: () => {},
+			resolveUrl: () => "https://host.example/widget",
+			resolveUrlOrigin: () => "https://host.example",
+			assertStableRenderedOrigin: () => {},
+			validateTransportProps: () => {},
+			isRendered: () => true,
+			syncTrustedDomainForUrl: () => {},
+			shouldSendPropsToHost: () => true,
+			sendPropsUpdateToHost: (props: Record<string, unknown>) => {
+				sent.push(props.amount as number);
+				return sent.length === 1
+					? new Promise<void>((resolve) => {
+							releaseSend = resolve;
+						})
+					: Promise.resolve();
+			},
+			emitPropsUpdated: () => {},
+		};
+		const first = pipeline.updateProps({ amount: 2 }, hooks);
+		const hold = pipeline.holdForRender();
+		expect(hold.earlierWork).not.toBeNull();
+		hold.release();
+		const second = pipeline.updateProps({ amount: 3 }, hooks);
+		await Promise.resolve();
+		expect(sent).toEqual([2]);
+		releaseSend?.();
+		await Promise.all([first, second]);
+		expect(sent).toEqual([2, 3]);
 	});
 });

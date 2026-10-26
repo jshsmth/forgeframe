@@ -11,6 +11,7 @@ import { EVENT } from "../../constants";
 import {
 	createDeliveryTarget,
 	getDeliveredPropDefinitions,
+	selectExpectedFields,
 	validateNormalizedProps,
 } from "../../props/normalize";
 import { deserializeProps } from "../../props/serialize";
@@ -128,10 +129,7 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
 			const previousProps = this.consumerProps;
 			const nextProps = this.deserialize(serializedProps);
 
-			validateNormalizedProps(
-				nextProps as P,
-				this.getDeliveredPropDefinitions(),
-			);
+			validateNormalizedProps(nextProps as P, this.expectedDefinitions());
 			const nextHostProps = filterReservedHostPropKeys(nextProps);
 
 			this.commitHostProps(
@@ -217,20 +215,18 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
 		) as RemoteValue<P>;
 	}
 
-	/** Discards fields for defined props this host does not expect. */
+	/**
+	 * Discards fields for defined props this host does not expect. An
+	 * `undefined` definition entry counts as undeclared, so its field is kept.
+	 */
 	private filterUndeliveredProps<T extends Record<string, unknown>>(
 		props: T,
 	): T {
-		const deliveredDefinitions = this.getDeliveredPropDefinitions();
-		const entries = Object.entries(props);
-		const deliveredEntries = entries.filter(
-			([key]) =>
-				!Object.hasOwn(this.propDefinitions, key) ||
-				Object.hasOwn(deliveredDefinitions, key),
+		return selectExpectedFields(
+			props,
+			this.propDefinitions,
+			this.expectedDefinitions(),
 		);
-		return deliveredEntries.length === entries.length
-			? props
-			: (Object.fromEntries(deliveredEntries) as T);
 	}
 
 	/**
@@ -238,7 +234,7 @@ export class HostPropsRuntime<P extends Record<string, unknown>> {
 	 * `deliverTo` excludes this host are never delivered, so they are neither
 	 * required nor accepted.
 	 */
-	private getDeliveredPropDefinitions(): HostPropsDefinition<P> {
+	private expectedDefinitions(): HostPropsDefinition<P> {
 		// Both origins are fixed once the host starts, so the selection is too.
 		this.deliveredPropDefinitions ??= getDeliveredPropDefinitions(
 			this.propDefinitions,

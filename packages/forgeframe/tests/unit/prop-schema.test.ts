@@ -782,6 +782,42 @@ describe("prop.array(item)", () => {
 		expect(first.value.startsAt).not.toBe(startsAt);
 		expect(first.value.startsAt.getTime()).toBe(0);
 	});
+
+	it("copies cyclic and shared references in a default once", () => {
+		type Node = {
+			child: { name: string };
+			again?: { name: string };
+			self?: Node;
+		};
+		const child = { name: "leaf" };
+		const shared: Node = { child, again: child };
+		shared.self = shared;
+		const schema = prop.any<Node>().default(shared);
+		const { value } = schema["~standard"].validate(undefined) as {
+			value: Node;
+		};
+		expect(value).not.toBe(shared);
+		expect(value.self).toBe(value);
+		expect(value.again).toBe(value.child);
+		expect(value.child).not.toBe(child);
+	});
+
+	it("keeps a shared Date shared and array holes empty when copying a default", () => {
+		const startsAt = new Date(0);
+		// biome-ignore lint/suspicious/noSparseArray: the hole is the case under test.
+		const sparse = [1, , 3];
+		const schema = prop
+			.any<{ start: Date; end: Date; sparse: unknown[] }>()
+			.default({ start: startsAt, end: startsAt, sparse });
+		const { value } = schema["~standard"].validate(undefined) as {
+			value: { start: Date; end: Date; sparse: unknown[] };
+		};
+		expect(value.start).not.toBe(startsAt);
+		expect(value.end).toBe(value.start);
+		expect(value.sparse).not.toBe(sparse);
+		expect(1 in value.sparse).toBe(false);
+		expect(value.sparse).toHaveLength(3);
+	});
 });
 
 // ============================================================================

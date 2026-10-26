@@ -23,12 +23,15 @@ const hostOrigin = params.get("host");
 const mount = document.getElementById("mount");
 if (!hostOrigin || !mount)
 	throw new Error("Missing React journey configuration");
+// A delayed host keeps the frame loading, so commits can land before it is ready.
+const hostDelay = params.get("hostDelay");
 const Component = create({
 	tag: "browser-react-journey",
-	url: hostOrigin,
+	url: hostDelay ? `${hostOrigin}/?delay=${hostDelay}` : hostOrigin,
 	props: {
 		label: prop.string(),
 		count: prop.number().min(0),
+		theme: prop.string().default("light"),
 		onAction: prop.function<(message: string) => string>(),
 	},
 });
@@ -51,7 +54,7 @@ function EffectProbe(): React.ReactElement {
 	return React.createElement("span", { "data-effect-probe": true });
 }
 
-function render(label: string, count: number): void {
+function render(label: string, count: number, theme?: string): void {
 	const content = React.createElement(
 		React.Fragment,
 		null,
@@ -59,6 +62,7 @@ function render(label: string, count: number): void {
 		React.createElement(Wrapped, {
 			label,
 			count,
+			theme,
 			ref,
 			onAction: (message: string) => {
 				const result = `${label}:${message}`;
@@ -83,15 +87,18 @@ function render(label: string, count: number): void {
 
 document
 	.getElementById("start")
-	?.addEventListener("click", () => render("initial", 1));
+	?.addEventListener("click", () => render("initial", 1, "dark"));
 document
 	.getElementById("update")
-	?.addEventListener("click", () => render("updated", 2));
+	?.addEventListener("click", () => render("updated", 2, "dark"));
 document
 	.getElementById("invalid")
-	?.addEventListener("click", () => render("invalid", -1));
+	?.addEventListener("click", () => render("invalid", -1, "dark"));
 document
 	.getElementById("recover")
+	?.addEventListener("click", () => render("recovered", 3, "dark"));
+document
+	.getElementById("default-theme")
 	?.addEventListener("click", () => render("recovered", 3));
 document
 	.getElementById("unmount")

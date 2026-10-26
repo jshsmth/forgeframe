@@ -209,19 +209,41 @@ export function validateSchemaPresence<T>(
 
 /**
  * Copies array, plain-object and `Date` defaults, so instances never share a
- * default value. Other values, such as class instances, are returned as is.
+ * default value. Shared and cyclic references are copied once, keeping the
+ * default's shape. Other values, such as class instances, are returned as is.
  * @internal
  */
 export function copyDefaultValue<T>(value: T): T {
-	if (Array.isArray(value)) return value.map(copyDefaultValue) as T;
-	if (isDate(value)) return new Date(value.getTime()) as T;
+	return copyDefaultEntry(value, new WeakMap()) as T;
+}
+
+/** Copies one default entry, reusing the copy of an object seen before. */
+function copyDefaultEntry(
+	value: unknown,
+	copies: WeakMap<object, unknown>,
+): unknown {
+	if (typeof value !== "object" || value === null) return value;
+	if (copies.has(value)) return copies.get(value);
+	if (isDate(value)) {
+		const copy = new Date(value.getTime());
+		copies.set(value, copy);
+		return copy;
+	}
+	if (Array.isArray(value)) {
+		const copy: unknown[] = new Array(value.length);
+		copies.set(value, copy);
+		for (let index = 0; index < value.length; index += 1) {
+			if (index in value) copy[index] = copyDefaultEntry(value[index], copies);
+		}
+		return copy;
+	}
 	if (isPlainObject(value)) {
-		return Object.fromEntries(
-			Object.entries(value).map(([key, entry]) => [
-				key,
-				copyDefaultValue(entry),
-			]),
-		) as T;
+		const copy: Record<string, unknown> = {};
+		copies.set(value, copy);
+		for (const [key, entry] of Object.entries(value)) {
+			copy[key] = copyDefaultEntry(entry, copies);
+		}
+		return copy;
 	}
 	return value;
 }

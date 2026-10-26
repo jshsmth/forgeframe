@@ -547,12 +547,30 @@ const Checkout = create({
 
 ### Updating Props
 
-`updateProps()` works before and after rendering. Each update runs one sequence: merge the patch, run the schemas (which apply their defaults), check that each schema accepts its own output unchanged, run the component's `validate`, check the URL and origin, commit, deliver to the host, then notify. Updates run in order, including updates requested from a schema transform or the component's `validate`. Rendering waits for queued updates, so the initial query/body parameters and bootstrap props use their result; updates requested while rendering are rejected. Once `close()` starts, new and queued updates are rejected without running validation or prop callbacks.
+`updateProps()` works before, during and after rendering. Each update runs one sequence: merge the patch, run the schemas (which apply their defaults), check that each schema accepts its own output unchanged, run the component's `validate`, check the URL and origin, commit, deliver to the host, then notify. It resolves once the update is committed and, when a host is connected, acknowledged.
+
+A patch is shallow, and `undefined` means "not supplied", the same as in the factory input:
+
+| Patch entry for prop `x` | Consumer and host see |
+|---|---|
+| `x` left out | `x` unchanged |
+| a value, including `null` | that value |
+| `undefined`, schema has a default | the default, evaluated again (a callback default too) |
+| `undefined`, optional without a default | no value: the host has no `x` key in `hostProps`, `hostProps.consumer.props` or the `onProps` payload |
+| `undefined`, required | the update rejects with the schema's message, and nothing changes |
+
+Updates run in call order across the whole lifecycle, including updates requested from a schema transform, the component's `validate`, a `url` function or a lifecycle listener:
+
+- **Before `render()`:** `render()` waits for them, so the initial query/body parameters and bootstrap props use their result.
+- **While `render()` is pending:** they wait for the render to settle. The host starts with the snapshot the render began with, then receives each update as its own `onProps` notification, and each update's `props` event fires after `rendered`. An invalid update rejects on its own; the render and later updates continue. If the render fails before anything opened (invalid props, a missing container), the updates apply locally and the next `render()` includes them. If it fails after that, or `close()` cancels it, they reject with "Cannot update props after the component has closed".
+- **After `close()` starts:** new and queued updates reject with the same error, without running validation or prop callbacks.
 
 ```typescript
-const instance = MyComponent({ name: 'Initial' });
-await instance.render('#container');
-await instance.updateProps({ name: 'Updated' });
+const instance = MyComponent({ name: 'Initial', theme: 'dark' });
+const rendering = instance.render('#container');
+const updating = instance.updateProps({ name: 'Updated' }); // the host starts with 'Initial', then receives 'Updated'
+await Promise.all([rendering, updating]);
+await instance.updateProps({ theme: undefined }); // back to the schema default
 ```
 
 The host receives updates through `onProps`, which returns an unsubscribe function. A subscriber registered before `ready` resolves also receives the bootstrap snapshot:
@@ -874,6 +892,8 @@ The React component accepts your component props alongside these wrapper props:
 | `ref` | `React.Ref<HTMLDivElement>` | Access the wrapper's container element. It is attached during React's commit, so a parent's `useLayoutEffect` can read it, and React 19 callback-ref cleanups run on unmount |
 
 The adapter reserves these names and does not forward them as component props. The core API no longer reserves them, but through React give a callback the host must receive a different name, such as `onHostClose`, and do not make a reserved name a required custom prop.
+
+Removing a prop from your JSX resets it exactly as `updateProps({ key: undefined })` does, and passing `undefined` counts as leaving the prop out, so `theme={dark ? 'dark' : undefined}` sends no update when it switches between the two. Commits made while the frame is still loading reach the host in order once it has started.
 
 Construction and render failures go to `onError` and are shown inside the wrapper; sibling React content is unaffected, and the container ref stays attached. To recover, change `context` (which creates a fresh instance) or change the wrapper's React `key` to remount it.
 
@@ -1236,6 +1256,16 @@ The schema is now the only source of a prop's presence, default and value; the o
 
 A host that shares definitions with a `deliverTo` prop no longer requires that prop when it is withheld from the host's origin, and it discards the field if a consumer sends it anyway.
 
+### Prop updates
+
+| Area | v1 | v2 | What to do |
+|---|---|---|---|
+| `updateProps()` while `render()` is pending | Rejects with "Cannot update props while the component is rendering" | Queued; applied in call order after the render settles; resolves when the host acknowledges; rejects with the closed error if the render fails and closes the instance | Remove `await render()` sequencing or catch-and-retry code written for that error |
+| Updates from `render` listeners, `url` functions and `validate` during render | Rejected | Queued like any other update | None |
+| `undefined` in an update | Reset to the fallback (undocumented; the React docs said `undefined` stays data) | The documented rule: the schema default, no value, or a validation error for a required prop | To leave a prop unchanged, leave its key out |
+| React: removing a prop vs passing `undefined` | Same host result through an internal reset marker | Same result, documented; switching between the two sends no update | None |
+| `null` in an update | A value | A value | None |
+
 ### Props are always JSON
 
 ForgeFrame 2 sends every prop as JSON through the function bridge. The `serialization` prop option and its `BASE64` and `DOTIFY` formats, `PROP_SERIALIZATION` and `SerializationType` are gone, and `create()` or `initHost()` throws if a definition still sets `serialization`. Remove the option: values that were base64- or dot-encoded now arrive as the same JSON values, callbacks at any depth are still bridged, and `Date` values still arrive as `Date`s. A host that read an encoded query parameter should read the plain value, or the consumer can pass its own encoded string as a separate prop with `queryParam: 'name'`.
@@ -1316,7 +1346,7 @@ await instance.focus()                       // Focus
 await instance.resize({ width, height })     // Resize
 await instance.show()                        // Show
 await instance.hide()                        // Hide
-await instance.updateProps(newProps)         // Update props (normalized + validated)
+await instance.updateProps(newProps)         // Merge a patch; undefined resets a prop; queued while rendering
 
 instance.uid                                 // Unique ID
 instance.event                               // Subscribe with on() and once()

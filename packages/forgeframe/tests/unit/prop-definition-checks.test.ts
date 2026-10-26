@@ -53,6 +53,34 @@ describe("assertPropDefinitions", () => {
 		);
 	});
 
+	it.each(["schema", "deliverTo", "sendToHost", "queryParam", "bodyParam"])(
+		"rejects a %s getter in a wrapped definition without invoking it",
+		(field) => {
+			const read = vi.fn(() => undefined);
+			const definition = Object.defineProperty(
+				field === "schema" ? {} : { schema: prop.string() },
+				field,
+				{ get: read, enumerable: true },
+			);
+			expect(() => assertPropDefinitions({ token: definition })).toThrow(
+				`Prop "token" ${field} must be declared as an own data field, not a getter, setter or inherited field`,
+			);
+			expect(read).not.toHaveBeenCalled();
+		},
+	);
+
+	it("rejects an inherited deliverTo accessor in a wrapped definition without invoking it", () => {
+		const read = vi.fn(() => "*");
+		const inherited = Object.create(
+			Object.defineProperty({}, "deliverTo", { get: read }),
+		);
+		inherited.schema = prop.string();
+		expect(() => assertPropDefinitions({ token: inherited })).toThrow(
+			'Prop "token" deliverTo must be declared as an own data field',
+		);
+		expect(read).not.toHaveBeenCalled();
+	});
+
 	it("ignores direct schemas, undefined entries, and inherited fields", () => {
 		const inherited = Object.create({ serialization: "dotify" });
 		inherited.schema = prop.any<Record<string, unknown>>();

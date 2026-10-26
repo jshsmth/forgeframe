@@ -76,7 +76,8 @@ function readDeclaredField(target: object, key: string): unknown {
  * @remarks
  * A direct Standard Schema is not a wrapped definition, so its fields are
  * never read. Each entry must be a data field, because the definitions are
- * read again when props are normalized. A wrapped definition needs a
+ * read again when props are normalized; so must each field of a wrapped
+ * definition that delivery reads. A wrapped definition needs a
  * `schema`; `deliverTo` must be `'same-origin'` or an origin matcher;
  * `queryParam` and `bodyParam` must be a boolean or a non-empty parameter
  * name. Only own fields count, a data field set to `undefined` counts as
@@ -106,8 +107,24 @@ export function assertPropDefinitions(definitions: object): void {
 	}
 }
 
+/** Wrapped-definition fields that delivery reads again after this check. */
+const DELIVERY_FIELDS = [
+	"schema",
+	"deliverTo",
+	"sendToHost",
+	"queryParam",
+	"bodyParam",
+] as const;
+
 /** Checks one wrapped definition's fields. */
 function assertWrappedPropDefinition(key: string, definition: object): void {
+	for (const field of DELIVERY_FIELDS) {
+		if (field in definition && !isDataField(definition, field)) {
+			throw new Error(
+				`Prop "${key}" ${field} must be declared as an own data field, not a getter, setter or inherited field`,
+			);
+		}
+	}
 	for (const [option, replacement] of Object.entries(REMOVED_PROP_OPTIONS)) {
 		if (hasOwnDeclaredField(definition, option)) {
 			throw new Error(

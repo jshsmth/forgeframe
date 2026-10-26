@@ -1,4 +1,3 @@
-import type { AnyFactoryInput } from "../types/runtime";
 /**
  * @packageDocumentation
  * Internal active component instance index.
@@ -8,7 +7,10 @@ import type { AnyFactoryInput } from "../types/runtime";
  * can be performed without scanning the full component registry.
  */
 
-import type { ForgeFrameComponentInstance } from "../types/runtime";
+import type {
+	AnyFactoryInput,
+	ForgeFrameComponentInstance,
+} from "../types/runtime";
 import type { DomainMatcher } from "../types/utility";
 
 /** Internal accessors the index requires in addition to the public instance API. @internal */

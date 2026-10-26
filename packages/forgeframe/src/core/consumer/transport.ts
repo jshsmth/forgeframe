@@ -159,17 +159,14 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 	 * Returns the current host domain target used for messaging.
 	 */
 	getHostDomain(): string {
-		if (this.activeHostDomain) {
-			return this.activeHostDomain;
-		}
+		// Without a host origin, as after teardown cleared both, fall back to
+		// the committed props' URL origin.
+		return this.getHostOrigin() ?? this.resolveUrlOrigin(this.resolveUrl());
+	}
 
-		if (this.openedHostDomain) {
-			return this.openedHostDomain;
-		}
-
-		// Reachable when a URL function closes the instance during updateProps:
-		// teardown clears both origins before the update validates delivery.
-		return this.resolveUrlOrigin(this.resolveUrl());
+	/** Returns the verified host origin, else the opened one, else `null`. */
+	getHostOrigin(): string | null {
+		return this.activeHostDomain ?? this.openedHostDomain;
 	}
 
 	/**
@@ -504,6 +501,16 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 		this.openedHostDomain = null;
 		this.activeHostDomain = null;
 		this.dynamicUrlTrustedOrigin = null;
+	}
+
+	/**
+	 * Rejects an outstanding host handshake and forgets host initialization,
+	 * so a destroyed instance never reports a ready host.
+	 */
+	rejectPendingInit(error: Error): void {
+		this.initPromise?.reject(error);
+		this.initPromise = null;
+		this.hostInitialized = false;
 	}
 
 	/**

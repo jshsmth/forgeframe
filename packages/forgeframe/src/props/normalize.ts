@@ -134,7 +134,7 @@ function getCompiledPropDefinitions(
 	}
 
 	const compiledDefinitions = Object.entries(definitions)
-		.filter(([, definition]) => definition !== undefined)
+		.filter(([key]) => isDeclaredProp(definitions, key))
 		.map(([key, definition]) => ({
 			key,
 			definition: (isStandardSchema(definition)
@@ -151,6 +151,39 @@ function readSuppliedProp(props: object, key: string): unknown {
 	return hasOwn(props, key)
 		? (props as Record<string, unknown>)[key]
 		: undefined;
+}
+
+/**
+ * Returns whether a definitions object declares a prop: an own entry whose
+ * value is not `undefined`.
+ * @internal
+ */
+export function isDeclaredProp(definitions: object, key: string): boolean {
+	return (
+		hasOwn(definitions, key) &&
+		(definitions as Record<string, unknown>)[key] !== undefined
+	);
+}
+
+/**
+ * Keeps the wire fields a host expects: undeclared fields, and fields for
+ * declared props that are delivered to this host. Returns `props` itself
+ * when nothing is dropped.
+ * @internal
+ */
+export function selectExpectedFields<T extends Record<string, unknown>>(
+	props: T,
+	definitions: object,
+	deliveredDefinitions: object,
+): T {
+	const entries = Object.entries(props);
+	const expected = entries.filter(
+		([key]) =>
+			!isDeclaredProp(definitions, key) || hasOwn(deliveredDefinitions, key),
+	);
+	return expected.length === entries.length
+		? props
+		: (Object.fromEntries(expected) as T);
 }
 
 /**
@@ -317,14 +350,19 @@ export function revalidatePropInputs(
  *
  * @remarks
  * Each defined prop, including an absent one, must pass its schema unchanged.
+ * A consumer update skips the keys it has just normalized, because
+ * normalization already ran the same check on them.
  *
+ * @param excluded - Keys already checked by normalization
  * @internal
  */
 export function validateNormalizedProps(
 	props: Readonly<Record<string, unknown>>,
 	definitions: object,
+	excluded?: ReadonlySet<string>,
 ): void {
 	for (const { key, definition } of getCompiledPropDefinitions(definitions)) {
+		if (excluded?.has(key)) continue;
 		assertValidatesUnchanged(
 			validateUnchanged(definition.schema, readSuppliedProp(props, key), key),
 			key,

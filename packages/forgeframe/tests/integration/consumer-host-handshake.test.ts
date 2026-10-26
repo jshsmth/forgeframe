@@ -346,3 +346,209 @@ describe("Consumer/host handshake integration", () => {
 		expect(renderedSpy).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe("Prop updates requested during render", () => {
+	let harness: IframeIntegrationHarness | null = null;
+	const definitions = { amount: prop.number() };
+
+	afterEach(async () => {
+		await harness?.cleanup();
+		harness = null;
+		vi.restoreAllMocks();
+	});
+
+	/** Starts a host on the rendered iframe, recording every notification. */
+	async function startRecordingHost(
+		container: ParentNode,
+		options?: { autoInit?: boolean },
+	) {
+		const activeHarness = harness as IframeIntegrationHarness;
+		const iframe = await activeHarness.waitForIframe(container);
+		activeHarness.attachHostToIframe(iframe);
+		const host = activeHarness.bootstrapHost(definitions, options);
+		if (!host) throw new Error("Expected a host");
+		const notifications: unknown[] = [];
+		host.hostProps.onProps((props) => notifications.push(props.amount));
+		return { host, notifications };
+	}
+
+	function setup(options: Partial<Parameters<typeof create>[0]> = {}) {
+		harness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.append(container);
+		const Component = create({
+			tag: `render-hold-${Math.random().toString(36).slice(2)}`,
+			url: "https://host.example.com/widget",
+			props: definitions,
+			...options,
+		});
+		return { Component, container };
+	}
+
+	it("delivers updates requested right after render() in call order, after the initial snapshot", async () => {
+		const { Component, container } = setup();
+		const instance = Component({ amount: 1 });
+		const order: string[] = [];
+		instance.event.on(EVENT.RENDERED, () => {
+			order.push("rendered");
+		});
+		instance.event.on(EVENT.PROPS, (props) => {
+			order.push(`props ${props.amount}`);
+		});
+
+		const rendering = instance.render(container);
+		const second = instance.updateProps({ amount: 2 });
+		const third = instance.updateProps({ amount: 3 });
+		const { host, notifications } = await startRecordingHost(container);
+		const ready = await host.ready;
+		expect(ready.amount).toBe(1);
+
+		await rendering;
+		await second;
+		expect(host.hostProps.amount).toBeGreaterThanOrEqual(2);
+		await third;
+		expect(host.hostProps.amount).toBe(3);
+		expect(notifications).toEqual([1, 2, 3]);
+		expect(order).toEqual(["rendered", "props 2", "props 3"]);
+	});
+
+	it("queues updates from a render listener, a url function and the component validate", async () => {
+		const updates: Promise<void>[] = [];
+		let instance: ReturnType<ReturnType<typeof create>> | undefined;
+		const queued = new Set<number>();
+		const queueOnce = (amount: number) => {
+			if (!instance || queued.has(amount)) return;
+			queued.add(amount);
+			updates.push(instance.updateProps({ amount }));
+		};
+		let rendering = false;
+		const { Component, container } = setup({
+			url: () => {
+				if (rendering) queueOnce(3);
+				return "https://host.example.com/widget";
+			},
+			validate: () => {
+				if (rendering) queueOnce(2);
+			},
+		});
+		instance = Component({ amount: 1 });
+		instance.event.once(EVENT.RENDER, () => queueOnce(4));
+		rendering = true;
+
+		const render = instance.render(container);
+		const { host, notifications } = await startRecordingHost(container);
+		expect((await host.ready).amount).toBe(1);
+		await render;
+		await Promise.all(updates);
+		expect(notifications).toEqual([1, 2, 3, 4]);
+		expect(host.hostProps.amount).toBe(4);
+	});
+
+	it("rejects an invalid queued update on its own after the render", async () => {
+		const { Component, container } = setup();
+		const instance = Component({ amount: 1 });
+		const rendering = instance.render(container);
+		const invalid = instance.updateProps({ amount: "two" as never });
+		const valid = instance.updateProps({ amount: 3 });
+		const { host, notifications } = await startRecordingHost(container);
+		await expect(rendering).resolves.toBeUndefined();
+		await expect(invalid).rejects.toThrow("Validation failed: amount");
+		await valid;
+		expect(host.hostProps.amount).toBe(3);
+		expect(notifications).toEqual([1, 3]);
+	});
+
+	it("rejects a queued update that changes the URL origin", async () => {
+		const { Component, container } = setup({
+			url: (props: Record<string, unknown>) =>
+				props.amount === 2
+					? "https://other.example.com/widget"
+					: "https://host.example.com/widget",
+		});
+		const instance = Component({ amount: 1 });
+		const rendering = instance.render(container);
+		const moved = instance.updateProps({ amount: 2 });
+		const { host } = await startRecordingHost(container);
+		await rendering;
+		await expect(moved).rejects.toThrow(
+			"Cannot change component URL origin after render",
+		);
+		expect(host.hostProps.amount).toBe(1);
+	});
+
+	it("rejects queued updates with the closed error when the handshake times out", async () => {
+		const validate = vi.fn();
+		const { Component, container } = setup({ timeout: 20, validate });
+		const instance = Component({ amount: 1 });
+		const rendering = instance.render(container);
+		const queued = instance.updateProps({ amount: 2 });
+		const queuedRejected = expect(queued).rejects.toThrow(
+			"Cannot update props after the component has closed",
+		);
+		await expect(rendering).rejects.toThrow();
+		await queuedRejected;
+		expect(validate).toHaveBeenCalledTimes(1);
+	});
+
+	it("applies an update from a rendered listener after the updates queued during render", async () => {
+		const { Component, container } = setup();
+		const instance = Component({ amount: 1 });
+		let fromRendered: Promise<void> | undefined;
+		instance.event.once(EVENT.RENDERED, () => {
+			fromRendered = instance.updateProps({ amount: 3 });
+		});
+		const rendering = instance.render(container);
+		const queued = instance.updateProps({ amount: 2 });
+		const { host, notifications } = await startRecordingHost(container);
+		await rendering;
+		await queued;
+		await fromRendered;
+		expect(notifications).toEqual([1, 2, 3]);
+		expect(host.hostProps.amount).toBe(3);
+	});
+
+	it("runs held updates as unrendered updates after a retryable render failure", async () => {
+		const { Component, container } = setup();
+		const instance = Component({ amount: 1 });
+		const earlier = instance.updateProps({ amount: 2 });
+		const failed = instance.render("#missing-container");
+		const held = instance.updateProps({ amount: 3 });
+		let heldSettled = false;
+		void held.then(() => {
+			heldSettled = true;
+		});
+		await earlier;
+		expect(heldSettled).toBe(false);
+		await expect(failed).rejects.toThrow();
+		await held;
+
+		const rendering = instance.render(container);
+		const { host, notifications } = await startRecordingHost(container);
+		await rendering;
+		expect((await host.ready).amount).toBe(3);
+		expect(notifications).toEqual([3]);
+	});
+
+	it("delivers held updates only after host.init() when the host defers INIT", async () => {
+		const { Component, container } = setup();
+		const instance = Component({ amount: 1 });
+		const rendering = instance.render(container);
+		const queued = instance.updateProps({ amount: 2 });
+		let queuedSettled = false;
+		void queued.then(() => {
+			queuedSettled = true;
+		});
+		const { host, notifications } = await startRecordingHost(container, {
+			autoInit: false,
+		});
+		expect((await host.ready).amount).toBe(1);
+		await harness?.flushMessages();
+		expect(queuedSettled).toBe(false);
+		expect(notifications).toEqual([1]);
+
+		host.init();
+		await rendering;
+		await queued;
+		expect(notifications).toEqual([1, 2]);
+	});
+});

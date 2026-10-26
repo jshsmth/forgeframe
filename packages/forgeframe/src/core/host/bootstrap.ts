@@ -1,4 +1,3 @@
-import type { AnyFactoryInput } from "../../types/runtime";
 /**
  * @packageDocumentation
  * Host start-up and singleton lifecycle.
@@ -13,6 +12,7 @@ import type { AnyFactoryInput } from "../../types/runtime";
 import { PROTOCOL_VERSION } from "../../constants";
 import { createEventSubscriber } from "../../events/emitter";
 import type {
+	AnyFactoryInput,
 	ForgeFrameComponent,
 	Host,
 	InitHostOptions,

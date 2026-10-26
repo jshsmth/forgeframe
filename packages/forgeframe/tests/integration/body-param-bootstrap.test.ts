@@ -187,4 +187,66 @@ describe("Body param bootstrap integration", () => {
 			fields: { endsAt: "2026-02-03T04:05:06.000Z" },
 		});
 	});
+
+	it("includes updates admitted before render() in the initial request and bootstrap", async () => {
+		iframeHarness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+		const Component = create<BodyParamProps>({
+			tag: "integration-body-param-admitted-updates",
+			url: "https://host.example.com/widget",
+			props: BODY_PARAM_PROP_DEFINITIONS,
+		});
+		// The render yields to admitted updates before creating its iframe, so
+		// supply the host window at the frame boundary from the outset.
+		vi.spyOn(
+			HTMLIFrameElement.prototype,
+			"contentWindow",
+			"get",
+		).mockReturnValue(iframeHarness.hostWindow);
+		const instance = Component({ token: "t0", mode: "m0" });
+		const first = instance.updateProps({ token: "t1", mode: "m1" });
+		const second = instance.updateProps({ token: "t2", mode: "m2" });
+		const rendering = instance.render(container);
+		const { hostProps, host } = await iframeHarness.bootstrapIframeHost(
+			container,
+			BODY_PARAM_PROP_DEFINITIONS,
+		);
+		await Promise.all([first, second, rendering]);
+		expect(iframeHarness.getLastFormSubmission()).toMatchObject({
+			action: "https://host.example.com/widget?mode=m2",
+			fields: { token: "t2" },
+		});
+		expect(await host.ready).toMatchObject({ token: "t2", mode: "m2" });
+		expect(hostProps.consumer.props).toEqual({ token: "t2", mode: "m2" });
+	});
+
+	it("keeps an update requested during render out of the initial request and bootstrap", async () => {
+		iframeHarness = createIframeIntegrationHarness();
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+		const Component = create<BodyParamProps>({
+			tag: "integration-body-param-held-update",
+			url: "https://host.example.com/widget",
+			props: BODY_PARAM_PROP_DEFINITIONS,
+		});
+		const instance = Component({ token: "t0", mode: "m0" });
+		const rendering = instance.render(container);
+		const held = instance.updateProps({ token: "t1", mode: "m1" });
+		const { hostProps, host } = await iframeHarness.bootstrapIframeHost(
+			container,
+			BODY_PARAM_PROP_DEFINITIONS,
+		);
+		const ready = await host.ready;
+		expect({ token: ready.token, mode: ready.mode }).toEqual({
+			token: "t0",
+			mode: "m0",
+		});
+		expect(iframeHarness.getLastFormSubmission()).toMatchObject({
+			action: "https://host.example.com/widget?mode=m0",
+			fields: { token: "t0" },
+		});
+		await Promise.all([rendering, held]);
+		expect(hostProps.consumer.props).toEqual({ token: "t1", mode: "m1" });
+	});
 });
