@@ -111,6 +111,11 @@ describe("assertOriginMatcher", () => {
 		["https://api.*.example.com", '"*" may only stand for leading host labels'],
 		["*.example.com", 'write the scheme too, such as "https://*.example.com"'],
 		["example.com", 'write the scheme too, such as "https://example.com"'],
+		[
+			"https://*.example.com/",
+			'an origin has no path, query or fragment; write only the scheme, host and port, such as "https://*.example.com"',
+		],
+		["https://app.example.com/login", 'such as "https://app.example.com"'],
 	])("rejects %s", async (pattern, message) => {
 		const { assertOriginMatcher } = await loadOriginPatternModule();
 		expect(() => assertOriginMatcher([pattern], "Matcher")).toThrow(message);

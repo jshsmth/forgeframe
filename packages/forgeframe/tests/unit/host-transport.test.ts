@@ -78,7 +78,7 @@ describe("HostTransport", () => {
 		});
 		const applySerializedProps = vi.fn(() => ({ success: true as const }));
 		transport.registerPropsHandler({
-			isConsumerSource: (source) => source.window === consumerWindow,
+			isConsumerWindow: (source) => source.window === consumerWindow,
 			applySerializedProps,
 		});
 		const response = Promise.resolve(
@@ -98,13 +98,13 @@ describe("HostTransport", () => {
 
 	it("should reject untrusted prop sources and apply serialized props for the consumer source", () => {
 		const { transport, consumerWindow } = createTransport();
-		const isConsumerSource = vi.fn(
+		const isConsumerWindow = vi.fn(
 			(source: PropsHandlerSource) => source.window === consumerWindow,
 		);
 		const applySerializedProps = vi.fn(() => ({ success: true as const }));
 
 		transport.registerPropsHandler({
-			isConsumerSource,
+			isConsumerWindow,
 			applySerializedProps,
 		});
 

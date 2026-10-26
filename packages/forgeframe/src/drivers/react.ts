@@ -404,7 +404,7 @@ export function createReactComponent(
 						state,
 						(candidate) => isCurrentSyncState(candidate, mountState),
 						(err) => {
-							if (!isHeldUpdateCancellation(err))
+							if (!isHeldUpdateCancellation(state, err))
 								reportReactError(onErrorRef.current, err);
 						},
 					);

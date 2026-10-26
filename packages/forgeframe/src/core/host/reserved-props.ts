@@ -1,5 +1,6 @@
 import { ForgeFrameError } from "../../errors";
 import { assertPropDefinitions } from "../../props/definition-checks";
+import type { ReservedPropName } from "../../types/runtime";
 import { hasOwnDeclaredField } from "../../utils/own-field";
 
 /**
@@ -13,10 +14,8 @@ import { hasOwnDeclaredField } from "../../utils/own-field";
  *
  * @internal
  */
-export const RESERVED_PROP_NAMES: ReadonlySet<string> = new Set([
-	"then",
-	"children",
-]);
+export const RESERVED_PROP_NAMES: ReadonlySet<string> =
+	new Set<ReservedPropName>(["then", "children"] satisfies ReservedPropName[]);
 
 /**
  * Throws when a definitions record defines a reserved prop name.

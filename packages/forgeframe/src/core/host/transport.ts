@@ -78,7 +78,7 @@ export class HostTransport {
 			(serializedProps, source) => {
 				if (
 					source.domain !== this.options.getConsumerOrigin() ||
-					!handler.isConsumerSource(source)
+					!handler.isConsumerWindow(source)
 				) {
 					return { success: false };
 				}

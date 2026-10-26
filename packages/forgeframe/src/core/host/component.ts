@@ -123,7 +123,7 @@ export class HostComponent<P extends Record<string, unknown>> {
 			});
 
 			this.transport.registerPropsHandler({
-				isConsumerSource: (source) => source.window === this.consumerWindow,
+				isConsumerWindow: (source) => source.window === this.consumerWindow,
 				applySerializedProps: (serializedProps) =>
 					this.propsRuntime.applySerializedProps(serializedProps),
 			});

@@ -148,6 +148,13 @@ export function assertOriginMatcher(
 			`${option} lists "${bareHost}", which is not an origin and can never match one; write the scheme too, such as "https://${bareHost}"`,
 		);
 	}
+	const withPath = entries.find(hasPathOrQuery);
+	if (withPath !== undefined) {
+		throw new ForgeFrameError(
+			"VALIDATION",
+			`${option} lists "${withPath}", but an origin has no path, query or fragment; write only the scheme, host and port, such as "${withPath.replace(/^([^:]+:\/\/[^/?#]*).*$/, "$1")}"`,
+		);
+	}
 	const misplacedWildcard = entries.find(isMisplacedWildcard);
 	if (misplacedWildcard !== undefined) {
 		throw new ForgeFrameError(
@@ -163,6 +170,11 @@ export function assertOriginMatcher(
  */
 function isBareHostPattern(entry: unknown): entry is string {
 	return typeof entry === "string" && entry !== "*" && !entry.includes("://");
+}
+
+/** Whether a string pattern with a scheme continues past the host and port. */
+function hasPathOrQuery(entry: unknown): entry is string {
+	return typeof entry === "string" && /^[^:]+:\/\/[^/?#]*[/?#]/.test(entry);
 }
 
 /** Whether a string pattern uses `*` other than as `scheme://*.rest`. */

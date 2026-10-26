@@ -62,6 +62,6 @@ export interface HostTransportOptions {
 }
 
 export interface HostTransportPropsHandler {
-	isConsumerSource(source: VerifiedMessageSource): boolean;
+	isConsumerWindow(source: VerifiedMessageSource): boolean;
 	applySerializedProps(serializedProps: SerializedProps): { success: true };
 }

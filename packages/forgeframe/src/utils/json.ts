@@ -1,14 +1,15 @@
 import { ForgeFrameError } from "../errors";
-import { normalizeError } from "./error";
 
 /**
  * `JSON.stringify` for values that cross windows. A value JSON cannot encode,
- * such as a `BigInt` or a cycle, becomes a `VALIDATION` error with the
- * encoder's error as `cause`. Any other error thrown while encoding is
- * wrapped the same way, so a caller sees one code for an unsendable value.
+ * such as a `BigInt` or a cycle, makes the encoder throw a `TypeError`, which
+ * becomes a `VALIDATION` error with the `TypeError` as `cause`. Any other
+ * error, such as one a caller's own `toJSON()` throws, reaches the caller
+ * unchanged.
  *
  * @param value - The value to encode
- * @param context - What is being sent, for the message, such as `"PROPS"`
+ * @param context - What is being sent, for the error message, such as
+ * `"a URL or body parameter"`
  * @param replacer - Passed through to `JSON.stringify`
  * @internal
  */
@@ -20,7 +21,8 @@ export function stringifyForWire(
 	try {
 		return JSON.stringify(value, replacer as string[] | undefined);
 	} catch (error) {
-		const cause = normalizeError(error);
+		if (!(error instanceof TypeError)) throw error;
+		const cause = error;
 		throw new ForgeFrameError(
 			"VALIDATION",
 			`Cannot send ${context}: ${cause.message}`,

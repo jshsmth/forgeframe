@@ -112,6 +112,13 @@ type WrappedPropOptions<Entry> = Omit<PropDefinition, "schema"> & {
 	[Field in Exclude<keyof Entry, keyof PropDefinition>]: never;
 };
 
+/**
+ * Prop names no component may define: `then` would make the props a
+ * thenable, and `children` would receive React JSX children.
+ * @internal
+ */
+export type ReservedPropName = "then" | "children";
+
 /** Reported at a prop named `then` or `children`. @internal */
 export type ReservedPropError =
 	"ForgeFrame: then and children are reserved prop names";
@@ -123,7 +130,7 @@ export type ReservedPropError =
  * @internal
  */
 export type CheckedPropsDefinition<D> = {
-	[K in keyof D]: K extends "then" | "children"
+	[K in keyof D]: K extends ReservedPropName
 		? ReservedPropError
 		: D[K] extends StandardSchemaV1
 			? IsSelfAccepting<D[K]> extends true
