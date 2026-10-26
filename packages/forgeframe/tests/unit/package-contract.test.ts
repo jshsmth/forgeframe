@@ -260,11 +260,13 @@ describe("package contract", () => {
 		expect(workflow).toContain(
 			'node packages/forgeframe/scripts/release-dist-tag.mjs >> "$GITHUB_OUTPUT"',
 		);
+		// GitHub Actions expressions, built so they are not read as template placeholders.
+		const expression = (body: string) => `\${{ ${body} }}`;
 		expect(workflow).toContain(
-			"npm publish -w forgeframe --provenance --tag ${{ steps.dist-tag.outputs.tag }}",
+			`npm publish -w forgeframe --provenance --tag ${expression("steps.dist-tag.outputs.tag")}`,
 		);
 		expect(workflow).toContain(
-			"prerelease: ${{ steps.dist-tag.outputs.tag == 'next' }}",
+			`prerelease: ${expression("steps.dist-tag.outputs.tag == 'next'")}`,
 		);
 	});
 });
