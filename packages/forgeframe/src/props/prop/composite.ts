@@ -1,4 +1,8 @@
-import type { StandardSchemaV1Issue, StandardSchemaV1Result } from "../schema";
+import {
+	isStandardSchema,
+	type StandardSchemaV1Issue,
+	type StandardSchemaV1Result,
+} from "../schema";
 import type {
 	InferSchemaInput,
 	InferSchemaValue,
@@ -320,7 +324,7 @@ export class RecordSchema<T = unknown, I = T> extends PropSchema<
 
 /** Rejects a missing nested schema when a composite schema is built. */
 function assertNestedSchema(schema: unknown, message: string): void {
-	if (!(schema instanceof PropSchema)) throw new TypeError(message);
+	if (!isStandardSchema(schema)) throw new TypeError(message);
 }
 
 /** Composes nested schemas after outer shape constraints pass. */

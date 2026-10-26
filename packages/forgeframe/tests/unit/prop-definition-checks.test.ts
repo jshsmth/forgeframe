@@ -64,6 +64,14 @@ describe("assertPropDefinitions", () => {
 		).not.toThrow();
 	});
 
+	it("requires a Standard Schema for outputSchema", () => {
+		expect(() =>
+			assertPropDefinitions({
+				amount: { schema: prop.string(), outputSchema: { parse: Number } },
+			}),
+		).toThrow('Prop "amount" outputSchema must be a Standard Schema');
+	});
+
 	it("requires a schema on a wrapped definition", () => {
 		expect(() => assertPropDefinitions({ ref: { queryParam: true } })).toThrow(
 			'Prop "ref" needs a schema. Use prop.any() for a value that is deliberately unchecked.',
@@ -112,7 +120,7 @@ describe("assertPropDefinitions", () => {
 				},
 			}),
 		).toThrow(
-			"Prop \"secret\" deliverTo cannot list 'same-origin' with other origins; use one or the other",
+			"Prop \"secret\" deliverTo cannot list 'same-origin' in an array; pass deliverTo: 'same-origin' on its own, or list origins only",
 		);
 	});
 

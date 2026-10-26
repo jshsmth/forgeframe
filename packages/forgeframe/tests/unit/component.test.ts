@@ -725,6 +725,26 @@ describe("Component Instance", () => {
 		});
 	});
 
+	it("should defer a throwing schema default to render", async () => {
+		const failure = new Error("no default id");
+		const factory = vi.fn((): string => {
+			throw failure;
+		});
+		const ThrowingDefaultComponent = create({
+			tag: "throwing-default-factory-component",
+			url: "https://example.com/throwing-default",
+			props: { id: prop.string().default(factory) },
+		});
+
+		const instance = ThrowingDefaultComponent();
+
+		expect(() => checkRenderValidation(instance)).toThrow(failure);
+		await expect(
+			instance.updateProps({ id: "supplied" }),
+		).resolves.toBeUndefined();
+		expect(() => checkRenderValidation(instance)).not.toThrow();
+	});
+
 	it("should recover deferred normalization after a valid prop update", async () => {
 		const RecoverableComponent = create({
 			tag: "recoverable-invalid-input-component",

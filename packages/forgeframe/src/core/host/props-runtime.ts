@@ -9,6 +9,7 @@
 
 import { EVENT } from "../../constants";
 import {
+	createDeliveryTarget,
 	getDeliveredPropDefinitions,
 	validateNormalizedProps,
 } from "../../props/normalize";
@@ -55,6 +56,8 @@ export class HostPropsRuntime<
 	private pendingBootstrapProps: SerializedProps | null = null;
 	/** This host's own origin, read once when the host starts. */
 	private readonly hostOrigin = getDomain();
+	/** Definitions of the props this host expects, selected on first use. */
+	private deliveredPropDefinitions?: HostPropsDefinition<P, SchemaInputs>;
 
 	constructor(
 		private readonly propDefinitions: HostPropsDefinition<P, SchemaInputs>,
@@ -210,7 +213,7 @@ export class HostPropsRuntime<
 
 	private deserialize(serializedProps: SerializedProps): RemoteValue<P> {
 		return deserializeProps(
-			this.filterConsumerOnlyProps(serializedProps),
+			this.filterUndeliveredProps(serializedProps),
 			this.options.getBridge(),
 			this.options.getConsumerWindow(),
 			this.options.getConsumerDomain(),
@@ -218,7 +221,7 @@ export class HostPropsRuntime<
 	}
 
 	/** Discards fields for defined props this host does not expect. */
-	private filterConsumerOnlyProps<T extends Record<string, unknown>>(
+	private filterUndeliveredProps<T extends Record<string, unknown>>(
 		props: T,
 	): T {
 		const deliveredDefinitions = this.getDeliveredPropDefinitions();
@@ -239,13 +242,12 @@ export class HostPropsRuntime<
 	 * required nor accepted.
 	 */
 	private getDeliveredPropDefinitions(): HostPropsDefinition<P, SchemaInputs> {
-		const { hostOrigin } = this;
-		return getDeliveredPropDefinitions(this.propDefinitions, {
-			hostOrigin,
-			sameOrigin:
-				hostOrigin !== "null" &&
-				this.options.getConsumerDomain() === hostOrigin,
-		});
+		// Both origins are fixed once the host starts, so the selection is too.
+		this.deliveredPropDefinitions ??= getDeliveredPropDefinitions(
+			this.propDefinitions,
+			createDeliveryTarget(this.hostOrigin, this.options.getConsumerDomain()),
+		);
+		return this.deliveredPropDefinitions;
 	}
 
 	private removeStaleHostProps(

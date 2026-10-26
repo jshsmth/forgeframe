@@ -60,7 +60,8 @@ function readDeclaredField(target: object, key: string): unknown {
  *
  * @remarks
  * A direct Standard Schema is not a wrapped definition, so its fields are
- * never read. A wrapped definition needs a `schema`; `deliverTo` must be
+ * never read. A wrapped definition needs a `schema`, and an `outputSchema`
+ * must be a Standard Schema; `deliverTo` must be
  * `'same-origin'` or an origin matcher; `queryParam` and `bodyParam` must be
  * a boolean or a non-empty parameter name. Only own fields count, a data field
  * set to `undefined` counts as omitted, and accessors are never invoked.
@@ -98,11 +99,15 @@ function assertWrappedPropDefinition(key: string, definition: object): void {
 			`Prop "${key}" needs a schema. Use prop.any() for a value that is deliberately unchecked.`,
 		);
 	}
+	const outputSchema = readDeclaredField(definition, "outputSchema");
+	if (outputSchema !== undefined && !isStandardSchema(outputSchema)) {
+		throw new Error(`Prop "${key}" outputSchema must be a Standard Schema`);
+	}
 	const deliverTo = readDeclaredField(definition, "deliverTo");
 	if (deliverTo !== undefined && deliverTo !== "same-origin") {
 		if (Array.isArray(deliverTo) && deliverTo.includes("same-origin")) {
 			throw new Error(
-				`Prop "${key}" deliverTo cannot list 'same-origin' with other origins; use one or the other`,
+				`Prop "${key}" deliverTo cannot list 'same-origin' in an array; pass deliverTo: 'same-origin' on its own, or list origins only`,
 			);
 		}
 		assertDomainMatcher(deliverTo, `Prop "${key}" deliverTo`);

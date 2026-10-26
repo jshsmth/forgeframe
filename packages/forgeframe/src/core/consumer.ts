@@ -18,7 +18,7 @@ import {
 } from "../props";
 import { EMPTY_PROP_DEFINITIONS } from "../props/definitions";
 import {
-	type PropDeliveryTarget,
+	createDeliveryTarget,
 	validatePropsForHostTransport,
 } from "../props/normalize";
 import type { ComponentEvents, EventSubscriber } from "../types/events";
@@ -35,7 +35,6 @@ import { CleanupManager } from "../utils/cleanup";
 import { createDeferred, type Deferred } from "../utils/promise";
 import { generateUID } from "../utils/uid";
 import { appendComponentQuery, resolveComponentHostUrl } from "../utils/url";
-import { isSameDomain } from "../window/helpers";
 import {
 	CONSUMER_EVENT_NAMES,
 	describeUnknownConsumerEvent,
@@ -48,14 +47,6 @@ import { ConsumerRenderer } from "./consumer/renderer";
 import { getSiblingInstances } from "./consumer/siblings";
 import { ConsumerTransport } from "./consumer/transport";
 import type { NormalizedOptions } from "./consumer/types";
-
-/**
- * Treats a host on the consumer's origin as a possible same-origin recipient,
- * so arrays of props it may receive are checked before anything is committed.
- */
-function getTransportCheckTarget(hostOrigin: string): PropDeliveryTarget {
-	return { hostOrigin, sameOrigin: hostOrigin === window.location.origin };
-}
 
 /**
  * Consumer-side component implementation.
@@ -296,7 +287,9 @@ export class ConsumerComponent<
 		validatePropsForHostTransport(
 			this.propsPipeline.props,
 			this.options.props,
-			getTransportCheckTarget(new URL(baseUrl).origin),
+			// A host on the consumer's origin may become a same-origin recipient,
+			// so arrays of the props it may receive are checked now.
+			createDeliveryTarget(new URL(baseUrl).origin, window.location.origin),
 		);
 		this.renderer.container = this.resolveContainer(container);
 
@@ -472,8 +465,9 @@ export class ConsumerComponent<
 				validatePropsForHostTransport(
 					props,
 					this.options.props,
-					getTransportCheckTarget(
+					createDeliveryTarget(
 						this.rendered ? this.transport.getHostDomain() : hostOrigin,
+						window.location.origin,
 					),
 				);
 			},
@@ -705,8 +699,8 @@ export class ConsumerComponent<
 	 * @internal
 	 */
 	private buildWindowName(): string {
-		// Dimension functions and parameter encoders run user code after the
-		// previous check and can mutate prop values, so recheck them before the
+		// Dimension and URL functions run user code after the previous check
+		// and can mutate prop values, so recheck them before the
 		// host window is created.
 		this.propsPipeline.revalidateSchemaValues();
 		return this.transport.buildWindowName({
@@ -762,10 +756,11 @@ export class ConsumerComponent<
 			onBootstrap: (source, resetLocalReferences) =>
 				this.propsPipeline.readCurrentProps((props) => {
 					this.assertPropsUpdateActive();
-					const propsForHost = getPropsForHost(props, this.options.props, {
-						hostOrigin: source.domain,
-						sameOrigin: isSameDomain(source.window),
-					});
+					const propsForHost = getPropsForHost(
+						props,
+						this.options.props,
+						createDeliveryTarget(source.domain, window.location.origin),
+					);
 					return {
 						props: this.transport.serializePropsForHost(
 							propsForHost as Record<string, unknown>,

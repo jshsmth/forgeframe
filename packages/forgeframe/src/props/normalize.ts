@@ -13,11 +13,7 @@ import type { PropDefinition, PropDelivery } from "../types/props";
 import { isDate, isPlainObject } from "../utils/realm-values";
 import { assertDefinedArrayEntries } from "../utils/wire-value";
 import { matchDomain } from "../window/helpers";
-import {
-	isAsyncSchemaResult,
-	isStandardSchema,
-	validateWithSchema,
-} from "./schema";
+import { isStandardSchema, validateWithSchema } from "./schema";
 
 interface CompiledPropDefinition {
 	key: string;
@@ -161,7 +157,7 @@ function assertNormalizedOutputContract(
 	{ key, definition }: CompiledPropDefinition,
 ): void {
 	const outputSchema = definition.outputSchema;
-	if (outputSchema && isStandardSchema(outputSchema)) {
+	if (outputSchema) {
 		const validatedOutput = validateWithSchema(outputSchema, value, key);
 		if (!schemaOutputMatchesInput(value, validatedOutput)) {
 			throw new Error(
@@ -234,11 +230,11 @@ export function buildUnnormalizedProps(
 			result[key] = input[key];
 			continue;
 		}
-		const fallback = definition.schema["~standard"].validate(undefined);
-		result[key] =
-			isAsyncSchemaResult(fallback) || fallback.issues
-				? undefined
-				: fallback.value;
+		try {
+			result[key] = validateWithSchema(definition.schema, undefined, key);
+		} catch {
+			result[key] = undefined;
+		}
 	}
 	return result;
 }
@@ -277,11 +273,11 @@ export function validateNormalizedProps(
 ): void {
 	for (const { key, definition } of getCompiledPropDefinitions(definitions)) {
 		const value = readSuppliedProp(props, key);
-		const schema =
-			definition.outputSchema && isStandardSchema(definition.outputSchema)
-				? definition.outputSchema
-				: definition.schema;
-		const validated = validateWithSchema(schema, value, key);
+		const validated = validateWithSchema(
+			definition.outputSchema ?? definition.schema,
+			value,
+			key,
+		);
 		if (!schemaOutputMatchesInput(value, validated)) {
 			throw new Error(
 				`Validation failed: ${key}: value no longer matches its normalized schema output`,
@@ -299,6 +295,25 @@ export interface PropDeliveryTarget {
 	hostOrigin: string;
 	/** Whether the host is verified to share the consumer's origin */
 	sameOrigin: boolean;
+}
+
+/**
+ * Describes a host from its origin and the consumer's origin.
+ *
+ * @remarks
+ * Both sides use this rule, so they agree on whether a host is same-origin.
+ * An opaque (`"null"`) origin is never same-origin.
+ *
+ * @internal
+ */
+export function createDeliveryTarget(
+	hostOrigin: string,
+	consumerOrigin: string,
+): PropDeliveryTarget {
+	return {
+		hostOrigin,
+		sameOrigin: hostOrigin !== "null" && hostOrigin === consumerOrigin,
+	};
 }
 
 /**
