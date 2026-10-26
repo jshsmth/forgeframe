@@ -16,6 +16,7 @@ import { type MessageHandler, Messenger } from "../../communication/messenger";
 import type { ContextType } from "../../constants";
 import { MESSAGE_NAME } from "../../constants";
 import { getPropsForHost, serializeProps } from "../../props";
+import { createDeliveryTarget } from "../../props/normalize";
 import type { SerializedProps } from "../../props/types";
 import type { PropsDefinition } from "../../types/props";
 import type {
@@ -25,12 +26,7 @@ import type {
 } from "../../types/runtime";
 import type { Dimensions, DomainMatcher } from "../../types/utility";
 import { createDeferred, promiseTimeout } from "../../utils/promise";
-import {
-	getDomain,
-	isSameDomain,
-	isWindowClosed,
-	matchDomain,
-} from "../../window/helpers";
+import { getDomain, isWindowClosed, matchDomain } from "../../window/helpers";
 import {
 	buildWindowName,
 	createWindowPayload,
@@ -224,8 +220,7 @@ export class ConsumerTransport<
 		const propsForHost = getPropsForHost(
 			nextProps,
 			propDefinitions,
-			hostDomain,
-			isSameDomain(this.hostWindow),
+			createDeliveryTarget(hostDomain, window.location.origin),
 		);
 		const serialized = this.serializePropsForHost(
 			propsForHost as Record<string, unknown>,

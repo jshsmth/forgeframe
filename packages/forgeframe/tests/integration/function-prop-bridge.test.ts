@@ -34,7 +34,6 @@ const CALLBACK_PROP_DEFINITIONS: PropsDefinition<CallbackBridgeProps> = {
 	onApprove: {
 		schema:
 			prop.function<(payload: CallbackPayload) => Promise<CallbackResult>>(),
-		required: true,
 	},
 	label: { schema: prop.string().optional() },
 };
@@ -441,7 +440,7 @@ describe("Function prop bridge integration", () => {
 		const container = document.createElement("div");
 		document.body.append(container);
 		const definitions = {
-			config: prop.object().shape({ run: prop.function<() => string>() }),
+			config: prop.object({ run: prop.function<() => string>() }),
 		};
 		const Component = create({
 			tag: "integration-replaced-callback",
@@ -469,9 +468,9 @@ describe("Function prop bridge integration", () => {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 		const definitions = {
-			config: prop.object().shape({
+			config: prop.object({
 				onComplete: prop.function<() => number>(),
-				list: prop.array().of(prop.function<() => number>()),
+				list: prop.array(prop.function<() => number>()),
 				date: prop.date(),
 			}),
 			label: prop.string().optional(),
@@ -520,7 +519,7 @@ describe("Function prop bridge integration", () => {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 		const definitions = {
-			config: prop.object<{ onComplete: () => number; failure?: object }>(),
+			config: prop.any<{ onComplete: () => number; failure?: object }>(),
 		};
 		const Component = create({
 			tag: "integration-encoding-recovery",

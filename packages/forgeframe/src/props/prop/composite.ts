@@ -1,4 +1,8 @@
-import type { StandardSchemaV1Issue, StandardSchemaV1Result } from "../schema";
+import {
+	isStandardSchema,
+	type StandardSchemaV1Issue,
+	type StandardSchemaV1Result,
+} from "../schema";
 import type {
 	InferSchemaInput,
 	InferSchemaValue,
@@ -22,11 +26,11 @@ const ARRAY_MIN_LENGTH_RANK = 0;
 const ARRAY_MAX_LENGTH_RANK = 1;
 
 /**
- * Schema for array props with optional item validation.
+ * Schema for array props whose items are validated by an item schema.
  *
  * @remarks
- * Without an item schema, the array shape is validated and item values are
- * returned as-is. Use {@link ArraySchema.of} to validate each element.
+ * Create it with `prop.array(item)`. Use `prop.any<T[]>()` for an array whose
+ * items are deliberately unchecked.
  *
  * @typeParam T - Normalized array item type.
  * @typeParam I - Array item input type.
@@ -35,9 +39,18 @@ const ARRAY_MAX_LENGTH_RANK = 1;
  */
 export class ArraySchema<T = unknown, I = T> extends PropSchema<T[], I[]> {
 	/** @internal */
-	private _itemSchema?: PropSchema<T, I>;
+	private _itemSchema: PropSchema<T, I>;
 	/** @internal */
 	private _checks: readonly SchemaCheck<number>[] = [];
+
+	constructor(item: PropSchema<T, I>) {
+		super();
+		assertNestedSchema(
+			item,
+			"prop.array(item) requires an item schema. Use prop.any<T[]>() for an array whose items are deliberately unchecked.",
+		);
+		this._itemSchema = item;
+	}
 
 	/** @internal */
 	protected _validate(value: unknown): StandardSchemaV1Result<T[]> {
@@ -49,23 +62,7 @@ export class ArraySchema<T = unknown, I = T> extends PropSchema<T[], I[]> {
 
 	/** @internal */
 	protected _clone(): ArraySchema<T, I> {
-		const clone = this._copyBaseTo(new ArraySchema<T, I>());
-		clone._itemSchema = this._itemSchema;
-		clone._checks = this._checks;
-		return clone;
-	}
-
-	/**
-	 * Specifies the schema for array items.
-	 *
-	 * @typeParam U - Normalized item type.
-	 * @typeParam J - Item input type.
-	 * @param schema - Schema used to validate each item.
-	 * @returns A cloned array schema with the supplied item schema.
-	 */
-	of<U, J = U>(schema: PropSchema<U, J>): ArraySchema<U, J> {
-		const clone = this._copyPresenceTo(new ArraySchema<U, J>());
-		clone._itemSchema = schema;
+		const clone = this._copyBaseTo(new ArraySchema<T, I>(this._itemSchema));
 		clone._checks = this._checks;
 		return clone;
 	}
@@ -210,11 +207,13 @@ export type InferObjectInputShape<
 };
 
 /**
- * Schema for object props with optional shape validation.
+ * Schema for object props whose fields are validated by a shape.
  *
  * @remarks
- * By default, shaped object schemas preserve unknown keys. Use
- * {@link ObjectSchema.strict} to reject keys that are not in the configured shape.
+ * Create it with `prop.object(shape)`. Unknown keys are preserved; use
+ * {@link ObjectSchema.strict} to reject keys that are not in the shape. Use
+ * `prop.record(value)` for dictionaries, or `prop.any<T>()` for an object that
+ * is deliberately unchecked.
  *
  * @typeParam T - Normalized object type.
  * @typeParam I - Object input type.
@@ -226,9 +225,19 @@ export class ObjectSchema<
 	I extends object = T,
 > extends PropSchema<T, I> {
 	/** @internal */
-	private _shape?: Record<string, PropSchema<unknown, unknown>>;
+	private _shape: Record<string, PropSchema<unknown, unknown>>;
 	/** @internal */
 	private _strict = false;
+
+	constructor(shape: Record<string, PropSchema<unknown, unknown>>) {
+		super();
+		if (typeof shape !== "object" || shape === null || Array.isArray(shape)) {
+			throw new TypeError(
+				"prop.object(shape) requires a shape. Use prop.record(value) for dictionaries, or prop.any<T>() for an object that is deliberately unchecked.",
+			);
+		}
+		this._shape = { ...shape };
+	}
 
 	/** @internal */
 	protected _validate(value: unknown): StandardSchemaV1Result<T> {
@@ -243,42 +252,17 @@ export class ObjectSchema<
 		}
 
 		const obj = value as Record<string, unknown>;
-		const result: Record<string, unknown> = {};
-
-		if (!this._shape) {
-			return { value: value as T };
-		}
-
 		const unknownKey = findUnknownObjectKey(obj, this._shape, this._strict);
 		if (unknownKey !== undefined)
 			return {
 				issues: [{ message: `Unknown key: ${unknownKey}`, path: [unknownKey] }],
 			};
-		return validateObjectFields<T>(obj, result, this._shape, this._strict);
+		return validateObjectFields<T>(obj, {}, this._shape, this._strict);
 	}
 
 	/** @internal */
 	protected _clone(): ObjectSchema<T, I> {
-		const clone = this._copyBaseTo(new ObjectSchema<T, I>());
-		clone._shape = this._shape;
-		clone._strict = this._strict;
-		return clone;
-	}
-
-	/**
-	 * Defines the object shape with field schemas.
-	 *
-	 * @typeParam S - Shape definition type.
-	 * @param shape - Object mapping field names to schemas.
-	 * @returns A cloned object schema whose output type is inferred from `shape`.
-	 */
-	shape<S extends Record<string, PropSchema<unknown, unknown>>>(
-		shape: S,
-	): ObjectSchema<InferObjectShape<S>, InferObjectInputShape<S>> {
-		const clone = this._copyPresenceTo(
-			new ObjectSchema<InferObjectShape<S>, InferObjectInputShape<S>>(),
-		);
-		clone._shape = { ...shape };
+		const clone = this._copyBaseTo(new ObjectSchema<T, I>(this._shape));
 		clone._strict = this._strict;
 		return clone;
 	}
@@ -338,15 +322,16 @@ export class RecordSchema<T = unknown, I = T> extends PropSchema<
 	}
 }
 
+/** Rejects a missing nested schema when a composite schema is built. */
+function assertNestedSchema(schema: unknown, message: string): void {
+	if (!isStandardSchema(schema)) throw new TypeError(message);
+}
+
 /** Composes nested schemas after outer shape constraints pass. */
 function validateArrayItems<T, I>(
 	value: unknown[],
-	itemSchema: PropSchema<T, I> | undefined,
+	itemSchema: PropSchema<T, I>,
 ): StandardSchemaV1Result<T[]> {
-	if (!itemSchema) {
-		return { value: value as T[] };
-	}
-
 	const validated: T[] = [];
 	for (let i = 0; i < value.length; i++) {
 		const result = validateSchemaSync(itemSchema, value[i]);

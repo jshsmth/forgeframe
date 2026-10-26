@@ -1,58 +1,17 @@
 import {
-	materializePropAliases,
-	normalizeConsumerProps,
-	validateConsumerProps,
+	buildUnnormalizedProps,
+	normalizeProps,
+	revalidatePropInputs,
+	validateNormalizedProps,
 } from "../../props/normalize";
-import type { PropContext } from "../../types/props";
 import { normalizeError } from "../../utils/error";
 import { createDeferred } from "../../utils/promise";
-import {
-	definedInputKeys,
-	invalidatePatchedKeys,
-	mergePropPatch,
-	PROP_RESET,
-	recordValidatedKeys,
-} from "./prop-update";
+import { definedInputKeys, mergePropPatch } from "./prop-update";
 import type { NormalizedOptions } from "./types";
-
-/** Marks a user callback failure so construction does not defer it as schema validation. */
-class UserNormalizationCallbackFailure {
-	constructor(public readonly thrownValue: unknown) {}
-}
 
 interface NextPropsSnapshot<P> {
 	nextInputProps: Record<string, unknown>;
 	nextProps: P;
-	revalidationSchemaKeys: Set<string>;
-	outputValidationKeys: Set<string>;
-}
-
-interface NormalizedPropSnapshot<P> {
-	props: P;
-	schemaValidatedKeys: Set<string>;
-	revalidationSchemaKeys: Set<string>;
-	outputValidationKeys: Set<string>;
-}
-
-interface PreparedPropPatch<P> {
-	mergedProps: P;
-	changedSchemaKeys: Set<string>;
-	providedChangedSchemaKeys: Set<string>;
-	schemaValidatedKeys: Set<string>;
-	outputValidationKeys: Set<string>;
-}
-
-/** Assembles the validated candidate without committing runtime state. */
-function buildPropsSnapshot<P>(
-	nextInputProps: Record<string, unknown>,
-	normalized: NormalizedPropSnapshot<P>,
-): NextPropsSnapshot<P> {
-	return {
-		nextInputProps,
-		nextProps: normalized.props,
-		revalidationSchemaKeys: normalized.revalidationSchemaKeys,
-		outputValidationKeys: normalized.outputValidationKeys,
-	};
 }
 
 /**
@@ -72,49 +31,15 @@ export interface ConsumerPropsUpdateHooks<P extends Record<string, unknown>> {
 	emitPropsUpdated: (nextProps: P) => void;
 }
 
-function prevalidateProvidedSchemaInputs<
-	P extends Record<string, unknown>,
-	SchemaInputs,
->(
-	inputProps: Record<string, unknown>,
-	props: P,
-	definitions: NormalizedOptions<P, SchemaInputs>["props"],
-	candidateKeys = definedInputKeys(inputProps),
-): Set<string> {
-	validateConsumerProps<P, SchemaInputs>(props, definitions, {
-		schemaKeys: candidateKeys,
-		schemaInputProps: inputProps,
-		validationKeys: candidateKeys,
-		skipCustomValidation: true,
-	});
-	return candidateKeys;
-}
-
-function validateNormalizedSchemaValues<
-	P extends Record<string, unknown>,
-	SchemaInputs,
->(
-	props: P,
-	definitions: NormalizedOptions<P, SchemaInputs>["props"],
-	schemaKeys: ReadonlySet<string>,
-): void {
-	if (schemaKeys.size === 0) {
-		return;
-	}
-
-	validateConsumerProps<P, SchemaInputs>(props, definitions, {
-		schemaKeys,
-		schemaInputProps: props,
-		validationKeys: schemaKeys,
-		preserveValidatedValues: true,
-		requireUnchangedSchemaOutput: true,
-		validateNormalizedOutput: true,
-		skipCustomValidation: true,
-	});
-}
-
 /**
  * Owns consumer prop normalization, validation, and update queueing.
+ *
+ * @remarks
+ * Every update runs one schema-driven sequence: serialized queue, isolated
+ * patch merge, schema conversion (which applies schema defaults), output
+ * contract checks, the component `validate`, URL and origin checks, snapshot
+ * commitment, host synchronization, then notifications.
+ *
  * @internal
  */
 export class ConsumerPropsPipeline<
@@ -122,28 +47,13 @@ export class ConsumerPropsPipeline<
 	SchemaInputs = P,
 > {
 	/** Current normalized prop snapshot. */
-	public props!: P;
+	public props: P;
 
 	/** Last input props snapshot prior to normalization. */
-	public inputProps!: Record<string, unknown>;
+	public inputProps: Record<string, unknown>;
 
-	/** Whether every current schema-backed value has been converted to output form. */
-	private schemaValidated!: boolean;
-
-	/** Values already produced by probing a schema with `undefined`. */
-	private schemaValidatedKeys!: Set<string>;
-
-	/** Defined raw schema inputs to recheck at each trust boundary. */
-	private revalidationSchemaKeys!: Set<string>;
-
-	/** Normalized values that have a safe trust-boundary validation schema. */
-	private outputValidationKeys!: Set<string>;
-
-	/** Whether custom normalization is waiting for valid schema outputs. */
-	private normalizationPending = false;
-
-	/** Original schema failure retained until an explicit prop update succeeds. */
-	private pendingNormalizationError: unknown = undefined;
+	/** Construction-time schema failure retained until an update succeeds. */
+	private pendingNormalizationError: { error: unknown } | null = null;
 
 	/** Settled tail of all admitted prop work, including disconnected updates. */
 	public pendingPropsUpdate: Promise<void> | null = null;
@@ -151,288 +61,67 @@ export class ConsumerPropsPipeline<
 	constructor(
 		private options: NormalizedOptions<P, SchemaInputs>,
 		initialInputProps: Record<string, unknown>,
-		private createPropContext: (props: P) => PropContext<P>,
 	) {
-		this.inputProps = materializePropAliases<P, SchemaInputs>(
-			initialInputProps,
-			this.options.props,
-		) as Record<string, unknown>;
+		this.inputProps = { ...initialInputProps };
 		try {
-			const normalizedState = this.normalizeInputSnapshot(
-				this.inputProps,
-				(error) => {
-					throw new UserNormalizationCallbackFailure(error);
-				},
-			);
-			this.adoptNormalizedState(normalizedState);
+			this.props = normalizeProps(this.inputProps, this.options.props) as P;
 		} catch (error) {
-			if (error instanceof UserNormalizationCallbackFailure) {
-				throw error.thrownValue;
-			}
-
-			const initialProps = this.deferFailedNormalization(error);
-			this.props = normalizeConsumerProps<P, SchemaInputs>(
-				initialProps,
+			// Construction stays usable so the failure surfaces at render, or is
+			// cleared by a successful update.
+			this.pendingNormalizationError = { error };
+			this.props = buildUnnormalizedProps(
+				this.inputProps,
 				this.options.props,
-				this.createPropContext(initialProps),
-				{
-					schemaValidatedKeys: this.schemaValidatedKeys,
-					outputValidationKeys: this.outputValidationKeys,
-					deferCustomNormalization: true,
-				},
-			);
+			) as P;
 		}
-		this.schemaValidated = false;
-	}
-
-	private adoptNormalizedState(
-		normalizedState: ReturnType<
-			ConsumerPropsPipeline<P, SchemaInputs>["normalizeInputSnapshot"]
-		>,
-	): void {
-		this.props = normalizedState.props;
-		this.schemaValidatedKeys = normalizedState.schemaValidatedKeys;
-		this.revalidationSchemaKeys = normalizedState.revalidationSchemaKeys;
-		this.outputValidationKeys = normalizedState.outputValidationKeys;
-	}
-
-	/** Records schema failure before building the fallback snapshot without user callbacks. */
-	private deferFailedNormalization(error: unknown): P {
-		this.normalizationPending = true;
-		this.pendingNormalizationError = error;
-		this.schemaValidatedKeys = new Set<string>();
-		this.revalidationSchemaKeys = new Set<string>();
-		this.outputValidationKeys = new Set<string>();
-		const initialProps = { ...this.inputProps } as P;
-		return initialProps;
 	}
 
 	/**
-	 * Establishes schema outputs, then rechecks inputs without replacing those outputs.
-	 * Later calls still run custom prop validators. A deferred normalization failure
-	 * is rethrown until a successful explicit update replaces the snapshot.
+	 * Rechecks supplied inputs and normalized outputs at a trust boundary.
+	 * A deferred construction failure is rethrown until an update replaces the
+	 * snapshot.
 	 */
-	ensureSchemaValidated(): void {
-		if (this.normalizationPending) {
-			throw this.pendingNormalizationError;
-		}
-
-		if (this.schemaValidated) {
-			this.revalidateSchemaInputs();
-			validateConsumerProps<P, SchemaInputs>(this.props, this.options.props, {
-				schemaKeys: new Set<string>(),
-			});
-			return;
-		}
-
-		this.revalidateSchemaInputs();
-		const validatedProps = { ...this.props };
-		validateConsumerProps<P, SchemaInputs>(validatedProps, this.options.props, {
-			schemaValidatedKeys: this.schemaValidatedKeys,
-		});
-		this.props = validatedProps;
-		this.schemaValidated = true;
-		this.schemaValidatedKeys.clear();
-	}
-
-	/** Rechecks current schema values without rerunning user validators. @internal */
 	revalidateSchemaValues(): void {
-		if (this.normalizationPending || !this.schemaValidated) {
-			this.ensureSchemaValidated();
-			return;
+		if (this.pendingNormalizationError) {
+			throw this.pendingNormalizationError.error;
 		}
-
-		this.revalidateSchemaInputs();
+		this.validateSnapshot(this.inputProps, this.props);
 	}
 
 	/**
-	 * Prepares a validated candidate without committing the pipeline's current snapshot.
-	 * Defaults, decorators and validators may execute user code during preparation.
+	 * Prepares a validated candidate without committing the current snapshot.
+	 * Schema transforms and the component `validate` may run user code.
 	 */
-	buildNextProps(newProps: Record<string, unknown>): NextPropsSnapshot<P> {
-		const patch = materializePropAliases<P, SchemaInputs>(
-			newProps,
-			this.options.props,
-			PROP_RESET,
-		);
+	buildNextProps(patch: Record<string, unknown>): NextPropsSnapshot<P> {
 		const nextInputProps = mergePropPatch(this.inputProps, patch);
-		if (this.normalizationPending) {
-			const normalized = this.normalizeInputSnapshot(nextInputProps);
-			this.validateDeferredSnapshot(normalized);
-			return buildPropsSnapshot(nextInputProps, normalized);
-		}
-
-		const prepared = this.preparePropPatch(patch, nextInputProps);
-		const normalized = this.normalizePatchedSnapshot(prepared, nextInputProps);
-		this.validatePatchedSnapshot(
-			normalized,
-			prepared.changedSchemaKeys,
-			nextInputProps,
-		);
-		return buildPropsSnapshot(nextInputProps, normalized);
+		const nextProps = (
+			this.pendingNormalizationError
+				? normalizeProps(nextInputProps, this.options.props)
+				: {
+						...this.props,
+						...normalizeProps(
+							nextInputProps,
+							this.options.props,
+							new Set(Object.keys(patch)),
+						),
+					}
+		) as P;
+		this.validateSnapshot(nextInputProps, nextProps);
+		this.options.validate?.({ props: nextProps });
+		return { nextInputProps, nextProps };
 	}
 
-	/** Prepares isolated working values and invalidates only patched validation evidence. */
-	private preparePropPatch(
-		patch: Record<string, unknown>,
-		nextInputProps: Record<string, unknown>,
-	): PreparedPropPatch<P> {
-		const changedSchemaKeys = new Set(Object.keys(patch));
-		return {
-			mergedProps: mergePropPatch(this.props, patch) as P,
-			changedSchemaKeys,
-			schemaValidatedKeys: invalidatePatchedKeys(
-				this.schemaValidatedKeys,
-				patch,
-			),
-			outputValidationKeys: invalidatePatchedKeys(
-				this.outputValidationKeys,
-				patch,
-			),
-			providedChangedSchemaKeys: definedInputKeys(
-				nextInputProps,
-				changedSchemaKeys,
-			),
-		};
-	}
-
-	private validateDeferredSnapshot(
-		normalized: NormalizedPropSnapshot<P>,
-	): void {
-		validateNormalizedSchemaValues(
-			normalized.props,
-			this.options.props,
-			normalized.outputValidationKeys,
-		);
-		validateConsumerProps<P, SchemaInputs>(
-			normalized.props,
-			this.options.props,
-			{
-				schemaValidatedKeys: normalized.schemaValidatedKeys,
-			},
-		);
-		this.options.validate?.({ props: normalized.props });
-	}
-
-	/** Converts supplied inputs before running output-typed decorators. */
-	private normalizePatchedSnapshot(
-		prepared: PreparedPropPatch<P>,
-		nextInputProps: Record<string, unknown>,
-	): NormalizedPropSnapshot<P> {
-		const {
-			mergedProps,
-			schemaValidatedKeys,
-			outputValidationKeys,
-			changedSchemaKeys,
-			providedChangedSchemaKeys,
-		} = prepared;
-		prevalidateProvidedSchemaInputs(
-			nextInputProps,
-			mergedProps,
-			this.options.props,
-			providedChangedSchemaKeys,
-		);
-		recordValidatedKeys(schemaValidatedKeys, providedChangedSchemaKeys);
-		const propContext = this.createPropContext(mergedProps);
-		const normalizedSchemaKeys = new Set(schemaValidatedKeys);
-		const props = normalizeConsumerProps<P, SchemaInputs>(
-			mergedProps,
-			this.options.props,
-			propContext,
-			{
-				schemaValidatedKeys: normalizedSchemaKeys,
-				outputValidationKeys,
-				decorateKeys: changedSchemaKeys,
-				fallbackKeys: changedSchemaKeys,
-			},
-		);
-		recordValidatedKeys(schemaValidatedKeys, normalizedSchemaKeys);
-		return {
-			props,
-			schemaValidatedKeys,
-			outputValidationKeys,
-			revalidationSchemaKeys: definedInputKeys(nextInputProps),
-		};
-	}
-
-	/** Preserves input revalidation, output contracts, custom validators, then component validation. */
-	private validatePatchedSnapshot(
-		normalized: NormalizedPropSnapshot<P>,
-		changedSchemaKeys: Set<string>,
-		nextInputProps: Record<string, unknown>,
-	): void {
-		const {
-			props,
-			revalidationSchemaKeys,
-			outputValidationKeys,
-			schemaValidatedKeys,
-		} = normalized;
-		validateConsumerProps<P, SchemaInputs>(props, this.options.props, {
-			schemaKeys: revalidationSchemaKeys,
-			schemaInputProps: nextInputProps,
-			validationKeys: revalidationSchemaKeys,
-			preserveValidatedValues: true,
-			skipCustomValidation: true,
-		});
-		validateNormalizedSchemaValues(
-			props,
-			this.options.props,
-			outputValidationKeys,
-		);
-		validateConsumerProps<P, SchemaInputs>(props, this.options.props, {
-			schemaKeys: this.schemaValidated ? changedSchemaKeys : undefined,
-			schemaValidatedKeys,
-		});
-		this.options.validate?.({ props });
-	}
-
-	private normalizeInputSnapshot(
+	/** Rechecks supplied inputs, then each normalized output contract. */
+	private validateSnapshot(
 		inputProps: Record<string, unknown>,
-		onUserCallbackError?: (error: unknown) => never,
-	): NormalizedPropSnapshot<P> {
-		const initialProps = { ...inputProps } as P;
-		const schemaValidatedKeys = prevalidateProvidedSchemaInputs(
+		props: P,
+	): void {
+		revalidatePropInputs(
 			inputProps,
-			initialProps,
 			this.options.props,
+			definedInputKeys(inputProps),
 		);
-		const revalidationSchemaKeys = new Set(schemaValidatedKeys);
-		const outputValidationKeys = new Set<string>();
-		const props = normalizeConsumerProps<P, SchemaInputs>(
-			initialProps,
-			this.options.props,
-			this.createPropContext(initialProps),
-			{
-				schemaValidatedKeys,
-				outputValidationKeys,
-				onUserCallbackError,
-			},
-		);
-
-		return {
-			props,
-			schemaValidatedKeys,
-			revalidationSchemaKeys,
-			outputValidationKeys,
-		};
-	}
-
-	private revalidateSchemaInputs(): void {
-		if (this.revalidationSchemaKeys.size > 0) {
-			validateConsumerProps<P, SchemaInputs>(this.props, this.options.props, {
-				schemaKeys: this.revalidationSchemaKeys,
-				schemaInputProps: this.inputProps,
-				validationKeys: this.revalidationSchemaKeys,
-				preserveValidatedValues: true,
-				skipCustomValidation: true,
-			});
-		}
-
-		validateNormalizedSchemaValues(
-			this.props,
-			this.options.props,
-			this.outputValidationKeys,
-		);
+		validateNormalizedProps(props, this.options.props);
 	}
 
 	/**
@@ -449,24 +138,14 @@ export class ConsumerPropsPipeline<
 	): Promise<void> {
 		return this.queuePropsUpdate(async () => {
 			hooks.assertActive();
-			const {
-				nextInputProps,
-				nextProps,
-				revalidationSchemaKeys,
-				outputValidationKeys,
-			} = this.buildNextProps(newProps);
+			const { nextInputProps, nextProps } = this.buildNextProps(newProps);
 			const resolvedUrl = hooks.resolveUrl(nextProps);
 			const nextHostOrigin = hooks.resolveUrlOrigin(resolvedUrl);
 			hooks.assertStableRenderedOrigin(nextHostOrigin);
 			hooks.validateTransportProps(nextProps, nextHostOrigin);
 			hooks.assertActive();
 
-			this.commitSnapshot({
-				nextInputProps,
-				nextProps,
-				revalidationSchemaKeys,
-				outputValidationKeys,
-			});
+			this.commitSnapshot({ nextInputProps, nextProps });
 
 			if (!hooks.isRendered()) {
 				hooks.syncTrustedDomainForUrl(resolvedUrl);
@@ -484,12 +163,7 @@ export class ConsumerPropsPipeline<
 	private commitSnapshot(snapshot: NextPropsSnapshot<P>): void {
 		this.inputProps = snapshot.nextInputProps;
 		this.props = snapshot.nextProps;
-		this.schemaValidated = true;
-		this.schemaValidatedKeys.clear();
-		this.revalidationSchemaKeys = snapshot.revalidationSchemaKeys;
-		this.outputValidationKeys = snapshot.outputValidationKeys;
-		this.normalizationPending = false;
-		this.pendingNormalizationError = undefined;
+		this.pendingNormalizationError = null;
 	}
 
 	/**
@@ -509,8 +183,9 @@ export class ConsumerPropsPipeline<
 	 */
 	private queuePropsUpdate<R>(updateFn: () => Promise<R>): Promise<R> {
 		if (!this.pendingPropsUpdate) {
-			// Install the queue entry before invoking user decorators: they may
-			// synchronously enqueue another update while this snapshot is built.
+			// Install the queue entry before running user code such as schema
+			// transforms or the component validate: it may synchronously enqueue
+			// another update while this snapshot is built.
 			const pending = createDeferred<R>();
 			this.trackPendingUpdate(pending.promise);
 			try {

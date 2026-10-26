@@ -21,16 +21,15 @@ function generatePropSchemaCode(
 ): string {
 	const { required, default: defaultValue } = options;
 
-	const kind = (type || "string").toLowerCase();
-	const supported = [
-		"string",
-		"number",
-		"boolean",
-		"function",
-		"array",
-		"object",
-	];
-	let code = `prop.${supported.includes(kind) ? kind : "string"}()`;
+	const builders: Record<string, string> = {
+		string: "prop.string()",
+		number: "prop.number()",
+		boolean: "prop.boolean()",
+		function: "prop.function()",
+		array: "prop.array(prop.any())",
+		object: "prop.any()",
+	};
+	let code = builders[(type || "string").toLowerCase()] ?? builders.string;
 
 	if (defaultValue !== undefined) {
 		code += `.default(${JSON.stringify(defaultValue)})`;

@@ -42,11 +42,10 @@ const componentInstanceIndexByTag = new Map<
 export function indexComponentInstance<
 	P extends Record<string, unknown>,
 	X,
-	I,
 	SchemaInputs,
 >(
 	tag: string,
-	instance: ForgeFrameComponentInstance<P, X, I, SchemaInputs> &
+	instance: ForgeFrameComponentInstance<P, X, SchemaInputs> &
 		IndexedInstanceAccess,
 ): void {
 	const indexedInstance = instance as IndexedComponentInstance;

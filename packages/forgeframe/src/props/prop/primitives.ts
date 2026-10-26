@@ -457,9 +457,9 @@ export class FunctionSchema<
  *
  * @public
  */
-export class AnySchema extends PropSchema<
-	NonNullable<unknown> | null,
-	NonNullable<unknown> | null
+export class AnySchema<T = NonNullable<unknown> | null> extends PropSchema<
+	T,
+	T
 > {
 	constructor() {
 		super();
@@ -467,14 +467,12 @@ export class AnySchema extends PropSchema<
 	}
 
 	/** @internal */
-	protected _validate(
-		value: unknown,
-	): StandardSchemaV1Result<NonNullable<unknown> | null> {
-		return { value: value as NonNullable<unknown> | null };
+	protected _validate(value: unknown): StandardSchemaV1Result<T> {
+		return { value: value as T };
 	}
 
 	/** @internal */
-	protected _clone(): AnySchema {
-		return this._copyBaseTo(new AnySchema());
+	protected _clone(): AnySchema<T> {
+		return this._copyBaseTo(new AnySchema<T>());
 	}
 }

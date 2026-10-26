@@ -20,8 +20,8 @@ type HandshakeProps = {
 };
 
 const HANDSHAKE_PROP_DEFINITIONS: PropsDefinition<HandshakeProps> = {
-	amount: { schema: prop.number(), required: true },
-	message: { schema: prop.string(), required: true },
+	amount: { schema: prop.number() },
+	message: { schema: prop.string() },
 };
 
 describe("Consumer/host handshake integration", () => {
@@ -208,7 +208,7 @@ describe("Consumer/host handshake integration", () => {
 		const Component = create({
 			tag: "removed-serialization-host",
 			url: "https://host.example.com/widget",
-			props: { profile: prop.object() },
+			props: { profile: prop.any<Record<string, unknown>>() },
 		});
 		const rendering = Component({ profile: { name: "initial" } }).render(
 			container,
@@ -216,7 +216,10 @@ describe("Consumer/host handshake integration", () => {
 		harness.attachHostToIframe(await harness.waitForIframe(container));
 		// A JavaScript host module can still pass the removed option.
 		const legacyDefinitions = {
-			profile: { schema: prop.object(), serialization: "json" },
+			profile: {
+				schema: prop.any<Record<string, unknown>>(),
+				serialization: "json",
+			},
 		};
 		expect(() => harness?.bootstrapHost(legacyDefinitions)).toThrow(
 			'Prop "profile" uses the removed "serialization" option. ForgeFrame 2 always sends props as JSON; remove the option.',
@@ -224,7 +227,7 @@ describe("Consumer/host handshake integration", () => {
 		expect(getHost()).toBeNull();
 
 		const host = harness.bootstrapHost<{ profile: Record<string, unknown> }>({
-			profile: prop.object(),
+			profile: prop.any<Record<string, unknown>>(),
 		});
 		if (!host) throw new Error("Expected the corrected host to initialize");
 		await host.ready;

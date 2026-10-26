@@ -47,7 +47,7 @@ function createOptions(
 		url: "https://host.example.com/widget",
 		props: {
 			onReady: { schema: prop.function().optional() },
-			payload: { schema: prop.object().optional() },
+			payload: { schema: prop.any<Record<string, unknown>>().optional() },
 		},
 		defaultContext: CONTEXT.IFRAME,
 		dimensions: { width: 320, height: 240 },

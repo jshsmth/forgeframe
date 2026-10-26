@@ -288,7 +288,7 @@ describe("Consumer lifecycle behavior", () => {
 		const consumer = createConsumer(
 			{
 				url: "/widget",
-				props: { secret: { schema: prop.string(), sameDomain: true } },
+				props: { secret: { schema: prop.string(), deliverTo: "same-origin" } },
 			},
 			{ secret: "same-origin-only" },
 		);
@@ -317,7 +317,7 @@ describe("Consumer lifecycle behavior", () => {
 			{
 				domain: [configuredOrigin, redirectedOrigin],
 				props: {
-					amount: { schema: prop.number(), required: true },
+					amount: { schema: prop.number() },
 				},
 			},
 			{ amount: 1 },
@@ -358,7 +358,7 @@ describe("Consumer lifecycle behavior", () => {
 		const consumer = createConsumer(
 			{
 				props: {
-					secret: { schema: prop.string(), sameDomain: true },
+					secret: { schema: prop.string(), deliverTo: "same-origin" },
 				},
 			},
 			{ secret: "cross-origin-blocked" },
@@ -401,8 +401,8 @@ describe("Consumer lifecycle behavior", () => {
 			{
 				url: "/widget",
 				props: {
-					count: { schema: prop.number(), required: true },
-					secret: { schema: prop.string(), sameDomain: true },
+					count: { schema: prop.number() },
+					secret: { schema: prop.string(), deliverTo: "same-origin" },
 					onReady: prop.function<() => void>(),
 				},
 			},
@@ -658,7 +658,7 @@ describe("Consumer lifecycle behavior", () => {
 			tag: "peer-siblings-component",
 			url: "https://host.example.com/peer",
 			props: {
-				amount: { schema: prop.number(), required: true },
+				amount: { schema: prop.number() },
 			},
 		});
 
@@ -1293,14 +1293,14 @@ describe("Consumer lifecycle behavior", () => {
 		const consumer = createConsumer(
 			{
 				props: {
-					amount: { schema: prop.number(), required: true },
+					amount: { schema: prop.number() },
 				},
 			},
 			{ amount: 1 },
 		);
 
 		await expect(consumer.updateProps({ amount: undefined })).rejects.toThrow(
-			'Prop "amount" is required but was not provided',
+			"Validation failed: amount: Required",
 		);
 	});
 
@@ -1310,19 +1310,9 @@ describe("Consumer lifecycle behavior", () => {
 		const consumer = createConsumer(
 			{
 				props: {
-					optionalLabel: {
-						schema: prop.string().optional(),
-						default: optionalDefault,
-					},
-					requiredLabel: {
-						schema: prop.string(),
-						required: true,
-						default: "required-default",
-					},
-					stableLabel: {
-						schema: prop.string(),
-						default: stableDefault,
-					},
+					optionalLabel: prop.string().optional().default(optionalDefault),
+					requiredLabel: prop.string().default("required-default"),
+					stableLabel: prop.string().default(stableDefault),
 				},
 			},
 			{
@@ -1356,7 +1346,7 @@ describe("Consumer lifecycle behavior", () => {
 		const consumer = createConsumer(
 			{
 				props: {
-					amount: { schema: prop.number(), required: true },
+					amount: { schema: prop.number() },
 				},
 			},
 			{ amount: 1 },
@@ -1372,7 +1362,7 @@ describe("Consumer lifecycle behavior", () => {
 		const consumer = createConsumer(
 			{
 				props: {
-					amount: { schema: prop.number(), required: true },
+					amount: { schema: prop.number() },
 				},
 				validate,
 			},
@@ -1394,7 +1384,7 @@ describe("Consumer lifecycle behavior", () => {
 			.mockResolvedValue(undefined);
 
 		await expect(consumer.updateProps({ amount: undefined })).rejects.toThrow(
-			'Prop "amount" is required but was not provided',
+			"Validation failed: amount: Required",
 		);
 
 		expect(validate).not.toHaveBeenCalled();
@@ -1406,7 +1396,7 @@ describe("Consumer lifecycle behavior", () => {
 		const consumer = createConsumer(
 			{
 				props: {
-					amount: { schema: prop.number(), required: true },
+					amount: { schema: prop.number() },
 				},
 			},
 			{ amount: 1 },
@@ -1441,7 +1431,7 @@ describe("Consumer lifecycle behavior", () => {
 		const consumer = createConsumer(
 			{
 				props: {
-					amount: { schema: prop.number(), required: true },
+					amount: { schema: prop.number() },
 				},
 			},
 			{ amount: 1 },

@@ -45,11 +45,6 @@ type ConsumerInternals = {
 	options: Record<string, unknown>;
 	resolveUrlOrigin: (url: string) => string | null;
 	syncTrustedDomainForUrl: (url: string) => void;
-	createPropContext: () => {
-		close: () => Promise<void>;
-		focus: () => Promise<void>;
-		onError: (err: Error) => void;
-	};
 	resolveContainer: (container?: string | HTMLElement) => HTMLElement;
 	checkEligibility: () => void;
 	prerender: () => Promise<void>;
@@ -268,75 +263,6 @@ describe("Consumer branch coverage and edge paths", () => {
 		expect(() =>
 			getInternals(consumer).syncTrustedDomainForUrl("http://%"),
 		).toThrow("Invalid component URL");
-	});
-
-	it("should expose working close/focus/onError callbacks from prop context", () => {
-		const consumer = createConsumer();
-		const closeSpy = vi.spyOn(consumer, "close").mockResolvedValue(undefined);
-		const focusSpy = vi.spyOn(consumer, "focus").mockResolvedValue(undefined);
-		const onError = vi.fn();
-		consumer.event.on(EVENT.ERROR, onError);
-
-		const ctx = getInternals(consumer).createPropContext();
-
-		void ctx.close();
-		void ctx.focus();
-		ctx.onError(new Error("context-error"));
-
-		expect(closeSpy).toHaveBeenCalledTimes(1);
-		expect(focusSpy).toHaveBeenCalledTimes(1);
-		expect(onError).toHaveBeenCalledWith(expect.any(Error));
-	});
-
-	it("should provide initial user props to value callbacks during construction", () => {
-		const consumer = createConsumer(
-			{
-				props: {
-					derived: {
-						schema: prop.string(),
-						value: (ctx: { props: Record<string, unknown> }) =>
-							`seed:${ctx.props.seed}`,
-					},
-				},
-			},
-			{ seed: "abc" },
-		);
-
-		const internalProps = getInternals(consumer).propsPipeline.props;
-		expect(internalProps.derived).toBe("seed:abc");
-	});
-
-	it("should preserve materialized value props on unrelated updateProps patches", async () => {
-		let derivedCalls = 0;
-		const consumer = createConsumer(
-			{
-				props: {
-					seed: {
-						schema: prop.string(),
-						required: true,
-					},
-					amount: {
-						schema: prop.number().optional(),
-					},
-					derived: {
-						schema: prop.string(),
-						value: (ctx: { props: Record<string, unknown> }) => {
-							derivedCalls += 1;
-							return `seed:${ctx.props.seed}`;
-						},
-					},
-				},
-			},
-			{ seed: "abc" },
-		);
-
-		await consumer.updateProps({ amount: 1 });
-
-		const internalProps = getInternals(consumer).propsPipeline.props;
-		expect(internalProps.seed).toBe("abc");
-		expect(internalProps.amount).toBe(1);
-		expect(internalProps.derived).toBe("seed:abc");
-		expect(derivedCalls).toBe(1);
 	});
 
 	it("should prune stale function refs after each host serialization batch", async () => {

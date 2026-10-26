@@ -151,7 +151,7 @@ describe("Host lifecycle behavior", () => {
 		const host = createHost({
 			propDefinitions: {
 				amount: prop.number(),
-				local: { schema: prop.string(), required: true, sendToHost: false },
+				local: { schema: prop.string(), sendToHost: false },
 			},
 		});
 		try {
@@ -233,7 +233,7 @@ describe("Host lifecycle behavior", () => {
 	it("should withhold all props until the messaging bootstrap completes", () => {
 		const definitions = {
 			label: { schema: prop.string() },
-			secret: { schema: prop.string(), sameDomain: true },
+			secret: { schema: prop.string(), deliverTo: "same-origin" },
 		};
 		const consumer = createConsumer(
 			{
@@ -295,14 +295,12 @@ describe("Host lifecycle behavior", () => {
 			amount: {
 				schema: z.string().transform(Number),
 				outputSchema: z.number(),
-				default: "41",
-				decorate: ({ value }: { value: number }) => value + 1,
 			},
 		};
-		const consumer = createConsumer({
-			url: "/widget",
-			props: definitions,
-		});
+		const consumer = createConsumer(
+			{ url: "/widget", props: definitions },
+			{ amount: "42" },
+		);
 
 		window.name = (
 			consumer as unknown as { buildWindowName: () => string }
@@ -332,7 +330,6 @@ describe("Host lifecycle behavior", () => {
 						value === "empty" ? undefined : Number(value),
 					),
 				outputSchema: z.number().optional(),
-				required: true,
 			},
 		};
 
@@ -352,7 +349,6 @@ describe("Host lifecycle behavior", () => {
 						amount: {
 							schema: z.string().transform(Number),
 							outputSchema: z.number(),
-							required: true,
 						},
 					},
 				},
@@ -412,7 +408,7 @@ describe("Host lifecycle behavior", () => {
 		);
 	});
 
-	it("does not relax required sameDomain props for a verified same-origin host", async () => {
+	it("requires same-origin props on a verified same-origin host", async () => {
 		window.name = buildWindowName(
 			createPayload({ consumerDomain: window.location.origin }),
 		);
@@ -425,7 +421,7 @@ describe("Host lifecycle behavior", () => {
 			initHost({
 				props: {
 					label: prop.string(),
-					secret: { schema: prop.string(), sameDomain: true, required: true },
+					secret: { schema: prop.string(), deliverTo: "same-origin" },
 				},
 				consumerOrigins: window.location.origin,
 				autoInit: false,
@@ -433,30 +429,38 @@ describe("Host lifecycle behavior", () => {
 		);
 
 		await expect(host.ready).rejects.toThrow(
-			'Prop "secret" is required but was not provided',
+			"Validation failed: secret: Required",
 		);
 		expect(host.hostProps.getConsumerDomain()).toBe(window.location.origin);
 		expect(getHost()).toBeNull();
 	});
 
-	it("should still reject missing required sameDomain props for cross-origin hosts", async () => {
+	it("neither expects nor accepts props withheld from a cross-origin host", async () => {
 		const crossOriginConsumerWindow = {
 			postMessage: vi.fn(),
 			location: { origin: "https://consumer.example.com" },
 		} as unknown as Window;
-		vi.spyOn(console, "error").mockImplementation(() => {});
 
-		await expect(
-			createBootstrappingHost(
-				{},
-				{
-					consumerWindow: crossOriginConsumerWindow,
-					propDefinitions: {
-						secret: { schema: prop.string(), sameDomain: true, required: true },
+		const host = createBootstrappingHost(
+			{ label: "visible", secret: "stale", partner: "stale" },
+			{
+				consumerWindow: crossOriginConsumerWindow,
+				propDefinitions: {
+					label: prop.string(),
+					secret: { schema: prop.string(), deliverTo: "same-origin" },
+					partner: {
+						schema: prop.string(),
+						deliverTo: "https://partner.example.com",
 					},
 				},
-			).ready,
-		).rejects.toThrow('Prop "secret" is required but was not provided');
+			},
+		);
+		const hostProps = await host.ready;
+
+		expect(hostProps.label).toBe("visible");
+		expect(hostProps).not.toHaveProperty("secret");
+		expect(hostProps).not.toHaveProperty("partner");
+		expect(hostProps.consumer.props).toEqual({ label: "visible" });
 	});
 
 	it("should isolate failing props subscribers and continue notifying others", async () => {

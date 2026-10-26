@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { MESSAGE_NAME } from "@/constants";
 import { ConsumerComponent } from "@/core/consumer";
 import { prop } from "@/props/prop";
@@ -48,23 +49,30 @@ afterEach(async () => {
 });
 
 describe("Disconnected consumer prop queue", () => {
-	it.each(["decorate", "validate"])(
+	it.each(["a schema transform", "the component validate"])(
 		"should preserve a nested update triggered by %s",
 		async (callback) => {
 			let consumer: ConsumerComponent<Record<string, unknown>> | undefined;
 			let nested: Promise<void> | undefined;
-			const trigger = ({ value }: { value: unknown }) => {
+			const trigger = (value: unknown) => {
 				if (value === 1 && consumer && !nested)
 					nested = consumer.updateProps({ second: 2 });
 				return value;
 			};
 			consumer = consumerWith(
-				{
-					props: {
-						first: { schema: prop.number(), [callback]: trigger },
-						second: prop.number(),
-					},
-				},
+				callback === "a schema transform"
+					? {
+							props: {
+								first: z.number().transform(trigger),
+								second: prop.number(),
+							},
+						}
+					: {
+							props: { first: prop.number(), second: prop.number() },
+							validate: ({ props }) => {
+								trigger(props.first);
+							},
+						},
 				{ first: 0, second: 0 },
 			);
 			await consumer.updateProps({ first: 1 });
@@ -155,23 +163,17 @@ describe("Disconnected consumer prop queue", () => {
 			let nested: Promise<unknown> | undefined;
 			consumer = consumerWith(
 				{
-					props: {
-						first: {
-							schema: prop.number(),
-							decorate: ({ value }) => {
-								if (value === 1 && consumer && !nested) {
-									nested = consumer
-										.updateProps({
-											second: failure === "nested" ? "invalid" : 2,
-										})
-										.catch((error: unknown) => error);
-									if (failure === "outer")
-										throw new Error("Outer normalization failed");
-								}
-								return value;
-							},
-						},
-						second: prop.number(),
+					props: { first: prop.number(), second: prop.number() },
+					validate: ({ props }) => {
+						if (props.first === 1 && consumer && !nested) {
+							nested = consumer
+								.updateProps({
+									second: failure === "nested" ? "invalid" : 2,
+								})
+								.catch((error: unknown) => error);
+							if (failure === "outer")
+								throw new Error("Outer validation failed");
+						}
 					},
 				},
 				{ first: 0, second: 0 },
@@ -192,23 +194,17 @@ describe("Disconnected consumer prop queue", () => {
 		},
 	);
 
-	it("should allow rendering requested inside a decorator without reading its uncommitted snapshot", async () => {
+	it("should allow rendering requested inside the component validate without reading its uncommitted snapshot", async () => {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 		let consumer: ConsumerComponent<Record<string, unknown>> | undefined;
 		let rendering: Promise<void> | undefined;
 		consumer = consumerWith(
 			{
-				props: {
-					count: {
-						schema: prop.number(),
-						queryParam: true,
-						decorate: ({ value }) => {
-							if (value === 1 && consumer && !rendering)
-								rendering = consumer.render(container);
-							return value;
-						},
-					},
+				props: { count: { schema: prop.number(), queryParam: true } },
+				validate: ({ props }) => {
+					if (props.count === 1 && consumer && !rendering)
+						rendering = consumer.render(container);
 				},
 			},
 			{ count: 0 },
@@ -223,12 +219,11 @@ describe("Disconnected consumer prop queue", () => {
 	});
 
 	it("should cancel rendering and queued user callbacks when closed during draining", async () => {
-		const decorate = vi.fn(({ value }: { value: unknown }) => value);
+		const validate = vi.fn();
 		const consumer = consumerWith(
-			{ props: { count: { schema: prop.number(), decorate } } },
+			{ props: { count: prop.number() }, validate },
 			{ count: 0 },
 		);
-		decorate.mockClear();
 		const first = consumer.updateProps({ count: 1 });
 		const second = consumer
 			.updateProps({ count: 2 })
@@ -246,7 +241,7 @@ describe("Disconnected consumer prop queue", () => {
 		expect(await rendering).toMatchObject({
 			message: expect.stringContaining("closed before rendering completed"),
 		});
-		expect(decorate).toHaveBeenCalledTimes(1);
+		expect(validate).toHaveBeenCalledTimes(1);
 		expect(container.children).toHaveLength(0);
 	});
 });

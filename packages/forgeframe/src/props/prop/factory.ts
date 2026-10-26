@@ -1,6 +1,8 @@
 import type { PropSchema } from "./base";
 import {
 	ArraySchema,
+	type InferObjectInputShape,
+	type InferObjectShape,
 	ObjectSchema,
 	RecordSchema,
 	TupleSchema,
@@ -28,7 +30,7 @@ import {
  * const props = {
  *   email: prop.string().email(),
  *   rememberMe: prop.boolean().default(false),
- *   tags: prop.array().of(prop.string()).default([]),
+ *   tags: prop.array(prop.string()).default([]),
  * };
  * ```
  *
@@ -75,12 +77,15 @@ export const prop = {
 	>(): FunctionSchema<T> => new FunctionSchema<T>(),
 
 	/**
-	 * Creates an array schema.
+	 * Creates an array schema that validates each item.
 	 *
-	 * @typeParam T - Array item type.
+	 * @typeParam T - Normalized item type.
+	 * @typeParam I - Item input type.
+	 * @param item - Schema used to validate each item.
 	 * @returns A new array schema.
 	 */
-	array: <T = unknown>(): ArraySchema<T> => new ArraySchema<T>(),
+	array: <T, I = T>(item: PropSchema<T, I>): ArraySchema<T, I> =>
+		new ArraySchema(item),
 
 	/**
 	 * Creates a tuple schema with fixed positional item types.
@@ -94,13 +99,16 @@ export const prop = {
 	): TupleSchema<S> => new TupleSchema(schemas),
 
 	/**
-	 * Creates an object schema.
+	 * Creates an object schema that validates the fields in `shape`.
 	 *
-	 * @typeParam T - Object type.
-	 * @returns A new object schema.
+	 * @typeParam S - Shape definition type.
+	 * @param shape - Object mapping field names to schemas.
+	 * @returns A new object schema whose types are inferred from `shape`.
 	 */
-	object: <T extends object = Record<string, unknown>>(): ObjectSchema<T> =>
-		new ObjectSchema<T>(),
+	object: <S extends Record<string, PropSchema<unknown, unknown>>>(
+		shape: S,
+	): ObjectSchema<InferObjectShape<S>, InferObjectInputShape<S>> =>
+		new ObjectSchema(shape),
 
 	/**
 	 * Creates a record schema for string-keyed objects.
@@ -148,11 +156,16 @@ export const prop = {
 	): UnionSchema<S> => new UnionSchema(schemas),
 
 	/**
-	 * Creates a schema that accepts any value.
+	 * Creates a schema that accepts any defined value without checking it.
 	 *
-	 * @returns A new schema that accepts any value.
+	 * @remarks
+	 * Use it for values that are deliberately unchecked. The type parameter
+	 * only types the value; nothing validates it at runtime.
+	 *
+	 * @typeParam T - Type of the accepted value.
+	 * @returns A new schema that accepts any defined value.
 	 */
-	any: (): AnySchema => new AnySchema(),
+	any: <T = NonNullable<unknown> | null>(): AnySchema<T> => new AnySchema<T>(),
 } as const;
 
 /**

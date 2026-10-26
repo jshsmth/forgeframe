@@ -4,7 +4,7 @@
  * Covers Standard Schema compatibility, primitive/composite validators, schema chaining immutability, and normalizeProps integration.
  */
 import { describe, expect, it, vi } from "vitest";
-import { validateProps } from "@/props/normalize";
+import { normalizeProps } from "@/props/normalize";
 import {
 	AnySchema,
 	ArraySchema,
@@ -50,16 +50,16 @@ describe("StandardSchemaV1 compliance", () => {
 		expect(isStandardSchema(prop.function())).toBe(true);
 	});
 
-	it("prop.array() should be a valid StandardSchemaV1", () => {
-		expect(isStandardSchema(prop.array())).toBe(true);
+	it("prop.array(item) should be a valid StandardSchemaV1", () => {
+		expect(isStandardSchema(prop.array(prop.string()))).toBe(true);
 	});
 
 	it("prop.tuple() should be a valid StandardSchemaV1", () => {
 		expect(isStandardSchema(prop.tuple(prop.string()))).toBe(true);
 	});
 
-	it("prop.object() should be a valid StandardSchemaV1", () => {
-		expect(isStandardSchema(prop.object())).toBe(true);
+	it("prop.object(shape) should be a valid StandardSchemaV1", () => {
+		expect(isStandardSchema(prop.object({}))).toBe(true);
 	});
 
 	it("prop.record() should be a valid StandardSchemaV1", () => {
@@ -629,9 +629,9 @@ describe("prop.function()", () => {
 			value: callback,
 		});
 		expect(schema["~standard"].validate(null)).toEqual({ value: null });
-		expect(
-			prop.object().shape({ callback: schema })["~standard"].validate({}),
-		).toEqual({ value: { callback } });
+		expect(prop.object({ callback: schema })["~standard"].validate({})).toEqual(
+			{ value: { callback } },
+		);
 	});
 
 	it("should validate functions", () => {
@@ -660,24 +660,33 @@ describe("prop.function()", () => {
 // Array Schema Tests
 // ============================================================================
 
-describe("prop.array()", () => {
+describe("prop.array(item)", () => {
+	it("requires an item schema at runtime", () => {
+		const array = prop.array as unknown as (item?: unknown) => unknown;
+		for (const item of [undefined, "string", { "~standard": {} }]) {
+			expect(() => array(item)).toThrow(
+				"prop.array(item) requires an item schema. Use prop.any<T[]>() for an array whose items are deliberately unchecked.",
+			);
+		}
+	});
+
 	it("should validate arrays", () => {
-		const schema = prop.array();
+		const schema = prop.array(prop.number());
 		expect(schema["~standard"].validate([1, 2, 3])).toEqual({
 			value: [1, 2, 3],
 		});
 	});
 
 	it("should reject non-arrays", () => {
-		const schema = prop.array();
+		const schema = prop.array(prop.any());
 		expect(schema["~standard"].validate("not an array")).toHaveProperty(
 			"issues",
 		);
 		expect(schema["~standard"].validate({})).toHaveProperty("issues");
 	});
 
-	it("should validate array items with of()", () => {
-		const schema = prop.array().of(prop.string());
+	it("should validate array items", () => {
+		const schema = prop.array(prop.string());
 		expect(schema["~standard"].validate(["a", "b", "c"])).toEqual({
 			value: ["a", "b", "c"],
 		});
@@ -687,45 +696,47 @@ describe("prop.array()", () => {
 	});
 
 	it("should include path in item validation errors", async () => {
-		const schema = prop.array().of(prop.string());
+		const schema = prop.array(prop.string());
 		const result = await schema["~standard"].validate(["a", 1, "c"]);
 		if (!result.issues) throw new Error("Expected validation issues");
 		expect(result.issues[0].path).toEqual([1]);
 	});
 
 	it("should validate min length", () => {
-		const schema = prop.array().min(2);
+		const schema = prop.array(prop.number()).min(2);
 		expect(schema["~standard"].validate([1])).toHaveProperty("issues");
 		expect(schema["~standard"].validate([1, 2])).toEqual({ value: [1, 2] });
 	});
 
 	it("should validate max length", () => {
-		const schema = prop.array().max(2);
+		const schema = prop.array(prop.number()).max(2);
 		expect(schema["~standard"].validate([1, 2, 3])).toHaveProperty("issues");
 		expect(schema["~standard"].validate([1, 2])).toEqual({ value: [1, 2] });
 	});
 
 	it("should validate nonempty", () => {
-		const schema = prop.array().nonempty();
+		const schema = prop.array(prop.number()).nonempty();
 		expect(schema["~standard"].validate([])).toHaveProperty("issues");
 		expect(schema["~standard"].validate([1])).toEqual({ value: [1] });
 	});
 
-	it("keeps every chained length refinement, including across of()", () => {
-		const schema = prop.array().min(3).nonempty().of(prop.number());
+	it("keeps every chained length refinement", () => {
+		const schema = prop.array(prop.number()).min(3).nonempty();
 		expect(schema["~standard"].validate([1])).toEqual({
 			issues: [{ message: "Array must have at least 3 items" }],
 		});
 		expect(schema["~standard"].validate([1, 2, 3])).toEqual({
 			value: [1, 2, 3],
 		});
-		expect(prop.array().max(1).min(0)["~standard"].validate([1, 2])).toEqual({
+		expect(
+			prop.array(prop.number()).max(1).min(0)["~standard"].validate([1, 2]),
+		).toEqual({
 			issues: [{ message: "Array must have at most 1 items" }],
 		});
 	});
 
 	it("should support default", () => {
-		const schema = prop.array().default([]);
+		const schema = prop.array(prop.string()).default([]);
 		expect(schema["~standard"].validate(undefined)).toEqual({ value: [] });
 	});
 });
@@ -811,10 +822,19 @@ describe("prop.tuple()", () => {
 // Object Schema Tests
 // ============================================================================
 
-describe("prop.object()", () => {
+describe("prop.object(shape)", () => {
+	it("requires a shape at runtime", () => {
+		const object = prop.object as unknown as (shape?: unknown) => unknown;
+		for (const shape of [undefined, null, [], "shape"]) {
+			expect(() => object(shape)).toThrow(
+				"prop.object(shape) requires a shape. Use prop.record(value) for dictionaries, or prop.any<T>() for an object that is deliberately unchecked.",
+			);
+		}
+	});
+
 	it("snapshots shape constraints before caller mutations or presence cloning", () => {
 		const shape = { name: prop.string().min(2) };
-		const schema = prop.object().shape(shape).strict();
+		const schema = prop.object(shape).strict();
 		const optional = schema.optional();
 		shape.name = prop.string().min(20);
 		for (const retained of [schema, optional, schema.nullable()]) {
@@ -831,12 +851,10 @@ describe("prop.object()", () => {
 		(key) => {
 			for (const strict of [false, true]) {
 				for (const input of [{}, Object.create(null)]) {
-					const optional = prop
-						.object()
-						.shape({ [key]: prop.string().optional() });
-					const fallback = prop
-						.object()
-						.shape({ [key]: prop.string().default("fallback") });
+					const optional = prop.object({ [key]: prop.string().optional() });
+					const fallback = prop.object({
+						[key]: prop.string().default("fallback"),
+					});
 					expect(
 						(strict ? optional.strict() : optional)["~standard"].validate(
 							input,
@@ -861,7 +879,7 @@ describe("prop.object()", () => {
 				throw new Error("Inherited getter must not run");
 			},
 		});
-		const schema = prop.object().shape({ name: prop.string() });
+		const schema = prop.object({ name: prop.string() });
 		expect(schema["~standard"].validate(input)).toEqual({
 			issues: [{ message: "Required", path: ["name"] }],
 		});
@@ -872,7 +890,7 @@ describe("prop.object()", () => {
 			'{"constructor":"constructor-value","toString":"string-value","hasOwnProperty":"own-value","__proto__":{"injected":true}}',
 		);
 		for (const shape of [{}, Object.create(null)]) {
-			const schema = prop.object().shape(shape);
+			const schema = prop.object(shape);
 			const result = schema["~standard"].validate(input);
 			expect(result).toEqual({ value: input });
 			expect("value" in result).toBe(true);
@@ -884,12 +902,12 @@ describe("prop.object()", () => {
 	});
 
 	it("should validate objects", () => {
-		const schema = prop.object();
+		const schema = prop.object({});
 		expect(schema["~standard"].validate({ a: 1 })).toEqual({ value: { a: 1 } });
 	});
 
 	it("should reject non-objects", () => {
-		const schema = prop.object();
+		const schema = prop.object({});
 		expect(schema["~standard"].validate("not an object")).toHaveProperty(
 			"issues",
 		);
@@ -898,7 +916,7 @@ describe("prop.object()", () => {
 	});
 
 	it("should validate shape", () => {
-		const schema = prop.object().shape({
+		const schema = prop.object({
 			name: prop.string(),
 			age: prop.number(),
 		});
@@ -908,8 +926,8 @@ describe("prop.object()", () => {
 	});
 
 	it("should include path in shape validation errors", async () => {
-		const schema = prop.object().shape({
-			user: prop.object().shape({
+		const schema = prop.object({
+			user: prop.object({
 				email: prop.string().email(),
 			}),
 		});
@@ -921,7 +939,7 @@ describe("prop.object()", () => {
 	});
 
 	it("should allow extra keys by default", () => {
-		const schema = prop.object().shape({
+		const schema = prop.object({
 			name: prop.string(),
 		});
 		const result = schema["~standard"].validate({ name: "John", extra: true });
@@ -930,8 +948,7 @@ describe("prop.object()", () => {
 
 	it("should reject extra keys in strict mode", () => {
 		const schema = prop
-			.object()
-			.shape({
+			.object({
 				name: prop.string(),
 			})
 			.strict();
@@ -943,7 +960,7 @@ describe("prop.object()", () => {
 	});
 
 	it("should support optional fields", () => {
-		const schema = prop.object().shape({
+		const schema = prop.object({
 			name: prop.string(),
 			nickname: prop.string().optional(),
 		});
@@ -953,7 +970,7 @@ describe("prop.object()", () => {
 	});
 
 	it("should support default values in shape", () => {
-		const schema = prop.object().shape({
+		const schema = prop.object({
 			name: prop.string(),
 			role: prop.string().default("user"),
 		});
@@ -1239,8 +1256,8 @@ describe("prop.union()", () => {
 
 	it("should preserve nested issue paths from each branch", async () => {
 		const schema = prop.union(
-			prop.object().shape({ age: prop.number() }),
-			prop.object().shape({ name: prop.string() }),
+			prop.object({ age: prop.number() }),
+			prop.object({ name: prop.string() }),
 		);
 		const result = await schema["~standard"].validate({ age: "old" });
 		if (!result.issues) throw new Error("Expected validation issues");
@@ -1366,7 +1383,20 @@ describe("schema chaining and immutability", () => {
 // Integration with validateProps Tests
 // ============================================================================
 
-describe("integration with validateProps", () => {
+/** Normalizes `props` in place, as the consumer does for a component's inputs. */
+function validateProps<P extends Record<string, unknown>, I = P>(
+	props: P,
+	definitions: PropsDefinition<P, I>,
+): void;
+function validateProps(props: object, definitions: object): void;
+function validateProps(props: object, definitions: object): void {
+	Object.assign(
+		props,
+		normalizeProps(props as Record<string, unknown>, definitions),
+	);
+}
+
+describe("integration with normalizeProps", () => {
 	it("should work with prop.string() in component props", () => {
 		const definitions: PropsDefinition<{ name: string }> = {
 			name: prop.string(),
@@ -1423,7 +1453,7 @@ describe("integration with validateProps", () => {
 		).toThrow();
 	});
 
-	it("should work with nested prop.object().shape()", () => {
+	it("should work with nested prop.object()", () => {
 		type UserConfig = {
 			config: {
 				theme: string;
@@ -1435,7 +1465,7 @@ describe("integration with validateProps", () => {
 			UserConfig,
 			{ config: { theme?: string; debug?: boolean } }
 		> = {
-			config: prop.object().shape({
+			config: prop.object({
 				theme: prop.string().default("light"),
 				debug: prop.boolean().default(false),
 			}),
@@ -1446,9 +1476,9 @@ describe("integration with validateProps", () => {
 		expect(props.config).toEqual({ theme: "light", debug: false });
 	});
 
-	it("should work with prop.array().of()", () => {
+	it("should work with prop.array(item)", () => {
 		const definitions: PropsDefinition<{ tags: string[] }> = {
-			tags: prop.array().of(prop.string()),
+			tags: prop.array(prop.string()),
 		};
 
 		expect(() =>
@@ -1531,7 +1561,7 @@ describe("integration with validateProps", () => {
 			name: prop.string().min(1),
 			count: prop.number().default(0),
 			email: prop.string().email().optional(),
-			tags: prop.array().of(prop.string()).default([]),
+			tags: prop.array(prop.string()).default([]),
 			status: prop.enum(["active", "inactive"] as const).default("active"),
 		};
 
@@ -1574,7 +1604,7 @@ describe("exported schema classes", () => {
 	});
 
 	it("should export ArraySchema class", () => {
-		expect(new ArraySchema()).toBeInstanceOf(PropSchema);
+		expect(new ArraySchema(prop.string())).toBeInstanceOf(PropSchema);
 	});
 
 	it("should export TupleSchema class", () => {
@@ -1584,7 +1614,7 @@ describe("exported schema classes", () => {
 	});
 
 	it("should export ObjectSchema class", () => {
-		expect(new ObjectSchema()).toBeInstanceOf(PropSchema);
+		expect(new ObjectSchema({})).toBeInstanceOf(PropSchema);
 	});
 
 	it("should export RecordSchema class", () => {

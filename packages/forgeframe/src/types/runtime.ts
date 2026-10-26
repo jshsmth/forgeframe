@@ -90,7 +90,7 @@ type HasSamePropKeys<A, B> = [Exclude<keyof A, keyof B>] extends [never]
 	: false;
 
 /**
- * Canonical consumer inputs, falling back to normalized values for unspecified keys.
+ * Schema inputs, falling back to normalized values for keys without one.
  * @internal
  */
 type CanonicalConsumerProps<P, SchemaInputs> =
@@ -100,96 +100,27 @@ type CanonicalConsumerProps<P, SchemaInputs> =
 				Pick<P, Exclude<keyof P, keyof SchemaInputs>>;
 
 /**
- * Applies canonical schema value types to canonical keys repeated by an alternate shape.
- * @internal
- */
-type AlternateConsumerProps<Canonical, Alternate> = {
-	[K in keyof Alternate]: K extends keyof Canonical
-		? Canonical[K]
-		: Alternate[K];
-};
-
-/**
- * Combines canonical and alternate inputs with canonical schema values taking precedence.
- * @internal
- */
-type CombinedConsumerProps<A, B> = {
-	[K in keyof A | keyof B]: K extends keyof A
-		? A[K]
-		: K extends keyof B
-			? B[K]
-			: never;
-};
-
-/**
  * Props accepted when creating a component instance.
  *
- * @typeParam P - Canonical normalized props exposed to the host.
- * @typeParam I - An alternate consumer input shape, such as legacy aliases.
- * @typeParam SchemaInputs - Canonical values accepted by each prop schema.
- *
- * @remarks
- * Supplying a distinct input shape permits initial props to use schema input
- * types or mix canonical and alias spellings. When the input and normalized
- * shapes have the same keys, the input shape is authoritative because schema
- * transforms can produce outputs that are not valid inputs. Required-prop
- * validation remains owned by the component's runtime prop definitions when
- * aliases prevent TypeScript from inferring canonical requirements. Alternate
- * shapes should declare alias keys explicitly; broad string index signatures
- * are not treated as aliases because they cannot safely override canonical
- * schema input types.
- * @public
+ * @typeParam P - Normalized props exposed to the host.
+ * @typeParam SchemaInputs - Values accepted by each prop schema.
+ * @internal
  */
-type ConsumerPropsInputForAlternate<P, I, SchemaInputs> = string extends keyof I
-	? CanonicalConsumerProps<P, SchemaInputs>
-	: HasSamePropKeys<
-				CanonicalConsumerProps<P, SchemaInputs>,
-				AlternateConsumerProps<CanonicalConsumerProps<P, SchemaInputs>, I>
-			> extends true
-		? CanonicalConsumerProps<P, SchemaInputs>
-		:
-				| CanonicalConsumerProps<P, SchemaInputs>
-				| AlternateConsumerProps<CanonicalConsumerProps<P, SchemaInputs>, I>
-				| (Exclude<
-						keyof I,
-						keyof CanonicalConsumerProps<P, SchemaInputs>
-				  > extends never
-						? never
-						: Partial<
-								CombinedConsumerProps<
-									CanonicalConsumerProps<P, SchemaInputs>,
-									AlternateConsumerProps<
-										CanonicalConsumerProps<P, SchemaInputs>,
-										I
-									>
-								>
-							>);
-
-export type ConsumerPropsInput<P, I = P, SchemaInputs = I> = I extends unknown
-	? ConsumerPropsInputForAlternate<P, I, SchemaInputs>
-	: never;
+export type ComponentPropsInput<P, SchemaInputs> = CanonicalConsumerProps<
+	P,
+	SchemaInputs
+>;
 
 /**
  * Partial props accepted by component updates.
  *
- * @typeParam P - Canonical normalized props exposed to the host.
- * @typeParam I - An alternate consumer input shape, such as legacy aliases.
- * @typeParam SchemaInputs - Canonical values accepted by each prop schema.
- * @public
+ * @typeParam P - Normalized props exposed to the host.
+ * @typeParam SchemaInputs - Values accepted by each prop schema.
+ * @internal
  */
-type ConsumerPropsUpdateForAlternate<P, I, SchemaInputs> =
-	string extends keyof I
-		? Partial<CanonicalConsumerProps<P, SchemaInputs>>
-		: Partial<
-				CombinedConsumerProps<
-					CanonicalConsumerProps<P, SchemaInputs>,
-					AlternateConsumerProps<CanonicalConsumerProps<P, SchemaInputs>, I>
-				>
-			>;
-
-export type ConsumerPropsUpdate<P, I = P, SchemaInputs = I> = I extends unknown
-	? ConsumerPropsUpdateForAlternate<P, I, SchemaInputs>
-	: never;
+export type ComponentPropsUpdate<P, SchemaInputs> = Partial<
+	CanonicalConsumerProps<P, SchemaInputs>
+>;
 
 /** A schema-backed definition map from which `create()` can infer props. @internal */
 export type InferablePropsDefinition = Record<
@@ -209,39 +140,24 @@ type InferContextualSchemas<D extends InferablePropsDefinition> = {
 			: never;
 };
 
-/** Normalized values visible to validation and transport callbacks. @internal */
-type ContextualOutputProps<S extends ContextualSchemaMap> = Partial<{
-	[K in keyof S]: InferOutput<S[K]>;
-}>;
-
 /** Applies `Omit` independently to each member of a union. @internal */
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
 	? Omit<T, K>
 	: never;
 
-/** A wrapped inferred definition whose callbacks receive normalized outputs. @internal */
-type ContextualWrappedPropDefinition<
-	Schema extends StandardSchemaV1,
-	S extends ContextualSchemaMap,
-> = DistributiveOmit<
-	PropDefinition<
-		InferOutput<Schema>,
-		ContextualOutputProps<S>,
-		InferInput<Schema>
-	>,
-	"schema" | "validate"
-> & {
-	schema: Schema;
-	validate?: (opts: {
-		value: InferOutput<Schema> | undefined;
-		props: ContextualOutputProps<S>;
-	}) => void;
-};
+/** A wrapped inferred definition, requiring `outputSchema` for type-changing schemas. @internal */
+type ContextualWrappedPropDefinition<Schema extends StandardSchemaV1> =
+	DistributiveOmit<
+		PropDefinition<InferOutput<Schema>, InferInput<Schema>>,
+		"schema"
+	> & {
+		schema: Schema;
+	};
 
 /**
  * A concise schema entry whose output can be checked by the same schema.
  * Only expose Standard Schema metadata for contextual typing so library methods
- * such as Zod's `validate` do not conflict with wrapped prop callbacks.
+ * do not conflict with wrapped prop options.
  * @internal
  */
 type ContextualDirectSchema<Schema extends StandardSchemaV1> = [
@@ -263,7 +179,7 @@ type SafeDirectPropsDefinition<D extends InferablePropsDefinition> = {
 type ContextualPropsDefinition<S extends ContextualSchemaMap> = {
 	[K in keyof S]?:
 		| ContextualDirectSchema<S[K]>
-		| ContextualWrappedPropDefinition<S[K], S>;
+		| ContextualWrappedPropDefinition<S[K]>;
 };
 
 /** Component options whose prop values are inferred from their schemas. @internal */
@@ -279,19 +195,17 @@ export type InferredComponentOptions<
 /** Arguments accepted by a component factory based on required input keys. @internal */
 type ComponentFactoryArguments<
 	P,
-	I,
 	RequireProps extends boolean,
 	SchemaInputs,
 > = RequireProps extends true
-	? [props: ConsumerPropsInput<P, I, SchemaInputs>]
-	: [props?: ConsumerPropsInput<P, I, SchemaInputs>];
+	? [props: ComponentPropsInput<P, SchemaInputs>]
+	: [props?: ComponentPropsInput<P, SchemaInputs>];
 
 /**
  * Configuration options for creating a component.
  *
  * @typeParam P - The normalized props type for the component
- * @typeParam I - The consumer-facing input shape accepted by the factory
- * @typeParam SchemaInputs - Canonical schema input types keyed like `P`
+ * @typeParam SchemaInputs - Schema input types keyed like `P`
  *
  * @remarks
  * These options are passed to `create()` to define a new component.
@@ -314,8 +228,7 @@ type ComponentFactoryArguments<
  */
 export interface ComponentOptions<
 	P = Record<string, unknown>,
-	I = P,
-	SchemaInputs = I,
+	SchemaInputs = P,
 > {
 	/**
 	 * Unique tag name for the component.
@@ -418,7 +331,6 @@ export interface ComponentOptions<
  *
  * @typeParam P - The props type for the component
  * @typeParam X - The type of exports from the host
- * @typeParam I - An alternate consumer input shape, such as legacy aliases
  * @typeParam SchemaInputs - Canonical values accepted by each prop schema
  *
  * @remarks
@@ -438,8 +350,7 @@ export interface ComponentOptions<
 export interface ForgeFrameComponentInstance<
 	P = Record<string, unknown>,
 	X = unknown,
-	I = P,
-	SchemaInputs = I,
+	SchemaInputs = P,
 > {
 	/**
 	 * Unique instance identifier.
@@ -500,7 +411,7 @@ export interface ForgeFrameComponentInstance<
 	 * @param props - Partial props to merge with existing
 	 * @returns Promise that resolves when props are updated
 	 */
-	updateProps(props: ConsumerPropsUpdate<P, I, SchemaInputs>): Promise<void>;
+	updateProps(props: ComponentPropsUpdate<P, SchemaInputs>): Promise<void>;
 
 	/**
 	 * Subscribes to lifecycle events with `on` and `once`.
@@ -521,7 +432,6 @@ export interface ForgeFrameComponentInstance<
  *
  * @typeParam P - The props type for the component
  * @typeParam X - The type of exports from the host
- * @typeParam I - An alternate consumer input shape, such as legacy aliases
  * @typeParam RequireProps - Whether the factory requires a props argument
  * @typeParam SchemaInputs - Canonical values accepted by each prop schema
  *
@@ -549,9 +459,8 @@ export interface ForgeFrameComponentInstance<
 export interface ForgeFrameComponent<
 	P = Record<string, unknown>,
 	X = unknown,
-	I = P,
 	RequireProps extends boolean = false,
-	SchemaInputs = I,
+	SchemaInputs = P,
 > {
 	/**
 	 * Create a new component instance with props.
@@ -560,8 +469,8 @@ export interface ForgeFrameComponent<
 	 * @returns New component instance
 	 */
 	(
-		...args: ComponentFactoryArguments<P, I, RequireProps, SchemaInputs>
-	): ForgeFrameComponentInstance<P, X, I, SchemaInputs>;
+		...args: ComponentFactoryArguments<P, RequireProps, SchemaInputs>
+	): ForgeFrameComponentInstance<P, X, SchemaInputs>;
 
 	/**
 	 * Live instances of this component, in creation order.
@@ -573,7 +482,6 @@ export interface ForgeFrameComponent<
 	readonly instances: readonly ForgeFrameComponentInstance<
 		P,
 		X,
-		I,
 		SchemaInputs
 	>[];
 }

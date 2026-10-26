@@ -18,8 +18,8 @@ type PopupProps = {
 };
 
 const POPUP_PROP_DEFINITIONS: PropsDefinition<PopupProps> = {
-	amount: { schema: prop.number(), required: true },
-	message: { schema: prop.string(), required: true },
+	amount: { schema: prop.number() },
+	message: { schema: prop.string() },
 };
 
 describe("Popup host handshake integration", () => {

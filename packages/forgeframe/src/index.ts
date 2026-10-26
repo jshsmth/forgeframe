@@ -73,8 +73,6 @@ export type {
 	ComponentEvents,
 	// Component types
 	ComponentOptions,
-	ConsumerPropsInput,
-	ConsumerPropsUpdate,
 	ContainerTemplate,
 	// Utility types
 	Dimensions,
@@ -97,10 +95,10 @@ export type {
 	InferSchemaOutput,
 	InitHostOptions,
 	PrerenderTemplate,
-	PropContext,
 	// Props types
 	PropDefinition,
 	PropDefinitionEntry,
+	PropDelivery,
 	PropsDefinition,
 	RemoteValue,
 	SchemaPropDefinition,

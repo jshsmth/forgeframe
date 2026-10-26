@@ -25,20 +25,16 @@ describe("React driver with React DOM", () => {
 	});
 
 	it("reports construction errors locally without unmounting sibling content", async () => {
-		const failure = new Error("normalizer failed");
+		const failure = new Error("factory failed");
 		const Component = create({
 			tag: "react-construction-failure",
 			url: "https://example.com",
-			props: {
-				name: {
-					schema: prop.string(),
-					decorate: () => {
-						throw failure;
-					},
-				},
-			},
+			props: { name: prop.string() },
 		});
-		const Wrapped = createReactComponent(Component, { React });
+		const FailingComponent = Object.assign(() => {
+			throw failure;
+		}, Component) as unknown as typeof Component;
+		const Wrapped = createReactComponent(FailingComponent, { React });
 		const onError = vi.fn();
 
 		await React.act(async () => {
@@ -56,6 +52,6 @@ describe("React driver with React DOM", () => {
 		expect(container.querySelector("span")?.textContent).toBe(
 			"Other application content",
 		);
-		expect(container.textContent).toContain("Error: normalizer failed");
+		expect(container.textContent).toContain("Error: factory failed");
 	});
 });

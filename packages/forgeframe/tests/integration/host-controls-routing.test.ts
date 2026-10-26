@@ -24,7 +24,7 @@ type ControlProps = {
 };
 
 const CONTROL_PROP_DEFINITIONS: PropsDefinition<ControlProps> = {
-	label: { schema: prop.string(), required: true },
+	label: { schema: prop.string() },
 };
 
 describe("Host controls and routing integration", () => {

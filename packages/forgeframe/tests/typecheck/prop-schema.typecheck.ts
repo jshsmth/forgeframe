@@ -29,7 +29,7 @@ const _defaultedRecordSchema = _recordSchema.default({});
 const _dateSchema = prop.date();
 const _tupleSchema = prop.tuple(prop.string(), prop.number());
 const _emptyTupleSchema = prop.tuple();
-const _nestedObjectSchema = prop.object().shape({
+const _nestedObjectSchema = prop.object({
 	requiredField: prop.boolean(),
 	defaultedField: prop.string().default("default"),
 	optionalField: prop.number().optional(),
@@ -38,7 +38,7 @@ const _defaultedTupleSchema = prop.tuple(
 	prop.string().default("default"),
 	prop.number().optional(),
 );
-const _defaultedArraySchema = prop.array().of(prop.string().default("default"));
+const _defaultedArraySchema = prop.array(prop.string().default("default"));
 const _defaultedValueRecordSchema = prop.record(prop.number().default(0));
 const _defaultedBranchUnionSchema = prop.union(
 	prop.string(),
@@ -125,7 +125,7 @@ const outputWithoutRequired: InferOutput<typeof _nestedObjectSchema> = {
 	defaultedField: "default",
 };
 
-const _optionalOutputObject = prop.object().shape({
+const _optionalOutputObject = prop.object({
 	optionalBranch: prop.union(prop.string(), prop.number().optional()),
 	nullable: prop.string().nullable(),
 });
@@ -135,7 +135,7 @@ const optionalBranchOutput: InferOutput<typeof _optionalOutputObject> = {
 // @ts-expect-error Accepting null does not allow an output field to be omitted.
 const missingNullableOutput: InferOutput<typeof _optionalOutputObject> = {};
 
-const _readonlyObjectSchema = prop.object().shape({
+const _readonlyObjectSchema = prop.object({
 	required: prop.string(),
 	optional: prop.string().optional(),
 } as const);
@@ -178,10 +178,43 @@ void invalidNestedObjectInput;
 const invalidAnyInput: InferInput<typeof _anySchema> = undefined;
 void invalidAnyInput;
 
+// prop.any<T>() types a deliberately unchecked value.
+type Config = { theme: string };
+export const assertTypedAnyOutput: Assert<
+	IsEqual<InferOutput<ReturnType<typeof prop.any<Config>>>, Config>
+> = true;
+export const assertTypedAnyArrayInput: Assert<
+	IsEqual<InferInput<ReturnType<typeof prop.any<Config[]>>>, Config[]>
+> = true;
+export const assertShapedObjectOutput: Assert<
+	IsEqual<
+		InferOutput<typeof _nestedObjectSchema>,
+		{ requiredField: boolean; defaultedField: string } & {
+			optionalField?: number | undefined;
+		}
+	>
+> = true;
+export const assertItemArrayOutput: Assert<
+	IsEqual<InferOutput<typeof _defaultedArraySchema>, string[]>
+> = true;
+
+// @ts-expect-error prop.object() requires a shape; use prop.any<T>() instead
+prop.object();
+// @ts-expect-error prop.object<T>() without a shape is no longer an assertion
+prop.object<Config>();
+// @ts-expect-error prop.array() requires an item schema
+prop.array();
+// @ts-expect-error prop.array<T>() without an item schema is no longer an assertion
+prop.array<string>();
+// @ts-expect-error .shape() was removed; pass the shape to prop.object(shape)
+prop.object({}).shape({});
+// @ts-expect-error .of() was removed; pass the item schema to prop.array(item)
+prop.array(prop.string()).of(prop.number());
+
 // Callable outputs always use factories, including widened fluent builders.
 const callback = (value: number): string => String(value);
 const callbackSchema = prop.function<typeof callback>().default(() => callback);
-const nestedCallbacks = prop.object().shape({ callback: callbackSchema });
+const nestedCallbacks = prop.object({ callback: callbackSchema });
 const callbackInput: InferInput<typeof nestedCallbacks> = {};
 const callbackOutput: InferOutput<typeof nestedCallbacks> = { callback };
 const callbackResult: string = callbackOutput.callback(1);

@@ -1,7 +1,7 @@
 import type { ContextType } from "../constants";
 import type {
-	ConsumerPropsInput,
-	ConsumerPropsUpdate,
+	ComponentPropsInput,
+	ComponentPropsUpdate,
 	ForgeFrameComponent,
 	ForgeFrameComponentInstance,
 } from "../types/runtime";
@@ -128,7 +128,6 @@ export interface ReactComponentProps<_P = unknown> {
  * Full props type combining driver props with component-specific props.
  *
  * @typeParam P - The component-specific props type from the ForgeFrame component
- * @typeParam I - An alternate consumer input shape, such as legacy alias keys
  * @typeParam RequireProps - Whether the wrapped factory requires initial props
  * @typeParam SchemaInputs - Canonical values accepted by each prop schema
  *
@@ -141,13 +140,12 @@ export interface ReactComponentProps<_P = unknown> {
  */
 type FullReactComponentProps<
 	P,
-	I = P,
 	RequireProps extends boolean = false,
-	SchemaInputs = I,
+	SchemaInputs = P,
 > = ReactComponentProps<P> &
 	(RequireProps extends true
-		? ConsumerPropsInput<P, I, SchemaInputs>
-		: ConsumerPropsUpdate<P, I, SchemaInputs>);
+		? ComponentPropsInput<P, SchemaInputs>
+		: ComponentPropsUpdate<P, SchemaInputs>);
 
 /** Attaches the container element and forwards it to one forwarded ref. @internal */
 type ContainerRefCallback = (
@@ -291,7 +289,6 @@ export interface ReactComponentType<P, E = unknown> {
  * @typeParam P - The canonical props type defined by the ForgeFrame component
  * @typeParam X - The export type for data shared from the host component
  * @typeParam E - The React element return type
- * @typeParam I - An alternate consumer input shape, such as legacy alias keys
  * @typeParam RequireProps - Whether the wrapped factory requires props
  * @typeParam SchemaInputs - Canonical values accepted by each prop schema
  *
@@ -338,25 +335,24 @@ export function createReactComponent<
 	P extends Record<string, unknown>,
 	X = unknown,
 	E = unknown,
-	I extends Record<string, unknown> = P,
 	RequireProps extends boolean = false,
-	SchemaInputs extends Record<string, unknown> = I,
+	SchemaInputs extends Record<string, unknown> = P,
 >(
-	Component: ForgeFrameComponent<P, X, I, RequireProps, SchemaInputs>,
+	Component: ForgeFrameComponent<P, X, RequireProps, SchemaInputs>,
 	options: ReactDriverOptions<E>,
 ): ReactComponentType<
-	FullReactComponentProps<P, I, RequireProps, SchemaInputs>,
+	FullReactComponentProps<P, RequireProps, SchemaInputs>,
 	E
 > {
 	const { createElement, useRef, useEffect, useState, forwardRef } =
 		options.React as unknown as ReactRuntime<E>;
 	const createInstance = Component as unknown as (
-		props: ConsumerPropsInput<P, I, SchemaInputs>,
-	) => ForgeFrameComponentInstance<P, X, I, SchemaInputs>;
+		props: ComponentPropsInput<P, SchemaInputs>,
+	) => ForgeFrameComponentInstance<P, X, SchemaInputs>;
 
 	const ReactComponent = forwardRef<
 		HTMLDivElement,
-		FullReactComponentProps<P, I, RequireProps, SchemaInputs>
+		FullReactComponentProps<P, RequireProps, SchemaInputs>
 	>(function ForgeFrameComponent(props, ref) {
 		const {
 			onRendered,
@@ -372,15 +368,11 @@ export function createReactComponent<
 		const instanceRef = useRef<ForgeFrameComponentInstance<
 			P,
 			X,
-			I,
 			SchemaInputs
 		> | null>(null);
-		const propSyncRef = useRef<ReactPropSyncState<
-			P,
-			X,
-			I,
-			SchemaInputs
-		> | null>(null);
+		const propSyncRef = useRef<ReactPropSyncState<P, X, SchemaInputs> | null>(
+			null,
+		);
 		const onRenderedRef = useRef<typeof onRendered>(onRendered);
 		const onErrorRef = useRef<typeof onError>(onError);
 		const onCloseRef = useRef<typeof onClose>(onClose);
@@ -392,11 +384,11 @@ export function createReactComponent<
 		const attachContainer = containerRefCache.current(ref);
 
 		const refs = { instanceRef, propSyncRef };
-		const isCurrent = (state: ReactPropSyncState<P, X, I, SchemaInputs>) =>
+		const isCurrent = (state: ReactPropSyncState<P, X, SchemaInputs>) =>
 			isCurrentSyncState(state, refs);
 		const onDriverError = (err: Error) =>
 			reportReactError(onErrorRef.current ?? undefined, err);
-		const drain = (state: ReactPropSyncState<P, X, I, SchemaInputs>) =>
+		const drain = (state: ReactPropSyncState<P, X, SchemaInputs>) =>
 			drainPropUpdates(state, isCurrent, onDriverError);
 
 		useEffect(() => {
@@ -502,7 +494,6 @@ export function withReactComponent<E>(React: ReactLike<E>) {
 	 *
 	 * @typeParam P - The props type defined in the ForgeFrame component
 	 * @typeParam X - The export type for data shared from the host component
-	 * @typeParam I - An alternate consumer input shape, such as legacy alias keys
 	 * @typeParam RequireProps - Whether the wrapped factory requires props
 	 * @typeParam SchemaInputs - Canonical values accepted by each prop schema
 	 *
@@ -514,13 +505,12 @@ export function withReactComponent<E>(React: ReactLike<E>) {
 	return function createComponent<
 		P extends Record<string, unknown>,
 		X = unknown,
-		I extends Record<string, unknown> = P,
 		RequireProps extends boolean = false,
-		SchemaInputs extends Record<string, unknown> = I,
+		SchemaInputs extends Record<string, unknown> = P,
 	>(
-		Component: ForgeFrameComponent<P, X, I, RequireProps, SchemaInputs>,
+		Component: ForgeFrameComponent<P, X, RequireProps, SchemaInputs>,
 	): ReactComponentType<
-		FullReactComponentProps<P, I, RequireProps, SchemaInputs>,
+		FullReactComponentProps<P, RequireProps, SchemaInputs>,
 		E
 	> {
 		return createReactComponent(Component, { React });

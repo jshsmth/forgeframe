@@ -133,11 +133,10 @@ const HOST_ALREADY_ACTIVE_ERROR =
 export function initHost<
 	P extends Record<string, unknown>,
 	X,
-	I,
 	RequireProps extends boolean,
 	SchemaInputs,
 >(
-	component: ForgeFrameComponent<P, X, I, RequireProps, SchemaInputs>,
+	component: ForgeFrameComponent<P, X, RequireProps, SchemaInputs>,
 	options: Omit<InitHostOptions, "props">,
 ): Host<P> | null;
 /**

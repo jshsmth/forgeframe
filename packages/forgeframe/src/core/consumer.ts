@@ -17,13 +17,16 @@ import {
 	propsToQueryParams,
 } from "../props";
 import { EMPTY_PROP_DEFINITIONS } from "../props/definitions";
-import { validatePropsForHostTransport } from "../props/normalize";
+import {
+	createDeliveryTarget,
+	validatePropsForHostTransport,
+} from "../props/normalize";
 import type { ComponentEvents, EventSubscriber } from "../types/events";
 import type { PropsDefinition } from "../types/props";
 import type {
 	ComponentOptions,
-	ConsumerPropsInput,
-	ConsumerPropsUpdate,
+	ComponentPropsInput,
+	ComponentPropsUpdate,
 	ForgeFrameComponentInstance,
 	RemoteValue,
 } from "../types/runtime";
@@ -32,7 +35,6 @@ import { CleanupManager } from "../utils/cleanup";
 import { createDeferred, type Deferred } from "../utils/promise";
 import { generateUID } from "../utils/uid";
 import { appendComponentQuery, resolveComponentHostUrl } from "../utils/url";
-import { isSameDomain } from "../window/helpers";
 import {
 	CONSUMER_EVENT_NAMES,
 	describeUnknownConsumerEvent,
@@ -55,7 +57,6 @@ import type { NormalizedOptions } from "./consumer/types";
  *
  * @typeParam P - The props type passed to the component
  * @typeParam X - The exports type that the host can expose to the consumer
- * @typeParam I - An alternate consumer input shape, such as legacy alias keys
  * @typeParam SchemaInputs - Canonical values accepted by each prop schema
  *
  * @internal
@@ -63,15 +64,17 @@ import type { NormalizedOptions } from "./consumer/types";
 export class ConsumerComponent<
 	P extends Record<string, unknown>,
 	X = unknown,
-	I extends Record<string, unknown> = P,
-	SchemaInputs extends Record<string, unknown> = I,
-> implements ForgeFrameComponentInstance<P, X, I, SchemaInputs>
+	SchemaInputs extends Record<string, unknown> = P,
+> implements ForgeFrameComponentInstance<P, X, SchemaInputs>
 {
 	/** Subscribe-only view of this instance's lifecycle events. */
 	public readonly event: EventSubscriber<ComponentEvents<P, X>>;
 
-	/** Private emitter behind {@link ConsumerComponent.event}. @internal */
-	private emitter: EventEmitter<ComponentEvents<P, X>>;
+	/**
+	 * Emitter behind {@link ConsumerComponent.event}. A private field, so plain
+	 * JavaScript cannot reach `emit` either.
+	 */
+	readonly #emitter: EventEmitter<ComponentEvents<P, X>>;
 
 	/** Data exported by the host component. */
 	public exports?: RemoteValue<X>;
@@ -123,12 +126,6 @@ export class ConsumerComponent<
 	/** Completion shared by close and teardown initiated by failed rendering. @internal */
 	private destroyPromise: Promise<void> | null = null;
 
-	/** @internal */
-	private constructing = true;
-
-	/** @internal */
-	private constructionActions: Array<"close" | "focus"> = [];
-
 	/**
 	 * Creates a new ConsumerComponent instance.
 	 *
@@ -137,18 +134,18 @@ export class ConsumerComponent<
 	 * @param untrackInstance - Owning factory cleanup independent of public observers
 	 */
 	constructor(
-		options: ComponentOptions<P, I, SchemaInputs>,
-		props?: ConsumerPropsInput<P, I, SchemaInputs>,
+		options: ComponentOptions<P, SchemaInputs>,
+		props?: ComponentPropsInput<P, SchemaInputs>,
 		private untrackInstance?: (
-			instance: ConsumerComponent<P, X, I, SchemaInputs>,
+			instance: ConsumerComponent<P, X, SchemaInputs>,
 		) => void,
 	) {
 		this._uid = generateUID();
 		this.options = this.normalizeOptions(options);
 
-		this.emitter = new EventEmitter();
+		this.#emitter = new EventEmitter();
 		this.event = createEventSubscriber(
-			this.emitter,
+			this.#emitter,
 			CONSUMER_EVENT_NAMES,
 			describeUnknownConsumerEvent,
 		);
@@ -165,11 +162,7 @@ export class ConsumerComponent<
 			},
 		);
 
-		this.propsPipeline = new ConsumerPropsPipeline(
-			this.options,
-			{ ...props },
-			(nextProps) => this.createPropContext(nextProps),
-		);
+		this.propsPipeline = new ConsumerPropsPipeline(this.options, { ...props });
 
 		this.transport = new ConsumerTransport(
 			this.uid,
@@ -180,12 +173,6 @@ export class ConsumerComponent<
 
 		this.setupMessageHandlers();
 		this.setupCleanup();
-
-		this.constructing = false;
-		for (const action of this.constructionActions) {
-			void this[action]();
-		}
-		this.constructionActions = [];
 	}
 
 	/**
@@ -300,13 +287,14 @@ export class ConsumerComponent<
 		validatePropsForHostTransport(
 			this.propsPipeline.props,
 			this.options.props,
-			new URL(baseUrl).origin,
-			new URL(baseUrl).origin === window.location.origin,
+			// A host on the consumer's origin may become a same-origin recipient,
+			// so arrays of the props it may receive are checked now.
+			createDeliveryTarget(new URL(baseUrl).origin, window.location.origin),
 		);
 		this.renderer.container = this.resolveContainer(container);
 
 		try {
-			this.emitter.emit(EVENT.RENDER, undefined);
+			this.#emitter.emit(EVENT.RENDER, undefined);
 			this.assertRenderActive();
 
 			await this.prerender();
@@ -320,7 +308,7 @@ export class ConsumerComponent<
 
 			this.rendered = true;
 
-			this.emitter.emit(EVENT.RENDERED, undefined);
+			this.#emitter.emit(EVENT.RENDERED, undefined);
 		} catch (err) {
 			const renderWasCancelled = this.isRenderCancelled();
 			await this.destroy().catch(() => undefined);
@@ -333,7 +321,7 @@ export class ConsumerComponent<
 	}
 
 	private validateForRender(): void {
-		this.propsPipeline.ensureSchemaValidated();
+		this.propsPipeline.revalidateSchemaValues();
 		this.assertRenderActive();
 		this.options.validate?.({ props: this.propsPipeline.props });
 		this.assertRenderActive();
@@ -361,7 +349,7 @@ export class ConsumerComponent<
 	/** Completes the one admitted close operation before its shared promise settles. */
 	private async performClose(): Promise<void> {
 		try {
-			this.emitter.emit(EVENT.CLOSE, undefined);
+			this.#emitter.emit(EVENT.CLOSE, undefined);
 
 			await this.destroy();
 		} finally {
@@ -378,7 +366,7 @@ export class ConsumerComponent<
 	 */
 	async focus(): Promise<void> {
 		if (this.renderer.focus(this.transport.hostWindow)) {
-			this.emitter.emit(EVENT.FOCUS, undefined);
+			this.#emitter.emit(EVENT.FOCUS, undefined);
 		}
 	}
 
@@ -419,7 +407,7 @@ export class ConsumerComponent<
 
 	/** Notifies resize observers. @internal */
 	private emitResize(dimensions: Dimensions): void {
-		this.emitter.emit(EVENT.RESIZE, dimensions);
+		this.#emitter.emit(EVENT.RESIZE, dimensions);
 	}
 
 	/**
@@ -451,7 +439,7 @@ export class ConsumerComponent<
 	 * @param newProps - Partial props object to merge with existing props
 	 */
 	async updateProps(
-		newProps: ConsumerPropsUpdate<P, I, SchemaInputs>,
+		newProps: ComponentPropsUpdate<P, SchemaInputs>,
 	): Promise<void> {
 		this.assertPropsUpdateActive();
 		if (this.renderPromise && !this.rendered) {
@@ -465,7 +453,7 @@ export class ConsumerComponent<
 	 * @internal
 	 */
 	private async applyPropsUpdate(
-		newProps: ConsumerPropsUpdate<P, I, SchemaInputs>,
+		newProps: ComponentPropsUpdate<P, SchemaInputs>,
 	): Promise<void> {
 		const hooks: ConsumerPropsUpdateHooks<P> = {
 			assertActive: () => this.assertPropsUpdateActive(),
@@ -474,14 +462,13 @@ export class ConsumerComponent<
 			assertStableRenderedOrigin: (nextHostOrigin) =>
 				this.assertStableRenderedOrigin(nextHostOrigin),
 			validateTransportProps: (props, hostOrigin) => {
-				const deliveryOrigin = this.rendered
-					? this.transport.getHostDomain()
-					: hostOrigin;
 				validatePropsForHostTransport(
 					props,
 					this.options.props,
-					deliveryOrigin,
-					deliveryOrigin === window.location.origin,
+					createDeliveryTarget(
+						this.rendered ? this.transport.getHostDomain() : hostOrigin,
+						window.location.origin,
+					),
 				);
 			},
 			isRendered: () => this.rendered,
@@ -490,7 +477,7 @@ export class ConsumerComponent<
 			sendPropsUpdateToHost: (nextProps) =>
 				this.sendPropsUpdateToHost(nextProps),
 			emitPropsUpdated: (nextProps) => {
-				this.emitter.emit(EVENT.PROPS, nextProps);
+				this.#emitter.emit(EVENT.PROPS, nextProps);
 			},
 		};
 
@@ -555,7 +542,7 @@ export class ConsumerComponent<
 	 * @internal
 	 */
 	private normalizeOptions(
-		options: ComponentOptions<P, I, SchemaInputs>,
+		options: ComponentOptions<P, SchemaInputs>,
 	): NormalizedOptions<P, SchemaInputs> {
 		return {
 			...options,
@@ -608,42 +595,6 @@ export class ConsumerComponent<
 	 */
 	private syncTrustedDomainForUrl(url: string): void {
 		this.transport.syncTrustedDomainForUrl(url);
-	}
-
-	/**
-	 * Creates the prop context passed to prop callbacks and validators.
-	 * @internal
-	 */
-	private createPropContext(props?: P) {
-		const contextProps = (props ?? this.propsPipeline?.props ?? ({} as P)) as P;
-
-		return {
-			props: contextProps,
-			close: () => {
-				if (this.constructing) {
-					this.constructionActions.push("close");
-					return Promise.resolve();
-				}
-				return this.close();
-			},
-			focus: () => {
-				if (this.constructing) {
-					this.constructionActions.push("focus");
-					return Promise.resolve();
-				}
-				return this.focus();
-			},
-			onError: (err: Error) => {
-				// Nothing can subscribe during construction, so a report made then is
-				// delivered once the caller has had a chance to subscribe.
-				if (this.constructing)
-					queueMicrotask(() => this.emitter.emit(EVENT.ERROR, err));
-				else this.emitter.emit(EVENT.ERROR, err);
-			},
-			container: this.renderer.container,
-			uid: this.uid,
-			tag: this.options.tag,
-		};
 	}
 
 	/**
@@ -748,8 +699,8 @@ export class ConsumerComponent<
 	 * @internal
 	 */
 	private buildWindowName(): string {
-		// Dimension functions and parameter encoders run user code after the
-		// previous check and can mutate prop values, so recheck them before the
+		// Dimension and URL functions run user code after the previous check
+		// and can mutate prop values, so recheck them before the
 		// host window is created.
 		this.propsPipeline.revalidateSchemaValues();
 		return this.transport.buildWindowName({
@@ -768,7 +719,7 @@ export class ConsumerComponent<
 			this.options.tag,
 			(error) => {
 				if (!this.isRenderCancelled()) {
-					this.emitter.emit(EVENT.ERROR, error);
+					this.#emitter.emit(EVENT.ERROR, error);
 				}
 			},
 		);
@@ -808,8 +759,7 @@ export class ConsumerComponent<
 					const propsForHost = getPropsForHost(
 						props,
 						this.options.props,
-						source.domain,
-						isSameDomain(source.window),
+						createDeliveryTarget(source.domain, window.location.origin),
 					);
 					return {
 						props: this.transport.serializePropsForHost(
@@ -826,10 +776,10 @@ export class ConsumerComponent<
 			onFocus: async () => this.focus(),
 			onShow: async () => this.show(),
 			onHide: async () => this.hide(),
-			onError: (error) => this.emitter.emit(EVENT.ERROR, error),
+			onError: (error) => this.#emitter.emit(EVENT.ERROR, error),
 			onExport: (exports) => {
 				this.exports = exports;
-				this.emitter.emit(EVENT.EXPORTS, exports);
+				this.#emitter.emit(EVENT.EXPORTS, exports);
 			},
 			onGetSiblings: (request) => getSiblingInstances(request),
 		});
@@ -877,8 +827,8 @@ export class ConsumerComponent<
 		await this.cleanup.cleanup();
 
 		this.untrackInstance?.(this);
-		this.emitter.emit(EVENT.CLOSED, undefined);
-		this.emitter.dispose();
+		this.#emitter.emit(EVENT.CLOSED, undefined);
+		this.#emitter.dispose();
 	}
 
 	/**

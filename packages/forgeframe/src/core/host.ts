@@ -33,7 +33,10 @@ export { HostComponent } from "./host/component";
  * It returns false outside a browser, and for a name that has the ForgeFrame
  * prefix but no valid payload. It stays true after `host.destroy()`, because
  * the channel metadata is kept for a re-start. Use it to choose between
- * embedded and standalone rendering before calling `initHost()`.
+ * embedded and standalone rendering before calling `initHost()`. `initHost()`
+ * can still return `null` when this returns true, for example for a stale
+ * payload in a top-level window with no parent or opener, so check its
+ * result as well.
  *
  * @returns True if a host runtime is active or this window carries a
  * decodable ForgeFrame payload
@@ -42,8 +45,12 @@ export { HostComponent } from "./host/component";
  * ```typescript
  * import { initHost, isHost } from 'forgeframe';
  *
- * if (isHost()) {
- *   const host = initHost(MyComponent, { consumerOrigins: 'https://app.example.com' });
+ * const host = isHost()
+ *   ? initHost(MyComponent, { consumerOrigins: 'https://app.example.com' })
+ *   : null;
+ * if (host) {
+ *   const props = await host.ready;
+ *   renderEmbedded(props);
  * } else {
  *   renderStandalone();
  * }

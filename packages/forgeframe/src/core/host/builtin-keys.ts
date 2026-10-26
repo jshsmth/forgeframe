@@ -1,4 +1,4 @@
-import { hasOwnDeclaredField } from "../../props/removed-options";
+import { hasOwnDeclaredField } from "../../props/definition-checks";
 
 /**
  * Host-side built-in keys that are reserved on `hostProps`.

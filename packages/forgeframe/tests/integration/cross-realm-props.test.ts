@@ -43,38 +43,32 @@ describe("Cross-realm prop and export delivery", () => {
 		harness = createIframeIntegrationHarness();
 		let reads = 0;
 		let encodings = 0;
-		const definitions = {
-			payload: {
-				schema: prop.object<Record<string, unknown>>(),
-				hostDecorate: ({ value }: { value: Record<string, unknown> }) => {
-					const date = new Date(
-						value.stage === "updated" ? "2027-01-01" : "2026-01-01",
-					);
-					class CustomValue {
-						toJSON() {
-							encodings++;
-							let captured = false;
-							return Object.defineProperty({}, "createdAt", {
-								enumerable: true,
-								get() {
-									reads++;
-									if (captured) throw new Error("Accessor read twice");
-									captured = true;
-									return date;
-								},
-							});
-						}
-					}
-					return { custom: new CustomValue() };
-				},
-			},
+		const createPayload = (createdAt: string) => {
+			const date = new Date(createdAt);
+			class CustomValue {
+				toJSON() {
+					encodings++;
+					let captured = false;
+					return Object.defineProperty({}, "createdAt", {
+						enumerable: true,
+						get() {
+							reads++;
+							if (captured) throw new Error("Accessor read twice");
+							captured = true;
+							return date;
+						},
+					});
+				}
+			}
+			return { custom: new CustomValue() };
 		};
+		const definitions = { payload: prop.any<Record<string, unknown>>() };
 		const Component = create({
 			tag: "encoded-accessor-values",
 			url: "https://host.example.com/widget",
 			props: definitions,
 		});
-		const instance = Component({ payload: { stage: "initial" } });
+		const instance = Component({ payload: createPayload("2026-01-01") });
 		const container = document.createElement("div");
 		document.body.append(container);
 		const rendering = instance.render(container);
@@ -88,7 +82,7 @@ describe("Cross-realm prop and export delivery", () => {
 		});
 		expect(reads).toBe(1);
 		expect(encodings).toBe(1);
-		await instance.updateProps({ payload: { stage: "updated" } });
+		await instance.updateProps({ payload: createPayload("2027-01-01") });
 		expect(hostProps.payload).toEqual({
 			custom: { createdAt: new Date("2027-01-01") },
 		});
@@ -107,7 +101,7 @@ describe("Cross-realm prop and export delivery", () => {
 			return values;
 		};
 		const definitions = {
-			payload: prop.object<{ values: string[] }>(),
+			payload: prop.any<{ values: string[] }>(),
 		};
 		const Component = create<typeof definitions, { values: string[] }>({
 			tag: "array-method-values",
@@ -141,7 +135,7 @@ describe("Cross-realm prop and export delivery", () => {
 		const definitions = {
 			createdAt: prop.date(),
 			metadata: prop.record(prop.string()),
-			payload: prop.object<Payload>(),
+			payload: prop.any<Payload>(),
 		};
 		const Component = create<typeof definitions, { payload: Payload }>({
 			tag: "foreign-realm-values",

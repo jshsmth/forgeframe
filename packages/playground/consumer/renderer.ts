@@ -50,10 +50,11 @@ function createPropSchema(
 			schema = prop.function();
 			break;
 		case "ARRAY":
-			schema = prop.array();
+			schema = prop.array(prop.any());
 			break;
 		case "OBJECT":
-			schema = prop.object();
+			// The editor does not know the object's shape.
+			schema = prop.any<Record<string, unknown>>();
 			break;
 		default:
 			schema = prop.string();
