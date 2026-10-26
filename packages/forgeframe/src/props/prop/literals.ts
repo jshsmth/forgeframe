@@ -1,6 +1,7 @@
 import type { StandardSchemaV1Issue, StandardSchemaV1Result } from "../schema";
 import type { InferUnionSchemaInput, InferUnionSchemaOutput } from "./base";
 import {
+	assertNestedSchema,
 	PropSchema,
 	selectSchemaPresence,
 	validateSchemaPresence,
@@ -141,6 +142,10 @@ export class UnionSchema<
 
 		const branches: PropSchema<unknown, unknown>[] = [];
 		for (let index = 0; index < schemas.length; index++) {
+			assertNestedSchema(
+				schemas[index],
+				`prop.union() requires a schema at position ${index}`,
+			);
 			branches.push(schemas[index]);
 		}
 		this._schemas = branches as unknown as S;

@@ -1,8 +1,9 @@
 /**
  * Unit tests for `@/props/definition-checks`.
  *
- * Covers the declaration checks that `create()` and `initHost()` share: removed
- * options, the required `schema`, `deliverTo` matchers, and parameter names.
+ * Covers the declaration checks that `create()` and `initHost()` share: data
+ * entries, removed options, the required `schema`, `deliverTo` matchers, and
+ * parameter names.
  */
 import { describe, expect, it, vi } from "vitest";
 import { assertPropDefinitions } from "@/props/definition-checks";
@@ -29,7 +30,7 @@ describe("assertPropDefinitions", () => {
 		},
 	);
 
-	it("reads descriptors without invoking accessor-defined entries", () => {
+	it("rejects accessor-defined entries without invoking them", () => {
 		const lazy = vi.fn(() => ({
 			schema: prop.any<Record<string, unknown>>(),
 			serialization: "json",
@@ -38,7 +39,9 @@ describe("assertPropDefinitions", () => {
 			enumerable: true,
 			get: lazy,
 		});
-		expect(() => assertPropDefinitions(definitions)).not.toThrow();
+		expect(() => assertPropDefinitions(definitions)).toThrow(
+			'Prop "profile" must be declared as a data field, not a getter or setter',
+		);
 		expect(lazy).not.toHaveBeenCalled();
 		const accessorOption = Object.defineProperty(
 			{ schema: prop.any<Record<string, unknown>>() },
@@ -64,12 +67,35 @@ describe("assertPropDefinitions", () => {
 		).not.toThrow();
 	});
 
-	it("requires a Standard Schema for outputSchema", () => {
+	it.each([prop.number(), null, { parse: Number }])(
+		"rejects the removed outputSchema option set to %j",
+		(outputSchema) => {
+			expect(() =>
+				assertPropDefinitions({
+					amount: { schema: prop.number(), outputSchema },
+				}),
+			).toThrow(
+				'Prop "amount" uses the removed "outputSchema" option. Each prop now has one schema, which must accept its own output unchanged. Pass the type the host should receive, accept both forms in one schema (such as z.coerce.number()), or convert the value in the host.',
+			);
+		},
+	);
+
+	it("treats an undefined outputSchema as omitted and never invokes an accessor", () => {
 		expect(() =>
 			assertPropDefinitions({
-				amount: { schema: prop.string(), outputSchema: { parse: Number } },
+				amount: { schema: prop.number(), outputSchema: undefined },
 			}),
-		).toThrow('Prop "amount" outputSchema must be a Standard Schema');
+		).not.toThrow();
+		const read = vi.fn(() => prop.number());
+		const accessorOutputSchema = Object.defineProperty(
+			{ schema: prop.number() },
+			"outputSchema",
+			{ get: read },
+		);
+		expect(() =>
+			assertPropDefinitions({ amount: accessorOutputSchema }),
+		).toThrow('Prop "amount" uses the removed "outputSchema" option.');
+		expect(read).not.toHaveBeenCalled();
 	});
 
 	it("requires a schema on a wrapped definition", () => {

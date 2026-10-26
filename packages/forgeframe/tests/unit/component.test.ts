@@ -650,19 +650,14 @@ describe("Component Instance", () => {
 				`https://example.com/amount/${props.amount.toFixed(0)}`,
 		);
 		const validate = vi.fn((_options: { props: { amount: number } }) => {});
-		const TransformedComponent = create({
-			tag: "transformed-callback-component",
+		const CoercedComponent = create({
+			tag: "coerced-callback-component",
 			url: resolveUrl,
-			props: {
-				amount: {
-					schema: z.string().transform(Number),
-					outputSchema: z.number(),
-				},
-			},
+			props: { amount: { schema: z.coerce.number() } },
 			validate,
 		});
 
-		const instance = TransformedComponent({ amount: "42" });
+		const instance = CoercedComponent({ amount: "42" });
 
 		expect(resolveUrl).not.toHaveBeenCalled();
 		expect(() => checkRenderValidation(instance)).not.toThrow();
@@ -675,27 +670,20 @@ describe("Component Instance", () => {
 	});
 
 	it("should preserve render-time errors for invalid schema inputs", async () => {
-		const InvalidTransformComponent = create({
-			tag: "invalid-transform-timing-component",
-			url: "https://example.com/invalid-transform",
-			props: {
-				amount: {
-					schema: z.string().transform(Number),
-					outputSchema: z.number(),
-				},
-			},
+		const InvalidInputComponent = create({
+			tag: "invalid-coerced-timing-component",
+			url: "https://example.com/invalid-coerced",
+			props: { amount: { schema: z.coerce.number() } },
 		});
 
-		let instance: ReturnType<typeof InvalidTransformComponent> | undefined;
+		let instance: ReturnType<typeof InvalidInputComponent> | undefined;
 		expect(() => {
-			instance = InvalidTransformComponent({
-				amount: 42 as unknown as string,
-			});
+			instance = InvalidInputComponent({ amount: "not a number" });
 		}).not.toThrow();
 
 		await expect(
 			instance?.render(document.createElement("div")),
-		).rejects.toThrow();
+		).rejects.toThrow("Validation failed: amount");
 	});
 
 	it("should retain deferred schema errors until a valid prop update", async () => {
@@ -750,16 +738,11 @@ describe("Component Instance", () => {
 			tag: "recoverable-invalid-input-component",
 			url: "https://example.com/recoverable-invalid-input",
 			props: {
-				amount: {
-					schema: z.string().transform(Number),
-					outputSchema: z.number(),
-				},
+				amount: { schema: z.coerce.number() },
 				label: prop.string().default("7"),
 			},
 		});
-		const instance = RecoverableComponent({
-			amount: 42 as unknown as string,
-		});
+		const instance = RecoverableComponent({ amount: "not a number" });
 
 		await expect(
 			instance.updateProps({ amount: "7" }),
@@ -773,171 +756,19 @@ describe("Component Instance", () => {
 
 	it("should normalize direct schema defaults exactly once before callbacks", () => {
 		const validate = vi.fn((_options: { props: { amount: number } }) => {});
-		const DefaultedTransformComponent = create({
-			tag: "defaulted-transform-callback-component",
-			url: "https://example.com/defaulted-transform",
-			props: {
-				amount: {
-					schema: z.string().transform(Number).default(42),
-					outputSchema: z.number(),
-				},
-			},
+		const DefaultedCoercedComponent = create({
+			tag: "defaulted-coerced-callback-component",
+			url: "https://example.com/defaulted-coerced",
+			props: { amount: { schema: z.coerce.number().default(42) } },
 			validate,
 		});
 
-		const instance = DefaultedTransformComponent({});
+		const instance = DefaultedCoercedComponent({});
 
 		expect(() => checkRenderValidation(instance)).not.toThrow();
 		expect(validate).toHaveBeenCalledWith({
 			props: expect.objectContaining({ amount: 42 }),
 		});
-	});
-
-	it("should require output validation for consumer-only transformed props", () => {
-		const ConsumerOnlyTransformComponent = create<
-			{ amount: number },
-			unknown,
-			{ amount: string }
-		>({
-			tag: "consumer-only-transform-component",
-			url: "https://example.com/consumer-only-transform",
-			props: {
-				amount: {
-					schema: z.string().transform(Number),
-					sendToHost: false,
-				} as never,
-			},
-		});
-
-		const instance = ConsumerOnlyTransformComponent({ amount: "42" });
-
-		expect(() => checkRenderValidation(instance)).toThrow();
-	});
-
-	it("should revalidate mutable consumer-only transform outputs before URL use", async () => {
-		const safeOrigin = "https://safe.example.com";
-		const resolveUrl = vi.fn(
-			(props: { target: { href: string }; label?: string }) =>
-				props.target.href,
-		);
-		const ConsumerOnlyTargetComponent = create<
-			{ target: { href: string }; label?: string },
-			unknown,
-			{ target: string; label?: string }
-		>({
-			tag: "consumer-only-mutable-transform-component",
-			url: resolveUrl,
-			props: {
-				target: {
-					schema: z.string().transform((href) => ({ href })),
-					outputSchema: z.object({
-						href: z
-							.string()
-							.refine(
-								(href) => new URL(href).origin === safeOrigin,
-								"Unsafe consumer-only target",
-							),
-					}),
-					sendToHost: false,
-				},
-				label: z.string().optional(),
-			},
-		});
-		const instance = ConsumerOnlyTargetComponent({
-			target: `${safeOrigin}/widget`,
-		});
-
-		expect(() => checkRenderValidation(instance)).not.toThrow();
-		resolveUrl.mockClear();
-		(
-			getConsumerInternals(instance).propsPipeline.props.target as {
-				href: string;
-			}
-		).href = "https://attacker.example.com/widget";
-
-		await expect(instance.updateProps({ label: "updated" })).rejects.toThrow(
-			"Unsafe consumer-only target",
-		);
-		expect(resolveUrl).not.toHaveBeenCalled();
-	});
-
-	it("should not feed transformed outputs back through their input schema on updates", async () => {
-		const TransformComponent = create({
-			tag: "stable-transformed-update-component",
-			url: "https://example.com/transformed-update",
-			props: {
-				amount: {
-					schema: z.string().transform((value) => `${value}!`),
-					outputSchema: z.string(),
-				},
-				label: z.string().optional(),
-			},
-		});
-		const instance = TransformComponent({ amount: "initial" });
-		const internals = getConsumerInternals(instance);
-
-		expect(() => checkRenderValidation(instance)).not.toThrow();
-		expect(internals.propsPipeline.props.amount).toBe("initial!");
-
-		await instance.updateProps({ label: "updated" });
-		expect(internals.propsPipeline.props.amount).toBe("initial!");
-
-		await instance.updateProps({ amount: "next" });
-		expect(internals.propsPipeline.props.amount).toBe("next!");
-	});
-
-	it("should preserve undefined transform outputs during unrelated updates", async () => {
-		const OptionalOutputComponent = create({
-			tag: "optional-transform-output-component",
-			url: "https://example.com/optional-transform-output",
-			props: {
-				amount: {
-					schema: z
-						.string()
-						.transform((value) =>
-							value === "empty" ? undefined : Number(value),
-						),
-					outputSchema: z.number().optional(),
-				},
-				label: z.string().optional(),
-			},
-		});
-		const instance = OptionalOutputComponent({ amount: "empty" });
-		const internals = getConsumerInternals(instance);
-
-		expect(() => checkRenderValidation(instance)).not.toThrow();
-		expect(internals.propsPipeline.props.amount).toBeUndefined();
-
-		await instance.updateProps({ label: "updated" });
-		expect(internals.propsPipeline.props.amount).toBeUndefined();
-	});
-
-	it("should not re-check requiredness against transformed outputs", async () => {
-		const RequiredOptionalOutputComponent = create({
-			tag: "required-optional-transform-output-component",
-			url: "https://example.com/required-optional-transform-output",
-			props: {
-				amount: {
-					schema: z
-						.string()
-						.transform((value) =>
-							value === "empty" ? undefined : Number(value),
-						),
-					outputSchema: z.number().optional(),
-				},
-				label: z.string().optional(),
-			},
-		});
-		const instance = RequiredOptionalOutputComponent({ amount: "empty" });
-		const internals = getConsumerInternals(instance);
-
-		expect(() => checkRenderValidation(instance)).not.toThrow();
-		expect(internals.propsPipeline.props.amount).toBeUndefined();
-
-		await expect(
-			instance.updateProps({ label: "updated" }),
-		).resolves.toBeUndefined();
-		expect(internals.propsPipeline.props.amount).toBeUndefined();
 	});
 
 	it("should revalidate retained mutable schema inputs before rendering", async () => {

@@ -30,6 +30,14 @@ export function hasOwnDeclaredField(target: object, key: PropertyKey): boolean {
 }
 
 /**
+ * The ways to keep a call site convenient when a schema cannot accept its own
+ * output; normalization's violation message lists them too.
+ * @internal
+ */
+export const SELF_ACCEPTANCE_MIGRATIONS =
+	"Pass the type the host should receive, accept both forms in one schema (such as z.coerce.number()), or convert the value in the host.";
+
+/**
  * Wrapped-definition options removed in ForgeFrame 2, each with its replacement.
  */
 const REMOVED_PROP_OPTIONS: Readonly<Record<string, string>> = {
@@ -47,7 +55,14 @@ const REMOVED_PROP_OPTIONS: Readonly<Record<string, string>> = {
 	sameDomain: "Use deliverTo: 'same-origin' instead.",
 	trustedDomains:
 		"Use deliverTo with an origin string, a RegExp, or an array of them instead.",
+	outputSchema: `Each prop now has one schema, which must accept its own output unchanged. ${SELF_ACCEPTANCE_MIGRATIONS}`,
 };
+
+/** Reports whether an own field holds a value rather than an accessor. */
+function isDataField(target: object, key: string): boolean {
+	const descriptor = Object.getOwnPropertyDescriptor(target, key);
+	return descriptor !== undefined && "value" in descriptor;
+}
 
 /** Reads an own data field without invoking an accessor. */
 function readDeclaredField(target: object, key: string): unknown {
@@ -60,11 +75,12 @@ function readDeclaredField(target: object, key: string): unknown {
  *
  * @remarks
  * A direct Standard Schema is not a wrapped definition, so its fields are
- * never read. A wrapped definition needs a `schema`, and an `outputSchema`
- * must be a Standard Schema; `deliverTo` must be
- * `'same-origin'` or an origin matcher; `queryParam` and `bodyParam` must be
- * a boolean or a non-empty parameter name. Only own fields count, a data field
- * set to `undefined` counts as omitted, and accessors are never invoked.
+ * never read. Each entry must be a data field, because the definitions are
+ * read again when props are normalized. A wrapped definition needs a
+ * `schema`; `deliverTo` must be `'same-origin'` or an origin matcher;
+ * `queryParam` and `bodyParam` must be a boolean or a non-empty parameter
+ * name. Only own fields count, a data field set to `undefined` counts as
+ * omitted, and accessors are never invoked.
  *
  * @param definitions - Prop definitions passed to `create()` or `initHost()`
  * @throws Error naming the first prop that is malformed, and the replacement
@@ -74,6 +90,11 @@ function readDeclaredField(target: object, key: string): unknown {
  */
 export function assertPropDefinitions(definitions: object): void {
 	for (const key of Object.keys(definitions)) {
+		if (!isDataField(definitions, key)) {
+			throw new Error(
+				`Prop "${key}" must be declared as a data field, not a getter or setter`,
+			);
+		}
 		const definition = readDeclaredField(definitions, key);
 		if (definition === undefined || isStandardSchema(definition)) continue;
 		if (typeof definition !== "object" || definition === null) {
@@ -98,10 +119,6 @@ function assertWrappedPropDefinition(key: string, definition: object): void {
 		throw new Error(
 			`Prop "${key}" needs a schema. Use prop.any() for a value that is deliberately unchecked.`,
 		);
-	}
-	const outputSchema = readDeclaredField(definition, "outputSchema");
-	if (outputSchema !== undefined && !isStandardSchema(outputSchema)) {
-		throw new Error(`Prop "${key}" outputSchema must be a Standard Schema`);
 	}
 	const deliverTo = readDeclaredField(definition, "deliverTo");
 	if (deliverTo !== undefined && deliverTo !== "same-origin") {

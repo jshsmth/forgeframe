@@ -480,13 +480,16 @@ const SecureWidget = create({
 | `sendToHost` | Skip sending the prop to the host when set to `false` |
 | `deliverTo` | Restrict which hosts receive the prop. `'same-origin'` delivers only after the loaded host is verified to share the consumer's origin, so the value is never in `window.name` or the initial query/POST request. An origin string (with optional `*` wildcards), a `RegExp`, or an array of them delivers only to matching host origins; an empty array delivers to none. `create()` rejects an empty or blank origin, and `'same-origin'` cannot be mixed into an array |
 | `queryParam` / `bodyParam` | Include the prop in the host page's initial HTTP request: `true` uses the prop key, a string names the parameter, and `false` is the same as omitting it |
-| `outputSchema` | Validate the normalized value again at consumer and host trust boundaries without transforming it |
 
 `auditId` above is optional only because its schema is `.optional()`. Without it, `{ schema: prop.string(), queryParam: true }` is required, exactly like `prop.string()`.
 
 Transforms and refinements belong in the schema, such as `prop.string().trim()` or a Zod `.refine()`, and cross-prop rules belong in the component's `validate({ props })` option. To compute a value from other inputs, compute it before calling the factory or `updateProps()`.
 
-When an input schema changes the value's type, use the wrapped form with an `outputSchema`, even when `sendToHost` is `false`. The input schema parses consumer values and applies its default; the output schema checks the normalized value before consumer routing callbacks or host trust boundaries use it. Output schemas only validate; they must not transform.
+Each prop has one schema, and that schema must accept its own output unchanged. ForgeFrame runs it on the value you pass, then validates the normalized value again with the same schema at the consumer's trust boundaries and on the host, and rejects a value that comes back changed. Idempotent transforms such as `prop.string().trim()`, coercions such as `z.coerce.number()`, refinements and defaults all qualify, in the direct and the wrapped form, and for `sendToHost: false` props too. A transform that changes the type (string to number, string to `Date`), or that changes an already-normalized value again (such as dollars to cents), does not: `create()` reports it at compile time when props are inferred, and `render()` or `updateProps()` rejects it at runtime. To keep a convenient call site:
+
+- Pass the type the host should receive: `z.number()`, and convert before calling the factory or `updateProps()`.
+- Accept both forms in one schema: `z.coerce.number()`, or `z.union([z.iso.datetime(), z.date()]).transform((value) => new Date(value))`, whose `Date` output is valid input.
+- Keep the raw type and convert it in the host after reading the prop.
 
 ```typescript
 import { z } from 'zod';
@@ -495,24 +498,19 @@ const AmountComponent = create({
   tag: 'amount-component',
   url: 'https://widgets.example.com/amount',
   props: {
-    amount: {
-      schema: z.string().default('1').transform(Number),
-      outputSchema: z.number().finite(),
-    },
+    amount: z.coerce.number().finite().default(1),
   },
 });
 
-AmountComponent({ amount: '2' }); // Host receives the validated number 2
+AmountComponent({ amount: '2' }); // Host receives the number 2
 AmountComponent(); // Host receives the default, 1
 ```
 
-Pass a schema directly when it accepts its own normalized output unchanged. A type-changing transform needs the wrapped form above, and so does a same-type transform that is not idempotent: without an `outputSchema`, the host rejects the changed value.
-
-A schema that requires input can still produce `undefined`. When a valid input can transform to `undefined`, its `outputSchema` must accept `undefined`, and the host then treats `undefined` as a valid result.
+`prop.*` defaults that are arrays, plain objects or `Date`s are copied for every use, so instances never share them. Other schema libraries may return the same default object to every instance; pass a factory such as `z.array(z.string()).default(() => [])` when a default is mutated.
 
 A host evaluates `sendToHost` and `deliverTo` itself, with its own origin and the verified consumer origin, to decide which props it expects. Props it is not meant to receive are neither required nor accepted: a cross-origin host can share definitions that include a required `'same-origin'` secret, and fields for those props, or for `sendToHost: false` props, are discarded from bootstrap and update snapshots before decoding or validation, even if a stale or misconfigured consumer sends them. Discarded values never reach `hostProps`, `hostProps.consumer.props`, or prop notifications.
 
-Prefer inferred component and React-wrapper types. When you annotate a component whose schema inputs differ from its host props, pass the schema-input type as the fourth `ForgeFrameComponent` generic (after the required-props flag) or the third `ForgeFrameComponentInstance` generic. React wrappers infer it; with explicit wrapper type arguments, it is the fifth generic.
+Prefer inferred component and React-wrapper types. The factory input can be wider than the host props, because defaults make keys optional and coercions accept more types. When you annotate a component, pass that input type as the `Input` parameter of `ForgeFrameComponent` or `ForgeFrameComponentInstance`; React wrappers infer it. Definition types such as `PropsDefinition<P>` are typed by the props alone, so a defaulted schema fits without an input type.
 
 Transport notes:
 
@@ -549,7 +547,7 @@ const Checkout = create({
 
 ### Updating Props
 
-`updateProps()` works before and after rendering. Each update runs one sequence: merge the patch, run the schemas (which apply their defaults), check output contracts, run the component's `validate`, check the URL and origin, commit, deliver to the host, then notify. Updates run in order, including updates requested from a schema transform or the component's `validate`. Rendering waits for queued updates, so the initial query/body parameters and bootstrap props use their result; updates requested while rendering are rejected. Once `close()` starts, new and queued updates are rejected without running validation or prop callbacks.
+`updateProps()` works before and after rendering. Each update runs one sequence: merge the patch, run the schemas (which apply their defaults), check that each schema accepts its own output unchanged, run the component's `validate`, check the URL and origin, commit, deliver to the host, then notify. Updates run in order, including updates requested from a schema transform or the component's `validate`. Rendering waits for queued updates, so the initial query/body parameters and bootstrap props use their result; updates requested while rendering are rejected. Once `close()` starts, new and queued updates are rejected without running validation or prop callbacks.
 
 ```typescript
 const instance = MyComponent({ name: 'Initial' });
@@ -659,23 +657,14 @@ if (host) {
 
 `init()` returns nothing and is safe to call twice, before `ready` resolves (INIT then waits for it), or after `destroy()`. It sends nothing if `ready` rejects. INIT delivery failures are reported through `host.on('error')`. If the host never calls `init()`, the consumer's `render()` rejects at its `timeout`. Reading `hostProps` never sends INIT.
 
-When a tag-agnostic host uses a type-changing schema, pass both the normalized host props and the schema-input shapes to `HostPropsDefinition` and `initHost`, so TypeScript requires the normalized `outputSchema`:
+A tag-agnostic host types its props from its definitions, keyed by the props it receives:
 
 ```typescript
-type AmountProps = { amount: number };
-type AmountInputs = { amount: string };
-
 const amountProps = {
-  amount: {
-    schema: z.string().transform(Number),
-    outputSchema: z.number(),
-  },
-} satisfies HostPropsDefinition<AmountProps, AmountInputs>;
+  amount: z.number().finite().default(1),
+} satisfies PropsDefinition<{ amount: number }>;
 
-const host = initHost<AmountProps, AmountInputs>({
-  props: amountProps,
-  consumerOrigins,
-});
+const host = initHost({ props: amountProps, consumerOrigins });
 ```
 
 ### Available Methods
@@ -1220,11 +1209,11 @@ The schema is now the only source of a prop's presence, default and value; the o
 | Wrapped literal default | `{ schema: prop.string(), default: 'light' }` | `prop.string().default('light')` |
 | Wrapped callback default | `{ schema: prop.function(), default: () => onCancel }` | `prop.function().default(() => onCancel)` |
 | Computed fallback | `{ schema, value: (ctx) => ... }` or `default: (ctx) => ...` | Compute the value before calling the factory or `updateProps()` |
-| Decorator | `{ schema: prop.string(), decorate: ({ value }) => value.trim() }` | `prop.string().trim()`, or a schema transform (add `outputSchema` if it changes the type) |
+| Decorator | `{ schema: prop.string(), decorate: ({ value }) => value.trim() }` | `prop.string().trim()`, or a schema transform that accepts its own output |
 | Host decorator | `{ schema, hostDecorate: ({ value }) => ... }` | Transform on the host after receipt, or pass a separate derived prop |
 | Per-prop validator | `{ schema, validate: ({ value }) => ... }` | A schema refinement (for example Zod `.refine`), or the component's `validate({ props })` for cross-prop rules |
 | Alias | `email: { schema: prop.string(), alias: 'userEmail' }` with `Widget({ userEmail })` | `email: prop.string()` with `Widget({ email: legacy.userEmail })` |
-| Alias types | `create<P, X, I, SchemaInputs>`, `ConsumerPropsInput`, `ConsumerPropsUpdate` | `create<P, X, SchemaInputs>`; factory input is inferred from schemas |
+| Alias types | `create<P, X, I, SchemaInputs>`, `ConsumerPropsInput`, `ConsumerPropsUpdate` | `create<P, X, Input>`; factory input is inferred from schemas |
 | Same-origin only | `{ schema, sameDomain: true }` | `{ schema, deliverTo: 'same-origin' }` |
 | Listed host origins | `{ schema, trustedDomains: ['https://a.example'] }` | `{ schema, deliverTo: 'https://a.example' }`, or a `RegExp`, or an array |
 | Encoded query/body value | `queryParam: ({ value }) => encode(value)` | Pass the encoded string as its own prop with `queryParam: 'name'`, or build the URL in a `url(props)` function |
@@ -1234,6 +1223,16 @@ The schema is now the only source of a prop's presence, default and value; the o
 | Itemless array | `prop.array()` or `prop.array<T>()` | `prop.array(itemSchema)`, or `prop.any<T[]>()` |
 | Prop context | `PropContext` (`props`, `close`, `focus`, `onError`, `container`, `uid`, `tag`) | Removed |
 | Missing-value error | `Prop "id" is required but was not provided` for the object form | Always the schema's message, such as `Validation failed: id: Required` |
+| Type-changing schema | `{ schema: z.string().transform(Number), outputSchema: z.number() }` | Pass the type the host receives (`z.number()`), accept both forms (`z.coerce.number()`), or convert in the host |
+| String to `Date` | `{ schema: z.string().transform((s) => new Date(s)), outputSchema: z.date() }` | `prop.date()` and pass a `Date`; or `z.union([z.iso.datetime(), z.date()]).transform((v) => new Date(v))`; or keep `prop.string()` and call `new Date(props.startsAt)` in the host |
+| Same-type, non-idempotent transform | `{ schema: z.number().transform((n) => n * 100), outputSchema: z.number() }` | Convert before calling the factory or `updateProps()`, or in the host |
+| Required input whose output may be `undefined` | `{ schema: z.string().transform((v) => v \|\| undefined), outputSchema: z.string().optional() }` | `z.string().optional()` and pass `value \|\| undefined`, or keep `z.string()` and treat `''` as empty in the host |
+| Consumer-only transform | `{ schema: z.string().transform((href) => new URL(href)), outputSchema: z.instanceof(URL), sendToHost: false }` | `{ schema: z.url(), sendToHost: false }` and compute `new URL(props.target)` inside `url(props)` |
+| `outputSchema` option | Validation-only schema for normalized values | Removed; `create()` and `initHost()` throw for it |
+| Definition types | `PropsDefinition<P, I>`, `HostPropsDefinition<P, I>`, `PropDefinition<Output, Input>`, `ComponentOptions<P, SchemaInputs>`, `InitHostOptions<P, SchemaInputs>` | `PropsDefinition<P>`, `HostPropsDefinition<P>`, `PropDefinition<Output>`, `ComponentOptions<P>`, `InitHostOptions<P>`; defaulted schemas fit without an input type |
+| Host typing | `initHost<P, SchemaInputs>({ props, consumerOrigins })` | `initHost(Component, { consumerOrigins })` infers `P`; the tag-agnostic form takes `PropsDefinition<P>` |
+| Component input generic | `ForgeFrameComponent<P, X, RequireProps, SchemaInputs>` | Same position, renamed `Input`: the factory input inferred from schemas |
+| Getter-defined prop entry | Read when props were normalized | `create()` and `initHost()` throw; declare entries as plain fields |
 
 A host that shares definitions with a `deliverTo` prop no longer requires that prop when it is withheld from the host's origin, and it discards the field if a consumer sends it anyway.
 
@@ -1285,14 +1284,14 @@ import {
 
 ### Component Options
 
-Each `props` entry is either a Standard Schema or a `PropDefinition` object that wraps a schema with transport options (`sendToHost`, `deliverTo`, `queryParam`, `bodyParam`, `outputSchema`). An entry set to `undefined` is treated as omitted, so the prop is neither normalized nor sent.
+Each `props` entry is either a Standard Schema or a `PropDefinition` object that wraps a schema with transport options (`sendToHost`, `deliverTo`, `queryParam`, `bodyParam`). An entry set to `undefined` is treated as omitted, so the prop is neither normalized nor sent.
 
 ```typescript
-interface ComponentOptions<P, SchemaInputs = P> {
+interface ComponentOptions<P> {
   tag: string;
   url: string | ((props: P) => string);
   dimensions?: { width?: number | string; height?: number | string } | ((props: P) => { width?: number | string; height?: number | string });
-  props?: PropsDefinition<P, SchemaInputs>;
+  props?: PropsDefinition<P>;
   defaultContext?: 'iframe' | 'popup';
   containerTemplate?: (ctx: TemplateContext<P>) => HTMLElement | null;
   prerenderTemplate?: (ctx: TemplateContext<P>) => HTMLElement | null;
@@ -1440,7 +1439,7 @@ The [architecture guide](https://github.com/jshsmth/ForgeFrame/blob/main/docs/ar
 - `packages/forgeframe/src/index.ts` defines the public exports. Other source barrels are internal; the package has no subpath exports.
 - `core/component.ts` owns component factories and instance tracking. `core/consumer.ts` coordinates rendering, the prop pipeline, and transport; `core/host/` owns host bootstrap and `hostProps`.
 - `communication/` owns request/response messaging and callback bridging. Transports hold their peer window and validate browser-provided sources and origins.
-- `props/` owns schemas, normalization, and serialization. Schema input and normalized output are separate contracts: trust boundaries revalidate normalized props without reapplying transforms.
+- `props/` owns schemas, normalization, and serialization. Each prop has one schema that must accept its own output unchanged, so every trust boundary revalidates normalized props with that same schema.
 - `render/` owns iframe and popup resources and templates; `drivers/` holds the optional React adapter. `packages/playground/` exercises the library as consumer and host.
 
 ### Project Wiki

@@ -1,4 +1,8 @@
-import type { ComponentOptions, ForgeFrameComponent } from "../types/runtime";
+import type {
+	AnyFactoryInput,
+	ComponentOptions,
+	ForgeFrameComponent,
+} from "../types/runtime";
 
 const componentRegistry = new Map<
 	string,
@@ -10,25 +14,19 @@ const INTERNAL_COMPONENT_OPTIONS = Symbol("forgeframe.component.options");
 type InternalForgeFrameComponent<
 	P extends Record<string, unknown> = Record<string, unknown>,
 	X = unknown,
-	SchemaInputs = P,
-> = ForgeFrameComponent<P, X, false, SchemaInputs> & {
-	[INTERNAL_COMPONENT_OPTIONS]?: ComponentOptions<P, SchemaInputs>;
+> = ForgeFrameComponent<P, X, false> & {
+	[INTERNAL_COMPONENT_OPTIONS]?: ComponentOptions<P>;
 };
 
-export function registerComponent<
-	P extends Record<string, unknown>,
-	X,
-	SchemaInputs,
->(
-	component: ForgeFrameComponent<P, X, false, SchemaInputs>,
-	options: ComponentOptions<P, SchemaInputs>,
+export function registerComponent<P extends Record<string, unknown>, X>(
+	component: ForgeFrameComponent<P, X, false, AnyFactoryInput>,
+	options: ComponentOptions<P>,
 ): void {
-	(component as InternalForgeFrameComponent<P, X, SchemaInputs>)[
-		INTERNAL_COMPONENT_OPTIONS
-	] = options;
+	(component as InternalForgeFrameComponent<P, X>)[INTERNAL_COMPONENT_OPTIONS] =
+		options;
 	componentRegistry.set(
 		options.tag,
-		component as ForgeFrameComponent<Record<string, unknown>>,
+		component as unknown as ForgeFrameComponent<Record<string, unknown>>,
 	);
 }
 
@@ -39,24 +37,22 @@ export function hasRegisteredComponent(tag: string): boolean {
 export function getRegisteredComponent<
 	P extends Record<string, unknown> = Record<string, unknown>,
 	X = unknown,
-	SchemaInputs = P,
->(tag: string): ForgeFrameComponent<P, X, false, SchemaInputs> | undefined {
+>(tag: string): ForgeFrameComponent<P, X, false> | undefined {
 	return componentRegistry.get(tag) as
-		| ForgeFrameComponent<P, X, false, SchemaInputs>
+		| ForgeFrameComponent<P, X, false>
 		| undefined;
 }
 
 export function getComponentOptions<
 	P extends Record<string, unknown> = Record<string, unknown>,
 	X = unknown,
-	SchemaInputs = P,
 >(
 	/** Any factory returned by `create()`, whatever its props and exports. */
 	component: object,
-): ComponentOptions<P, SchemaInputs> | undefined {
-	return (
-		component as unknown as InternalForgeFrameComponent<P, X, SchemaInputs>
-	)[INTERNAL_COMPONENT_OPTIONS];
+): ComponentOptions<P> | undefined {
+	return (component as unknown as InternalForgeFrameComponent<P, X>)[
+		INTERNAL_COMPONENT_OPTIONS
+	];
 }
 
 export function deleteRegisteredComponent(tag: string): void {

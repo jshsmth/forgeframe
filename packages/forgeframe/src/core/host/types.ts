@@ -20,9 +20,9 @@ import type { Dimensions, DomainMatcher } from "../../types/utility";
 
 export type VerifiedMessageSource = Parameters<MessageHandler>[1];
 
-export interface HostRuntimeOptions<P, SchemaInputs = P> {
+export interface HostRuntimeOptions<P> {
 	/** Validate the consumer's props; without them, props are not validated. */
-	props?: HostPropsDefinition<P, SchemaInputs>;
+	props?: HostPropsDefinition<P>;
 	/** Checked against the selected consumer origin before BOOTSTRAP is sent. */
 	consumerOrigins: DomainMatcher;
 	/** Sends INIT as soon as `ready` resolves; otherwise INIT waits for `init()`. */

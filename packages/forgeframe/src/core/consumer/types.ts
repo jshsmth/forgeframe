@@ -7,13 +7,10 @@ import type { Dimensions } from "../../types/utility";
  * Normalized and validated component options.
  * @internal
  */
-export interface NormalizedOptions<
-	P extends Record<string, unknown>,
-	SchemaInputs = P,
-> {
+export interface NormalizedOptions<P extends Record<string, unknown>> {
 	tag: string;
 	url: string | ((props: P) => string);
-	props: PropsDefinition<P, SchemaInputs>;
+	props: PropsDefinition<P>;
 	defaultContext: ContextType;
 	dimensions: Dimensions | ((props: P) => Dimensions);
 	timeout: number;

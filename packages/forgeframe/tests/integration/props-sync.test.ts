@@ -57,22 +57,6 @@ type DateSyncProps = {
 	publishedAt: Date;
 };
 
-type TransformedSyncProps = {
-	amount: number;
-};
-
-type TransformedSyncInput = {
-	amount: string;
-};
-
-type OptionalTransformOutputSyncProps = {
-	amount: number | undefined;
-};
-
-type OptionalTransformOutputSyncInput = {
-	amount: string;
-};
-
 const SYNC_PROP_DEFINITIONS: PropsDefinition<SyncProps> = {
 	title: { schema: prop.string() },
 	optionalNote: { schema: prop.string().optional() },
@@ -80,28 +64,6 @@ const SYNC_PROP_DEFINITIONS: PropsDefinition<SyncProps> = {
 
 const DATE_SYNC_PROP_DEFINITIONS: PropsDefinition<DateSyncProps> = {
 	publishedAt: { schema: prop.date() },
-};
-
-const TRANSFORMED_SYNC_PROP_DEFINITIONS: PropsDefinition<
-	TransformedSyncProps,
-	TransformedSyncInput
-> = {
-	amount: {
-		schema: z.string().transform(Number),
-		outputSchema: z.number(),
-	},
-};
-
-const OPTIONAL_TRANSFORM_OUTPUT_SYNC_PROP_DEFINITIONS: PropsDefinition<
-	OptionalTransformOutputSyncProps,
-	OptionalTransformOutputSyncInput
-> = {
-	amount: {
-		schema: z
-			.string()
-			.transform((value) => (value === "empty" ? undefined : Number(value))),
-		outputSchema: z.number().optional(),
-	},
 };
 
 describe("Props sync integration", () => {
@@ -763,95 +725,5 @@ describe("Props sync integration", () => {
 		expect(onProps.mock.calls[0][0].publishedAt.toISOString()).toBe(
 			updatedDate.toISOString(),
 		);
-	});
-
-	it("should deliver transformed props through bootstrap and prop sync", async () => {
-		harness = createIframeIntegrationHarness();
-
-		const container = document.createElement("div");
-		document.body.appendChild(container);
-
-		const TransformedSyncComponent = create<
-			TransformedSyncProps,
-			unknown,
-			TransformedSyncInput
-		>({
-			tag: "integration-transformed-props-sync-component",
-			url: "https://host.example.com/widget",
-			props: TRANSFORMED_SYNC_PROP_DEFINITIONS,
-		});
-
-		const instance = TransformedSyncComponent({ amount: "41" });
-
-		const renderPromise = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost<
-			TransformedSyncProps,
-			TransformedSyncInput
-		>(container, TRANSFORMED_SYNC_PROP_DEFINITIONS);
-
-		await expect(renderPromise).resolves.toBeUndefined();
-
-		expect(hostProps.amount).toBe(41);
-		expect(hostProps.consumer.props.amount).toBe(41);
-
-		const onProps = vi.fn();
-		hostProps.onProps(onProps);
-
-		await expect(
-			instance.updateProps({ amount: "42" }),
-		).resolves.toBeUndefined();
-
-		expect(hostProps.amount).toBe(42);
-		expect(hostProps.consumer.props.amount).toBe(42);
-		expect(onProps).toHaveBeenCalledTimes(1);
-		expect(onProps).toHaveBeenCalledWith({ amount: 42 });
-	});
-
-	it("should accept undefined normalized outputs for required inputs across bootstrap and prop sync", async () => {
-		harness = createIframeIntegrationHarness();
-
-		const container = document.createElement("div");
-		document.body.appendChild(container);
-
-		const OptionalTransformOutputSyncComponent = create<
-			OptionalTransformOutputSyncProps,
-			unknown,
-			OptionalTransformOutputSyncInput
-		>({
-			tag: "integration-optional-transform-output-sync-component",
-			url: "https://host.example.com/widget",
-			props: OPTIONAL_TRANSFORM_OUTPUT_SYNC_PROP_DEFINITIONS,
-		});
-
-		const instance = OptionalTransformOutputSyncComponent({ amount: "empty" });
-
-		const renderPromise = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost<
-			OptionalTransformOutputSyncProps,
-			OptionalTransformOutputSyncInput
-		>(container, OPTIONAL_TRANSFORM_OUTPUT_SYNC_PROP_DEFINITIONS);
-
-		await expect(renderPromise).resolves.toBeUndefined();
-
-		expect(hostProps.amount).toBeUndefined();
-		expect(hostProps.consumer.props.amount).toBeUndefined();
-
-		const onProps = vi.fn();
-		hostProps.onProps(onProps);
-
-		await expect(
-			instance.updateProps({ amount: "42" }),
-		).resolves.toBeUndefined();
-		expect(hostProps.amount).toBe(42);
-
-		await expect(
-			instance.updateProps({ amount: "empty" }),
-		).resolves.toBeUndefined();
-
-		expect(hostProps.amount).toBeUndefined();
-		expect(hostProps.consumer.props.amount).toBeUndefined();
-		expect(onProps).toHaveBeenCalledTimes(2);
-		expect(onProps).toHaveBeenNthCalledWith(1, { amount: 42 });
-		expect(onProps).toHaveBeenNthCalledWith(2, {});
 	});
 });

@@ -18,7 +18,7 @@ import type {
 	ForgeFrameComponent,
 	Host,
 	HostProps,
-	HostPropsDefinition,
+	PropsDefinition,
 } from "@/types";
 
 const DEFAULT_HOST_URL = "https://host.example.com/widget";
@@ -100,11 +100,8 @@ function shouldDispatchMessage(
  * What a harness host starts from: a component for `initHost(Component, ...)`,
  * or prop definitions (or nothing) for the tag-agnostic form.
  */
-export type HarnessHostDefinition<
-	P extends Record<string, unknown>,
-	SchemaInputs = P,
-> =
-	| HostPropsDefinition<P, SchemaInputs>
+export type HarnessHostDefinition<P extends Record<string, unknown>> =
+	| PropsDefinition<P>
 	// biome-ignore lint/suspicious/noExplicitAny: Accepts every component's export, input and requirement types.
 	| ForgeFrameComponent<P, any, any, any>;
 
@@ -115,8 +112,8 @@ export interface HarnessHostOptions {
 	autoInit?: boolean;
 }
 
-type BootstrapHost = <P extends Record<string, unknown>, SchemaInputs = P>(
-	definition?: HarnessHostDefinition<P, SchemaInputs>,
+type BootstrapHost = <P extends Record<string, unknown>>(
+	definition?: HarnessHostDefinition<P>,
 	options?: HarnessHostOptions,
 ) => Host<P> | null;
 
@@ -226,9 +223,9 @@ interface BaseIntegrationHarness {
 export interface IframeIntegrationHarness extends BaseIntegrationHarness {
 	waitForIframe: (container?: ParentNode) => Promise<HTMLIFrameElement>;
 	attachHostToIframe: (iframe: HTMLIFrameElement) => void;
-	bootstrapIframeHost: <P extends Record<string, unknown>, SchemaInputs = P>(
+	bootstrapIframeHost: <P extends Record<string, unknown>>(
 		container: ParentNode,
-		definition?: HarnessHostDefinition<P, SchemaInputs>,
+		definition?: HarnessHostDefinition<P>,
 		options?: HarnessHostOptions,
 	) => Promise<BootstrappedHost<P> & { iframe: HTMLIFrameElement }>;
 }
@@ -237,8 +234,8 @@ export interface PopupIntegrationHarness extends BaseIntegrationHarness {
 	waitForPopupOpen: () => Promise<PopupOpenRecord>;
 	getLastPopupOpen: () => PopupOpenRecord | null;
 	blockNextPopup: () => void;
-	bootstrapPopupHost: <P extends Record<string, unknown>, SchemaInputs = P>(
-		definition?: HarnessHostDefinition<P, SchemaInputs>,
+	bootstrapPopupHost: <P extends Record<string, unknown>>(
+		definition?: HarnessHostDefinition<P>,
 		options?: HarnessHostOptions,
 	) => Promise<BootstrappedHost<P>>;
 }
@@ -532,14 +529,11 @@ function createBaseIntegrationHarness(options?: {
 	};
 
 	/** Starts a host and waits for `ready`, which resolves to its props. */
-	const startReadyHost = async <
-		P extends Record<string, unknown>,
-		SchemaInputs = P,
-	>(
-		definition?: HarnessHostDefinition<P, SchemaInputs>,
+	const startReadyHost = async <P extends Record<string, unknown>>(
+		definition?: HarnessHostDefinition<P>,
 		options?: HarnessHostOptions,
 	): Promise<BootstrappedHost<P>> => {
-		const host = bootstrapHost<P, SchemaInputs>(definition, options);
+		const host = bootstrapHost<P>(definition, options);
 		if (!host) {
 			throw new Error("Expected initHost() to create a host instance");
 		}

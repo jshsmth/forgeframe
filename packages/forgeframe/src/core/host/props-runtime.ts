@@ -39,10 +39,7 @@ function filterReservedHostPropKeys<P extends Record<string, unknown>>(
 	return filteredProps as P;
 }
 
-export class HostPropsRuntime<
-	P extends Record<string, unknown>,
-	SchemaInputs = P,
-> {
+export class HostPropsRuntime<P extends Record<string, unknown>> {
 	public hostProps!: HostProps<P>;
 
 	public consumerProps!: RemoteValue<P>;
@@ -57,10 +54,10 @@ export class HostPropsRuntime<
 	/** This host's own origin, read once when the host starts. */
 	private readonly hostOrigin = getDomain();
 	/** Definitions of the props this host expects, selected on first use. */
-	private deliveredPropDefinitions?: HostPropsDefinition<P, SchemaInputs>;
+	private deliveredPropDefinitions?: HostPropsDefinition<P>;
 
 	constructor(
-		private readonly propDefinitions: HostPropsDefinition<P, SchemaInputs>,
+		private readonly propDefinitions: HostPropsDefinition<P>,
 		private options: HostPropsRuntimeOptions,
 	) {}
 
@@ -241,7 +238,7 @@ export class HostPropsRuntime<
 	 * `deliverTo` excludes this host are never delivered, so they are neither
 	 * required nor accepted.
 	 */
-	private getDeliveredPropDefinitions(): HostPropsDefinition<P, SchemaInputs> {
+	private getDeliveredPropDefinitions(): HostPropsDefinition<P> {
 		// Both origins are fixed once the host starts, so the selection is too.
 		this.deliveredPropDefinitions ??= getDeliveredPropDefinitions(
 			this.propDefinitions,

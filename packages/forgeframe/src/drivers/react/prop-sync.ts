@@ -1,6 +1,6 @@
 import { PROP_RESET } from "../../core/consumer/prop-update";
 import type {
-	ComponentPropsUpdate,
+	AnyFactoryInput,
 	ForgeFrameComponentInstance,
 } from "../../types/runtime";
 
@@ -52,23 +52,18 @@ export interface ReactPropQueue {
 }
 
 /** Per-instance state for serializing React prop updates. @internal */
-export interface ReactPropSyncState<
-	P extends Record<string, unknown>,
-	X,
-	SchemaInputs extends Record<string, unknown>,
-> extends ReactPropQueue {
-	instance: ForgeFrameComponentInstance<P, X, SchemaInputs>;
+export interface ReactPropSyncState<P extends Record<string, unknown>, X>
+	extends ReactPropQueue {
+	instance: ForgeFrameComponentInstance<P, X, AnyFactoryInput>;
 	renderReady: boolean;
 	draining: boolean;
 	active: boolean;
 }
 
 /** Prevents a completed or failed instance from retaining further prop work. @internal */
-export function deactivatePropSyncState<
-	P extends Record<string, unknown>,
-	X,
-	SchemaInputs extends Record<string, unknown>,
->(state: ReactPropSyncState<P, X, SchemaInputs>): void {
+export function deactivatePropSyncState<P extends Record<string, unknown>, X>(
+	state: ReactPropSyncState<P, X>,
+): void {
 	state.active = false;
 	state.queue.length = 0;
 }
@@ -156,15 +151,9 @@ export function enqueuePropSnapshot(
  * @param onError - Error observer that must isolate its own failures so draining can continue.
  * @internal
  */
-export async function drainPropUpdates<
-	P extends Record<string, unknown>,
-	X,
-	SchemaInputs extends Record<string, unknown>,
->(
-	state: ReactPropSyncState<P, X, SchemaInputs>,
-	isCurrentSyncState: (
-		state: ReactPropSyncState<P, X, SchemaInputs>,
-	) => boolean,
+export async function drainPropUpdates<P extends Record<string, unknown>, X>(
+	state: ReactPropSyncState<P, X>,
+	isCurrentSyncState: (state: ReactPropSyncState<P, X>) => boolean,
 	onError: (error: Error) => void,
 ): Promise<void> {
 	if (state.draining || !state.renderReady || !isCurrentSyncState(state)) {
@@ -182,7 +171,8 @@ export async function drainPropUpdates<
 
 			try {
 				await state.instance.updateProps(
-					update.payload as ComponentPropsUpdate<P, SchemaInputs>,
+					// The wrapper's props were typed by the factory input.
+					update.payload as never,
 				);
 			} catch (err) {
 				if (!isCurrentSyncState(state)) {

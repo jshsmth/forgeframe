@@ -660,6 +660,30 @@ describe("prop.function()", () => {
 // Array Schema Tests
 // ============================================================================
 
+describe("composite schema construction", () => {
+	it.each([undefined, "string", { "~standard": {} }])(
+		"rejects a missing nested schema (%j) when the composite is built",
+		(nested) => {
+			const build = prop as unknown as Record<
+				string,
+				(...args: unknown[]) => unknown
+			>;
+			expect(() => build.object({ name: nested })).toThrow(
+				'prop.object(shape) requires a schema for "name". Use prop.any() for a field that is deliberately unchecked.',
+			);
+			expect(() => build.record(nested)).toThrow(
+				"prop.record(value) requires a value schema. Use prop.any<Record<string, T>>() for a record whose values are deliberately unchecked.",
+			);
+			expect(() => build.tuple(prop.string(), nested)).toThrow(
+				"prop.tuple() requires a schema at position 1. Use prop.any() for a value that is deliberately unchecked.",
+			);
+			expect(() => build.union(prop.string(), nested)).toThrow(
+				"prop.union() requires a schema at position 1",
+			);
+		},
+	);
+});
+
 describe("prop.array(item)", () => {
 	it("requires an item schema at runtime", () => {
 		const array = prop.array as unknown as (item?: unknown) => unknown;
@@ -738,6 +762,25 @@ describe("prop.array(item)", () => {
 	it("should support default", () => {
 		const schema = prop.array(prop.string()).default([]);
 		expect(schema["~standard"].validate(undefined)).toEqual({ value: [] });
+	});
+
+	it("copies array, plain-object and Date defaults for each use", () => {
+		const startsAt = new Date(0);
+		const shared = { tags: ["a"], startsAt };
+		const schema = prop
+			.object({ tags: prop.array(prop.string()), startsAt: prop.date() })
+			.default(shared);
+		const first = schema["~standard"].validate(undefined) as {
+			value: typeof shared;
+		};
+		const second = schema["~standard"].validate(undefined) as {
+			value: typeof shared;
+		};
+		expect(first.value).toEqual(shared);
+		expect(first.value).not.toBe(shared);
+		expect(first.value.tags).not.toBe(second.value.tags);
+		expect(first.value.startsAt).not.toBe(startsAt);
+		expect(first.value.startsAt.getTime()).toBe(0);
 	});
 });
 
@@ -1384,9 +1427,9 @@ describe("schema chaining and immutability", () => {
 // ============================================================================
 
 /** Normalizes `props` in place, as the consumer does for a component's inputs. */
-function validateProps<P extends Record<string, unknown>, I = P>(
+function validateProps<P extends Record<string, unknown>>(
 	props: P,
-	definitions: PropsDefinition<P, I>,
+	definitions: PropsDefinition<P>,
 ): void;
 function validateProps(props: object, definitions: object): void;
 function validateProps(props: object, definitions: object): void {
@@ -1409,10 +1452,9 @@ describe("integration with normalizeProps", () => {
 	});
 
 	it("should work with prop.number().default() in component props", () => {
-		const definitions: PropsDefinition<{ count: number }, { count?: number }> =
-			{
-				count: prop.number().default(0),
-			};
+		const definitions: PropsDefinition<{ count: number }> = {
+			count: prop.number().default(0),
+		};
 
 		const props = { count: undefined } as unknown as { count: number };
 		validateProps(props, definitions);
@@ -1461,10 +1503,7 @@ describe("integration with normalizeProps", () => {
 			};
 		};
 
-		const definitions: PropsDefinition<
-			UserConfig,
-			{ config: { theme?: string; debug?: boolean } }
-		> = {
+		const definitions: PropsDefinition<UserConfig> = {
 			config: prop.object({
 				theme: prop.string().default("light"),
 				debug: prop.boolean().default(false),
@@ -1557,7 +1596,7 @@ describe("integration with normalizeProps", () => {
 			status: "active" | "inactive";
 		};
 
-		const definitions: PropsDefinition<MyProps, Partial<MyProps>> = {
+		const definitions: PropsDefinition<MyProps> = {
 			name: prop.string().min(1),
 			count: prop.number().default(0),
 			email: prop.string().email().optional(),

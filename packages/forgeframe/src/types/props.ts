@@ -22,14 +22,16 @@ import type { DomainMatcher } from "./utility";
 export type PropDelivery = "same-origin" | DomainMatcher;
 
 /**
- * Transport options of a wrapped prop definition.
+ * Definition for a single component prop: its schema plus transport options.
  *
  * @typeParam Output - The normalized prop value exposed after validation
- * @typeParam Input - The value accepted by the schema
  *
  * @remarks
  * The schema alone decides whether the prop is required and what its default
- * is; these options only control how the value reaches the host.
+ * is; the other options only control how the value reaches the host. The
+ * schema must accept its own output unchanged, because ForgeFrame validates
+ * normalized values again with the same schema at later trust boundaries,
+ * including on the host.
  *
  * @example
  * ```typescript
@@ -41,16 +43,19 @@ export type PropDelivery = "same-origin" | DomainMatcher;
  * };
  * ```
  *
- * @internal
+ * @public
  */
-interface PropDefinitionOptions<Output = unknown, Input = Output> {
+export interface PropDefinition<Output = unknown> {
 	/**
 	 * Standard Schema that validates the prop and supplies its default.
 	 *
 	 * @remarks
 	 * Accepts any StandardSchemaV1-compliant schema including ForgeFrame's
 	 * built-in `prop.*` schemas, Zod, Valibot, ArkType, and others. The prop is
-	 * required exactly when this schema rejects `undefined`.
+	 * required exactly when this schema rejects `undefined`. Its output must be
+	 * valid input to the same schema, and validating an output must return it
+	 * unchanged: idempotent transforms such as trimming and coercions such as
+	 * `z.coerce.number()` qualify, type-changing transforms do not.
 	 *
 	 * @example
 	 * ```typescript
@@ -65,7 +70,7 @@ interface PropDefinitionOptions<Output = unknown, Input = Output> {
 	 *
 	 * @see https://standardschema.dev/
 	 */
-	schema: StandardSchemaV1<Input, Output>;
+	schema: StandardSchemaV1<unknown, Output>;
 
 	/** Whether to send this prop to the host window (default: true) */
 	sendToHost?: boolean;
@@ -84,54 +89,12 @@ interface PropDefinitionOptions<Output = unknown, Input = Output> {
 	bodyParam?: boolean | string;
 }
 
-/** Defines how an already-normalized value is checked at trust boundaries. @internal */
-type NormalizedOutputSchemaRequirement<Input, Output> = [Output] extends [Input]
-	? {
-			/**
-			 * Validation-only schema for normalized values used after input parsing.
-			 *
-			 * @remarks
-			 * ForgeFrame requires this schema when the input schema's output cannot
-			 * be accepted by that same input schema. It must validate without
-			 * changing the normalized value.
-			 */
-			outputSchema?: StandardSchemaV1<Output, Output>;
-		}
-	: {
-			/**
-			 * Validation-only schema for normalized values used after input parsing.
-			 *
-			 * @remarks
-			 * This is required when the input schema changes the value's type,
-			 * including for consumer-only props. It must validate without changing
-			 * the normalized value.
-			 */
-			outputSchema: StandardSchemaV1<Output, Output>;
-		};
-
 /**
- * Definition for a single component prop.
- *
- * @typeParam Output - The normalized prop value exposed after validation
- * @typeParam Input - The value accepted by the schema
- *
- * @public
+ * Reported where a prop schema's output is not valid input to the same schema.
+ * @internal
  */
-export type PropDefinition<
-	Output = unknown,
-	Input = Output,
-> = PropDefinitionOptions<Output, Input> &
-	NormalizedOutputSchemaRequirement<Input, Output>;
-
-/** A direct schema that can safely revalidate its normalized output. @internal */
-type DirectPropSchema<Input, Output> = [Output] extends [Input]
-	? StandardSchemaV1<Input, Output>
-	: never;
-
-/** Applies `Omit` independently to each member of a union. @internal */
-type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
-	? Omit<T, K>
-	: never;
+export type SelfAcceptanceError =
+	"ForgeFrame: a prop schema's output must be valid input to the same schema";
 
 /**
  * A prop entry accepted by {@link PropsDefinition}.
@@ -143,35 +106,34 @@ type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
  *
  * @public
  */
-export type PropDefinitionEntry<Output = unknown, Input = Output> =
-	| PropDefinition<Output, Input>
-	| DirectPropSchema<Input, Output>;
+export type PropDefinitionEntry<Output = unknown> =
+	| PropDefinition<Output>
+	| StandardSchemaV1<unknown, Output>;
 
 /**
  * Map of prop names to their definitions.
  *
  * @typeParam P - The normalized props type for the component
- * @typeParam I - Canonical schema input types keyed like the normalized props
+ *
+ * @remarks
+ * Entries are checked against the props they produce. A defaulted or coercing
+ * schema fits without a separate input type. TypeScript cannot check here that
+ * a schema accepts its own output, so the runtime checks it when props are
+ * normalized; `create()` with inferred props also checks it at compile time.
  *
  * @public
  */
-export type PropsDefinition<P, I = P> = {
-	[K in keyof P]?: PropDefinitionEntry<P[K], K extends keyof I ? I[K] : P[K]>;
+export type PropsDefinition<P> = {
+	[K in keyof P]?: PropDefinitionEntry<P[K]>;
 };
 
 /**
  * Prop definitions consumed by the host after values have been normalized.
  *
- * @remarks
- * Host code only observes normalized outputs, but retaining the schema input
- * shape lets TypeScript require an `outputSchema` for type-changing schemas.
- * Use the second type parameter when those inputs differ from `P`.
- *
  * @typeParam P - The normalized props exposed to host code
- * @typeParam I - The corresponding schema input types
  * @public
  */
-export type HostPropsDefinition<P, I = P> = PropsDefinition<P, I>;
+export type HostPropsDefinition<P> = PropsDefinition<P>;
 
 /** Extracts the schema of a direct or wrapped prop-definition entry. @internal */
 type PropDefinitionSchema<D> = D extends StandardSchemaV1
@@ -269,6 +231,10 @@ export type InferSchemaOutput<S extends StandardSchemaV1> = InferOutput<S>;
  *
  * @typeParam S - The Standard Schema type
  *
+ * @remarks
+ * Resolves to {@link SelfAcceptanceError} when `S`'s output is not valid input
+ * to `S`, so no definition can be built from such a schema.
+ *
  * @example
  * ```typescript
  * import { z } from 'zod';
@@ -276,18 +242,16 @@ export type InferSchemaOutput<S extends StandardSchemaV1> = InferOutput<S>;
  * const userSchema = z.object({ name: z.string(), age: z.number() });
  *
  * type UserPropDef = SchemaPropDefinition<typeof userSchema>;
- * // Equivalent to a PropDefinition whose input and output are inferred
- * // independently from userSchema.
+ * // A PropDefinition whose schema is userSchema.
  * ```
  *
  * @public
  */
-export type SchemaPropDefinition<S extends StandardSchemaV1> = DistributiveOmit<
-	PropDefinition<InferOutput<S>, InferInput<S>>,
-	"schema"
-> & {
-	schema: S;
-};
+export type SchemaPropDefinition<S extends StandardSchemaV1> = [
+	InferOutput<S>,
+] extends [InferInput<S>]
+	? Omit<PropDefinition<InferOutput<S>>, "schema"> & { schema: S }
+	: SelfAcceptanceError;
 
 // Re-export StandardSchemaV1 for convenience
 export type { StandardSchemaV1 } from "../props/schema";
