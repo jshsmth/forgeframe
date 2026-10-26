@@ -2,14 +2,19 @@
  * Shared public utility types for ForgeFrame component configuration.
  */
 
+/** One origin string or `RegExp` in an {@link OriginMatcher}. @internal */
+type OriginPattern = string | RegExp;
+
 /**
  * Pattern for matching origins in security configurations.
  *
  * @remarks
  * An origin is a scheme, host and port, such as `https://app.example.com`;
  * a bare host such as `example.com` never matches. Can be a single origin
- * string, a RegExp pattern, or an array of string/RegExp patterns. String
- * patterns support `*` wildcards (for example, `'https://*.example.com'`).
+ * string, a RegExp pattern, or an array of string/RegExp patterns. A string
+ * is an exact origin or `'*'`, which matches any origin; the only wildcard is
+ * a leading `*.` in the host, which stands for one or more labels, as in
+ * `'https://*.example.com'`. Use a `RegExp` for anything else.
  *
  * @example
  * ```typescript
@@ -25,7 +30,6 @@
  *
  * @public
  */
-type OriginPattern = string | RegExp;
 export type OriginMatcher = OriginPattern | OriginPattern[];
 
 /**

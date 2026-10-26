@@ -15,7 +15,7 @@ import {
 	assertIframeAttributeNames,
 	assertSandboxOption,
 } from "../render/iframe-configuration";
-import type { InferPropsInput, InferProps } from "../types/props";
+import type { InferProps, InferPropsInput } from "../types/props";
 import type {
 	Component,
 	ComponentInstance,

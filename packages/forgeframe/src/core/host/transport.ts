@@ -24,7 +24,11 @@ import { getOrigin, waitForWindowFocus } from "../../window/helpers";
 import type { HostBootstrapData } from "../../window/types";
 import { toHandshakeFailure } from "./handshake-failure";
 import { assertPeerInstancesOptions } from "./peer-instances-options";
-import type { HostTransportOptions, HostTransportPropsHandler } from "./types";
+import type {
+	HostTransportOptions,
+	HostTransportPropsHandler,
+	VerifiedMessageSource,
+} from "./types";
 
 /** Longest wait in `focus()` for this window to receive the consumer's focus. */
 const FRAME_FOCUS_WAIT_MS = 500;
@@ -50,18 +54,21 @@ export class HostTransport {
 			getOrigin(),
 			this.options.consumerOrigin,
 		);
-		this.bridge = new FunctionBridge(
-			this.messenger,
-			(source) =>
-				source.window === this.options.consumerWindow &&
-				source.domain === this.options.getConsumerOrigin(),
+		this.bridge = new FunctionBridge(this.messenger, (source) =>
+			this.isConsumerSource(source),
 		);
 		this.peerBridge = new FunctionBridge(
 			this.messenger,
-			(source) =>
-				source.window === this.options.consumerWindow &&
-				source.domain === this.options.getConsumerOrigin(),
+			(source) => this.isConsumerSource(source),
 			MESSAGE_NAME.PEER_CALL,
+		);
+	}
+
+	/** Whether a verified message came from the consumer window at its origin. */
+	private isConsumerSource(source: VerifiedMessageSource): boolean {
+		return (
+			source.window === this.options.consumerWindow &&
+			source.domain === this.options.getConsumerOrigin()
 		);
 	}
 
