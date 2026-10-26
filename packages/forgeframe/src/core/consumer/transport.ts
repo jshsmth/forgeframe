@@ -42,7 +42,7 @@ type VerifiedMessageSource = Parameters<MessageHandler>[1];
  * Callbacks used by transport to map inbound host messages to component behavior.
  * @internal
  */
-export interface ConsumerTransportHandlers<X> {
+export interface ConsumerTransportHandlers<Exports> {
 	onBootstrap: (
 		source: VerifiedMessageSource,
 		resetLocalReferences: boolean,
@@ -54,7 +54,7 @@ export interface ConsumerTransportHandlers<X> {
 	onShow: () => void;
 	onHide: () => void;
 	onError: (error: Error) => void;
-	onExport: (exports: RemoteValue<X>) => void;
+	onExport: (exports: RemoteValue<Exports>) => void;
 	onGetPeers: (
 		request: ConsumerPeerRequest,
 	) => PeerInfo[] | Promise<PeerInfo[]>;
@@ -64,7 +64,10 @@ export interface ConsumerTransportHandlers<X> {
  * Owns consumer transport concerns (messenger, function bridge, trust management, handshake).
  * @internal
  */
-export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
+export class ConsumerTransport<
+	P extends Record<string, unknown>,
+	Exports = unknown,
+> {
 	/** Messenger for host communication. */
 	public messenger: Messenger;
 
@@ -301,7 +304,7 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 	/**
 	 * Sets up host message handlers.
 	 */
-	setupMessageHandlers(handlers: ConsumerTransportHandlers<X>): void {
+	setupMessageHandlers(handlers: ConsumerTransportHandlers<Exports>): void {
 		this.onHostControl<{ sessionId: string }>(
 			MESSAGE_NAME.BOOTSTRAP,
 			async (data, source) => {
@@ -426,7 +429,7 @@ export class ConsumerTransport<P extends Record<string, unknown>, X = unknown> {
 						this.bridge,
 						source.window,
 						source.domain,
-					) as RemoteValue<X>,
+					) as RemoteValue<Exports>,
 				);
 				return { success: true };
 			},

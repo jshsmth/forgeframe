@@ -46,7 +46,7 @@ import {
 	ConsumerPropsPipeline,
 	type ConsumerPropsUpdateHooks,
 } from "./consumer/props-pipeline";
-import { ConsumerRenderer } from "./consumer/renderer";
+import { ConsumerRenderer, type ResizeOutcome } from "./consumer/renderer";
 import { ConsumerTransport } from "./consumer/transport";
 import type { NormalizedOptions } from "./consumer/types";
 import { resolveRenderContext } from "./render-context";
@@ -60,27 +60,27 @@ import { resolveRenderContext } from "./render-context";
  *
  * @typeParam P - The props type passed to the component
  * @typeParam Input - The factory input, inferred from the prop schemas
- * @typeParam X - The exports type that the host can expose to the consumer
+ * @typeParam Exports - The exports type that the host can expose to the consumer
  *
  * @internal
  */
 export class ConsumerComponent<
 	P extends Record<string, unknown>,
 	Input = P,
-	X = unknown,
-> implements ComponentInstance<P, Input, X>
+	Exports = unknown,
+> implements ComponentInstance<P, Input, Exports>
 {
 	/** Subscribe-only view of this instance's lifecycle events. */
-	public readonly event: EventSubscriber<ComponentEvents<P, X>>;
+	public readonly event: EventSubscriber<ComponentEvents<P, Exports>>;
 
 	/**
 	 * Emitter behind {@link ConsumerComponent.event}. A private field, so plain
 	 * JavaScript cannot reach `emit` either.
 	 */
-	readonly #emitter: EventEmitter<ComponentEvents<P, X>>;
+	readonly #emitter: EventEmitter<ComponentEvents<P, Exports>>;
 
 	/** Data exported by the host component. */
-	public exports?: RemoteValue<X>;
+	public exports?: RemoteValue<Exports>;
 
 	/** @internal */
 	private _uid: string;
@@ -100,7 +100,7 @@ export class ConsumerComponent<
 	private cleanup: CleanupManager;
 
 	/** @internal */
-	private transport!: ConsumerTransport<P, X>;
+	private transport!: ConsumerTransport<P, Exports>;
 
 	/** @internal */
 	private renderer!: ConsumerRenderer<P>;
@@ -143,7 +143,7 @@ export class ConsumerComponent<
 		options: ComponentOptions<P>,
 		props?: Input,
 		private untrackInstance?: (
-			instance: ConsumerComponent<P, Input, X>,
+			instance: ConsumerComponent<P, Input, Exports>,
 		) => void,
 	) {
 		this._uid = generateUID();
@@ -416,7 +416,13 @@ export class ConsumerComponent<
 	private resizeForHost(dimensions: Dimensions): void {
 		// Without a host window the renderer resizes only an iframe.
 		const outcome = this.renderer.resize(dimensions, null);
-		if (hostResizeApplied(outcome, this.renderer.context))
+		if (
+			hostResizeApplied(
+				outcome,
+				this.renderer.context,
+				this.transport.isHostConnected(),
+			)
+		)
 			this.emitResize(dimensions);
 	}
 
@@ -819,7 +825,7 @@ export class ConsumerComponent<
 	 * `error`, and rethrows so the host's `export()` rejects.
 	 * @internal
 	 */
-	private acceptExports(exports: RemoteValue<X>): void {
+	private acceptExports(exports: RemoteValue<Exports>): void {
 		try {
 			validateExports(this.options.exportsSchema, exports);
 		} catch (error) {
@@ -896,12 +902,13 @@ export class ConsumerComponent<
 
 /**
  * Whether a host's resize request took effect: a popup host resized its own
- * window, and an iframe only when one was mounted.
+ * window while it is open, and an iframe only when one was mounted.
  * @internal
  */
 function hostResizeApplied(
-	outcome: "resized" | "unmounted" | "denied",
+	outcome: ResizeOutcome,
 	context: ContextType,
+	popupOpen: boolean,
 ): boolean {
-	return outcome === "resized" || context === CONTEXT.POPUP;
+	return outcome === "resized" || (context === CONTEXT.POPUP && popupOpen);
 }

@@ -226,7 +226,7 @@ describe("Origin naming and error codes", () => {
 		);
 	});
 
-	it("rejects host.ready with VALIDATION when a host schema throws instead of returning issues", async () => {
+	it("rejects host.ready and emits error with the same VALIDATION when a host schema throws instead of returning issues", async () => {
 		harness = createIframeIntegrationHarness();
 		const activeHarness = harness;
 		const Component = create({
@@ -255,10 +255,16 @@ describe("Origin naming and error codes", () => {
 			},
 		});
 		if (!host) throw new Error("Expected a host");
-		host.on("error", () => {});
+		const emitted: Error[] = [];
+		host.on("error", (err) => {
+			emitted.push(err);
+		});
 
 		const error = await host.ready.catch((caught: unknown) => caught);
 		expectCode(error, "VALIDATION", "schema exploded");
+		expect((error as Error).cause).toBe(thrown);
+		expect(emitted).toEqual([error]);
+		expect(emitted[0]).toBe(error);
 		await rendering.catch(() => {});
 	});
 

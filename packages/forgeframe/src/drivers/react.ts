@@ -13,6 +13,7 @@ import {
 import type { ContextType } from "../constants";
 import { getComponentOptions } from "../core/component-registry";
 import { ForgeFrameError } from "../errors";
+import { hasOwnDeclaredField } from "../props/definition-checks";
 import type {
 	AnyComponent,
 	ComponentInstance,
@@ -20,6 +21,7 @@ import type {
 	InputOf,
 } from "../types/runtime";
 import {
+	assignRef,
 	callReactCallback,
 	createMountState,
 	isCurrentSyncState,
@@ -179,7 +181,7 @@ function assertReactComponentArguments(
 		);
 	}
 	const reserved = RESERVED_WRAPPER_PROPS.filter((name) =>
-		Object.hasOwn(options.props ?? {}, name),
+		hasOwnDeclaredField(options.props ?? {}, name),
 	);
 	if (reserved.length > 0) {
 		throw new ForgeFrameError(
@@ -265,18 +267,12 @@ function createContainerRef(
 ): ContainerRefCallback {
 	return (node) => {
 		containerRef.current = node;
-		if (typeof ref === "function") {
-			const cleanup: unknown = ref(node);
-			if (node && typeof cleanup === "function") {
-				return () => {
-					containerRef.current = null;
-					cleanup();
-				};
-			}
-		} else if (ref) {
-			ref.current = node;
-		}
-		return undefined;
+		const cleanup = assignRef(ref, node);
+		if (!cleanup) return undefined;
+		return () => {
+			containerRef.current = null;
+			cleanup();
+		};
 	};
 }
 
