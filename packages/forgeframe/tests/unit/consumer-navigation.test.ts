@@ -64,41 +64,34 @@ describe("Consumer navigation admission", () => {
 		},
 	);
 
-	it.each(["lifecycle", "converter"])(
-		"should pin navigation before a %s changes the base",
-		async (mutation) => {
-			const base = setBase("https://host.example/nested/");
-			const consumer = new ConsumerComponent<Record<string, unknown>>(
-				{
-					tag: "pinned-base-navigation",
-					url: () => "widget#checkout?step=2",
-					domain: "https://host.example",
-					props: {
-						order: {
-							schema: prop.string(),
-							trustedDomains: ["https://host.example"],
-							queryParam: ({ value }) => {
-								if (mutation === "converter")
-									base.href = "https://untrusted.example/";
-								return String(value);
-							},
-						},
+	it("should pin navigation before a lifecycle listener changes the base", async () => {
+		const base = setBase("https://host.example/nested/");
+		const consumer = new ConsumerComponent<Record<string, unknown>>(
+			{
+				tag: "pinned-base-navigation",
+				url: () => "widget#checkout?step=2",
+				domain: "https://host.example",
+				props: {
+					order: {
+						schema: prop.string(),
+						deliverTo: ["https://host.example"],
+						queryParam: true,
 					},
 				},
-				{ order: "order-123" },
-			);
-			consumer.event.once("render", () => {
-				if (mutation === "lifecycle") base.href = "https://untrusted.example/";
-			});
-			const { container, internals } = mount(consumer);
-			await consumer.render(container);
-			expect(internals.renderer.iframe.src).toBe(
-				"https://host.example/nested/widget?order=order-123#checkout?step=2",
-			);
-			expect(internals.transport.openedHostDomain).toBe("https://host.example");
-			await expect(
-				consumer.updateProps({ order: "changed-order" }),
-			).rejects.toThrow("not allowed by the configured domain policy");
-		},
-	);
+			},
+			{ order: "order-123" },
+		);
+		consumer.event.once("render", () => {
+			base.href = "https://untrusted.example/";
+		});
+		const { container, internals } = mount(consumer);
+		await consumer.render(container);
+		expect(internals.renderer.iframe.src).toBe(
+			"https://host.example/nested/widget?order=order-123#checkout?step=2",
+		);
+		expect(internals.transport.openedHostDomain).toBe("https://host.example");
+		await expect(
+			consumer.updateProps({ order: "changed-order" }),
+		).rejects.toThrow("not allowed by the configured domain policy");
+	});
 });

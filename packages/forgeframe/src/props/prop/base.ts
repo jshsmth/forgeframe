@@ -315,13 +315,4 @@ export abstract class PropSchema<T, I = T> implements StandardSchemaV1<I, T> {
 		clone._default = this._default;
 		return clone;
 	}
-
-	/** @internal */
-	protected _copyPresenceTo<S extends PropSchema<unknown, unknown>>(
-		clone: S,
-	): S {
-		clone._optional = this._optional;
-		clone._nullable = this._nullable;
-		return clone;
-	}
 }

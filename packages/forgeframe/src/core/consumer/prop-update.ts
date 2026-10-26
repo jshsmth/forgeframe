@@ -23,16 +23,6 @@ export function mergePropPatch(
 	return next;
 }
 
-/** Invalidates validation evidence only for keys present in this patch. @internal */
-export function invalidatePatchedKeys(
-	previous: ReadonlySet<string>,
-	patch: Record<string, unknown>,
-): Set<string> {
-	const next = new Set(previous);
-	for (const key of Object.keys(patch)) next.delete(key);
-	return next;
-}
-
 /** Selects defined own inputs for schema revalidation. @internal */
 export function definedInputKeys(
 	props: Record<string, unknown>,
@@ -43,12 +33,4 @@ export function definedInputKeys(
 			(key) => Object.hasOwn(props, key) && props[key] !== undefined,
 		),
 	);
-}
-
-/** Adds newly established schema evidence to the candidate snapshot. @internal */
-export function recordValidatedKeys(
-	target: Set<string>,
-	keys: ReadonlySet<string>,
-): void {
-	for (const key of keys) target.add(key);
 }

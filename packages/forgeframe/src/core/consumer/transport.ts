@@ -221,12 +221,10 @@ export class ConsumerTransport<
 		}
 
 		const hostDomain = this.getHostDomain();
-		const propsForHost = getPropsForHost(
-			nextProps,
-			propDefinitions,
-			hostDomain,
-			isSameDomain(this.hostWindow),
-		);
+		const propsForHost = getPropsForHost(nextProps, propDefinitions, {
+			hostOrigin: hostDomain,
+			sameOrigin: isSameDomain(this.hostWindow),
+		});
 		const serialized = this.serializePropsForHost(
 			propsForHost as Record<string, unknown>,
 			{ finishBatch: false },

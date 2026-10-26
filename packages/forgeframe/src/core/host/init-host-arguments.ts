@@ -9,7 +9,7 @@
  * names the v2 call shape.
  */
 
-import { assertNoRemovedPropOptions } from "../../props/removed-options";
+import { assertPropDefinitions } from "../../props/definition-checks";
 import type { HostPropsDefinition } from "../../types/props";
 import type { ForgeFrameComponent } from "../../types/runtime";
 import type { DomainMatcher } from "../../types/utility";
@@ -115,7 +115,7 @@ function readInitHostOptions(
 			);
 		}
 		assertNoReservedPropDefinitions(props);
-		assertNoRemovedPropOptions(props);
+		assertPropDefinitions(props);
 	}
 	return {
 		consumerOrigins: consumerOrigins as DomainMatcher,

@@ -18,7 +18,7 @@ it("validates required consumer-only inputs locally while shared host definition
 	const harness = createIframeIntegrationHarness();
 	try {
 		const definitions = {
-			local: { schema: prop.string(), required: true, sendToHost: false },
+			local: { schema: prop.string(), sendToHost: false },
 			title: prop.string(),
 		};
 		const Component = create({
@@ -40,7 +40,7 @@ it("validates required consumer-only inputs locally while shared host definition
 		expect(hostProps.title).toBe("updated");
 		expect(Object.hasOwn(hostProps, "local")).toBe(false);
 		await expect(instance.updateProps({ local: undefined })).rejects.toThrow(
-			/required/,
+			"Validation failed: local: Required",
 		);
 		expect(hostProps.title).toBe("updated");
 	} finally {
@@ -74,12 +74,12 @@ type OptionalTransformOutputSyncInput = {
 };
 
 const SYNC_PROP_DEFINITIONS: PropsDefinition<SyncProps> = {
-	title: { schema: prop.string(), required: true },
+	title: { schema: prop.string() },
 	optionalNote: { schema: prop.string().optional() },
 };
 
 const DATE_SYNC_PROP_DEFINITIONS: PropsDefinition<DateSyncProps> = {
-	publishedAt: { schema: prop.date(), required: true },
+	publishedAt: { schema: prop.date() },
 };
 
 const TRANSFORMED_SYNC_PROP_DEFINITIONS: PropsDefinition<
@@ -89,7 +89,6 @@ const TRANSFORMED_SYNC_PROP_DEFINITIONS: PropsDefinition<
 	amount: {
 		schema: z.string().transform(Number),
 		outputSchema: z.number(),
-		required: true,
 	},
 };
 
@@ -102,7 +101,6 @@ const OPTIONAL_TRANSFORM_OUTPUT_SYNC_PROP_DEFINITIONS: PropsDefinition<
 			.string()
 			.transform((value) => (value === "empty" ? undefined : Number(value))),
 		outputSchema: z.number().optional(),
-		required: true,
 	},
 };
 
@@ -162,17 +160,12 @@ describe("Props sync integration", () => {
 				extra: prop.string(),
 			},
 		});
-		const localValidator = vi.fn(() => {
+		const localSchema = z.string().refine(() => {
 			throw new Error("Consumer-only validation must stay local");
 		});
 		const definitions = {
 			title: prop.string(),
-			local: {
-				schema: prop.string(),
-				required: true,
-				sendToHost: false,
-				validate: localValidator,
-			},
+			local: { schema: localSchema, sendToHost: false },
 			constructor: { schema: prop.string(), sendToHost: false },
 		};
 		const instance = Component({
@@ -215,7 +208,6 @@ describe("Props sync integration", () => {
 		for (const key of ["local", "constructor"]) {
 			expect(Object.hasOwn(hostProps, key)).toBe(false);
 		}
-		expect(localValidator).not.toHaveBeenCalled();
 	});
 
 	it("preserves host snapshots on host-side rejection and continues the queued update", async () => {
@@ -418,10 +410,13 @@ describe("Props sync integration", () => {
 		const definitions = {
 			title: prop.string(),
 			local: { schema: prop.string().optional(), sendToHost: false },
-			sameOrigin: { schema: prop.string().optional(), sameDomain: true },
+			sameOrigin: {
+				schema: prop.string().optional(),
+				deliverTo: "same-origin",
+			},
 			restricted: {
 				schema: prop.string().optional(),
-				trustedDomains: ["https://other.example.com"],
+				deliverTo: ["https://other.example.com"],
 			},
 		};
 		const validate = vi.fn();
@@ -701,7 +696,7 @@ describe("Props sync integration", () => {
 		document.body.appendChild(container);
 
 		const definitions = {
-			details: prop.object().shape({
+			details: prop.object({
 				note: prop.string().optional(),
 			}),
 		};

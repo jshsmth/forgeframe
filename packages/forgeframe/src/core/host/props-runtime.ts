@@ -8,13 +8,16 @@
  */
 
 import { EVENT } from "../../constants";
-import { isStandardSchema } from "../../props";
-import { validateNormalizedProps } from "../../props/normalize";
+import {
+	getDeliveredPropDefinitions,
+	validateNormalizedProps,
+} from "../../props/normalize";
 import { deserializeProps } from "../../props/serialize";
 import type { SerializedProps } from "../../props/types";
 import type { HostPropsDefinition } from "../../types/props";
 import type { HostProps, RemoteValue } from "../../types/runtime";
 import { normalizeError } from "../../utils/error";
+import { getDomain } from "../../window/helpers";
 import type { HostBootstrapData } from "../../window/types";
 import { HOST_PROPS_BUILTIN_KEYS } from "./builtin-keys";
 import type { HostPropsRuntimeOptions } from "./types";
@@ -50,6 +53,8 @@ export class HostPropsRuntime<
 	>();
 	private initialized = false;
 	private pendingBootstrapProps: SerializedProps | null = null;
+	/** This host's own origin, read once when the host starts. */
+	private readonly hostOrigin = getDomain();
 
 	constructor(
 		private readonly propDefinitions: HostPropsDefinition<P, SchemaInputs>,
@@ -212,7 +217,7 @@ export class HostPropsRuntime<
 		) as RemoteValue<P>;
 	}
 
-	/** Filters a wire snapshot against the host's delivery definitions. */
+	/** Discards fields for defined props this host does not expect. */
 	private filterConsumerOnlyProps<T extends Record<string, unknown>>(
 		props: T,
 	): T {
@@ -228,16 +233,19 @@ export class HostPropsRuntime<
 			: (Object.fromEntries(deliveredEntries) as T);
 	}
 
-	/** Consumer-only definitions validate local input and are excluded from received snapshots. */
+	/**
+	 * Selects the props this host expects: consumer-only props and props whose
+	 * `deliverTo` excludes this host are never delivered, so they are neither
+	 * required nor accepted.
+	 */
 	private getDeliveredPropDefinitions(): HostPropsDefinition<P, SchemaInputs> {
-		return Object.fromEntries(
-			Object.entries(this.propDefinitions).filter(
-				([, definition]) =>
-					!definition ||
-					isStandardSchema(definition) ||
-					definition.sendToHost !== false,
-			),
-		) as HostPropsDefinition<P, SchemaInputs>;
+		const { hostOrigin } = this;
+		return getDeliveredPropDefinitions(this.propDefinitions, {
+			hostOrigin,
+			sameOrigin:
+				hostOrigin !== "null" &&
+				this.options.getConsumerDomain() === hostOrigin,
+		});
 	}
 
 	private removeStaleHostProps(

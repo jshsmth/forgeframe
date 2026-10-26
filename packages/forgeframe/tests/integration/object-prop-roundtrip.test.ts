@@ -24,7 +24,9 @@ describe("Ordinary object prop round trips", () => {
 				return undefined;
 			}
 		}
-		const definitions = { record: prop.object().optional() };
+		const definitions = {
+			record: prop.any<Record<string, unknown>>().optional(),
+		};
 		const Component = create({
 			tag: "omitted-encoded-root",
 			url: "https://host.example.com/widget",
@@ -66,7 +68,7 @@ describe("Ordinary object prop round trips", () => {
 			const container = document.createElement("div");
 			document.body.append(container);
 			const definitions = {
-				record: prop.object<Record<string, unknown>>(),
+				record: prop.any<Record<string, unknown>>(),
 			};
 			const Component = create({
 				tag: "symbol-marker-record",
@@ -141,7 +143,7 @@ describe("Ordinary object prop round trips", () => {
 		const container = document.createElement("div");
 		document.body.append(container);
 		const definitions = {
-			record: prop.object<Record<string, unknown>>(),
+			record: prop.any<Record<string, unknown>>(),
 		};
 		const Component = create({
 			tag: "ordinary-object-roundtrip",
@@ -190,7 +192,7 @@ describe("Ordinary object prop round trips", () => {
 			harness = createIframeIntegrationHarness();
 			const container = document.createElement("div");
 			document.body.append(container);
-			const definitions = { record: prop.object<Record<string, unknown>>() };
+			const definitions = { record: prop.any<Record<string, unknown>>() };
 			const Component = create({
 				tag: "raw-json-marker-record",
 				url: "https://host.example.com/widget",
@@ -270,7 +272,7 @@ describe("Ordinary object prop round trips", () => {
 					return record;
 				};
 				const definitions = {
-					record: prop.object<Record<string, unknown>>(),
+					record: prop.any<Record<string, unknown>>(),
 				};
 				const Component = create({
 					tag: "encoded-marker-record",
@@ -397,7 +399,7 @@ describe("JSON encoder conversion", () => {
 		harness = createIframeIntegrationHarness();
 		const container = document.createElement("div");
 		document.body.append(container);
-		const definitions = { payload: prop.object<Record<string, unknown>>() };
+		const definitions = { payload: prop.any<Record<string, unknown>>() };
 		const Component = create({
 			tag: "ordinary-record-coercion",
 			url: "https://host.example.com/widget",

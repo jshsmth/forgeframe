@@ -5,7 +5,7 @@
  */
 import { runInNewContext } from "node:vm";
 import { describe, expect, it, vi } from "vitest";
-import { validateProps } from "@/props/normalize";
+import { normalizeProps } from "@/props/normalize";
 import { prop } from "@/props/prop";
 import {
 	isStandardSchema,
@@ -233,8 +233,7 @@ describe("validateWithSchema", () => {
 		vi.spyOn(nestedSchema["~standard"], "validate").mockReturnValue(result);
 		expect(() =>
 			prop
-				.object()
-				.shape({ name: nestedSchema })
+				.object({ name: nestedSchema })
 				["~standard"].validate({ name: "input" }),
 		).toThrow("Async schema validation is not supported");
 	});
@@ -262,7 +261,7 @@ describe("validateWithSchema", () => {
 				.mockImplementation(rejected);
 			try {
 				expect(() =>
-					prop.object().shape({ name: nested })["~standard"].validate({
+					prop.object({ name: nested })["~standard"].validate({
 						name: "input",
 					}),
 				).toThrow("Async schema validation is not supported");
@@ -276,10 +275,23 @@ describe("validateWithSchema", () => {
 });
 
 // ============================================================================
-// validateProps with Schema Integration Tests
+// normalizeProps with Schema Integration Tests
 // ============================================================================
 
-describe("validateProps with schema", () => {
+/** Normalizes `props` in place, as the consumer does for a component's inputs. */
+function validateProps<P extends Record<string, unknown>, I = P>(
+	props: P,
+	definitions: PropsDefinition<P, I>,
+): void;
+function validateProps(props: object, definitions: object): void;
+function validateProps(props: object, definitions: object): void {
+	Object.assign(
+		props,
+		normalizeProps(props as Record<string, unknown>, definitions),
+	);
+}
+
+describe("normalizeProps with schema", () => {
 	it("should validate using schema instead of type", () => {
 		const schema = createMockSchema<string>((v) => {
 			if (typeof v === "string" && v.includes("@")) {
@@ -319,44 +331,27 @@ describe("validateProps with schema", () => {
 		expect(props.name).toBe("uppercase");
 	});
 
-	it("should run custom validate after schema", () => {
-		const customValidate = vi.fn();
-		const schema = createMockSchema<string>((v) => ({
-			value: String(v).trim(),
-		}));
-
-		const definitions: PropsDefinition<{ name: string }, { name?: unknown }> = {
-			name: {
-				schema,
-				validate: customValidate,
-			},
-		};
-
-		validateProps({ name: "  test  " }, definitions);
-
-		// Custom validate should receive the transformed value
-		expect(customValidate).toHaveBeenCalledWith({
-			value: "test", // Trimmed by schema
-			props: expect.objectContaining({ name: "test" }),
-		});
-	});
-
-	it("should check required before schema validation", () => {
-		const schema = createMockSchema<string>((v) => ({ value: String(v) }));
-
-		const definitions: PropsDefinition<{ name: string }, { name?: unknown }> = {
-			name: { schema, required: true },
-		};
+	it("should require a prop exactly when its schema rejects undefined", () => {
+		const required = createMockSchema<string>((v) =>
+			v === undefined
+				? { issues: [{ message: "Required" }] }
+				: { value: String(v) },
+		);
+		const lenient = createMockSchema<string>((v) => ({ value: String(v) }));
 
 		expect(() =>
-			validateProps(
-				{ name: undefined } as unknown as { name: string },
-				definitions,
-			),
-		).toThrow('Prop "name" is required');
+			validateProps({ name: undefined } as unknown as { name: string }, {
+				name: { schema: required },
+			}),
+		).toThrow("Validation failed: name: Required");
+		expect(() =>
+			validateProps({ name: undefined } as unknown as { name: string }, {
+				name: { schema: lenient },
+			}),
+		).not.toThrow();
 	});
 
-	it("should skip schema validation for undefined non-required props", () => {
+	it("should run the schema for an omitted prop", () => {
 		const validateFn = vi.fn(() => ({ value: "test" }));
 		const schema: StandardSchemaV1<unknown, string> = {
 			"~standard": {
@@ -371,8 +366,10 @@ describe("validateProps with schema", () => {
 				name: { schema },
 			};
 
-		validateProps({} as { name?: string }, definitions);
-		expect(validateFn).not.toHaveBeenCalled();
+		const props = {} as { name?: string };
+		validateProps(props, definitions);
+		expect(validateFn).toHaveBeenCalledWith(undefined);
+		expect(props.name).toBe("test");
 	});
 
 	it("should handle schema that transforms values", () => {
@@ -383,7 +380,12 @@ describe("validateProps with schema", () => {
 
 		const definitions: PropsDefinition<{ value: string }, { value?: unknown }> =
 			{
-				value: { schema },
+				value: {
+					schema,
+					outputSchema: createMockSchema<string>((v) => ({
+						value: String(v),
+					})) as StandardSchemaV1<string, string>,
+				},
 			};
 
 		// Pass a number - schema transforms it to string
@@ -416,31 +418,9 @@ describe("prop schema API", () => {
 		).toThrow("Expected string");
 	});
 
-	it("should work with custom validate function alongside schema", () => {
-		const definitions: PropsDefinition<{ email: string }, { email?: unknown }> =
-			{
-				email: {
-					schema: prop.string(),
-					validate: ({ value }) => {
-						if (!value.includes("@")) {
-							throw new Error("Invalid email format");
-						}
-					},
-				},
-			};
-
-		expect(() =>
-			validateProps({ email: "user@example.com" }, definitions),
-		).not.toThrow();
-
-		expect(() => validateProps({ email: "invalid" }, definitions)).toThrow(
-			"Invalid email format",
-		);
-	});
-
 	it("should work with required validation", () => {
 		const definitions: PropsDefinition<{ name: string }, { name?: unknown }> = {
-			name: { schema: prop.string(), required: true },
+			name: { schema: prop.string() },
 		};
 
 		expect(() =>
@@ -448,7 +428,7 @@ describe("prop schema API", () => {
 				{ name: undefined } as unknown as { name: string },
 				definitions,
 			),
-		).toThrow("required");
+		).toThrow("Validation failed: name: Required");
 	});
 
 	it("should allow mixing custom schema and prop schemas", () => {

@@ -2,8 +2,9 @@
  * Compile-time assertions for schema-backed component definitions.
  *
  * Covers inferred and explicit props, third-party Standard Schemas, wrapped
- * definitions, optional/default values, callbacks, read-only instance
- * tracking, and the removed zoid-era APIs.
+ * definitions whose presence and defaults come from their schemas, the removed
+ * prop options, callbacks, read-only instance tracking, and the removed
+ * zoid-era APIs.
  */
 import * as v from "valibot";
 import { z } from "zod";
@@ -21,9 +22,6 @@ import {
 	type SchemaPropDefinition,
 	withReactComponent,
 } from "../../src";
-
-declare const maybeDefault: string | undefined;
-declare const optionalComputedValue: (() => string) | undefined;
 
 const InferredComponent = create({
 	tag: "inferred-component",
@@ -97,11 +95,10 @@ interface ExplicitExports {
 declare const ExplicitlyRequiredFactory: ForgeFrameComponent<
 	{ label: string },
 	unknown,
-	{ label: string },
 	true
 >;
 void ExplicitlyRequiredFactory({ label: "ready" });
-// @ts-expect-error the existing fourth generic still makes the props argument required
+// @ts-expect-error the third generic still makes the props argument required
 void ExplicitlyRequiredFactory();
 
 const ExplicitComponent = create<ExplicitProps, ExplicitExports>({
@@ -131,7 +128,6 @@ create<ExplicitDefinedOutputProps>({
 		label: {
 			// @ts-expect-error explicit normalized props must include every schema output
 			schema: z.string().transform(() => undefined),
-			required: true,
 		},
 	},
 });
@@ -145,13 +141,11 @@ const ExternalSchemaComponent = create({
 		transformedValue: {
 			schema: z.string().transform(Number),
 			outputSchema: z.number(),
-			required: true,
 		},
 		defaultedValue: z.string().default("fallback"),
 		wrappedValue: {
 			schema: z.number(),
-			required: true,
-			sameDomain: true,
+			deliverTo: "same-origin",
 		},
 		wrappedTransformedValue: {
 			schema: z.string().transform((value) => value.length),
@@ -199,112 +193,54 @@ void transformedHostValue;
 void defaultedHostValue;
 void wrappedTransformedHostValue;
 
-const dynamicRequired = true as boolean;
-
-const WrappedOptionalityComponent = create({
-	tag: "wrapped-optionality-component",
+const WrappedPresenceComponent = create({
+	tag: "wrapped-presence-component",
 	url: (props) => {
-		const optionalTransportValue: string | undefined = props.transportOnly;
-		const dynamicRequiredValue: string | undefined =
-			props.dynamicRequiredWrapper;
-		const maybeDefaultValue: string | undefined = props.maybeDefaultWrapper;
-		const optionalComputedResult: string | undefined =
-			props.optionalComputedWrapper;
-		const requiredOptionalSchemaValue: string | undefined =
-			props.requiredOptionalSchema;
-		void optionalTransportValue;
-		void dynamicRequiredValue;
-		void maybeDefaultValue;
-		void optionalComputedResult;
-		return `https://example.com/wrapped-optionality/${requiredOptionalSchemaValue}`;
+		const requiredValue: string = props.requiredWrapper;
+		const optionalValue: string | undefined = props.optionalWrapper;
+		const defaultedValue: string = props.defaultedWrapper;
+		void optionalValue;
+		return `https://example.com/wrapped-presence/${requiredValue}/${defaultedValue}`;
 	},
 	props: {
-		transportOnly: {
+		requiredWrapper: {
 			schema: prop.string(),
-			sameDomain: true,
+			queryParam: true,
 		},
-		dynamicRequiredWrapper: {
-			schema: prop.string(),
-			required: dynamicRequired,
-		},
-		maybeDefaultWrapper: {
-			schema: prop.string(),
-			default: maybeDefault,
-		},
-		optionalComputedWrapper: {
-			schema: prop.string(),
-			value: optionalComputedValue,
-		},
-		requiredOptionalSchema: {
+		optionalWrapper: {
 			schema: prop.string().optional(),
-			required: true,
+			deliverTo: "same-origin",
 		},
 		defaultedWrapper: {
-			schema: prop.string(),
-			required: true,
-			default: "fallback",
-		},
-		computedWrapper: {
-			schema: prop.string(),
-			required: true,
-			value: () => "computed",
+			schema: z.string().default("fallback"),
+			bodyParam: "defaulted",
 		},
 	},
 });
 
-void WrappedOptionalityComponent({
-	requiredOptionalSchema: "required",
-});
+void WrappedPresenceComponent({ requiredWrapper: "required" });
 
-const wrappedOptionalityHost = initHost(WrappedOptionalityComponent, {
+const wrappedPresenceHost = initHost(WrappedPresenceComponent, {
 	consumerOrigins: "*",
 });
-if (wrappedOptionalityHost) {
-	const hostProps = wrappedOptionalityHost.hostProps;
-	const optionalTransportValue: string | undefined = hostProps.transportOnly;
-	const dynamicRequiredValue: string | undefined =
-		hostProps.dynamicRequiredWrapper;
-	const maybeDefaultValue: string | undefined = hostProps.maybeDefaultWrapper;
-	const optionalComputedResult: string | undefined =
-		hostProps.optionalComputedWrapper;
-	const requiredOptionalSchemaValue: string | undefined =
-		hostProps.requiredOptionalSchema;
-	const defaultedWrapperValue: string = hostProps.defaultedWrapper;
-	const computedWrapperValue: string = hostProps.computedWrapper;
-	void optionalTransportValue;
-	void dynamicRequiredValue;
-	void maybeDefaultValue;
-	void optionalComputedResult;
-	void requiredOptionalSchemaValue;
-	void defaultedWrapperValue;
-	void computedWrapperValue;
+if (wrappedPresenceHost) {
+	const hostProps = wrappedPresenceHost.hostProps;
+	const requiredValue: string = hostProps.requiredWrapper;
+	const optionalValue: string | undefined = hostProps.optionalWrapper;
+	const defaultedValue: string = hostProps.defaultedWrapper;
+	void requiredValue;
+	void optionalValue;
+	void defaultedValue;
 }
 
-// @ts-expect-error wrapped required metadata overrides optional schema input
-void WrappedOptionalityComponent({});
+// @ts-expect-error a wrapped prop is required when its schema rejects undefined
+void WrappedPresenceComponent({});
 
-// @ts-expect-error wrapped required metadata rejects an explicit undefined value
-void WrappedOptionalityComponent({ requiredOptionalSchema: undefined });
-
-const WrappedSchemaDefaultComponent = create({
-	tag: "wrapped-schema-default-component",
-	url: (props) => {
-		const defaultedValue: string = props.defaultedValue;
-		return `https://example.com/wrapped-schema-default/${defaultedValue}`;
-	},
-	props: {
-		defaultedValue: {
-			schema: z.string().default("fallback"),
-			required: true,
-			sameDomain: true,
-		},
-	},
-});
-
-void WrappedSchemaDefaultComponent({});
+// @ts-expect-error a required wrapped prop rejects an explicit undefined value
+void WrappedPresenceComponent({ requiredWrapper: undefined });
 
 const removedSerializationDefinition: PropDefinition = {
-	schema: prop.object(),
+	schema: prop.any<Record<string, unknown>>(),
 	// @ts-expect-error typed prop definitions reject the removed serialization option
 	serialization: "dotify",
 };
@@ -315,7 +251,7 @@ void create<{ profile: Record<string, unknown> }>({
 	url: "https://example.com/removed-serialization",
 	props: {
 		profile: {
-			schema: prop.object(),
+			schema: prop.any<Record<string, unknown>>(),
 			// @ts-expect-error explicit-generic definitions reject the removed serialization option
 			serialization: "json",
 		},
@@ -324,34 +260,45 @@ void create<{ profile: Record<string, unknown> }>({
 // The inferred create() overload captures a literal's extra keys, so it does
 // not report serialization at compile time; create() rejects it at runtime.
 
-const ContextualCallbacksComponent = create({
-	tag: "contextual-callbacks-component",
-	url: "https://example.com/contextual-callbacks",
-	props: {
-		amount: {
-			schema: z.string().transform(Number),
-			outputSchema: z.number(),
-			required: true,
-			value: (context) => {
-				const amount: number | undefined = context.props.amount;
-				void amount;
-				return "1";
-			},
-			validate: ({ value, props }) => {
-				const amount: number | undefined = value;
-				const propAmount: number | undefined = props.amount;
-				void amount;
-				void propAmount;
-			},
-			decorate: ({ value }) => value + 1,
-			hostDecorate: ({ value }) => value + 1,
-			queryParam: ({ value }) => value.toFixed(0),
-			bodyParam: ({ value }) => value.toFixed(0),
-		},
-	},
-});
+const removedPropOptions: PropDefinition<string>[] = [
+	// @ts-expect-error required was removed; the schema decides presence
+	{ schema: prop.string(), required: true },
+	// @ts-expect-error default was removed; use the schema's .default()
+	{ schema: prop.string(), default: "fallback" },
+	// @ts-expect-error value was removed; compute the value before passing it
+	{ schema: prop.string(), value: () => "computed" },
+	// @ts-expect-error decorate was removed; use a schema transform
+	{ schema: prop.string(), decorate: ({ value }) => value },
+	// @ts-expect-error hostDecorate was removed; transform on the host
+	{ schema: prop.string(), hostDecorate: ({ value }) => value },
+	// @ts-expect-error validate was removed; use a schema refinement
+	{ schema: prop.string(), validate: () => undefined },
+	// @ts-expect-error alias was removed; rename inputs before the factory call
+	{ schema: prop.string(), alias: "legacyLabel" },
+	// @ts-expect-error sameDomain was replaced by deliverTo: 'same-origin'
+	{ schema: prop.string(), sameDomain: true },
+	// @ts-expect-error trustedDomains was replaced by deliverTo
+	{ schema: prop.string(), trustedDomains: ["https://a.example"] },
+	// @ts-expect-error a wrapped definition needs a schema
+	{ queryParam: true },
+	// @ts-expect-error queryParam no longer accepts an encoder function
+	{ schema: prop.string(), queryParam: ({ value }) => value },
+	// @ts-expect-error bodyParam no longer accepts an encoder function
+	{ schema: prop.string(), bodyParam: ({ value }) => value },
+	// @ts-expect-error deliverTo takes 'same-origin' or an origin matcher
+	{ schema: prop.string(), deliverTo: 42 },
+];
+void removedPropOptions;
 
-void ContextualCallbacksComponent({ amount: "1" });
+const deliveryDefinitions: PropDefinition<string>[] = [
+	{ schema: prop.string(), deliverTo: "same-origin" },
+	{ schema: prop.string(), deliverTo: "https://pay.example.com" },
+	{ schema: prop.string(), deliverTo: /^https:\/\/pay\.example\.com$/ },
+	{ schema: prop.string(), deliverTo: ["https://a.example", /b/] },
+	{ schema: prop.string(), queryParam: true, bodyParam: "label" },
+	{ schema: prop.string(), queryParam: false, bodyParam: false },
+];
+void deliveryDefinitions;
 
 const transformedFallbackSchema = z.string().transform(Number);
 
@@ -384,11 +331,7 @@ void missingConsumerOnlyOutputSchemaDefinition;
 const transformedFallbackDefinition = {
 	schema: transformedFallbackSchema,
 	outputSchema: z.number(),
-	default: "1",
-	validate: ({ value }) => {
-		const amount: number = value;
-		void amount;
-	},
+	queryParam: true,
 } satisfies SchemaPropDefinition<typeof transformedFallbackSchema>;
 void transformedFallbackDefinition;
 
@@ -398,14 +341,6 @@ const invalidOutputSchemaDefinition = {
 	outputSchema: z.string(),
 } satisfies SchemaPropDefinition<typeof transformedFallbackSchema>;
 void invalidOutputSchemaDefinition;
-
-const invalidTransformedFallbackDefinition = {
-	schema: transformedFallbackSchema,
-	outputSchema: z.number(),
-	// @ts-expect-error explicit defaults are schema inputs, not normalized outputs
-	default: 1,
-} satisfies SchemaPropDefinition<typeof transformedFallbackSchema>;
-void invalidTransformedFallbackDefinition;
 
 type ExplicitTransformProps = {
 	amount: number;
@@ -426,11 +361,6 @@ const ExplicitTransformComponent = create<
 		amount: {
 			schema: transformedFallbackSchema,
 			outputSchema: z.number(),
-			default: "1",
-			validate: ({ value }) => {
-				const amount: number = value;
-				void amount;
-			},
 		},
 	},
 });
@@ -441,7 +371,6 @@ const hostTransformDefinitions = {
 	amount: {
 		schema: transformedFallbackSchema,
 		outputSchema: z.number(),
-		required: true,
 	},
 } satisfies HostPropsDefinition<ExplicitTransformProps, ExplicitTransformInput>;
 
@@ -450,7 +379,6 @@ const invalidHostTransformDefinitions: HostPropsDefinition<ExplicitTransformProp
 		amount: {
 			// @ts-expect-error host definitions need an output schema for type-changing inputs
 			schema: transformedFallbackSchema,
-			required: true,
 		},
 	};
 void invalidHostTransformDefinitions;
@@ -462,13 +390,12 @@ const missingHostOutputSchema: HostPropsDefinition<
 	// @ts-expect-error type-changing host definitions require outputSchema
 	amount: {
 		schema: transformedFallbackSchema,
-		required: true,
 	},
 };
 void missingHostOutputSchema;
 
 const outputCompatibleHostDefinitions = {
-	label: { schema: z.string(), required: true },
+	label: { schema: z.string() },
 } satisfies HostPropsDefinition<{ label: string }>;
 void outputCompatibleHostDefinitions;
 
@@ -480,148 +407,92 @@ const hostTransformAmount: number | undefined =
 	typedTransformHost?.hostProps.amount;
 void hostTransformAmount;
 
-const invalidExplicitTransformOptions: ComponentOptions<
+const explicitTransformInstance = ExplicitTransformComponent({ amount: "2" });
+const explicitlyTypedTransformComponent: ForgeFrameComponent<
+	ExplicitTransformProps,
+	unknown,
+	false,
+	ExplicitTransformInput
+> = ExplicitTransformComponent;
+const explicitlyTypedTransformInstance: ForgeFrameComponentInstance<
+	ExplicitTransformProps,
+	unknown,
+	ExplicitTransformInput
+> = explicitTransformInstance;
+void explicitlyTypedTransformComponent({ amount: "2" });
+void explicitlyTypedTransformInstance.updateProps({ amount: "3" });
+void explicitTransformInstance.updateProps({ amount: "3" });
+void ExplicitTransformComponent.instances[0]?.updateProps({ amount: "3" });
+
+const explicitTransformOptions: ComponentOptions<
 	ExplicitTransformProps,
 	ExplicitTransformInput
 > = {
-	tag: "invalid-explicit-transform-fallback-component",
-	url: "https://example.com/invalid-explicit-transform-fallback",
+	tag: "explicit-transform-options-component",
+	url: "https://example.com/explicit-transform-options",
 	props: {
-		amount: {
-			schema: transformedFallbackSchema,
-			outputSchema: z.number(),
-			// @ts-expect-error explicit fallback values use the configured input shape
-			default: 1,
-		},
+		amount: { schema: transformedFallbackSchema, outputSchema: z.number() },
 	},
 };
-void invalidExplicitTransformOptions;
+void explicitTransformOptions;
 
-type LegacyTransformInput = {
-	legacyAmount: string;
-};
-
-type CanonicalTransformSchemaInputs = {
-	amount: string;
-};
-
-const AliasedTransformComponent = create<
-	ExplicitTransformProps,
-	unknown,
-	LegacyTransformInput,
-	CanonicalTransformSchemaInputs
->({
-	tag: "aliased-transform-component",
-	url: "https://example.com/aliased-transform",
-	props: {
-		amount: {
-			schema: transformedFallbackSchema,
-			outputSchema: z.number(),
-			alias: "legacyAmount",
-			required: true,
-		},
-	},
-});
-
-const aliasedTransformInstance = AliasedTransformComponent({ amount: "2" });
-const explicitlyTypedAliasedTransformComponent: ForgeFrameComponent<
-	ExplicitTransformProps,
-	unknown,
-	LegacyTransformInput,
-	false,
-	CanonicalTransformSchemaInputs
-> = AliasedTransformComponent;
-const explicitlyTypedAliasedTransformInstance: ForgeFrameComponentInstance<
-	ExplicitTransformProps,
-	unknown,
-	LegacyTransformInput,
-	CanonicalTransformSchemaInputs
-> = aliasedTransformInstance;
-void AliasedTransformComponent({ legacyAmount: "2" });
-void explicitlyTypedAliasedTransformComponent({ amount: "2" });
-void explicitlyTypedAliasedTransformInstance.updateProps({ amount: "3" });
-void aliasedTransformInstance.updateProps({ amount: "3" });
-void aliasedTransformInstance.updateProps({ legacyAmount: "3" });
-void AliasedTransformComponent({ amount: "2" }).updateProps({ amount: "3" });
-void AliasedTransformComponent.instances[0]?.updateProps({ amount: "3" });
-
-const AliasedTransformReactComponent = createReactComponent(
-	AliasedTransformComponent,
+const ExplicitTransformReactComponent = createReactComponent(
+	ExplicitTransformComponent,
 	{ React: {} as never },
 );
-void AliasedTransformReactComponent({ amount: "4" });
-void AliasedTransformReactComponent({ legacyAmount: "4" });
+void ExplicitTransformReactComponent({ amount: "4" });
 
-const ExplicitGenericAliasedTransformReactComponent = createReactComponent<
+const ExplicitGenericTransformReactComponent = createReactComponent<
 	ExplicitTransformProps,
 	unknown,
 	unknown,
-	LegacyTransformInput,
 	false,
-	CanonicalTransformSchemaInputs
->(AliasedTransformComponent, { React: {} as never });
-void ExplicitGenericAliasedTransformReactComponent({ amount: "4" });
+	ExplicitTransformInput
+>(ExplicitTransformComponent, { React: {} as never });
+void ExplicitGenericTransformReactComponent({ amount: "4" });
 
 const createBoundReactComponent = withReactComponent({} as never);
-const BoundAliasedTransformReactComponent = createBoundReactComponent(
-	AliasedTransformComponent,
+const BoundTransformReactComponent = createBoundReactComponent(
+	ExplicitTransformComponent,
 );
-const ExplicitGenericBoundAliasedTransformReactComponent =
-	createBoundReactComponent<
-		ExplicitTransformProps,
-		unknown,
-		LegacyTransformInput,
-		false,
-		CanonicalTransformSchemaInputs
-	>(AliasedTransformComponent);
-void BoundAliasedTransformReactComponent({ amount: "4" });
-void BoundAliasedTransformReactComponent({ legacyAmount: "4" });
-void ExplicitGenericBoundAliasedTransformReactComponent({ amount: "4" });
+const ExplicitGenericBoundTransformReactComponent = createBoundReactComponent<
+	ExplicitTransformProps,
+	unknown,
+	false,
+	ExplicitTransformInput
+>(ExplicitTransformComponent);
+void BoundTransformReactComponent({ amount: "4" });
+void ExplicitGenericBoundTransformReactComponent({ amount: "4" });
 
 // @ts-expect-error normalized outputs are not necessarily valid schema inputs
-void AliasedTransformComponent({ amount: 2 });
+void ExplicitTransformComponent({ amount: 2 });
 
-// @ts-expect-error updates must use a canonical or alias-facing schema input
-void aliasedTransformInstance.updateProps({ amount: 3 });
+// @ts-expect-error updates use schema input types
+void explicitTransformInstance.updateProps({ amount: 3 });
 
-// @ts-expect-error each factory instance retains canonical schema input types
-void AliasedTransformComponent({ amount: "2" }).updateProps({ amount: 3 });
+// @ts-expect-error tracked instances retain schema input types
+void ExplicitTransformComponent.instances[0]?.updateProps({ amount: 3 });
 
-// @ts-expect-error tracked instances retain canonical schema input types
-void AliasedTransformComponent.instances[0]?.updateProps({ amount: 3 });
+// @ts-expect-error React wrappers preserve schema input types
+void ExplicitTransformReactComponent({ amount: 4 });
 
-// @ts-expect-error React wrappers preserve canonical schema input types
-void AliasedTransformReactComponent({ amount: 4 });
+// @ts-expect-error curried React wrappers preserve schema input types
+void BoundTransformReactComponent({ amount: 4 });
 
-// @ts-expect-error curried React wrappers preserve canonical schema input types
-void BoundAliasedTransformReactComponent({ amount: 4 });
+// @ts-expect-error aliases were removed; factories accept only defined keys
+void ExplicitTransformComponent({ amount: "2", legacyAmount: "2" });
 
-const OptionalWrappedValidatorComponent = create({
-	tag: "optional-wrapped-validator-component",
-	url: "https://example.com/optional-wrapped-validator",
-	props: {
-		label: {
-			schema: z.string(),
-			// Zod also has a validate method; it must not erase callback types.
-			validate: ({ value, props }) => {
-				const optionalValue: string | undefined = value;
-				const optionalProp: string | undefined = props.label;
-				void optionalValue;
-				void optionalProp;
-				// @ts-expect-error schema methods must not widen callback values to any
-				const invalidValue: number = value;
-				void invalidValue;
-				// @ts-expect-error omitted wrappers are validated with undefined
-				value.trim();
-			},
-		},
-	},
+const WrappedZodComponent = create({
+	tag: "wrapped-zod-component",
+	url: "https://example.com/wrapped-zod",
+	props: { label: { schema: z.string(), queryParam: true } },
 });
 
-void OptionalWrappedValidatorComponent({});
-void OptionalWrappedValidatorComponent({ label: "ready" });
+void WrappedZodComponent({ label: "ready" });
+// @ts-expect-error wrapped Zod schemas that reject undefined are required
+void WrappedZodComponent({});
 // @ts-expect-error wrapped Zod schemas retain their input types
-void OptionalWrappedValidatorComponent({ label: 1 });
+void WrappedZodComponent({ label: 1 });
 
 const IdentityTransformComponent = create({
 	tag: "identity-transform-component",
@@ -644,14 +515,13 @@ const RequiredTransformComponent = create({
 				.string()
 				.transform((value) => (value.length > 0 ? value : undefined)),
 			outputSchema: z.string().optional(),
-			required: true,
 		},
 	},
 });
 
 void RequiredTransformComponent({ transformedValue: "input" });
 
-// @ts-expect-error requiredness applies to consumer input even when output may be undefined
+// @ts-expect-error requiredness follows the schema input even when output may be undefined
 void RequiredTransformComponent({});
 
 const requiredTransformHost = initHost(RequiredTransformComponent, {
@@ -662,31 +532,6 @@ if (requiredTransformHost) {
 		requiredTransformHost.hostProps.transformedValue;
 	void transformedValue;
 }
-
-const RequiredMaybeMetadataComponent = create({
-	tag: "required-maybe-metadata-component",
-	url: "https://example.com/required-maybe-metadata",
-	props: {
-		maybeDefaultValue: {
-			schema: prop.string(),
-			required: true,
-			default: maybeDefault,
-		},
-		optionalComputedValue: {
-			schema: prop.string(),
-			required: true,
-			value: optionalComputedValue,
-		},
-	},
-});
-
-void RequiredMaybeMetadataComponent({
-	maybeDefaultValue: "default",
-	optionalComputedValue: "computed",
-});
-
-// @ts-expect-error possibly undefined metadata cannot satisfy required omission
-void RequiredMaybeMetadataComponent({});
 
 const AnyComponent = create({
 	tag: "any-component",
@@ -709,7 +554,7 @@ const CompositeInputComponent = create({
 	tag: "composite-input-component",
 	url: "https://example.com/composite-input",
 	props: {
-		objectValue: prop.object().shape({
+		objectValue: prop.object({
 			requiredField: prop.boolean(),
 			defaultedField: prop.string().default("default"),
 			optionalField: prop.number().optional(),
@@ -718,7 +563,7 @@ const CompositeInputComponent = create({
 			prop.string().default("default"),
 			prop.number().optional(),
 		),
-		arrayValue: prop.array().of(prop.string().default("default")),
+		arrayValue: prop.array(prop.string().default("default")),
 		recordValue: prop.record(prop.number().default(0)),
 		unionValue: prop.union(prop.string(), prop.number().default(0)),
 	},
@@ -758,31 +603,23 @@ void OptionalOnlyComponent();
 // Explicit component factories preserve the existing optional argument API.
 void ExplicitComponent();
 
-// Wrapped callback defaults are factories, matching schema `.default()`.
+// Callback defaults are factories, in direct and wrapped definitions.
 const onCancel = (): void => {};
 const CallbackDefaultComponent = create({
 	tag: "callback-default-component",
 	url: "https://example.com/callback-default",
 	props: {
-		onCancel: {
-			schema: prop.function<() => void>(),
-			default: () => onCancel,
+		onCancel: prop.function<() => void>().default(() => onCancel),
+		onClose: {
+			schema: prop.function<() => void>().default(() => onCancel),
+			sendToHost: false,
 		},
 	},
 });
 void CallbackDefaultComponent();
 
-create({
-	tag: "direct-callback-default-component",
-	url: "https://example.com/direct-callback-default",
-	props: {
-		onCancel: {
-			schema: prop.function<() => void>(),
-			// @ts-expect-error A callback value would be called as its own default factory.
-			default: onCancel,
-		},
-	},
-});
+// @ts-expect-error A callback value would be called as its own default factory.
+prop.function<() => void>().default(onCancel);
 
 const TrackedComponent = create({
 	tag: "typed-tracked-component",
@@ -824,17 +661,6 @@ create({
 	// @ts-expect-error children was removed; import child components in the host.
 	children: () => ({ TrackedComponent }),
 });
-create({
-	tag: "typed-removed-prop-context-state",
-	url: "https://example.com/removed-state",
-	props: {
-		label: {
-			schema: prop.string(),
-			// @ts-expect-error PropContext.state was removed.
-			default: (ctx) => String(ctx.state),
-		},
-	},
-});
 
 type PublicApi = typeof import("../../src");
 // @ts-expect-error destroy(instance) was removed; call instance.close().
@@ -851,6 +677,12 @@ type RemovedConsumerNamespace = import("../../src").ConsumerNamespace;
 type RemovedEligibilityResult = import("../../src").EligibilityResult;
 // @ts-expect-error ForgeFrameComponentReference was removed.
 type RemovedReference = import("../../src").ForgeFrameComponentReference;
+// @ts-expect-error PropContext was removed with default, value and decorate.
+type RemovedPropContext = import("../../src").PropContext<unknown>;
+// @ts-expect-error ConsumerPropsInput was removed with aliases.
+type RemovedPropsInput = import("../../src").ConsumerPropsInput<unknown>;
+// @ts-expect-error ConsumerPropsUpdate was removed with aliases.
+type RemovedPropsUpdate = import("../../src").ConsumerPropsUpdate<unknown>;
 export type RemovedPublicApi = [
 	RemovedDestroy,
 	RemovedDestroyByTag,
@@ -859,4 +691,7 @@ export type RemovedPublicApi = [
 	RemovedConsumerNamespace,
 	RemovedEligibilityResult,
 	RemovedReference,
+	RemovedPropContext,
+	RemovedPropsInput,
+	RemovedPropsUpdate,
 ];

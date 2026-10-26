@@ -311,7 +311,7 @@ interface PropsScenario extends Record<string, unknown> {
 	scenario: string;
 	publicQuery: string;
 	privateQuery: string;
-	sameDomainQuery: string;
+	sameOriginQuery: string;
 	value: string;
 	onObservedProps: (props: Record<string, unknown>) => void;
 }
@@ -332,10 +332,10 @@ async function runPropsScenario(sandbox: HTMLElement): Promise<TestResult[]> {
 				queryParam: true,
 				sendToHost: false,
 			},
-			sameDomainQuery: {
+			sameOriginQuery: {
 				schema: prop.string(),
 				queryParam: true,
-				sameDomain: true,
+				deliverTo: "same-origin",
 			},
 			value: prop.string(),
 			onObservedProps:
@@ -346,7 +346,7 @@ async function runPropsScenario(sandbox: HTMLElement): Promise<TestResult[]> {
 		scenario: "props",
 		publicQuery: "visible",
 		privateQuery: "hidden",
-		sameDomainQuery: "deferred",
+		sameOriginQuery: "deferred",
 		value: "before",
 		onObservedProps: (props) => {
 			observedProps = props;
@@ -363,7 +363,7 @@ async function runPropsScenario(sandbox: HTMLElement): Promise<TestResult[]> {
 				renderedUrl.searchParams.get("existing") === "kept" &&
 					renderedUrl.searchParams.get("publicQuery") === "visible" &&
 					!renderedUrl.searchParams.has("privateQuery") &&
-					!renderedUrl.searchParams.has("sameDomainQuery"),
+					!renderedUrl.searchParams.has("sameOriginQuery"),
 				renderedUrl.search,
 			),
 		);

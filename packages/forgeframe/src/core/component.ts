@@ -10,9 +10,9 @@
 
 import { CONTEXT } from "../constants";
 import {
-	assertNoRemovedPropOptions,
+	assertPropDefinitions,
 	hasOwnDeclaredField,
-} from "../props/removed-options";
+} from "../props/definition-checks";
 import type { StandardSchemaV1 } from "../props/schema";
 import type {
 	InferPropsDefinition,
@@ -20,7 +20,7 @@ import type {
 } from "../types/props";
 import type {
 	ComponentOptions,
-	ConsumerPropsInput,
+	ComponentPropsInput,
 	ForgeFrameComponent,
 	ForgeFrameComponentInstance,
 	InferablePropsDefinition,
@@ -54,8 +54,8 @@ import { assertNoReservedPropDefinitions } from "./host/builtin-keys";
  * @throws Error if url is missing
  * @internal
  */
-function validateComponentOptions<P, I, SchemaInputs>(
-	options: ComponentOptions<P, I, SchemaInputs>,
+function validateComponentOptions<P, SchemaInputs>(
+	options: ComponentOptions<P, SchemaInputs>,
 ): void {
 	assertComponentShape(options);
 	validateStaticComponentUrl(options);
@@ -65,8 +65,8 @@ function validateComponentOptions<P, I, SchemaInputs>(
 }
 
 /** Checks component declaration policy without browser or registry access. */
-function assertComponentShape<P, I, SchemaInputs>(
-	options: ComponentOptions<P, I, SchemaInputs>,
+function assertComponentShape<P, SchemaInputs>(
+	options: ComponentOptions<P, SchemaInputs>,
 ): void {
 	if (
 		typeof options !== "object" ||
@@ -129,7 +129,7 @@ function assertComponentShape<P, I, SchemaInputs>(
 
 	if (options.props) {
 		assertNoReservedPropDefinitions(options.props);
-		assertNoRemovedPropOptions(options.props);
+		assertPropDefinitions(options.props);
 	}
 }
 
@@ -156,8 +156,8 @@ function assertNoRemovedComponentOptions(options: object): void {
 }
 
 /** Resolves static URLs using the browser's navigation base when available. */
-function validateStaticComponentUrl<P, I, SchemaInputs>(
-	options: ComponentOptions<P, I, SchemaInputs>,
+function validateStaticComponentUrl<P, SchemaInputs>(
+	options: ComponentOptions<P, SchemaInputs>,
 ): void {
 	// Validate URL format if it's a string (can't validate function URLs at definition time)
 	if (typeof options.url === "string") {
@@ -208,7 +208,6 @@ function removeTrackedInstance<T>(instances: T[], instance: T): void {
  *
  * @typeParam P - The props type for the component
  * @typeParam X - The exports type that the host can expose
- * @typeParam I - An alternate consumer input shape, such as legacy alias keys
  * @typeParam SchemaInputs - Canonical input types accepted by prop schemas
  * @param options - Component configuration options
  * @returns A component factory function
@@ -235,7 +234,6 @@ function removeTrackedInstance<T>(instances: T[], instance: T): void {
 export function create<
 	const D extends InferablePropsDefinition,
 	X = unknown,
-	I extends Record<string, unknown> = InferPropsDefinitionInput<D>,
 	ContextualSchemas extends Record<string, StandardSchemaV1> = {
 		[K in keyof D]: D[K] extends StandardSchemaV1
 			? D[K]
@@ -248,10 +246,8 @@ export function create<
 ): ForgeFrameComponent<
 	InferPropsDefinition<D>,
 	X,
-	I,
-	Record<PropertyKey, never> extends ConsumerPropsInput<
+	Record<PropertyKey, never> extends ComponentPropsInput<
 		InferPropsDefinition<D>,
-		I,
 		InferPropsDefinitionInput<D>
 	>
 		? false
@@ -261,35 +257,33 @@ export function create<
 export function create<
 	P extends Record<string, unknown> = Record<string, unknown>,
 	X = unknown,
-	I extends Record<string, unknown> = P,
-	SchemaInputs extends Record<string, unknown> = I,
+	SchemaInputs extends Record<string, unknown> = P,
 >(
-	options: ComponentOptions<P, I, SchemaInputs>,
-): ForgeFrameComponent<P, X, I, false, SchemaInputs>;
+	options: ComponentOptions<P, SchemaInputs>,
+): ForgeFrameComponent<P, X, false, SchemaInputs>;
 export function create<
 	P extends Record<string, unknown> = Record<string, unknown>,
 	X = unknown,
-	I extends Record<string, unknown> = P,
-	SchemaInputs extends Record<string, unknown> = I,
+	SchemaInputs extends Record<string, unknown> = P,
 >(
-	options: ComponentOptions<P, I, SchemaInputs>,
-): ForgeFrameComponent<P, X, I, false, SchemaInputs> {
+	options: ComponentOptions<P, SchemaInputs>,
+): ForgeFrameComponent<P, X, false, SchemaInputs> {
 	validateComponentOptions(options);
 	const runtimeOptions = options;
 
-	const instances: ForgeFrameComponentInstance<P, X, I, SchemaInputs>[] = [];
+	const instances: ForgeFrameComponentInstance<P, X, SchemaInputs>[] = [];
 	const componentTag = options.tag;
 
 	function untrackInstance(
-		instance: ConsumerComponent<P, X, I, SchemaInputs>,
+		instance: ConsumerComponent<P, X, SchemaInputs>,
 	): void {
 		removeTrackedInstance(instances, instance);
 		removeIndexedComponentInstance(instance.uid);
 	}
 
 	function trackInstance(
-		instance: ConsumerComponent<P, X, I, SchemaInputs>,
-	): ConsumerComponent<P, X, I, SchemaInputs> {
+		instance: ConsumerComponent<P, X, SchemaInputs>,
+	): ConsumerComponent<P, X, SchemaInputs> {
 		if (instance.isDestroyed()) {
 			return instance;
 		}
@@ -302,10 +296,10 @@ export function create<
 	}
 
 	function createTrackedInstance(
-		props?: ConsumerPropsInput<P, I, SchemaInputs>,
-	): ConsumerComponent<P, X, I, SchemaInputs> {
+		props?: ComponentPropsInput<P, SchemaInputs>,
+	): ConsumerComponent<P, X, SchemaInputs> {
 		return trackInstance(
-			new ConsumerComponent<P, X, I, SchemaInputs>(
+			new ConsumerComponent<P, X, SchemaInputs>(
 				runtimeOptions,
 				props,
 				untrackInstance,
@@ -320,10 +314,10 @@ export function create<
 	 */
 	// biome-ignore lint/complexity/useArrowFunction: Preserve the factory's regular-function behavior for JavaScript callers.
 	const Component = function (
-		props?: ConsumerPropsInput<P, I, SchemaInputs>,
-	): ForgeFrameComponentInstance<P, X, I, SchemaInputs> {
+		props?: ComponentPropsInput<P, SchemaInputs>,
+	): ForgeFrameComponentInstance<P, X, SchemaInputs> {
 		return createTrackedInstance(props);
-	} as unknown as ForgeFrameComponent<P, X, I, false, SchemaInputs>;
+	} as unknown as ForgeFrameComponent<P, X, false, SchemaInputs>;
 
 	// A fresh frozen snapshot per read keeps callers from desynchronizing the
 	// factory list from the global instance index.
@@ -358,10 +352,9 @@ export function create<
 export function getComponent<
 	P extends Record<string, unknown> = Record<string, unknown>,
 	X = unknown,
-	I = P,
-	SchemaInputs = I,
->(tag: string): ForgeFrameComponent<P, X, I, false, SchemaInputs> | undefined {
-	return getRegisteredComponent<P, X, I, SchemaInputs>(tag);
+	SchemaInputs = P,
+>(tag: string): ForgeFrameComponent<P, X, false, SchemaInputs> | undefined {
+	return getRegisteredComponent<P, X, SchemaInputs>(tag);
 }
 
 /**

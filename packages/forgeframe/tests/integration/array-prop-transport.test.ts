@@ -17,7 +17,7 @@ describe("Array prop transport", () => {
 		harness = createIframeIntegrationHarness();
 		const container = document.createElement("div");
 		document.body.append(container);
-		const definitions = { record: prop.object<Record<string, unknown>>() };
+		const definitions = { record: prop.any<Record<string, unknown>>() };
 		const Component = create({
 			tag: "filtered-array-transport",
 			url: "https://host.example.com/widget",
@@ -52,10 +52,8 @@ describe("Array prop transport", () => {
 			const definitions = {
 				visible: prop.string(),
 				restricted: {
-					schema: prop.array().of(prop.string().optional()),
-					trustedDomains: [
-						allowedOrigin === "original" ? original : redirected,
-					],
+					schema: prop.array(prop.string().optional()),
+					deliverTo: [allowedOrigin === "original" ? original : redirected],
 				},
 			};
 			const Component = create({
@@ -111,7 +109,7 @@ describe("Array prop transport", () => {
 				});
 			const valid = () => ({ items: encodedArray(["initial"]) });
 			const invalid = () => ({ items: encodedArray([undefined]) });
-			const definitions = { record: prop.object<Record<string, unknown>>() };
+			const definitions = { record: prop.any<Record<string, unknown>>() };
 			const Component = create({
 				tag: "array-tojson-admission",
 				url: "https://host.example.com/widget",
@@ -150,7 +148,7 @@ describe("Array prop transport", () => {
 			const container = document.createElement("div");
 			document.body.append(container);
 			const definitions = {
-				items: prop.array().of(prop.string().optional()),
+				items: prop.array(prop.string().optional()),
 			};
 			const Component = create({
 				tag: "array-transport-admission",
@@ -181,7 +179,7 @@ describe("Array prop transport", () => {
 		const container = document.createElement("div");
 		document.body.append(container);
 		const definitions = {
-			items: prop.array().of(prop.string().optional()),
+			items: prop.array(prop.string().optional()),
 		};
 		const Component = create({
 			tag: "array-transport-update",
@@ -210,8 +208,8 @@ describe("Array prop transport", () => {
 		const container = document.createElement("div");
 		document.body.append(container);
 		const definitions = {
-			items: prop.array().of(prop.string().default("fallback")),
-			nullable: prop.array().of(prop.string().nullable()),
+			items: prop.array(prop.string().default("fallback")),
+			nullable: prop.array(prop.string().nullable()),
 		};
 		const Component = create({
 			tag: "array-transport-defaults",
@@ -240,9 +238,7 @@ describe("Array prop transport", () => {
 		const container = document.createElement("div");
 		document.body.append(container);
 		const definitions = {
-			record: prop
-				.object()
-				.shape({ items: prop.array().of(prop.string().optional()) }),
+			record: prop.object({ items: prop.array(prop.string().optional()) }),
 		};
 		const Component = create({
 			tag: "array-transport-nested",
@@ -267,12 +263,12 @@ describe("Array prop transport", () => {
 		harness = createIframeIntegrationHarness();
 		const container = document.createElement("div");
 		document.body.append(container);
-		const schema = prop.array().of(prop.string().optional()).optional();
+		const schema = prop.array(prop.string().optional()).optional();
 		const definitions = {
 			visible: prop.string(),
 			local: { schema, sendToHost: false },
-			sameOrigin: { schema, sameDomain: true },
-			restricted: { schema, trustedDomains: ["https://other.example.com"] },
+			sameOrigin: { schema, deliverTo: "same-origin" },
+			restricted: { schema, deliverTo: ["https://other.example.com"] },
 		};
 		const Component = create({
 			tag: "array-transport-private",
@@ -307,7 +303,7 @@ describe("Array prop transport", () => {
 		harness = createIframeIntegrationHarness();
 		const container = document.createElement("div");
 		document.body.append(container);
-		const definitions = { record: prop.object<Record<string, unknown>>() };
+		const definitions = { record: prop.any<Record<string, unknown>>() };
 		const Component = create({
 			tag: "array-transport-tojson",
 			url: "https://host.example.com/widget",
@@ -339,7 +335,7 @@ describe("Array prop transport", () => {
 		harness = createIframeIntegrationHarness();
 		const container = document.createElement("div");
 		document.body.append(container);
-		const definitions = { record: prop.object<Record<string, unknown>>() };
+		const definitions = { record: prop.any<Record<string, unknown>>() };
 		const Component = create({
 			tag: "array-transport-tojson-field",
 			url: "https://host.example.com/widget",
@@ -361,39 +357,6 @@ describe("Array prop transport", () => {
 		expect(hostProps.record).toEqual({ items: ["initial"] });
 	});
 
-	it("checks host-decorated arrays while preserving successful decoration", async () => {
-		harness = createIframeIntegrationHarness();
-		const container = document.createElement("div");
-		document.body.append(container);
-		const schema = prop.array().of(prop.string().optional());
-		const Component = create({
-			tag: "array-transport-host-decorate",
-			url: "https://host.example.com/widget",
-			props: {
-				items: {
-					schema,
-					hostDecorate: ({ value }) =>
-						value.map((item) =>
-							item === "bad" ? undefined : (item ?? "decorated"),
-						),
-				},
-			},
-		});
-		const instance = Component({ items: [undefined] });
-		const rendering = instance.render(container);
-		const { hostProps } = await harness.bootstrapIframeHost(container, {
-			items: schema,
-		});
-		await rendering;
-		expect(hostProps.items).toEqual(["decorated"]);
-		await expect(instance.updateProps({ items: ["bad"] })).rejects.toThrow(
-			"Cannot serialize undefined array entry",
-		);
-		expect(hostProps.items).toEqual(["decorated"]);
-		await instance.updateProps({ items: ["recovered"] });
-		expect(hostProps.items).toEqual(["recovered"]);
-	});
-
 	it("reads a computed toJSON once, at delivery rather than admission", async () => {
 		harness = createIframeIntegrationHarness();
 		const container = document.createElement("div");
@@ -405,7 +368,7 @@ describe("Array prop transport", () => {
 				return () => ({ items: ["encoded"] });
 			},
 		});
-		const definitions = { record: prop.object<Record<string, unknown>>() };
+		const definitions = { record: prop.any<Record<string, unknown>>() };
 		const Component = create({
 			tag: "array-transport-computed-encoder",
 			url: "https://host.example.com/widget",
@@ -426,7 +389,7 @@ describe("Array prop transport", () => {
 		harness = createIframeIntegrationHarness();
 		const container = document.createElement("div");
 		document.body.append(container);
-		const definitions = { record: prop.object<Record<string, unknown>>() };
+		const definitions = { record: prop.any<Record<string, unknown>>() };
 		const Component = create({
 			tag: "array-transport-setter-only",
 			url: "https://host.example.com/widget",

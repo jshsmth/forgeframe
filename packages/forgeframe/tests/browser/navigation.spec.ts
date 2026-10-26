@@ -130,7 +130,7 @@ test.beforeAll(async () => {
 					res,
 					`<!doctype html><script type="module">
 			import {initHost,prop} from '/library.js';
-			const host = initHost({props:{config:prop.object().shape({onComplete:prop.function(),list:prop.array().of(prop.function()),date:prop.date()}),label:prop.string().optional()}, consumerOrigins:['${consumerOrigin}']});
+			const host = initHost({props:{config:prop.object({onComplete:prop.function(),list:prop.array(prop.function()),date:prop.date()}),label:prop.string().optional()}, consumerOrigins:['${consumerOrigin}']});
 			await host.ready; window.received = host.hostProps; window.ready = true;
 			</script>`,
 				);
@@ -139,7 +139,7 @@ test.beforeAll(async () => {
 					res,
 					`<!doctype html><script type="module">
 				import {initHost,prop} from '/library.js';
-				const host = initHost({props:{record:prop.object()}, consumerOrigins:['${consumerOrigin}']});
+				const host = initHost({props:{record:prop.any()}, consumerOrigins:['${consumerOrigin}']});
 				await host.ready;
 				window.received = host.hostProps;
 				await host.hostProps.export({record:host.hostProps.record});
@@ -165,7 +165,7 @@ test.beforeAll(async () => {
 					res,
 					`<!doctype html><script type="module">
 				import {initHost,prop} from '/library.js';
-				const host = initHost({props:{createdAt:prop.date(), config:prop.object(), record:prop.record(prop.string())}, consumerOrigins:['${consumerOrigin}']});
+				const host = initHost({props:{createdAt:prop.date(), config:prop.any(), record:prop.record(prop.string())}, consumerOrigins:['${consumerOrigin}']});
 				await host.ready; window.received = host.hostProps; window.ready = true;
 				</script>`,
 				);
@@ -333,7 +333,7 @@ async function mount(
 				dimensions: { width: 300, height: 200 },
 				props: {
 					count: prop.number(),
-					secret: { schema: prop.string(), trustedDomains: hostOrigin },
+					secret: { schema: prop.string(), deliverTo: hostOrigin },
 					onComplete: prop.function(),
 				},
 			})({
@@ -356,7 +356,7 @@ async function prepareDelivery(
 	page: import("@playwright/test").Page,
 	context: "iframe" | "popup",
 	method: "GET" | "POST",
-	scenario: "base" | "lifecycle" | "converter" | "queued",
+	scenario: "base" | "lifecycle" | "queued",
 ) {
 	await page.goto(consumerOrigin);
 	await page.evaluate(
@@ -382,35 +382,27 @@ async function prepareDelivery(
 				};
 				reviewWindow.updates = [];
 				const parameter = method === "GET" ? "queryParam" : "bodyParam";
+				let queuedFollowUp = false;
 				reviewWindow.instance = create({
 					tag: "browser-delivery-regression",
 					url: "delivery?existing=a%20b#checkout?step=2",
 					domain: [hostOrigin, attackerOrigin],
 					timeout: 3000,
+					validate: ({ props }: { props: { count: number } }) => {
+						if (scenario === "queued" && props.count === 2 && !queuedFollowUp) {
+							queuedFollowUp = true;
+							reviewWindow.updates.push(
+								reviewWindow.instance.updateProps({ count: 3 }),
+							);
+						}
+					},
 					props: {
-						count: {
-							schema: prop.number(),
-							[parameter]: true,
-							decorate: ({ value }: { value: unknown }) => {
-								if (scenario === "queued" && value === 2)
-									reviewWindow.updates.push(
-										reviewWindow.instance.updateProps({ count: 3 }),
-									);
-								return value;
-							},
-						},
-						allowed: {
-							schema: prop.string(),
-							[parameter]: ({ value }: { value: unknown }) => {
-								if (scenario === "converter")
-									base.href = `${attackerOrigin}/changed/`;
-								return String(value);
-							},
-						},
+						count: { schema: prop.number(), [parameter]: true },
+						allowed: { schema: prop.string(), [parameter]: true },
 						restricted: {
 							schema: prop.string(),
 							[parameter]: true,
-							trustedDomains: hostOrigin,
+							deliverTo: hostOrigin,
 						},
 						hidden: {
 							schema: prop.string(),
@@ -420,7 +412,7 @@ async function prepareDelivery(
 						sameOrigin: {
 							schema: prop.string(),
 							[parameter]: true,
-							sameDomain: true,
+							deliverTo: "same-origin",
 						},
 					},
 				})({
@@ -429,10 +421,10 @@ async function prepareDelivery(
 					restricted: "restricted-sentinel",
 					hidden: "hidden-sentinel",
 					sameOrigin: "same-origin-sentinel",
-					onRender: () => {
-						if (scenario === "lifecycle")
-							base.href = `${attackerOrigin}/changed/`;
-					},
+				});
+				reviewWindow.instance.event.once("render", () => {
+					if (scenario === "lifecycle")
+						base.href = `${attackerOrigin}/changed/`;
 				});
 				const button = document.createElement("button");
 				button.id = "open-delivery";
@@ -923,7 +915,7 @@ test("preserves foreign-window dates and ordinary records", async ({
 				url: `${hostOrigin}/realm-values`,
 				props: {
 					createdAt: prop.date(),
-					config: prop.object(),
+					config: prop.any(),
 					record: prop.record(prop.string()),
 				},
 			})({ createdAt, config, record });
@@ -1113,7 +1105,7 @@ for (const context of ["iframe", "popup"] as const) {
 					domain: hostOrigin,
 					timeout: 3000,
 					props: {
-						config: prop.object(),
+						config: prop.any(),
 						label: prop.string().optional(),
 					},
 				})({
@@ -1218,12 +1210,7 @@ for (const context of ["iframe", "popup"] as const) {
 	});
 
 	for (const method of ["GET", "POST"] as const) {
-		for (const scenario of [
-			"base",
-			"lifecycle",
-			"converter",
-			"queued",
-		] as const) {
+		for (const scenario of ["base", "lifecycle", "queued"] as const) {
 			test(`${context} ${method} keeps navigation and prop policy consistent during ${scenario}`, async ({
 				page,
 			}) => {
@@ -1349,7 +1336,7 @@ for (const context of ["iframe", "popup"] as const) {
 						order: {
 							schema: prop.string(),
 							queryParam: true,
-							trustedDomains: consumerOrigin,
+							deliverTo: consumerOrigin,
 						},
 					},
 				});
@@ -1984,25 +1971,32 @@ for (const context of ["iframe", "popup"] as const) {
 					url: `${hostOrigin}/host`,
 					domain: hostOrigin,
 					props: {
-						count: {
-							schema: prop.number(),
-							hostDecorate: ({ value }: { value: number }) => {
-								if (reviewWindow.armed) {
-									reviewWindow.armed = false;
-									queueMicrotask(() => {
-										reviewWindow.updated = reviewWindow.instance.updateProps({
-											count: 2,
-											onComplete: () => 2,
-										});
-									});
-								}
-								return value;
-							},
-						},
+						count: prop.number(),
+						// Its toJSON() runs when a snapshot is delivered, so it can queue
+						// an update while the reconnect bootstrap is being serialized.
+						trigger: prop.any(),
 						secret: prop.string(),
 						onComplete: prop.function(),
 					},
-				})({ count: 1, secret: "sentinel", onComplete: () => 1 });
+				})({
+					count: 1,
+					trigger: {
+						toJSON: () => {
+							if (reviewWindow.armed) {
+								reviewWindow.armed = false;
+								queueMicrotask(() => {
+									reviewWindow.updated = reviewWindow.instance.updateProps({
+										count: 2,
+										onComplete: () => 2,
+									});
+								});
+							}
+							return null;
+						},
+					},
+					secret: "sentinel",
+					onComplete: () => 1,
+				});
 				await reviewWindow.instance.render("#mount", context);
 				reviewWindow.armed = true;
 			},
@@ -2135,7 +2129,7 @@ for (const context of ["iframe", "popup"] as const) {
 				const instance = create({
 					tag: "exports-event-browser",
 					url: `${hostOrigin}/record-props`,
-					props: { record: prop.object() },
+					props: { record: prop.any() },
 					cspNonce: "consumer-nonce",
 				})({ record: { label: "sent" }, cspNonce: "prop-nonce" } as {
 					record: Record<string, unknown>;
@@ -2208,7 +2202,7 @@ for (const context of ["iframe", "popup"] as const) {
 				const Component = create({
 					tag: "array-method-browser",
 					url: `${hostOrigin}/record-props`,
-					props: { record: prop.object() },
+					props: { record: prop.any() },
 				});
 				const values = Object.setPrototypeOf(["initial"], null);
 				const instance = Component({ record: { values } });
@@ -2301,7 +2295,7 @@ for (const context of ["iframe", "popup"] as const) {
 				const Component = create({
 					tag: "marker-record-browser",
 					url: `${hostOrigin}/record-props`,
-					props: { record: prop.object() },
+					props: { record: prop.any() },
 				});
 				const { rawJSON } = JSON as unknown as {
 					rawJSON: (text: string) => object;

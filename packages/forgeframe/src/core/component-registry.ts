@@ -10,22 +10,20 @@ const INTERNAL_COMPONENT_OPTIONS = Symbol("forgeframe.component.options");
 type InternalForgeFrameComponent<
 	P extends Record<string, unknown> = Record<string, unknown>,
 	X = unknown,
-	I = P,
-	SchemaInputs = I,
-> = ForgeFrameComponent<P, X, I, false, SchemaInputs> & {
-	[INTERNAL_COMPONENT_OPTIONS]?: ComponentOptions<P, I, SchemaInputs>;
+	SchemaInputs = P,
+> = ForgeFrameComponent<P, X, false, SchemaInputs> & {
+	[INTERNAL_COMPONENT_OPTIONS]?: ComponentOptions<P, SchemaInputs>;
 };
 
 export function registerComponent<
 	P extends Record<string, unknown>,
 	X,
-	I,
 	SchemaInputs,
 >(
-	component: ForgeFrameComponent<P, X, I, false, SchemaInputs>,
-	options: ComponentOptions<P, I, SchemaInputs>,
+	component: ForgeFrameComponent<P, X, false, SchemaInputs>,
+	options: ComponentOptions<P, SchemaInputs>,
 ): void {
-	(component as InternalForgeFrameComponent<P, X, I, SchemaInputs>)[
+	(component as InternalForgeFrameComponent<P, X, SchemaInputs>)[
 		INTERNAL_COMPONENT_OPTIONS
 	] = options;
 	componentRegistry.set(
@@ -41,25 +39,23 @@ export function hasRegisteredComponent(tag: string): boolean {
 export function getRegisteredComponent<
 	P extends Record<string, unknown> = Record<string, unknown>,
 	X = unknown,
-	I = P,
-	SchemaInputs = I,
->(tag: string): ForgeFrameComponent<P, X, I, false, SchemaInputs> | undefined {
+	SchemaInputs = P,
+>(tag: string): ForgeFrameComponent<P, X, false, SchemaInputs> | undefined {
 	return componentRegistry.get(tag) as
-		| ForgeFrameComponent<P, X, I, false, SchemaInputs>
+		| ForgeFrameComponent<P, X, false, SchemaInputs>
 		| undefined;
 }
 
 export function getComponentOptions<
 	P extends Record<string, unknown> = Record<string, unknown>,
 	X = unknown,
-	I = P,
-	SchemaInputs = I,
+	SchemaInputs = P,
 >(
 	/** Any factory returned by `create()`, whatever its props and exports. */
 	component: object,
-): ComponentOptions<P, I, SchemaInputs> | undefined {
+): ComponentOptions<P, SchemaInputs> | undefined {
 	return (
-		component as unknown as InternalForgeFrameComponent<P, X, I, SchemaInputs>
+		component as unknown as InternalForgeFrameComponent<P, X, SchemaInputs>
 	)[INTERNAL_COMPONENT_OPTIONS];
 }
 

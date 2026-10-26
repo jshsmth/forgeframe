@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
 	definedInputKeys,
-	invalidatePatchedKeys,
 	mergePropPatch,
 	PROP_RESET,
 } from "@/core/consumer/prop-update";
@@ -17,14 +16,6 @@ describe("canonical prop snapshot preparation", () => {
 		expect(Object.hasOwn(next, "label")).toBe(true);
 		expect(next).toEqual({ label: undefined, untouched: true });
 		expect(previous).toEqual({ count: 3, label: "old", untouched: true });
-	});
-
-	it("invalidates reset and cleared keys but retains evidence for untouched values", () => {
-		const previous = new Set(["count", "label", "untouched"]);
-		expect(
-			invalidatePatchedKeys(previous, { count: PROP_RESET, label: undefined }),
-		).toEqual(new Set(["untouched"]));
-		expect(previous.size).toBe(3);
 	});
 
 	it("selects only defined own values, including false and null", () => {

@@ -20,8 +20,8 @@ type BodyParamProps = {
 };
 
 const BODY_PARAM_PROP_DEFINITIONS: PropsDefinition<BodyParamProps> = {
-	token: { schema: prop.string(), required: true, bodyParam: true },
-	mode: { schema: prop.string(), required: true, queryParam: true },
+	token: { schema: prop.string(), bodyParam: true },
+	mode: { schema: prop.string(), queryParam: true },
 };
 
 describe("Body param bootstrap integration", () => {

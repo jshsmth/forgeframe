@@ -10,71 +10,47 @@ import type {
 import type { DomainMatcher } from "./utility";
 
 /**
- * Context object passed to prop value functions and decorators.
- *
- * @typeParam P - The props type for the component
+ * Host origins a prop is delivered to.
  *
  * @remarks
- * This context provides access to component state and methods during
- * prop normalization and decoration.
+ * `'same-origin'` delivers only to a host verified to share the consumer's
+ * origin, so the prop never appears in the initial URL or POST body. A
+ * {@link DomainMatcher} delivers to the host origins it admits.
  *
  * @public
  */
-export interface PropContext<P> {
-	/** Current props values */
-	props: P;
-	/** Close the component */
-	close: () => Promise<void>;
-	/** Focus the component */
-	focus: () => Promise<void>;
-	/** Report an error */
-	onError: (err: Error) => void;
-	/** Container element (null during prerender) */
-	container: HTMLElement | null;
-	/** Unique instance identifier */
-	uid: string;
-	/** Component tag name */
-	tag: string;
-}
+export type PropDelivery = "same-origin" | DomainMatcher;
 
 /**
- * Definition for a single component prop.
+ * Transport options of a wrapped prop definition.
  *
  * @typeParam Output - The normalized prop value exposed after validation
- * @typeParam P - The props type for the component
- * @typeParam Input - The value accepted by the schema and explicit fallbacks
+ * @typeParam Input - The value accepted by the schema
  *
  * @remarks
- * Prop definitions control how individual props are validated, serialized,
- * and passed between consumer and host components.
+ * The schema alone decides whether the prop is required and what its default
+ * is; these options only control how the value reaches the host.
  *
  * @example
  * ```typescript
  * import { prop } from 'forgeframe';
  *
  * const propDef: PropDefinition<string> = {
- *   schema: prop.string(),
- *   required: true,
- *   default: 'hello',
- *   validate: ({ value }) => {
- *     if (value.length > 100) throw new Error('Too long');
- *   },
+ *   schema: prop.string().min(1),
+ *   queryParam: 'ref',
  * };
  * ```
  *
  * @internal
  */
-interface PropDefinitionOptions<
-	Output = unknown,
-	P = Record<string, unknown>,
-	Input = Output,
-> {
+interface PropDefinitionOptions<Output = unknown, Input = Output> {
 	/**
-	 * Standard Schema validator for type checking and validation.
+	 * Standard Schema that validates the prop and supplies its default.
 	 *
 	 * @remarks
 	 * Accepts any StandardSchemaV1-compliant schema including ForgeFrame's
-	 * built-in `prop.*` schemas, Zod, Valibot, ArkType, and others.
+	 * built-in `prop.*` schemas, Zod, Valibot, ArkType, and others. The prop is
+	 * required exactly when this schema rejects `undefined`.
 	 *
 	 * @example
 	 * ```typescript
@@ -82,64 +58,30 @@ interface PropDefinitionOptions<
 	 * import { z } from 'zod';
 	 *
 	 * const props = {
-	 *   // Using ForgeFrame's prop schemas
-	 *   name: prop.string().min(1),
-	 *   count: prop.number().default(0),
-	 *
-	 *   // Or using Zod schemas
-	 *   email: { schema: z.string().email(), required: true },
+	 *   ref: { schema: prop.string().optional(), queryParam: true },
+	 *   email: { schema: z.string().email(), bodyParam: 'user_email' },
 	 * };
 	 * ```
 	 *
 	 * @see https://standardschema.dev/
 	 */
-	schema?: StandardSchemaV1<Input, Output>;
-
-	/** Whether the prop is required */
-	required?: boolean;
-	/**
-	 * Schema input used when the caller omits the prop.
-	 *
-	 * @remarks
-	 * A function is called as a factory with the prop context, so a callback
-	 * default must be wrapped: `default: () => onCancel`. Passing the callback
-	 * directly is rejected, as it is by schema `.default()`.
-	 */
-	default?:
-		| Exclude<Input, (...args: never[]) => unknown>
-		| ((ctx: PropContext<P>) => Input);
-	/** Function that computes a schema input when the caller omits the prop */
-	value?: (ctx: PropContext<P>) => Input;
+	schema: StandardSchemaV1<Input, Output>;
 
 	/** Whether to send this prop to the host window (default: true) */
 	sendToHost?: boolean;
-	/** Only deliver after the loaded host is verified to be same-origin */
-	sameDomain?: boolean;
-	/** List of trusted domains that can receive this prop */
-	trustedDomains?: DomainMatcher[];
-
-	/** Pass prop via URL query parameter */
-	queryParam?: boolean | string | ((opts: { value: Output }) => string);
-	/** Pass prop via POST body parameter */
-	bodyParam?: boolean | string | ((opts: { value: Output }) => string);
-
-	/** Validate the prop value (throw to reject) */
-	validate?: (opts: { value: Output; props: P }) => void;
-	/** Transform the prop value in consumer context */
-	decorate?: (opts: { value: Output; props: P }) => Output;
-	/** Transform the prop value in host context */
-	hostDecorate?: (opts: { value: Output; props: P }) => Output;
+	/** Host origins that receive this prop; every host when omitted */
+	deliverTo?: PropDelivery;
 
 	/**
-	 * Alternative runtime input name for the prop.
-	 *
-	 * @remarks
-	 * Aliases that reference another defined prop resolve transitively. When an
-	 * input supplies both an alias and its canonical key, the canonical value
-	 * wins at that level. TypeScript callers can model alternate input shapes
-	 * with the third generic accepted by `create()`.
+	 * Pass the prop as a URL query parameter: `true` uses the prop key, a
+	 * string names the parameter, and `false` is the same as omitting it.
 	 */
-	alias?: string;
+	queryParam?: boolean | string;
+	/**
+	 * Pass the prop as a POST body parameter: `true` uses the prop key, a
+	 * string names the parameter, and `false` is the same as omitting it.
+	 */
+	bodyParam?: boolean | string;
 }
 
 /** Defines how an already-normalized value is checked at trust boundaries. @internal */
@@ -171,16 +113,14 @@ type NormalizedOutputSchemaRequirement<Input, Output> = [Output] extends [Input]
  * Definition for a single component prop.
  *
  * @typeParam Output - The normalized prop value exposed after validation
- * @typeParam P - The props type for the component
- * @typeParam Input - The value accepted by the schema and explicit fallbacks
+ * @typeParam Input - The value accepted by the schema
  *
  * @public
  */
 export type PropDefinition<
 	Output = unknown,
-	P = Record<string, unknown>,
 	Input = Output,
-> = PropDefinitionOptions<Output, P, Input> &
+> = PropDefinitionOptions<Output, Input> &
 	NormalizedOutputSchemaRequirement<Input, Output>;
 
 /** A direct schema that can safely revalidate its normalized output. @internal */
@@ -198,16 +138,14 @@ type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
  *
  * @remarks
  * ForgeFrame accepts Standard Schema implementations directly for concise
- * declarations. Use {@link PropDefinition} when transport, alias, or lifecycle
- * options are also required.
+ * declarations. Use {@link PropDefinition} when transport options are also
+ * required.
  *
  * @public
  */
-export type PropDefinitionEntry<
-	Output = unknown,
-	P = Record<string, unknown>,
-	Input = Output,
-> = PropDefinition<Output, P, Input> | DirectPropSchema<Input, Output>;
+export type PropDefinitionEntry<Output = unknown, Input = Output> =
+	| PropDefinition<Output, Input>
+	| DirectPropSchema<Input, Output>;
 
 /**
  * Map of prop names to their definitions.
@@ -218,11 +156,7 @@ export type PropDefinitionEntry<
  * @public
  */
 export type PropsDefinition<P, I = P> = {
-	[K in keyof P]?: PropDefinitionEntry<
-		P[K],
-		P,
-		K extends keyof I ? I[K] : P[K]
-	>;
+	[K in keyof P]?: PropDefinitionEntry<P[K], K extends keyof I ? I[K] : P[K]>;
 };
 
 /**
@@ -239,94 +173,28 @@ export type PropsDefinition<P, I = P> = {
  */
 export type HostPropsDefinition<P, I = P> = PropsDefinition<P, I>;
 
-/** Resolves the value returned by a wrapped `value` callback. @internal */
-type InferPropDefinitionValueResult<Value> = Value extends (
-	...args: never[]
-) => infer Result
-	? Result
-	: never;
-
-/** Resolves a wrapped literal or factory default. @internal */
-type InferPropDefinitionDefaultResult<Default> = Default extends (
-	...args: never[]
-) => infer Result
-	? Result
-	: Default;
-
-/** Resolves the fallback used when a wrapped `value` callback is absent. @internal */
-type InferPropDefinitionDefault<D> = D extends { default: infer Default }
-	? InferPropDefinitionDefaultResult<Default>
-	: undefined;
-
-/** Resolves every value that wrapped metadata can produce for omission. @internal */
-type InferPropDefinitionMetadataValue<D> = D extends { value: infer Value }
-	?
-			| InferPropDefinitionValueResult<Exclude<Value, undefined>>
-			| (undefined extends Value ? InferPropDefinitionDefault<D> : never)
-	: InferPropDefinitionDefault<D>;
-
-/** Whether wrapped metadata guarantees a defined value for omission. @internal */
-type WrappedPropDefinitionMetadataProducesValue<D> = [
-	InferPropDefinitionMetadataValue<D>,
-] extends [never]
-	? false
-	: undefined extends InferPropDefinitionMetadataValue<D>
-		? false
-		: true;
-
-/** Whether a wrapped schema accepts omission and guarantees a defined output. @internal */
-type WrappedPropDefinitionSchemaProducesValue<D> = D extends {
-	schema: StandardSchemaV1<infer Input, infer Output>;
-}
-	? undefined extends Input
-		? undefined extends Output
-			? false
-			: true
-		: false
-	: false;
-
-/** Whether omitting a wrapped prop is guaranteed to produce a defined value. @internal */
-type WrappedPropDefinitionOmissionProducesValue<D> =
-	WrappedPropDefinitionMetadataProducesValue<D> extends true
-		? true
-		: WrappedPropDefinitionSchemaProducesValue<D>;
-
-/** Whether a wrapped definition guarantees a normalized property. @internal */
-type WrappedPropDefinitionProducesValue<D> = D extends { required: true }
-	? true
-	: WrappedPropDefinitionOmissionProducesValue<D>;
+/** Extracts the schema of a direct or wrapped prop-definition entry. @internal */
+type PropDefinitionSchema<D> = D extends StandardSchemaV1
+	? D
+	: D extends { schema: infer Schema extends StandardSchemaV1 }
+		? Schema
+		: never;
 
 /** Infers the normalized value produced by a prop-definition entry. @internal */
 type InferPropDefinitionValue<D> =
-	D extends StandardSchemaV1<unknown, infer Output>
+	PropDefinitionSchema<D> extends StandardSchemaV1<unknown, infer Output>
 		? Output
-		: D extends { schema: StandardSchemaV1<unknown, infer Output> }
-			? Output
-			: unknown;
+		: unknown;
 
 /** Infers the value accepted by a prop-definition entry. @internal */
 type InferPropDefinitionInput<D> =
-	D extends StandardSchemaV1<infer Input, unknown>
+	PropDefinitionSchema<D> extends StandardSchemaV1<infer Input, unknown>
 		? Input
-		: D extends { schema: StandardSchemaV1<infer Input, unknown> }
-			? D extends { required: true }
-				? Exclude<Input, undefined>
-				: Input
-			: unknown;
+		: unknown;
 
-/** Whether a prop-definition entry can be absent after normalization. @internal */
-type IsOptionalPropDefinitionValue<D> =
-	D extends StandardSchemaV1<unknown, infer Output>
-		? undefined extends Output
-			? true
-			: false
-		: WrappedPropDefinitionProducesValue<D> extends true
-			? false
-			: true;
-
-/** Keys whose definitions can be absent after normalization. @internal */
+/** Keys whose schemas can produce `undefined`. @internal */
 type OptionalPropDefinitionKeys<D extends Record<string, unknown>> = {
-	[K in keyof D]-?: IsOptionalPropDefinitionValue<D[K]> extends true
+	[K in keyof D]-?: undefined extends InferPropDefinitionValue<D[K]>
 		? K
 		: never;
 }[keyof D];
@@ -340,6 +208,9 @@ type RequiredPropDefinitionKeys<D extends Record<string, unknown>> = Exclude<
 /**
  * Infers normalized component props from direct or wrapped Standard Schemas.
  *
+ * @remarks
+ * A key is optional exactly when its schema's output can be `undefined`.
+ *
  * @typeParam D - A map of prop names to schema-backed definitions.
  * @public
  */
@@ -349,21 +220,9 @@ export type InferPropsDefinition<D extends Record<string, unknown>> = {
 	[K in OptionalPropDefinitionKeys<D>]?: InferPropDefinitionValue<D[K]>;
 };
 
-/** Whether a prop-definition entry accepts omission as input. @internal */
-type IsOptionalPropDefinitionInput<D> =
-	D extends StandardSchemaV1<infer Input, unknown>
-		? undefined extends Input
-			? true
-			: false
-		: D extends { required: true }
-			? WrappedPropDefinitionOmissionProducesValue<D> extends true
-				? true
-				: false
-			: true;
-
-/** Keys whose definitions accept omission as input. @internal */
+/** Keys whose schemas accept `undefined` as input. @internal */
 type OptionalPropDefinitionInputKeys<D extends Record<string, unknown>> = {
-	[K in keyof D]-?: IsOptionalPropDefinitionInput<D[K]> extends true
+	[K in keyof D]-?: undefined extends InferPropDefinitionInput<D[K]>
 		? K
 		: never;
 }[keyof D];
@@ -377,8 +236,8 @@ type RequiredPropDefinitionInputKeys<D extends Record<string, unknown>> =
  *
  * @remarks
  * Unlike {@link InferPropsDefinition}, this type uses each schema's accepted
- * input. Direct schemas determine omission from that input, while wrapped
- * definitions use their `required`, `default`, and `value` options.
+ * input. A key is optional exactly when its schema accepts `undefined`, so the
+ * compiler and the runtime agree on which props are required.
  *
  * @typeParam D - A map of prop names to schema-backed definitions.
  * @public
@@ -409,7 +268,6 @@ export type InferSchemaOutput<S extends StandardSchemaV1> = InferOutput<S>;
  * Helper type for creating schema-based prop definitions with full type inference.
  *
  * @typeParam S - The Standard Schema type
- * @typeParam P - The props type for the component
  *
  * @example
  * ```typescript
@@ -424,11 +282,8 @@ export type InferSchemaOutput<S extends StandardSchemaV1> = InferOutput<S>;
  *
  * @public
  */
-export type SchemaPropDefinition<
-	S extends StandardSchemaV1,
-	P = Record<string, unknown>,
-> = DistributiveOmit<
-	PropDefinition<InferOutput<S>, P, InferInput<S>>,
+export type SchemaPropDefinition<S extends StandardSchemaV1> = DistributiveOmit<
+	PropDefinition<InferOutput<S>, InferInput<S>>,
 	"schema"
 > & {
 	schema: S;

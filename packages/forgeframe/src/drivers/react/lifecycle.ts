@@ -1,6 +1,6 @@
 import type { ContextType } from "../../constants";
 import type {
-	ConsumerPropsInput,
+	ComponentPropsInput,
 	ForgeFrameComponentInstance,
 } from "../../types/runtime";
 import { normalizeError } from "../../utils/error";
@@ -10,24 +10,22 @@ import { deactivatePropSyncState, type ReactPropSyncState } from "./prop-sync";
 export interface ReactInstanceRefs<
 	P extends Record<string, unknown>,
 	X,
-	I extends Record<string, unknown>,
 	SchemaInputs extends Record<string, unknown>,
 > {
 	instanceRef: {
-		current: ForgeFrameComponentInstance<P, X, I, SchemaInputs> | null;
+		current: ForgeFrameComponentInstance<P, X, SchemaInputs> | null;
 	};
-	propSyncRef: { current: ReactPropSyncState<P, X, I, SchemaInputs> | null };
+	propSyncRef: { current: ReactPropSyncState<P, X, SchemaInputs> | null };
 }
 
 /** Rejects completed work from an obsolete, closed, or unmounted instance. @internal */
 export function isCurrentSyncState<
 	P extends Record<string, unknown>,
 	X,
-	I extends Record<string, unknown>,
 	SchemaInputs extends Record<string, unknown>,
 >(
-	state: ReactPropSyncState<P, X, I, SchemaInputs>,
-	refs: ReactInstanceRefs<P, X, I, SchemaInputs>,
+	state: ReactPropSyncState<P, X, SchemaInputs>,
+	refs: ReactInstanceRefs<P, X, SchemaInputs>,
 ): boolean {
 	return (
 		state.active &&
@@ -40,12 +38,11 @@ export function isCurrentSyncState<
 function createPropSyncState<
 	P extends Record<string, unknown>,
 	X,
-	I extends Record<string, unknown>,
 	SchemaInputs extends Record<string, unknown>,
 >(
-	instance: ForgeFrameComponentInstance<P, X, I, SchemaInputs>,
+	instance: ForgeFrameComponentInstance<P, X, SchemaInputs>,
 	initialProps: Record<string, unknown>,
-): ReactPropSyncState<P, X, I, SchemaInputs> {
+): ReactPropSyncState<P, X, SchemaInputs> {
 	return {
 		instance,
 		comparableProps: initialProps,
@@ -61,11 +58,10 @@ function createPropSyncState<
 function releaseInstanceRefs<
 	P extends Record<string, unknown>,
 	X,
-	I extends Record<string, unknown>,
 	SchemaInputs extends Record<string, unknown>,
 >(
-	refs: ReactInstanceRefs<P, X, I, SchemaInputs>,
-	state: ReactPropSyncState<P, X, I, SchemaInputs>,
+	refs: ReactInstanceRefs<P, X, SchemaInputs>,
+	state: ReactPropSyncState<P, X, SchemaInputs>,
 ): void {
 	if (refs.instanceRef.current === state.instance)
 		refs.instanceRef.current = null;
@@ -87,31 +83,30 @@ function releaseInstanceRefs<
 export function mountReactInstance<
 	P extends Record<string, unknown>,
 	X,
-	I extends Record<string, unknown>,
 	SchemaInputs extends Record<string, unknown>,
 >(
 	createInstance: (
-		props: ConsumerPropsInput<P, I, SchemaInputs>,
-	) => ForgeFrameComponentInstance<P, X, I, SchemaInputs>,
+		props: ComponentPropsInput<P, SchemaInputs>,
+	) => ForgeFrameComponentInstance<P, X, SchemaInputs>,
 	initialProps: Record<string, unknown>,
 	container: HTMLDivElement,
 	context: ContextType | undefined,
-	refs: ReactInstanceRefs<P, X, I, SchemaInputs>,
+	refs: ReactInstanceRefs<P, X, SchemaInputs>,
 	observers: {
 		onRendered: () => void | Promise<void>;
 		onClose: () => void | Promise<void>;
 		onError: (error: Error) => void;
 		setError: (error: Error) => void;
 	},
-	onReady: (state: ReactPropSyncState<P, X, I, SchemaInputs>) => void,
+	onReady: (state: ReactPropSyncState<P, X, SchemaInputs>) => void,
 ): (() => void) | undefined {
 	const { instanceRef, propSyncRef } = refs;
-	const isCurrent = (state: ReactPropSyncState<P, X, I, SchemaInputs>) =>
+	const isCurrent = (state: ReactPropSyncState<P, X, SchemaInputs>) =>
 		isCurrentSyncState(state, refs);
-	let instance: ForgeFrameComponentInstance<P, X, I, SchemaInputs>;
+	let instance: ForgeFrameComponentInstance<P, X, SchemaInputs>;
 	try {
 		instance = createInstance(
-			initialProps as ConsumerPropsInput<P, I, SchemaInputs>,
+			initialProps as ComponentPropsInput<P, SchemaInputs>,
 		);
 	} catch (err) {
 		const constructionError = normalizeError(err);

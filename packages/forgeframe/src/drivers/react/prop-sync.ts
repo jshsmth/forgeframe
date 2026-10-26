@@ -1,6 +1,6 @@
 import { PROP_RESET } from "../../core/consumer/prop-update";
 import type {
-	ConsumerPropsUpdate,
+	ComponentPropsUpdate,
 	ForgeFrameComponentInstance,
 } from "../../types/runtime";
 
@@ -55,10 +55,9 @@ export interface ReactPropQueue {
 export interface ReactPropSyncState<
 	P extends Record<string, unknown>,
 	X,
-	I extends Record<string, unknown>,
 	SchemaInputs extends Record<string, unknown>,
 > extends ReactPropQueue {
-	instance: ForgeFrameComponentInstance<P, X, I, SchemaInputs>;
+	instance: ForgeFrameComponentInstance<P, X, SchemaInputs>;
 	renderReady: boolean;
 	draining: boolean;
 	active: boolean;
@@ -68,9 +67,8 @@ export interface ReactPropSyncState<
 export function deactivatePropSyncState<
 	P extends Record<string, unknown>,
 	X,
-	I extends Record<string, unknown>,
 	SchemaInputs extends Record<string, unknown>,
->(state: ReactPropSyncState<P, X, I, SchemaInputs>): void {
+>(state: ReactPropSyncState<P, X, SchemaInputs>): void {
 	state.active = false;
 	state.queue.length = 0;
 }
@@ -161,12 +159,11 @@ export function enqueuePropSnapshot(
 export async function drainPropUpdates<
 	P extends Record<string, unknown>,
 	X,
-	I extends Record<string, unknown>,
 	SchemaInputs extends Record<string, unknown>,
 >(
-	state: ReactPropSyncState<P, X, I, SchemaInputs>,
+	state: ReactPropSyncState<P, X, SchemaInputs>,
 	isCurrentSyncState: (
-		state: ReactPropSyncState<P, X, I, SchemaInputs>,
+		state: ReactPropSyncState<P, X, SchemaInputs>,
 	) => boolean,
 	onError: (error: Error) => void,
 ): Promise<void> {
@@ -185,7 +182,7 @@ export async function drainPropUpdates<
 
 			try {
 				await state.instance.updateProps(
-					update.payload as ConsumerPropsUpdate<P, I, SchemaInputs>,
+					update.payload as ComponentPropsUpdate<P, SchemaInputs>,
 				);
 			} catch (err) {
 				if (!isCurrentSyncState(state)) {

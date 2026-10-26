@@ -446,7 +446,7 @@ describe("React commits across the host boundary", () => {
 	it("resets omitted React props to defaults and removes optional host values without remounting", async () => {
 		const definitions = {
 			title: prop.string(),
-			theme: { schema: prop.string().optional(), default: "light" },
+			theme: { schema: prop.string().default("light"), queryParam: true },
 			note: prop.string().optional(),
 		};
 		const Component = create({
@@ -466,7 +466,7 @@ describe("React commits across the host boundary", () => {
 		});
 		const { hostProps, iframe } = await harness.bootstrapIframeHost(
 			container,
-			definitions,
+			Component,
 		);
 		await vi.waitFor(() => expect(iframe.style.visibility).toBe("visible"));
 		expect(hostProps.theme).toBe("dark");

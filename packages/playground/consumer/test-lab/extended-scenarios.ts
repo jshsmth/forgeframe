@@ -400,10 +400,10 @@ export async function runTransportScenario(
 		dimensions: { width: "100%", height: 320 },
 		props: {
 			scenario: prop.string(),
-			trustedValue: { schema: prop.string(), trustedDomains: [HOST_ORIGIN] },
+			trustedValue: { schema: prop.string(), deliverTo: HOST_ORIGIN },
 			blockedValue: {
 				schema: prop.string(),
-				trustedDomains: ["https://blocked.example.com"],
+				deliverTo: "https://blocked.example.com",
 			},
 			privateValue: { schema: prop.string(), sendToHost: false },
 		},

@@ -92,10 +92,8 @@ export interface ComponentEvents<P = Record<string, unknown>, X = unknown> {
 	 */
 	closed: undefined;
 	/**
-	 * The handshake timed out, the host reported an error with
-	 * `hostProps.reportError()`, or a prop callback called
-	 * `PropContext.onError()`. A report made while the instance is being
-	 * constructed is delivered after the factory call returns.
+	 * The handshake timed out, or the host reported an error with
+	 * `hostProps.reportError()`.
 	 */
 	error: Error;
 	/**

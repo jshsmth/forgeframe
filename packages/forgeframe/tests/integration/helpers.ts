@@ -106,7 +106,7 @@ export type HarnessHostDefinition<
 > =
 	| HostPropsDefinition<P, SchemaInputs>
 	// biome-ignore lint/suspicious/noExplicitAny: Accepts every component's export, input and requirement types.
-	| ForgeFrameComponent<P, any, any, any, any>;
+	| ForgeFrameComponent<P, any, any, any>;
 
 /** Overrides for the options the harness passes to `initHost()`. */
 export interface HarnessHostOptions {

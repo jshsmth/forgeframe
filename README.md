@@ -309,8 +309,8 @@ const MyComponent = create({
     count: prop.number(),
     createdAt: prop.date(),
     enabled: prop.boolean(),
-    config: prop.object(),
-    items: prop.array(),
+    config: prop.object({ locale: prop.string() }),
+    items: prop.array(prop.string()),
     position: prop.tuple(prop.number(), prop.number()),
     onSubmit: prop.function<(data: { email: string }) => void>(),
     nickname: prop.string().optional(),
@@ -320,11 +320,11 @@ const MyComponent = create({
     username: prop.string().min(3).max(20),
     slug: prop.string().pattern(/^[a-z0-9-]+$/),
     status: prop.enum(['pending', 'active', 'completed']),
-    tags: prop.array().of(prop.string()),
-    scores: prop.array().of(prop.number().min(0).max(100)),
+    tags: prop.array(prop.string()),
+    scores: prop.array(prop.number().min(0).max(100)),
     metadata: prop.record(prop.string()),
     themeId: prop.union(prop.string(), prop.number()),
-    user: prop.object().shape({
+    user: prop.object({
       name: prop.string(),
       email: prop.string().email(),
       age: prop.number().optional(),
@@ -338,7 +338,7 @@ const MyComponent = create({
 
 | Prop | Description |
 |------|-------------|
-| `name`, `count`, `enabled`, `config`, `items` | Basic types: string, number, boolean, object, array |
+| `name`, `count`, `enabled`, `config`, `items` | Basic types: string, number, boolean, object, array. Objects take their shape and arrays their item schema |
 | `createdAt` | `prop.date()` validates real `Date` instances |
 | `position` | `prop.tuple(...)` validates fixed positional arrays |
 | `onSubmit` | Functions are bridged so the host can call them across origins |
@@ -349,11 +349,13 @@ const MyComponent = create({
 | `username` | `.min(3).max(20)` constrains string length |
 | `slug` | `.pattern(/.../)` validates against a regex |
 | `status` | `prop.enum([...])` restricts to specific values |
-| `tags` | `.of(prop.string())` validates each array item |
+| `tags` | `prop.array(prop.string())` validates each array item |
 | `scores` | Array items can have their own validation chain |
 | `metadata` | `prop.record(...)` validates dictionary values by key |
 | `themeId` | `prop.union(...)` accepts any of several schemas |
-| `user` | `.shape({...})` defines nested object structure |
+| `user` | `prop.object({...})` defines nested object structure |
+
+A prop is required exactly when its schema rejects `undefined`: `name` is required, `nickname` is optional, and `theme` falls back to `'light'`. The same rule applies to the object form below and on the host, and a missing value always fails with the schema's message, such as `Validation failed: name: Required`.
 
 </details>
 
@@ -393,30 +395,31 @@ Peer discovery uses a separate relay registry with a cumulative **500-reference*
 | Date | `prop.date()` | `.min()`, `.max()` |
 | Boolean | `prop.boolean()` | - |
 | Function | `prop.function<T>()` | - |
-| Array | `prop.array()` | `.of(schema)`, `.min()`, `.max()`, `.nonempty()` |
+| Array | `prop.array(itemSchema)` | `.min()`, `.max()`, `.nonempty()` |
 | Tuple | `prop.tuple(...schemas)` | - |
-| Object | `prop.object()` | `.shape({...})`, `.strict()` |
+| Object | `prop.object({...})` | `.strict()` |
 | Record | `prop.record(schema)` | - |
 | Enum | `prop.enum([...])` | - |
 | Literal | `prop.literal(value)` | - |
 | Union | `prop.union(...schemas)` | - |
-| Any | `prop.any()` | - |
+| Any | `prop.any<T>()` | - |
 
 Validation rules:
 
 - Refinements accumulate: `prop.string().email().pattern(/@corp\.com$/)` requires both, and `.min(5).nonempty()` still requires 5 characters. Length checks run first, then URL syntax, then patterns; number integer checks run before bounds. The first failed rule is reported.
 - `prop.number()` rejects `NaN`, `Infinity`, and `-Infinity`, which JSON would otherwise turn into `null`.
 - `prop.string().url()` requires a parseable absolute HTTP(S) URL and returns the string unchanged. It composes with `.pattern()`; only `.trim()` changes the returned string.
-- Shaped object schemas validate own fields only. An omitted field is `undefined`, so optional fields and defaults work for names such as `constructor` and `toString`, and inherited values are never treated as input.
+- `prop.object(shape)` and `prop.array(item)` require their shape or item schema. For a value you deliberately do not check, use `prop.any<T>()`; the type parameter only types the value, and it accepts any defined value at runtime.
+- Object schemas validate own fields only. An omitted field is `undefined`, so optional fields and defaults work for names such as `constructor` and `toString`, and inherited values are never treated as input.
 - Enum values, object shapes, and the item and branch arrays passed to `prop.tuple()` and `prop.union()` are copied when the schema is created. Changing the original array or object later does not affect the schema or the clones made by `.optional()`, `.nullable()`, and `.default()`.
 - `Date` props and exports accept dates created in another window, and record schemas accept plain objects from another window; class instances are rejected.
 - Literal and enum errors describe the rejected input without calling its `toJSON()`, so a later `prop.union()` branch can still accept it.
 
 #### Arrays in props and exports
 
-Arrays delivered to the host, including nested arrays, must not contain `undefined` entries or sparse holes, because JSON would turn them into `null`. Use `null` with a nullable item schema, such as `prop.array().of(prop.string().nullable())`, or an item default, such as `prop.array().of(prop.string().default('fallback'))`. Standalone schema validation still accepts optional entries, and props withheld by `sendToHost`, `sameDomain`, or `trustedDomains` are not checked.
+Arrays delivered to the host, including nested arrays, must not contain `undefined` entries or sparse holes, because JSON would turn them into `null`. Use `null` with a nullable item schema, such as `prop.array(prop.string().nullable())`, or an item default, such as `prop.array(prop.string().default('fallback'))`. Standalone schema validation still accepts optional entries, and props withheld by `sendToHost` or `deliverTo` are not checked.
 
-ForgeFrame reads each indexed entry directly, so arrays with a null prototype or an overridden `map` method deliver their actual entries. Normalized arrays are checked before the host opens or an update is committed, so a rejected update keeps the previous snapshot. Values produced by `hostDecorate` or a custom `toJSON()` (including a computed `toJSON` property) are checked during delivery, after commitment. A `toJSON` field that is not a function is ordinary data.
+ForgeFrame reads each indexed entry directly, so arrays with a null prototype or an overridden `map` method deliver their actual entries. Normalized arrays are checked before the host opens or an update is committed, so a rejected update keeps the previous snapshot. Values produced by a custom `toJSON()` (including a computed `toJSON` property) are checked during delivery, after commitment. A `toJSON` field that is not a function is ordinary data.
 
 ### Using Standard Schema Libraries
 
@@ -442,7 +445,7 @@ Validation is synchronous. If a schema's `~standard.validate` returns a promise,
 
 ### Advanced Prop Definitions
 
-Use the object form when a prop needs transport rules in addition to validation.
+Use the object form when a prop needs transport rules in addition to validation. The schema still decides whether the prop is required and what its default is; the other fields only control how the value reaches the host.
 
 ```typescript
 import { create, prop } from 'forgeframe';
@@ -453,10 +456,14 @@ const SecureWidget = create({
   props: {
     secret: {
       schema: prop.string(),
-      sameDomain: true,
+      deliverTo: 'same-origin',
+    },
+    partnerToken: {
+      schema: prop.string(),
+      deliverTo: ['https://pay.example.com', /^https:\/\/[a-z]+\.partner\.example$/],
     },
     auditId: {
-      schema: prop.string(),
+      schema: prop.string().optional(),
       queryParam: true,
     },
     internalState: {
@@ -469,16 +476,17 @@ const SecureWidget = create({
 
 | Option | Description |
 |--------|-------------|
+| `schema` | Required. Validates the prop, decides whether it is required, and supplies its default |
 | `sendToHost` | Skip sending the prop to the host when set to `false` |
-| `sameDomain` | Only deliver the prop after the loaded host is verified to be same-origin. It is never in `window.name` or the initial query/POST request; a verified same-origin host receives it in the bootstrap snapshot and later updates |
-| `trustedDomains` | Only send the prop to matching host domains |
-| `queryParam` / `bodyParam` | Include the prop in the host page's initial HTTP request |
-| `alias` | Accept an alternate input name, such as a legacy name. Aliases can chain through other defined props; at each level, an explicitly supplied canonical key wins. Only own input properties count as supplied |
+| `deliverTo` | Restrict which hosts receive the prop. `'same-origin'` delivers only after the loaded host is verified to share the consumer's origin, so the value is never in `window.name` or the initial query/POST request. An origin string (with optional `*` wildcards), a `RegExp`, or an array of them delivers only to matching host origins; an empty array delivers to none. `create()` rejects an empty or blank origin, and `'same-origin'` cannot be mixed into an array |
+| `queryParam` / `bodyParam` | Include the prop in the host page's initial HTTP request: `true` uses the prop key, a string names the parameter, and `false` is the same as omitting it |
 | `outputSchema` | Validate the normalized value again at consumer and host trust boundaries without transforming it |
 
-In a wrapped definition, `default` and `value` fallbacks are schema inputs: ForgeFrame validates and transforms them before any decorator, validator, URL, or transport callback sees the normalized value. A `.default()` set on the schema itself is already a schema output. A function `default` is called as a factory with the prop context, so wrap a callback default as `default: () => onCancel`; the types reject `default: onCancel`, as they do for `.default()`.
+`auditId` above is optional only because its schema is `.optional()`. Without it, `{ schema: prop.string(), queryParam: true }` is required, exactly like `prop.string()`.
 
-When an input schema changes the value's type, use the wrapped form with an `outputSchema`, even when `sendToHost` is `false`. The input schema parses consumer values and fallbacks; the output schema checks the normalized value before consumer routing callbacks or host trust boundaries use it. Output schemas only validate; they must not transform.
+Transforms and refinements belong in the schema, such as `prop.string().trim()` or a Zod `.refine()`, and cross-prop rules belong in the component's `validate({ props })` option. To compute a value from other inputs, compute it before calling the factory or `updateProps()`.
+
+When an input schema changes the value's type, use the wrapped form with an `outputSchema`, even when `sendToHost` is `false`. The input schema parses consumer values and applies its default; the output schema checks the normalized value before consumer routing callbacks or host trust boundaries use it. Output schemas only validate; they must not transform.
 
 ```typescript
 import { z } from 'zod';
@@ -488,61 +496,27 @@ const AmountComponent = create({
   url: 'https://widgets.example.com/amount',
   props: {
     amount: {
-      schema: z.string().transform(Number),
+      schema: z.string().default('1').transform(Number),
       outputSchema: z.number().finite(),
-      default: '1',
     },
   },
 });
 
 AmountComponent({ amount: '2' }); // Host receives the validated number 2
+AmountComponent(); // Host receives the default, 1
 ```
 
 Pass a schema directly when it accepts its own normalized output unchanged. A type-changing transform needs the wrapped form above, and so does a same-type transform that is not idempotent: without an `outputSchema`, the host rejects the changed value.
 
-To type alias inputs separately from the canonical props the host receives:
+A schema that requires input can still produce `undefined`. When a valid input can transform to `undefined`, its `outputSchema` must accept `undefined`, and the host then treats `undefined` as a valid result.
 
-```typescript
-type WidgetProps = {
-  email: string;
-};
+A host evaluates `sendToHost` and `deliverTo` itself, with its own origin and the verified consumer origin, to decide which props it expects. Props it is not meant to receive are neither required nor accepted: a cross-origin host can share definitions that include a required `'same-origin'` secret, and fields for those props, or for `sendToHost: false` props, are discarded from bootstrap and update snapshots before decoding or validation, even if a stale or misconfigured consumer sends them. Discarded values never reach `hostProps`, `hostProps.consumer.props`, or prop notifications.
 
-type LegacyWidgetInput = {
-  userEmail: string;
-};
-
-type WidgetSchemaInputs = {
-  email: string;
-};
-
-const Widget = create<
-  WidgetProps,
-  unknown,
-  LegacyWidgetInput,
-  WidgetSchemaInputs
->({
-  tag: 'legacy-widget',
-  url: 'https://widgets.example.com/legacy',
-  props: {
-    email: { schema: prop.string(), required: true, alias: 'userEmail' },
-  },
-});
-
-Widget({ userEmail: 'user@example.com' });
-Widget({ email: 'user@example.com' });
-```
-
-Factories, prop updates, and React wrappers accept either the canonical schema-input shape or the alternate input shape. When a transform changes a prop's type, normalized host props are not accepted as consumer input. The alternate input type can be a subset of the canonical props when a canonical key doubles as another prop's alias.
-
-`required: true` requires a consumer input, not a defined normalized output. If a valid input can transform to `undefined`, its `outputSchema` must accept `undefined`, and the host then treats `undefined` as a valid result.
-
-A `sendToHost: false` definition validates consumer input only. Hosts that share the definition discard the field from received bootstrap and update snapshots before decoding or validation, even if a stale consumer sends it. A required local prop does not block host initialization, and discarded values never reach `hostProps`, `hostProps.consumer.props`, or prop notifications. Origin restrictions still apply to delivered props.
-
-Prefer inferred component and React-wrapper types. When you explicitly annotate an aliased component whose schema inputs differ from its host props, pass the canonical schema-input type as the fifth `ForgeFrameComponent` generic (after the required-props flag) or the fourth `ForgeFrameComponentInstance` generic. React wrappers infer it; with explicit wrapper type arguments, it is the sixth generic.
+Prefer inferred component and React-wrapper types. When you annotate a component whose schema inputs differ from its host props, pass the schema-input type as the fourth `ForgeFrameComponent` generic (after the required-props flag) or the third `ForgeFrameComponentInstance` generic. React wrappers infer it; with explicit wrapper type arguments, it is the fifth generic.
 
 Transport notes:
 
-- Use `sameDomain` for values that must never be exposed during cross-origin bootstrap.
+- Use `deliverTo: 'same-origin'` for values that must never be exposed during cross-origin bootstrap.
 - Props always cross as JSON through the function bridge. Callbacks at any depth arrive as remote functions and `Date` values arrive as `Date`s, at bootstrap, on every update, and in `hostProps.export(...)`.
 - Ordinary objects that contain transport marker fields stay ordinary data.
 - An object's `toJSON()` result is delivered instead of its fields, as native JSON does, so a class can hide fields such as tokens. A root `toJSON()` that returns `undefined` omits the prop. A `URL` arrives as its `href`, and boxed primitives such as `new String('ab')` arrive unboxed. A boxed primitive whose prototype was set to `null` is not unboxed: it is sent as an ordinary record of its own fields.
@@ -568,14 +542,14 @@ const Checkout = create({
 - `queryParam` appends the value to the query string before any `#fragment`, keeping existing parameters and the fragment.
 - `bodyParam` sends the value in a hidden-form `POST` when the iframe or popup first loads. Later `updateProps()` calls use postMessage.
 - POST field names such as `submit`, `remove`, and `appendChild` do not interfere with submission or cleanup.
-- `Date` values are sent as ISO strings and other object values are JSON-stringified. Functions, `undefined`, `null`, and invalid dates are skipped.
+- `Date` values are sent as ISO strings and other object values are JSON-stringified. Functions, `undefined`, `null`, and invalid dates are skipped. To send a custom encoding, pass the encoded string as its own prop, or build the URL in a `url(props)` function.
 - Iframe containers must be attached to the document when rendering, so a `bodyParam` POST always targets the rendered frame.
-- `sendToHost`, `sameDomain`, and `trustedDomains` also apply to query and body parameters. Same-origin status is verified only after the host loads, so `sameDomain` props are never in the initial request.
+- `sendToHost` and `deliverTo` also apply to query and body parameters, matched against the pinned host URL's origin. Same-origin status is verified only after the host loads, so `deliverTo: 'same-origin'` props are never in the initial request.
 - Never put credentials, bearer tokens, session identifiers, or sensitive personal data in `queryParam`. URLs leak through browser history, referrers, analytics, and server logs.
 
 ### Updating Props
 
-`updateProps()` works before and after rendering. Updates run in order, including updates requested inside decorators or validators. Rendering waits for queued updates, so the initial query/body parameters and bootstrap props use their result; updates requested while rendering are rejected. Once `close()` starts, new and queued updates are rejected without running validation or prop callbacks.
+`updateProps()` works before and after rendering. Each update runs one sequence: merge the patch, run the schemas (which apply their defaults), check output contracts, run the component's `validate`, check the URL and origin, commit, deliver to the host, then notify. Updates run in order, including updates requested from a schema transform or the component's `validate`. Rendering waits for queued updates, so the initial query/body parameters and bootstrap props use their result; updates requested while rendering are rejected. Once `close()` starts, new and queued updates are rejected without running validation or prop callbacks.
 
 ```typescript
 const instance = MyComponent({ name: 'Initial' });
@@ -695,7 +669,6 @@ const amountProps = {
   amount: {
     schema: z.string().transform(Number),
     outputSchema: z.number(),
-    required: true,
   },
 } satisfies HostPropsDefinition<AmountProps, AmountInputs>;
 
@@ -1236,6 +1209,38 @@ The same applies to `onDisplay`, `onRender`, `onPrerender`, `onPrerendered`, `on
 
 **Event constants and types.** Before: `EVENT.PRERENDER`, `EVENT.PRERENDERED`, `EVENT.DISPLAY`, `EVENT.DESTROY`, and `EventEmitterInterface`. After: `EVENT.RENDER`, `EVENT.RENDERED`, `EVENT.CLOSED`, and `EVENT.EXPORTS`, with `EventSubscriber<ComponentEvents<Props, Exports>>` for `instance.event` and `HostEvents` for the host.
 
+### Prop definitions
+
+The schema is now the only source of a prop's presence, default and value; the object form only adds transport options. `create()` and `initHost()` throw for a removed option and name its replacement.
+
+| Area | v1 | v2 |
+|---|---|---|
+| Required wrapped prop | `id: { schema: prop.string(), required: true }` | `id: prop.string()` |
+| Wrapped prop that was implicitly optional | `ref: { schema: prop.string(), queryParam: true }` (optional) | `ref: { schema: prop.string().optional(), queryParam: true }`. Without `.optional()` it is now required. |
+| Wrapped literal default | `{ schema: prop.string(), default: 'light' }` | `prop.string().default('light')` |
+| Wrapped callback default | `{ schema: prop.function(), default: () => onCancel }` | `prop.function().default(() => onCancel)` |
+| Computed fallback | `{ schema, value: (ctx) => ... }` or `default: (ctx) => ...` | Compute the value before calling the factory or `updateProps()` |
+| Decorator | `{ schema: prop.string(), decorate: ({ value }) => value.trim() }` | `prop.string().trim()`, or a schema transform (add `outputSchema` if it changes the type) |
+| Host decorator | `{ schema, hostDecorate: ({ value }) => ... }` | Transform on the host after receipt, or pass a separate derived prop |
+| Per-prop validator | `{ schema, validate: ({ value }) => ... }` | A schema refinement (for example Zod `.refine`), or the component's `validate({ props })` for cross-prop rules |
+| Alias | `email: { schema: prop.string(), alias: 'userEmail' }` with `Widget({ userEmail })` | `email: prop.string()` with `Widget({ email: legacy.userEmail })` |
+| Alias types | `create<P, X, I, SchemaInputs>`, `ConsumerPropsInput`, `ConsumerPropsUpdate` | `create<P, X, SchemaInputs>`; factory input is inferred from schemas |
+| Same-origin only | `{ schema, sameDomain: true }` | `{ schema, deliverTo: 'same-origin' }` |
+| Listed host origins | `{ schema, trustedDomains: ['https://a.example'] }` | `{ schema, deliverTo: 'https://a.example' }`, or a `RegExp`, or an array |
+| Encoded query/body value | `queryParam: ({ value }) => encode(value)` | Pass the encoded string as its own prop with `queryParam: 'name'`, or build the URL in a `url(props)` function |
+| Shapeless object | `prop.object()` or `prop.object<Config>()` | `prop.object({ ... })`, `prop.record(...)` for dictionaries, or `prop.any<Config>()` when deliberately unchecked |
+| Shaped object | `prop.object().shape({ ... })` | `prop.object({ ... })` |
+| Array items | `prop.array().of(prop.string())` | `prop.array(prop.string())` |
+| Itemless array | `prop.array()` or `prop.array<T>()` | `prop.array(itemSchema)`, or `prop.any<T[]>()` |
+| Prop context | `PropContext` (`props`, `close`, `focus`, `onError`, `container`, `uid`, `tag`) | Removed |
+| Missing-value error | `Prop "id" is required but was not provided` for the object form | Always the schema's message, such as `Validation failed: id: Required` |
+
+A host that shares definitions with a `deliverTo` prop no longer requires that prop when it is withheld from the host's origin, and it discards the field if a consumer sends it anyway.
+
+### Props are always JSON
+
+ForgeFrame 2 sends every prop as JSON through the function bridge. The `serialization` prop option and its `BASE64` and `DOTIFY` formats, `PROP_SERIALIZATION` and `SerializationType` are gone, and `create()` or `initHost()` throws if a definition still sets `serialization`. Remove the option: values that were base64- or dot-encoded now arrive as the same JSON values, callbacks at any depth are still bridged, and `Date` values still arrive as `Date`s. A host that read an encoded query parameter should read the plain value, or the consumer can pass its own encoded string as a separate prop with `queryParam: 'name'`.
+
 ### Named exports only
 
 Before:
@@ -1280,10 +1285,10 @@ import {
 
 ### Component Options
 
-Each `props` entry is either a Standard Schema or a full `PropDefinition` object with transport, alias, and lifecycle options. An entry set to `undefined` is treated as omitted, so the prop is neither normalized nor sent.
+Each `props` entry is either a Standard Schema or a `PropDefinition` object that wraps a schema with transport options (`sendToHost`, `deliverTo`, `queryParam`, `bodyParam`, `outputSchema`). An entry set to `undefined` is treated as omitted, so the prop is neither normalized nor sent.
 
 ```typescript
-interface ComponentOptions<P, I = P, SchemaInputs = I> {
+interface ComponentOptions<P, SchemaInputs = P> {
   tag: string;
   url: string | ((props: P) => string);
   dimensions?: { width?: number | string; height?: number | string } | ((props: P) => { width?: number | string; height?: number | string });

@@ -5,7 +5,7 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { clearComponents, create } from "@/core/component";
-import { validateProps } from "@/props/normalize";
+import { normalizeProps } from "@/props/normalize";
 import {
 	isStandardSchema,
 	type StandardSchemaV1,
@@ -69,16 +69,16 @@ describe("Standard Schema interoperability", () => {
 			name: schema,
 		};
 		const wrapped: PropsDefinition<{ name: string }, { name?: unknown }> = {
-			name: { schema, required: true },
+			name: { schema },
 		};
 
 		for (const definitions of [direct, wrapped]) {
-			expect(() => validateProps({ name: "ok" }, definitions)).not.toThrow();
+			expect(() => normalizeProps({ name: "ok" }, definitions)).not.toThrow();
 			expect(() =>
-				validateProps({ name: 42 as unknown as string }, definitions),
+				normalizeProps({ name: 42 as unknown as string }, definitions),
 			).toThrow("Validation failed: name: Expected string");
 			expect(() =>
-				validateProps({} as { name: string }, definitions),
+				normalizeProps({} as { name: string }, definitions),
 			).toThrow();
 		}
 	});
