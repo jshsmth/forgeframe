@@ -902,13 +902,13 @@ export class ConsumerComponent<
 
 /**
  * Whether a host's resize request took effect: a popup host resized its own
- * window while it is open, and an iframe only when one was mounted.
+ * window while it is still connected, and an iframe only when one was mounted.
  * @internal
  */
 function hostResizeApplied(
 	outcome: ResizeOutcome,
 	context: ContextType,
-	popupOpen: boolean,
+	hostConnected: boolean,
 ): boolean {
-	return outcome === "resized" || (context === CONTEXT.POPUP && popupOpen);
+	return outcome === "resized" || (context === CONTEXT.POPUP && hostConnected);
 }

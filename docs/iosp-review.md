@@ -5,7 +5,7 @@ desc: Runtime callable responsibilities, IOSP classifications, and boundary test
 tags: []
 sources: []
 created: 2026-10-01T01:55:30Z
-updated: 2026-10-26T10:33:25Z
+updated: 2026-10-26T10:40:03Z
 ---
 
 # ForgeFrame callable reference
@@ -265,7 +265,7 @@ Evidence: [host](#evidence-host); typecheck.
 
 ### [core/host/builtin-keys.ts](../packages/forgeframe/src/core/host/builtin-keys.ts)
 
-The reserved built-in names and the declaration policy that rejects definitions for them. `create()` and `initHost()` share the policy, which reads fields by the own-field rule in `props/definition-checks.ts`: entries set to `undefined` count as omitted, and accessors are not invoked. `assertPropDefinitionsObject` is the one prop-definitions check both entry points call: the reserved-name rule, then `assertPropDefinitions`.
+The reserved built-in names and the declaration policy that rejects definitions for them. `create()` and `initHost()` share the policy, which reads fields by the own-field rule in `utils/own-field.ts`: entries set to `undefined` count as omitted, and accessors are not invoked. `assertPropDefinitionsObject` is the one prop-definitions check both entry points call: the reserved-name rule, then `assertPropDefinitions`.
 
 - **O:** `assertNoReservedPropDefinitions`.
 - **I:** `assertPropDefinitionsObject`.

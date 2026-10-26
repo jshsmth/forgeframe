@@ -1271,8 +1271,7 @@ instance.event.on('error', onError);
 | Host prop subscription | `const { cancel } = hostProps.onProps(fn); cancel();` | `const stop = hostProps.onProps(fn); stop();` | Call the returned function |
 | Reporting a host error | `await hostProps.onError(err)` | `await hostProps.reportError(err)`; `onError` is now an ordinary prop name | Rename the call |
 | Host props event | `host.on('props', fn)` | `hostProps.onProps(fn)` | Subscribe through `hostProps` |
-| Host error payload | An `Error` or `{ type: 'init_failed', message, error }` | Always an `Error`; a wrapped failure is on `error.cause` | Read `err.code` and `err.cause` |
-| Event constants and types | `EVENT.PRERENDER`, `EVENT.PRERENDERED`, `EVENT.DISPLAY`, `EVENT.DESTROY`, `EventEmitterInterface` | Plain event names such as `'render'`, `'rendered'`, `'closed'` and `'exports'`; `EventSubscriber<ComponentEvents<Props, Exports>>` for `instance.event` and `HostEvents` for the host | Use the string names and the new types |
+| Event types | `EventEmitterInterface` | `EventSubscriber<ComponentEvents<Props, Exports>>` for `instance.event` and `HostEvents` for the host; the `EVENT` constants are gone (see [Types and inference](#types-and-inference)) | Use the new types and plain event names |
 
 ### Prop definitions
 
@@ -1331,8 +1330,7 @@ Origins are called origins everywhere, and every error ForgeFrame raises is a `F
 
 | Area | v1 | v2 | What to do |
 |---|---|---|---|
-| Consumer host allowlist | `domain` | `hostOrigins` | Rename the option; values are origins such as `https://pay.example.com`, and a bare host such as `pay.example.com` now throws |
-| Host consumer allowlist | `initHost(defs, allowedConsumerDomains)` or `ComponentOptions.allowedConsumerDomains` | `initHost(Component, { consumerOrigins })` (required) | Move the allowlist to `initHost` and rename it |
+| Consumer host allowlist | `domain` | `hostOrigins` | Rename the option; values are origins such as `https://pay.example.com`, and a bare host such as `pay.example.com` now throws. The host's allowlist is `consumerOrigins` on `initHost()` (see [Host start-up and props](#host-start-up-and-props)) |
 | Matcher type | `DomainMatcher` | `OriginMatcher` | Rename the type import |
 | Consumer origin in the host | `hostProps.getConsumerDomain()` | `hostProps.consumerOrigin`, a read-only property | Drop the call parentheses |
 | Handshake timeout | `timeout` | `initTimeout` | Rename; remote callbacks still have no timeout |
@@ -1340,7 +1338,7 @@ Origins are called origins everywhere, and every error ForgeFrame raises is a `F
 | Removed names | Ignored or accepted | `domain`, `timeout` and `defaultContext` throw a `VALIDATION` error naming the replacement | Rename the option |
 | Popup blocked | `err instanceof PopupOpenError` | `err instanceof ForgeFrameError && err.code === 'POPUP_BLOCKED'` | Replace the check |
 | Matching messages | `err.message.includes('timed out')`, `'not allowed'`, `'closed before rendering completed'`, `'callback limit'` | `err.code === 'INIT_TIMEOUT'`, `'ORIGIN_REJECTED'`, `'CANCELLED'`, `'CAPACITY'` | Switch on `code`; message text is not a contract and now says "origin" where it said "domain" |
-| Host `error` event | Sometimes `{ type: 'init_failed', message, error }` | Always an `Error`; start-up failures are `ForgeFrameError`s with the underlying failure in `cause`, and the same error rejects `host.ready` | Read `err.code` and `err.cause` |
+| Host `error` event | An `Error`, or sometimes `{ type: 'init_failed', message, error }` | Always an `Error`; start-up failures are `ForgeFrameError`s with the underlying failure in `cause`, and the same error rejects `host.ready` | Read `err.code` and `err.cause` |
 | Component `validate` | Its error reached `render()` unchanged | `VALIDATION`, with your error as `cause` | Read `err.cause` for your own error |
 | DOM methods | `await instance.show()`, and the same for `hide`, `focus` and `resize`, returned promises | They return `void` and finish before they return | `await` still works; replace `.then()` and `.catch()` chains, and catch `resize()` errors with `try`/`catch` |
 | `resize` with nothing mounted | Emitted `resize` | Emits nothing, as `focus` does | Listen for `resize` only once rendered |
@@ -1374,7 +1372,7 @@ Origins are called origins everywhere, and every error ForgeFrame raises is a `F
 | Component type | `ForgeFrameComponent<P, X, I, RequireProps, SchemaInputs>` | `Component<Props, Input, Exports>` | Use `typeof C`, or the new generic |
 | Instance type | `ForgeFrameComponentInstance<P, X, I, SchemaInputs>` | `ComponentInstance<Props, Input, Exports>` | Rename the type |
 | Host props type | `HostProps<P>` with a hand-written `P` | `HostPropsOf<typeof C>` | Derive it from the component, or use `host.hostProps` from `initHost(C)` |
-| Definition types | `PropsDefinition<P, I>`, `HostPropsDefinition<P, I>`, `PropDefinition<Output, Input>`, `ComponentOptions<P, SchemaInputs>`, `InitHostOptions<P, SchemaInputs>` | `PropsDefinition<P>`, `PropDefinition<Output>`, `ComponentOptions<P>`, `InitHostOptions<P>` | Drop the input parameter; defaulted schemas fit without it |
+| Definition types | `PropsDefinition<P, I>`, `HostPropsDefinition<P, I>`, `PropDefinition<Output, Input>`, `ComponentOptions<P, SchemaInputs>`, `InitHostOptions<P, SchemaInputs>` | `PropsDefinition<P>` (for host definitions too), `PropDefinition<Output>`, `ComponentOptions<P>`, `InitHostOptions<P>` | Drop the input parameter and replace `HostPropsDefinition` with `PropsDefinition`; defaulted schemas fit without it |
 | Host typing | `initHost<P, SchemaInputs>({ props, consumerOrigins })` | `initHost(Component, { consumerOrigins })` infers the props; the tag-agnostic form infers them from `props` | Drop the type arguments |
 | Definition map keys | `PropsDefinition<P>` entries were optional | Every key of `P` needs an entry, so `satisfies` reports a missing definition | Declare an optional prop with an optional schema |
 | Inference types | `InferPropsDefinition<D>`, `InferPropsDefinitionInput<D>` | `InferProps<D>`, `InferInput<D>` | Rename the types |
@@ -1384,7 +1382,7 @@ Origins are called origins everywhere, and every error ForgeFrame raises is a `F
 | Schema detection | `isStandardSchema(value)` | Removed | Check `'~standard' in value` yourself, or let ForgeFrame validate |
 | Context constants | `CONTEXT.POPUP` | `'popup'` (type `ContextType`) | Use the string |
 | Event constants | `EVENT.RENDERED` | `'rendered'` (type `EventType`) | Use the string |
-| Exports validation | Not validated | Validated against `exports`; invalid exports reject the host's `export()`, keep the previous exports and emit `error` | Declare an `exports` schema that matches what the host exports |
+| Exports validation | Not validated | Validated against `exports`: a host started with `initHost(Component)` rejects invalid exports in `export()` before sending them; for a tag-agnostic host the consumer rejects them, keeps the previous exports and emits `error`, and the host's `export()` rejects with `VALIDATION` | Declare an `exports` schema that matches what the host exports |
 | `hostProps.export()` type | `export<X>(exports: X)` | Typed by the component's `exports` schema; any value without one | Drop the type argument |
 | React generics | `createReactComponent<P, X, E, I, RequireProps, SchemaInputs>` | `createReactComponent<typeof C>`, normally inferred; wrapper props come from `InputOf<typeof C>` | Drop the type arguments; see [React](#react-forgeframereact) |
 | Enum literal types | `prop.enum(['a', 'b'])` could widen to `string` under a contextual type | Always `'a' \| 'b'` | None |
