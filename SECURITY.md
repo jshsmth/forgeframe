@@ -8,10 +8,13 @@ any way to bypass them privately.
 
 | Version | Supported |
 | ------- | --------- |
-| 1.x     | Yes       |
+| 2.x     | Yes       |
+| 1.x     | No        |
 | 0.x     | No        |
 
-Fixes are released for the latest 1.x version.
+Fixes are released for the latest 2.x version. 1.x stops receiving fixes when
+2.0.0 is released; upgrade with the README's
+[migration guide](https://github.com/jshsmth/forgeframe#migrating-from-v1-to-v2).
 
 ## Reporting a vulnerability
 
