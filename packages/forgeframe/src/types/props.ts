@@ -147,23 +147,25 @@ type InferPropDefinitionValue<D> =
 		: unknown;
 
 /**
- * The output type of an entry typed by a {@link PropsDefinition} annotation,
- * wrapped in a tuple, or `never` for any other entry. Such an entry is the
- * union `PropsDefinition` declares, whose input is `unknown`.
+ * The output type of an entry whose schema is typed exactly
+ * `StandardSchemaV1<unknown, Output>`, wrapped in a tuple, or `never` for any
+ * other entry. Annotating an entry as `PropDefinition<T>`, as
+ * `StandardSchemaV1<unknown, T>` or through `PropsDefinition<P>` erases its
+ * input type to `unknown`; a concrete schema such as `z.coerce.number()` is
+ * never exactly that interface.
  * @internal
  */
-type AnnotatedEntryOutput<D> = [D] extends [
-	PropDefinition<infer Output> | StandardSchemaV1<unknown, infer Output>,
+type AnnotatedEntryOutput<D> = [PropDefinitionSchema<D>] extends [
+	StandardSchemaV1<unknown, infer Output>,
 ]
-	? [PropDefinition<Output> | StandardSchemaV1<unknown, Output>] extends [D]
+	? [StandardSchemaV1<unknown, Output>] extends [PropDefinitionSchema<D>]
 		? [Output]
 		: never
 	: never;
 
 /**
- * Infers the value accepted by a prop-definition entry. An entry typed by a
- * `PropsDefinition<P>` annotation accepts `P[K]`, since the annotation keeps
- * no input type.
+ * Infers the value accepted by a prop-definition entry. An annotated entry
+ * accepts its output type, since the annotation keeps no input type.
  * @internal
  */
 type InferPropDefinitionInput<D> = [AnnotatedEntryOutput<D>] extends [never]
@@ -198,6 +200,59 @@ export type InferProps<D extends Record<string, unknown>> = {
 	[K in RequiredPropDefinitionKeys<D>]: InferPropDefinitionValue<D[K]>;
 } & {
 	[K in OptionalPropDefinitionKeys<D>]?: InferPropDefinitionValue<D[K]>;
+};
+
+/** Keys declared `sendToHost: false`, which no host receives. @internal */
+type WithheldPropDefinitionKeys<D extends Record<string, unknown>> = {
+	[K in keyof D]-?: D[K] extends { sendToHost: false } ? K : never;
+}[keyof D];
+
+/**
+ * Keys a host may not receive: `deliverTo` decides by the host's origin, and a
+ * `sendToHost` that is not literally `true` may withhold them.
+ * @internal
+ */
+type ConditionalPropDefinitionKeys<D extends Record<string, unknown>> = {
+	[K in keyof D]-?: D[K] extends { deliverTo: unknown }
+		? K
+		: D[K] extends { sendToHost: true }
+			? never
+			: D[K] extends { sendToHost: boolean }
+				? K
+				: never;
+}[keyof D];
+
+/** Keys a host always receives with a value. @internal */
+type RequiredHostPropDefinitionKeys<D extends Record<string, unknown>> =
+	Exclude<
+		RequiredPropDefinitionKeys<D>,
+		WithheldPropDefinitionKeys<D> | ConditionalPropDefinitionKeys<D>
+	>;
+
+/** Keys a host may receive without a value. @internal */
+type OptionalHostPropDefinitionKeys<D extends Record<string, unknown>> =
+	Exclude<
+		OptionalPropDefinitionKeys<D> | ConditionalPropDefinitionKeys<D>,
+		WithheldPropDefinitionKeys<D>
+	>;
+
+/**
+ * Infers the normalized props a host receives from direct or wrapped Standard
+ * Schemas.
+ *
+ * @remarks
+ * Unlike {@link InferProps}, which is the consumer's view, this type leaves
+ * out props declared `sendToHost: false`, and makes props with a `deliverTo`
+ * option optional, because whether a host receives them depends on its
+ * origin.
+ *
+ * @typeParam D - A map of prop names to schema-backed definitions.
+ * @public
+ */
+export type InferHostProps<D extends Record<string, unknown>> = {
+	[K in RequiredHostPropDefinitionKeys<D>]: InferPropDefinitionValue<D[K]>;
+} & {
+	[K in OptionalHostPropDefinitionKeys<D>]?: InferPropDefinitionValue<D[K]>;
 };
 
 /** Keys whose schemas accept `undefined` as input. @internal */

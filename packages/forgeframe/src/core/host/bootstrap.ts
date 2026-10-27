@@ -12,16 +12,15 @@
 import { PROTOCOL_VERSION } from "../../constants";
 import { ForgeFrameError } from "../../errors";
 import { createEventSubscriber } from "../../events/emitter";
-import type { InferProps } from "../../types/props";
+import type { InferHostProps } from "../../types/props";
 import type {
 	AnyComponent,
 	CheckedPropsDefinition,
-	ExportsOf,
 	GetPeerInstancesOptions,
 	Host,
+	HostOf,
 	InferablePropsDefinition,
 	InitHostOptions,
-	PropsOf,
 } from "../../types/runtime";
 import type { Dimensions } from "../../types/utility";
 import { hasBrowserWindow } from "../../utils/browser";
@@ -133,7 +132,7 @@ const HOST_ALREADY_ACTIVE_ERROR =
 export function initHost<C extends AnyComponent>(
 	component: C,
 	options: Omit<InitHostOptions, "props">,
-): Host<PropsOf<C>, ExportsOf<C>> | null;
+): HostOf<C> | null;
 /**
  * Starts the host runtime for a window opened for any tag.
  *
@@ -170,7 +169,9 @@ export function initHost<const D extends InferablePropsDefinition = never>(
 	options: Omit<InitHostOptions, "props"> & {
 		props?: D & CheckedPropsDefinition<D>;
 	},
-): Host<[D] extends [never] ? Record<string, unknown> : InferProps<D>> | null;
+): Host<
+	[D] extends [never] ? Record<string, unknown> : InferHostProps<D>
+> | null;
 export function initHost(...args: unknown[]): Host | null {
 	const start = readInitHostArguments(args);
 	if (!hasBrowserWindow()) return null;
