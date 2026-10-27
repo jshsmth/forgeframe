@@ -14,6 +14,8 @@ interface ReactJourneySnapshot {
 	cleanups: number;
 	hasRef: boolean;
 	hasInstance: boolean;
+	/** The label of the last React commit. */
+	committedLabel: string | null;
 }
 
 declare global {
@@ -27,11 +29,9 @@ const hostOrigin = params.get("host");
 const mount = document.getElementById("mount");
 if (!hostOrigin || !mount)
 	throw new Error("Missing React journey configuration");
-// A delayed host keeps the frame loading, so commits can land before it is ready.
-const hostDelay = params.get("hostDelay");
 const Component = create({
 	tag: "browser-react-journey",
-	url: hostDelay ? `${hostOrigin}/?delay=${hostDelay}` : hostOrigin,
+	url: hostOrigin,
 	props: {
 		label: prop.string(),
 		count: prop.number().min(0),
@@ -48,7 +48,16 @@ const instanceRef =
 let rendered = 0;
 let setups = 0;
 let cleanups = 0;
+let committedLabel: string | null = null;
 const errors: string[] = [];
+
+// Records each commit, so a test can tell when a render() call has landed.
+function CommitProbe({ label }: { label: string }): null {
+	React.useEffect(() => {
+		committedLabel = label;
+	}, [label]);
+	return null;
+}
 
 // Establish that the browser bundle really executes development effect replay.
 function EffectProbe(): React.ReactElement {
@@ -66,6 +75,7 @@ function render(label: string, count: number, theme?: string): void {
 		React.Fragment,
 		null,
 		React.createElement(EffectProbe),
+		React.createElement(CommitProbe, { label }),
 		React.createElement(Wrapped, {
 			label,
 			count,
@@ -129,5 +139,6 @@ window.reactJourney = {
 		cleanups,
 		hasRef: ref.current !== null,
 		hasInstance: instanceRef.current !== null,
+		committedLabel,
 	}),
 };

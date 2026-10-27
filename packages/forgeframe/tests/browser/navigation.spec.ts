@@ -1081,7 +1081,7 @@ for (const context of ["iframe", "popup"] as const) {
 			{ hostOrigin, context },
 		);
 		const opened = context === "popup" ? page.waitForEvent("popup") : null;
-		await page.click("#open-post", { noWaitAfter: true });
+		await page.locator("#open-post").click();
 		const popup = await opened;
 		expect(
 			await page.evaluate(
@@ -1098,7 +1098,7 @@ for (const context of ["iframe", "popup"] as const) {
 			remove: "cleanup-token",
 			extra: "last-field",
 		});
-		expect(await page.locator("form").count()).toBe(0);
+		await expect(page.locator("form")).toHaveCount(0);
 		const target =
 			popup ??
 			page
@@ -1166,7 +1166,7 @@ for (const context of ["iframe", "popup"] as const) {
 			{ hostOrigin, context },
 		);
 		const opened = context === "popup" ? page.waitForEvent("popup") : null;
-		await page.click("#open-encoded", { noWaitAfter: true });
+		await page.locator("#open-encoded").click();
 		const popup = await opened;
 		expect(
 			await page.evaluate(
@@ -1247,7 +1247,7 @@ for (const context of ["iframe", "popup"] as const) {
 				deliveryRequests.length = 0;
 				await prepareDelivery(page, context, method, scenario);
 				const opened = context === "popup" ? page.waitForEvent("popup") : null;
-				await page.click("#open-delivery");
+				await page.locator("#open-delivery").click();
 				const popup = await opened;
 				const outcome = await page.evaluate(
 					() => (window as unknown as { outcome: Promise<string> }).outcome,

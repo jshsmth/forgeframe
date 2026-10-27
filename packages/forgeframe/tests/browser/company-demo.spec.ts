@@ -66,6 +66,8 @@ function collect(
 }
 
 test.beforeAll(async () => {
+	// Several Vite builds run here, once per worker.
+	test.setTimeout(120_000);
 	[consumerOrigin, hostOrigin] = await Promise.all([
 		serve(consumerFiles, true),
 		serve(hostFiles, false),
@@ -158,11 +160,12 @@ async function openPayment(
 	page: Page,
 	context: "iframe" | "popup",
 ): Promise<Provider> {
-	if (!(await page.getByLabel("Payment window", { exact: true }).isVisible()))
+	const paymentWindow = page.getByLabel("Payment window", { exact: true });
+	// Narrow layouts fold the options into a disclosure that starts closed.
+	if (!(await paymentWindow.isVisible()))
 		await page.getByText("Demo options", { exact: true }).click();
-	await page
-		.getByLabel("Payment window", { exact: true })
-		.selectOption(context);
+	await expect(paymentWindow).toBeVisible();
+	await paymentWindow.selectOption(context);
 	const opened = context === "popup" ? page.waitForEvent("popup") : null;
 	await page
 		.getByRole("button", {
@@ -539,15 +542,20 @@ for (const context of ["iframe", "popup"] as const) {
 	test(`${context} cancellation during processing leaves the invoice unpaid and can reopen`, async ({
 		page,
 	}) => {
+		// The fake clock runs normally until paused, so the host's 700ms
+		// processing step cannot finish before Cancel is clicked.
+		await page.clock.install();
 		await page.goto(`${consumerOrigin}/company`);
 		const provider = await openPayment(page, context);
 		await provider.getByRole("button", { name: "Use demo details" }).click();
+		await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1_000);
 		await provider
 			.getByRole("button", { name: "Pay $176.00", exact: true })
 			.click();
 		await provider
 			.getByRole("button", { name: "Cancel payment", exact: true })
 			.click();
+		await page.clock.resume();
 		await expect(page.locator("#demo-notice")).toContainText(
 			"Payment cancelled",
 		);
@@ -581,11 +589,11 @@ test("mobile modal supports keyboard cancellation and keeps the portal within th
 	await expect(
 		page.getByRole("button", { name: "Take payment", exact: true }),
 	).toBeFocused();
-	expect(
-		await page.evaluate(
-			() => document.documentElement.scrollWidth <= innerWidth,
-		),
-	).toBe(true);
+	await expect
+		.poll(() =>
+			page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+		)
+		.toBe(true);
 });
 
 test("technical view observes real callback arguments and returns without replacing the app", async ({
