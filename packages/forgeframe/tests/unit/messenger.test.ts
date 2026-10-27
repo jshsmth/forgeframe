@@ -14,6 +14,8 @@ import {
 import { MESSAGE_TYPE } from "@/constants";
 import { forgeFrameError } from "../forgeframe-error";
 
+type SourceWindow = Window & { postMessage: ReturnType<typeof vi.fn> };
+
 describe("Messenger", () => {
 	let messenger: Messenger;
 	let mockWindow: Window;
@@ -37,6 +39,7 @@ describe("Messenger", () => {
 					}
 				},
 			),
+			postMessage: vi.fn(),
 			location: { origin: "https://consumer.com" },
 		} as unknown as Window;
 
@@ -50,12 +53,25 @@ describe("Messenger", () => {
 	});
 
 	afterEach(() => {
+		vi.useRealTimers();
 		messenger.destroy();
 	});
 
+	/**
+	 * A window that can receive replies, as every real message source can.
+	 * The messenger drops sources without `postMessage` before any other
+	 * check, so a negative test with such a source would pass vacuously.
+	 * Admission and handler calls are synchronous, as is the reply to a
+	 * request without a handler; a handler's reply posts after a microtask,
+	 * so assert it with `vi.waitFor`.
+	 */
+	function createSourceWindow(): SourceWindow {
+		return { postMessage: vi.fn() } as unknown as SourceWindow;
+	}
+
 	function dispatchMessage(
 		data: unknown,
-		source: Window = {} as Window,
+		source: Window,
 		origin = "https://host.com",
 	) {
 		const event = new MessageEvent("message", {
@@ -77,7 +93,7 @@ describe("Messenger", () => {
 			);
 		});
 
-		it("does not trust other opaque documents when its own origin is opaque", async () => {
+		it("does not trust other opaque documents when its own origin is opaque", () => {
 			const opaque = new Messenger("opaque-uid", mockWindow, "null");
 			const handler = vi.fn(() => ({ ok: true }));
 			opaque.on("probe", handler);
@@ -94,11 +110,25 @@ describe("Messenger", () => {
 							},
 						),
 					),
-					{ postMessage: vi.fn() } as unknown as Window,
+					createSourceWindow(),
 					"null",
 				);
-				await Promise.resolve();
 				expect(handler).not.toHaveBeenCalled();
+
+				// An origin it is told to trust still reaches the handler.
+				opaque.addTrustedOrigin("https://host.com");
+				dispatchMessage(
+					serializeMessage(
+						createRequestMessage(
+							"trusted-request",
+							"probe",
+							{},
+							{ uid: "opaque-uid", domain: "https://host.com" },
+						),
+					),
+					createSourceWindow(),
+				);
+				expect(handler).toHaveBeenCalledOnce();
 			} finally {
 				opaque.destroy();
 			}
@@ -128,7 +158,7 @@ describe("Messenger", () => {
 								{ uid: "open-uid", domain: "null" },
 							),
 						),
-						{ postMessage: vi.fn() } as unknown as Window,
+						createSourceWindow(),
 						"null",
 					);
 					await Promise.resolve();
@@ -165,9 +195,7 @@ describe("Messenger", () => {
 		let targetWindow: Window;
 
 		beforeEach(() => {
-			targetWindow = {
-				postMessage: vi.fn(),
-			} as unknown as Window;
+			targetWindow = createSourceWindow();
 		});
 
 		it("should send message via postMessage", async () => {
@@ -206,8 +234,6 @@ describe("Messenger", () => {
 
 			const result = await sendPromise;
 			expect(result).toEqual({ greeting: "Hello, World!" });
-
-			vi.useRealTimers();
 		});
 
 		it("should timeout if no response", async () => {
@@ -226,8 +252,6 @@ describe("Messenger", () => {
 			await expect(sendPromise).rejects.toThrow(
 				forgeFrameError("CLOSED", "timed out"),
 			);
-
-			vi.useRealTimers();
 		});
 
 		it("should throw if messenger is destroyed", async () => {
@@ -242,20 +266,16 @@ describe("Messenger", () => {
 
 		it("stops a send when JSON conversion destroys the messenger", async () => {
 			vi.useFakeTimers();
-			try {
-				await expect(
-					messenger.send(targetWindow, "https://target.com", "test", {
-						toJSON() {
-							messenger.destroy();
-							return { converted: true };
-						},
-					}),
-				).rejects.toThrow(forgeFrameError("CLOSED", "Messenger destroyed"));
-				expect(targetWindow.postMessage).not.toHaveBeenCalled();
-				expect(vi.getTimerCount()).toBe(0);
-			} finally {
-				vi.useRealTimers();
-			}
+			await expect(
+				messenger.send(targetWindow, "https://target.com", "test", {
+					toJSON() {
+						messenger.destroy();
+						return { converted: true };
+					},
+				}),
+			).rejects.toThrow(forgeFrameError("CLOSED", "Messenger destroyed"));
+			expect(targetWindow.postMessage).not.toHaveBeenCalled();
+			expect(vi.getTimerCount()).toBe(0);
 		});
 
 		it("should propagate errors from response", async () => {
@@ -287,8 +307,6 @@ describe("Messenger", () => {
 			);
 
 			await expect(sendPromise).rejects.toThrow("Handler failed");
-
-			vi.useRealTimers();
 		});
 
 		it("should ignore responses from unexpected source windows", async () => {
@@ -309,7 +327,7 @@ describe("Messenger", () => {
 				{ from: "spoofed" },
 				{ uid: "test-uid", domain: "https://target.com" },
 			);
-			const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
+			const spoofedWindow = createSourceWindow();
 			dispatchMessage(
 				serializeMessage(spoofedResponse),
 				spoofedWindow,
@@ -456,8 +474,8 @@ describe("Messenger", () => {
 
 	describe("rejectPending", () => {
 		it("rejects only pending requests of the named type sent to that window", async () => {
-			const replaced = { postMessage: vi.fn() } as unknown as Window;
-			const other = { postMessage: vi.fn() } as unknown as Window;
+			const replaced = createSourceWindow();
+			const other = createSourceWindow();
 			const settled = (promise: Promise<unknown>) =>
 				promise.then(
 					() => "resolved",
@@ -490,7 +508,7 @@ describe("Messenger", () => {
 
 	describe("resolvePending", () => {
 		it("resolves only pending requests of the named type sent to that window", async () => {
-			const replaced = { postMessage: vi.fn() } as unknown as Window;
+			const replaced = createSourceWindow();
 			const props = messenger.send(
 				replaced,
 				"https://host.com",
@@ -510,9 +528,7 @@ describe("Messenger", () => {
 
 	describe("post", () => {
 		it("should send one-way message without waiting", () => {
-			const targetWindow = {
-				postMessage: vi.fn(),
-			} as unknown as Window;
+			const targetWindow = createSourceWindow();
 
 			messenger.post(targetWindow, "https://target.com", "notify", {
 				event: "update",
@@ -527,9 +543,7 @@ describe("Messenger", () => {
 		it("should throw if messenger is destroyed", () => {
 			messenger.destroy();
 
-			const targetWindow = {
-				postMessage: vi.fn(),
-			} as unknown as Window;
+			const targetWindow = createSourceWindow();
 
 			expect(() =>
 				messenger.post(targetWindow, "https://target.com", "test"),
@@ -539,9 +553,7 @@ describe("Messenger", () => {
 		it.each(["*", "/", "target.com"])(
 			'should reject the non-URL target "%s" before posting',
 			(targetOrigin) => {
-				const targetWindow = {
-					postMessage: vi.fn(),
-				} as unknown as Window;
+				const targetWindow = createSourceWindow();
 
 				expect(() =>
 					messenger.post(targetWindow, targetOrigin, "notify"),
@@ -556,9 +568,7 @@ describe("Messenger", () => {
 		);
 
 		it("should reject an opaque-origin target before posting", () => {
-			const targetWindow = {
-				postMessage: vi.fn(),
-			} as unknown as Window;
+			const targetWindow = createSourceWindow();
 
 			expect(() =>
 				messenger.post(targetWindow, "data:text/plain,hi", "notify"),
@@ -573,14 +583,12 @@ describe("Messenger", () => {
 	});
 
 	describe("on", () => {
-		it("should register handler for message type", async () => {
+		it("should register handler for message type", () => {
 			const handler = vi.fn().mockReturnValue({ result: "ok" });
 
 			messenger.on("testMessage", handler);
 
-			const sourceWindow = {
-				postMessage: vi.fn(),
-			} as unknown as Window;
+			const sourceWindow = createSourceWindow();
 
 			const request = createRequestMessage(
 				"req-1",
@@ -598,22 +606,17 @@ describe("Messenger", () => {
 				"https://sender.com",
 			);
 
-			// Allow async handler to complete
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
 			expect(handler).toHaveBeenCalledWith(
 				{ input: "data" },
 				{ uid: "test-uid", domain: "https://sender.com", window: sourceWindow },
 			);
 		});
 
-		it("should return unsubscribe function", () => {
+		it("should return unsubscribe function", async () => {
 			const handler = vi.fn();
 
 			const unsubscribe = messenger.on("testMessage", handler);
-			unsubscribe();
-
-			const targetWindow = {} as Window;
+			const sourceWindow = createSourceWindow();
 			const request = createRequestMessage(
 				"req-1",
 				"testMessage",
@@ -624,9 +627,24 @@ describe("Messenger", () => {
 				},
 			);
 
-			dispatchMessage(serializeMessage(request), targetWindow);
+			dispatchMessage(serializeMessage(request), sourceWindow);
+			expect(handler).toHaveBeenCalledOnce();
+			await vi.waitFor(() =>
+				expect(sourceWindow.postMessage).toHaveBeenCalledOnce(),
+			);
 
-			expect(handler).not.toHaveBeenCalled();
+			unsubscribe();
+			dispatchMessage(serializeMessage(request), sourceWindow);
+
+			expect(handler).toHaveBeenCalledOnce();
+			// The request now has no handler, so it gets the unsupported reply.
+			await vi.waitFor(() =>
+				expect(sourceWindow.postMessage).toHaveBeenCalledTimes(2),
+			);
+			const reply = deserializeMessage(
+				sourceWindow.postMessage.mock.calls[1]?.[0],
+			);
+			expect(reply?.error).toMatchObject({ code: "VERSION_MISMATCH" });
 		});
 
 		it("should send response back to source", async () => {
@@ -634,9 +652,7 @@ describe("Messenger", () => {
 
 			messenger.on("testMessage", handler);
 
-			const targetWindow = {
-				postMessage: vi.fn(),
-			} as unknown as Window;
+			const targetWindow = createSourceWindow();
 
 			const request = createRequestMessage(
 				"req-1",
@@ -654,12 +670,11 @@ describe("Messenger", () => {
 				"https://sender.com",
 			);
 
-			// Allow async handler to complete
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
-			expect(targetWindow.postMessage).toHaveBeenCalledWith(
-				expect.stringContaining("forgeframe:"),
-				"https://sender.com",
+			await vi.waitFor(() =>
+				expect(targetWindow.postMessage).toHaveBeenCalledWith(
+					expect.stringContaining("forgeframe:"),
+					"https://sender.com",
+				),
 			);
 
 			// Parse the response
@@ -676,9 +691,7 @@ describe("Messenger", () => {
 
 			messenger.on("testMessage", handler);
 
-			const targetWindow = {
-				postMessage: vi.fn(),
-			} as unknown as Window;
+			const targetWindow = createSourceWindow();
 
 			const request = createRequestMessage(
 				"req-1",
@@ -696,15 +709,14 @@ describe("Messenger", () => {
 				"https://sender.com",
 			);
 
-			// Allow async handler to complete
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
+			await vi.waitFor(() =>
+				expect(targetWindow.postMessage).toHaveBeenCalledOnce(),
+			);
 			const responseStr = (targetWindow.postMessage as ReturnType<typeof vi.fn>)
 				.mock.calls[0][0];
 			const responseData = JSON.parse(responseStr.slice("forgeframe:".length));
 
-			expect(responseData.error).toBeDefined();
-			expect(responseData.error.message).toBe("Handler error");
+			expect(responseData.error).toEqual({ message: "Handler error" });
 		});
 
 		it("preserves immediate synchronous failures and one-await successful responses", async () => {
@@ -755,22 +767,26 @@ describe("Messenger", () => {
 			dispatchMessage(serializeMessage(request), mockWindow);
 
 			expect(handler).not.toHaveBeenCalled();
+			expect(mockWindow.postMessage).not.toHaveBeenCalled();
+
+			dispatchMessage(serializeMessage(request), createSourceWindow());
+			expect(handler).toHaveBeenCalledOnce();
 		});
 
 		it("should ignore non-ForgeFrame messages", () => {
 			const handler = vi.fn();
 			messenger.on("test", handler);
 
-			dispatchMessage("not a forgeframe message", {} as Window);
-			dispatchMessage({ type: "other" }, {} as Window);
+			const sourceWindow = createSourceWindow();
+			dispatchMessage("not a forgeframe message", sourceWindow);
+			dispatchMessage({ type: "other" }, sourceWindow);
 
 			expect(handler).not.toHaveBeenCalled();
+			expect(sourceWindow.postMessage).not.toHaveBeenCalled();
 		});
 
-		it("answers a request without a handler with VERSION_MISMATCH", async () => {
-			const targetWindow = {
-				postMessage: vi.fn(),
-			} as unknown as Window;
+		it("answers a request without a handler with VERSION_MISMATCH", () => {
+			const targetWindow = createSourceWindow();
 
 			const request = createRequestMessage(
 				"req-1",
@@ -783,9 +799,6 @@ describe("Messenger", () => {
 			);
 
 			dispatchMessage(serializeMessage(request), targetWindow);
-
-			// Allow async processing
-			await new Promise((resolve) => setTimeout(resolve, 0));
 
 			// A newer peer's request fails fast with a coded reply.
 			const [reply] = vi.mocked(targetWindow.postMessage).mock.calls[0] ?? [];
@@ -800,7 +813,7 @@ describe("Messenger", () => {
 	});
 
 	describe("origin validation", () => {
-		it("should reject messages from untrusted origins", async () => {
+		it("should reject messages from untrusted origins", () => {
 			const handler = vi.fn();
 			messenger.on("test", handler);
 
@@ -814,20 +827,22 @@ describe("Messenger", () => {
 				},
 			);
 
-			// Dispatch from an untrusted origin
+			const sourceWindow = createSourceWindow();
 			dispatchMessage(
 				serializeMessage(request),
-				{} as Window,
+				sourceWindow,
 				"https://malicious.com",
 			);
 
-			await new Promise((resolve) => setTimeout(resolve, 0));
-
-			// Handler should NOT be called for untrusted origin
 			expect(handler).not.toHaveBeenCalled();
+			expect(sourceWindow.postMessage).not.toHaveBeenCalled();
+
+			// The same request from a trusted origin reaches the handler.
+			dispatchMessage(serializeMessage(request), sourceWindow);
+			expect(handler).toHaveBeenCalledOnce();
 		});
 
-		it("should accept messages from trusted origins", async () => {
+		it("should accept messages from trusted origins", () => {
 			const handler = vi.fn().mockReturnValue({ ok: true });
 			messenger.on("test", handler);
 
@@ -844,20 +859,18 @@ describe("Messenger", () => {
 			// Dispatch from a trusted origin
 			dispatchMessage(
 				serializeMessage(request),
-				{ postMessage: vi.fn() } as unknown as Window,
+				createSourceWindow(),
 				"https://host.com",
 			);
-
-			await new Promise((resolve) => setTimeout(resolve, 0));
 
 			expect(handler).toHaveBeenCalled();
 		});
 
-		it("should use event origin instead of claimed message source domain", async () => {
+		it("should use event origin instead of claimed message source domain", () => {
 			const handler = vi.fn().mockReturnValue({ ok: true });
 			messenger.on("test", handler);
 
-			const sourceWindow = { postMessage: vi.fn() } as unknown as Window;
+			const sourceWindow = createSourceWindow();
 			const request = createRequestMessage(
 				"req-1",
 				"test",
@@ -873,7 +886,6 @@ describe("Messenger", () => {
 				sourceWindow,
 				"https://host.com",
 			);
-			await new Promise((resolve) => setTimeout(resolve, 0));
 
 			expect(handler).toHaveBeenCalledWith(
 				{ data: "value" },
@@ -881,11 +893,11 @@ describe("Messenger", () => {
 			);
 		});
 
-		it("should expose the browser-verified source window to handlers", async () => {
+		it("should expose the browser-verified source window to handlers", () => {
 			const handler = vi.fn().mockReturnValue({ ok: true });
 			messenger.on("source-window", handler);
 
-			const sourceWindow = { postMessage: vi.fn() } as unknown as Window;
+			const sourceWindow = createSourceWindow();
 			const request = createRequestMessage(
 				"req-source-window",
 				"source-window",
@@ -901,7 +913,6 @@ describe("Messenger", () => {
 				sourceWindow,
 				"https://host.com",
 			);
-			await new Promise((resolve) => setTimeout(resolve, 0));
 
 			expect(handler).toHaveBeenCalledWith(
 				{},
@@ -913,7 +924,7 @@ describe("Messenger", () => {
 			);
 		});
 
-		it("should allow adding trusted domains dynamically", async () => {
+		it("should allow adding trusted domains dynamically", () => {
 			const handler = vi.fn().mockReturnValue({ ok: true });
 			messenger.on("test", handler);
 
@@ -930,10 +941,9 @@ describe("Messenger", () => {
 			// Initially untrusted
 			dispatchMessage(
 				serializeMessage(request),
-				{ postMessage: vi.fn() } as unknown as Window,
+				createSourceWindow(),
 				"https://new-trusted.com",
 			);
-			await new Promise((resolve) => setTimeout(resolve, 0));
 			expect(handler).not.toHaveBeenCalled();
 
 			// Add trust
@@ -942,14 +952,13 @@ describe("Messenger", () => {
 			// Now should work
 			dispatchMessage(
 				serializeMessage(request),
-				{ postMessage: vi.fn() } as unknown as Window,
+				createSourceWindow(),
 				"https://new-trusted.com",
 			);
-			await new Promise((resolve) => setTimeout(resolve, 0));
 			expect(handler).toHaveBeenCalled();
 		});
 
-		it("should stop trusting a dynamically added string domain after removal", async () => {
+		it("should stop trusting a dynamically added string domain after removal", () => {
 			const handler = vi.fn().mockReturnValue({ ok: true });
 			messenger.on("test-remove-string", handler);
 
@@ -962,7 +971,7 @@ describe("Messenger", () => {
 					domain: "https://remove-string.com",
 				},
 			);
-			const source = { postMessage: vi.fn() } as unknown as Window;
+			const source = createSourceWindow();
 
 			messenger.addTrustedOrigin("https://remove-string.com");
 			dispatchMessage(
@@ -970,7 +979,6 @@ describe("Messenger", () => {
 				source,
 				"https://remove-string.com",
 			);
-			await new Promise((resolve) => setTimeout(resolve, 0));
 			expect(handler).toHaveBeenCalledTimes(1);
 
 			messenger.removeTrustedOrigin("https://remove-string.com");
@@ -979,11 +987,10 @@ describe("Messenger", () => {
 				source,
 				"https://remove-string.com",
 			);
-			await new Promise((resolve) => setTimeout(resolve, 0));
 			expect(handler).toHaveBeenCalledTimes(1);
 		});
 
-		it("should stop trusting wildcard domains after wildcard removal", async () => {
+		it("should stop trusting wildcard domains after wildcard removal", () => {
 			const handler = vi.fn().mockReturnValue({ ok: true });
 			messenger.on("test-remove-wildcard", handler);
 
@@ -996,7 +1003,7 @@ describe("Messenger", () => {
 					domain: "https://api.remove-wildcard.com",
 				},
 			);
-			const source = { postMessage: vi.fn() } as unknown as Window;
+			const source = createSourceWindow();
 
 			messenger.addTrustedOrigin("https://*.remove-wildcard.com");
 			dispatchMessage(
@@ -1004,7 +1011,6 @@ describe("Messenger", () => {
 				source,
 				"https://api.remove-wildcard.com",
 			);
-			await new Promise((resolve) => setTimeout(resolve, 0));
 			expect(handler).toHaveBeenCalledTimes(1);
 
 			messenger.removeTrustedOrigin("https://*.remove-wildcard.com");
@@ -1013,18 +1019,17 @@ describe("Messenger", () => {
 				source,
 				"https://api.remove-wildcard.com",
 			);
-			await new Promise((resolve) => setTimeout(resolve, 0));
 			expect(handler).toHaveBeenCalledTimes(1);
 		});
 
-		it("should remove mixed trusted domains when removed as an array", async () => {
+		it("should remove mixed trusted domains when removed as an array", () => {
 			const handler = vi.fn().mockReturnValue({ ok: true });
 			messenger.on("test-remove-array", handler);
 
 			const regexOrigin = /^https:\/\/.*\.remove-array\.com$/;
 			messenger.addTrustedOrigin(["https://remove-array.com", regexOrigin]);
 
-			const source = { postMessage: vi.fn() } as unknown as Window;
+			const source = createSourceWindow();
 			const stringRequest = createRequestMessage(
 				"req-rm-3",
 				"test-remove-array",
@@ -1051,7 +1056,6 @@ describe("Messenger", () => {
 				source,
 				"https://sub.remove-array.com",
 			);
-			await new Promise((resolve) => setTimeout(resolve, 0));
 			expect(handler).toHaveBeenCalledTimes(2);
 
 			messenger.removeTrustedOrigin(["https://remove-array.com", regexOrigin]);
@@ -1065,11 +1069,10 @@ describe("Messenger", () => {
 				source,
 				"https://sub.remove-array.com",
 			);
-			await new Promise((resolve) => setTimeout(resolve, 0));
 			expect(handler).toHaveBeenCalledTimes(2);
 		});
 
-		it("should support RegExp patterns for trusted domains", async () => {
+		it("should support RegExp patterns for trusted domains", () => {
 			// Create new messenger with RegExp pattern
 			const regexMessenger = new Messenger(
 				"regex-uid",
@@ -1093,17 +1096,16 @@ describe("Messenger", () => {
 
 			dispatchMessage(
 				serializeMessage(request),
-				{ postMessage: vi.fn() } as unknown as Window,
+				createSourceWindow(),
 				"https://sub.trusted.com",
 			);
-			await new Promise((resolve) => setTimeout(resolve, 0));
 
 			expect(handler).toHaveBeenCalled();
 
 			regexMessenger.destroy();
 		});
 
-		it("should handle global RegExp trusted domain patterns consistently", async () => {
+		it("should handle global RegExp trusted domain patterns consistently", () => {
 			const trustedPattern = /trusted-global\.com$/g;
 			const regexMessenger = new Messenger(
 				"regex-global-uid",
@@ -1124,7 +1126,7 @@ describe("Messenger", () => {
 					domain: "https://trusted-global.com",
 				},
 			);
-			const sourceWindow = { postMessage: vi.fn() } as unknown as Window;
+			const sourceWindow = createSourceWindow();
 
 			dispatchMessage(
 				serializeMessage(request),
@@ -1136,14 +1138,13 @@ describe("Messenger", () => {
 				sourceWindow,
 				"https://trusted-global.com",
 			);
-			await new Promise((resolve) => setTimeout(resolve, 0));
 
 			expect(handler).toHaveBeenCalledTimes(2);
 
 			regexMessenger.destroy();
 		});
 
-		it("should support wildcard string patterns for trusted domains", async () => {
+		it("should support wildcard string patterns for trusted domains", () => {
 			const wildcardMessenger = new Messenger(
 				"wildcard-uid",
 				mockWindow,
@@ -1166,17 +1167,16 @@ describe("Messenger", () => {
 
 			dispatchMessage(
 				serializeMessage(request),
-				{ postMessage: vi.fn() } as unknown as Window,
+				createSourceWindow(),
 				"https://api.trusted.com",
 			);
-			await new Promise((resolve) => setTimeout(resolve, 0));
 
 			expect(handler).toHaveBeenCalled();
 
 			wildcardMessenger.destroy();
 		});
 
-		it("should support mixed string and RegExp patterns in trusted domain arrays", async () => {
+		it("should support mixed string and RegExp patterns in trusted domain arrays", () => {
 			const mixedMessenger = new Messenger(
 				"mixed-uid",
 				mockWindow,
@@ -1199,14 +1199,67 @@ describe("Messenger", () => {
 
 			dispatchMessage(
 				serializeMessage(request),
-				{ postMessage: vi.fn() } as unknown as Window,
+				createSourceWindow(),
 				"https://sub.trusted-regex.com",
 			);
-			await new Promise((resolve) => setTimeout(resolve, 0));
 
 			expect(handler).toHaveBeenCalled();
 
 			mixedMessenger.destroy();
+		});
+	});
+
+	describe("origin pattern rejection", () => {
+		it.each([
+			{
+				pattern: "https://*.trusted.com",
+				origin: "https://evil.com",
+			},
+			{
+				pattern: "https://*.trusted.com",
+				origin: "https://trusted.com.evil.com",
+			},
+			{ pattern: "https://*.trusted.com", origin: "https://trusted.com" },
+			{
+				pattern: "https://*.trusted.com",
+				origin: "http://api.trusted.com",
+			},
+			{ pattern: /^https:\/\/.*\.trusted\.com$/, origin: "https://evil.com" },
+			{
+				pattern: /^https:\/\/.*\.trusted\.com$/,
+				origin: "https://trusted.com.evil.com",
+			},
+		])("$pattern does not admit $origin", ({ pattern, origin }) => {
+			const patternMessenger = new Messenger(
+				"pattern-uid",
+				mockWindow,
+				"https://consumer.com",
+				pattern,
+			);
+			const handler = vi.fn();
+			patternMessenger.on("test", handler);
+			const sourceWindow = createSourceWindow();
+			const request = serializeMessage(
+				createRequestMessage(
+					"req-1",
+					"test",
+					{},
+					{ uid: "pattern-uid", domain: origin },
+				),
+			);
+
+			try {
+				dispatchMessage(request, sourceWindow, origin);
+
+				expect(handler).not.toHaveBeenCalled();
+				expect(sourceWindow.postMessage).not.toHaveBeenCalled();
+
+				// A matching origin with the same request reaches the handler.
+				dispatchMessage(request, sourceWindow, "https://api.trusted.com");
+				expect(handler).toHaveBeenCalledOnce();
+			} finally {
+				patternMessenger.destroy();
+			}
 		});
 	});
 
@@ -1223,9 +1276,7 @@ describe("Messenger", () => {
 		it("should reject all pending requests", async () => {
 			vi.useFakeTimers();
 
-			const targetWindow = {
-				postMessage: vi.fn(),
-			} as unknown as Window;
+			const targetWindow = createSourceWindow();
 
 			const sendPromise = messenger.send(
 				targetWindow,
@@ -1238,8 +1289,6 @@ describe("Messenger", () => {
 			await expect(sendPromise).rejects.toThrow(
 				forgeFrameError("CLOSED", "Messenger destroyed"),
 			);
-
-			vi.useRealTimers();
 		});
 
 		it("should be idempotent", () => {
@@ -1252,27 +1301,26 @@ describe("Messenger", () => {
 
 		it("should stop handling requests and refuse new messages", async () => {
 			const handler = vi.fn(() => ({ ok: true }));
-			const source = { postMessage: vi.fn() } as unknown as Window;
-			const targetWindow = { postMessage: vi.fn() } as unknown as Window;
+			const source = createSourceWindow();
+			const targetWindow = createSourceWindow();
 			messenger.on("test", handler);
+			const request = serializeMessage(
+				createRequestMessage(
+					"after-destroy",
+					"test",
+					{},
+					{ uid: "test-uid", domain: "https://host.com" },
+				),
+			);
+			dispatchMessage(request, source);
+			expect(handler).toHaveBeenCalledOnce();
+			await vi.waitFor(() => expect(source.postMessage).toHaveBeenCalledOnce());
 
 			messenger.destroy();
+			dispatchMessage(request, source);
 
-			dispatchMessage(
-				serializeMessage(
-					createRequestMessage(
-						"after-destroy",
-						"test",
-						{},
-						{ uid: "host-uid", domain: "https://host.com" },
-					),
-				),
-				source,
-			);
-			await Promise.resolve();
-
-			expect(handler).not.toHaveBeenCalled();
-			expect(source.postMessage).not.toHaveBeenCalled();
+			expect(handler).toHaveBeenCalledOnce();
+			expect(source.postMessage).toHaveBeenCalledOnce();
 			await expect(
 				messenger.send(targetWindow, "https://target.com", "test"),
 			).rejects.toThrow(
