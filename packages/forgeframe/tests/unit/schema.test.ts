@@ -358,20 +358,12 @@ describe("normalizeProps with schema", () => {
 		const lenient = createMockSchema<string>((v) => ({ value: String(v) }));
 
 		expect(() =>
-			validateProps<{ name: string }>(
-				// @ts-expect-error A required prop is passed as undefined.
-				{ name: undefined },
-				{ name: { schema: required } },
-			),
+			normalizeProps({ name: undefined }, { name: { schema: required } }),
 		).toThrow(
 			forgeFrameError("VALIDATION", "Validation failed: name: Required"),
 		);
 		expect(() =>
-			validateProps<{ name: string }>(
-				// @ts-expect-error A required prop is passed as undefined.
-				{ name: undefined },
-				{ name: { schema: lenient } },
-			),
+			normalizeProps({ name: undefined }, { name: { schema: lenient } }),
 		).not.toThrow();
 	});
 
@@ -431,13 +423,9 @@ describe("prop schema API", () => {
 		).not.toThrow();
 
 		// Invalid type
-		expect(() =>
-			validateProps(
-				// @ts-expect-error A number is passed for a string prop.
-				{ name: 123, age: 25 },
-				definitions,
-			),
-		).toThrow(forgeFrameError("VALIDATION", "Expected string"));
+		expect(() => normalizeProps({ name: 123, age: 25 }, definitions)).toThrow(
+			forgeFrameError("VALIDATION", "Expected string"),
+		);
 	});
 
 	it("should work with required validation", () => {
@@ -445,13 +433,7 @@ describe("prop schema API", () => {
 			name: { schema: prop.string() },
 		};
 
-		expect(() =>
-			validateProps(
-				// @ts-expect-error A required prop is passed as undefined.
-				{ name: undefined },
-				definitions,
-			),
-		).toThrow(
+		expect(() => normalizeProps({ name: undefined }, definitions)).toThrow(
 			forgeFrameError("VALIDATION", "Validation failed: name: Required"),
 		);
 	});

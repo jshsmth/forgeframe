@@ -399,10 +399,8 @@ describe("Messenger", () => {
 				);
 
 				expect(targetWindow.postMessage).not.toHaveBeenCalled();
-				expect(
-					(messenger as unknown as { pending: Map<string, unknown> }).pending
-						.size,
-				).toBe(0);
+				// Bracket access reads the private map with its real type.
+				expect(messenger["pending"].size).toBe(0);
 			},
 		);
 
@@ -419,10 +417,8 @@ describe("Messenger", () => {
 				);
 
 				expect(targetWindow.postMessage).not.toHaveBeenCalled();
-				expect(
-					(messenger as unknown as { pending: Map<string, unknown> }).pending
-						.size,
-				).toBe(0);
+				// Bracket access reads the private map with its real type.
+				expect(messenger["pending"].size).toBe(0);
 			},
 		);
 
@@ -465,10 +461,7 @@ describe("Messenger", () => {
 				messenger.send(targetWindow, "https://target.com", "throwing-send"),
 			).rejects.toThrow("postMessage blocked");
 
-			const pending = (
-				messenger as unknown as { pending: Map<string, unknown> }
-			).pending;
-			expect(pending.size).toBe(0);
+			expect(messenger["pending"].size).toBe(0);
 		});
 	});
 

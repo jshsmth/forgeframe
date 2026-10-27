@@ -363,7 +363,7 @@ function validateTupleItems<S extends readonly PropSchema<unknown, unknown>[]>(
 	value: unknown[],
 	itemSchemas: S,
 ): StandardSchemaV1Result<InferTupleShape<S>> {
-	const validated = [] as unknown as InferTupleShape<S>;
+	const validated: unknown[] = [];
 
 	for (let i = 0; i < itemSchemas.length; i++) {
 		const result = validateSchemaSync(itemSchemas[i], value[i]);
@@ -371,10 +371,11 @@ function validateTupleItems<S extends readonly PropSchema<unknown, unknown>[]>(
 			return { issues: prependIssuePath(result.issues, i) };
 		}
 
-		validated[i] = result.value as InferTupleShape<S>[number];
+		validated[i] = result.value;
 	}
 
-	return { value: validated };
+	// Each item was validated by its schema, so the array has the tuple's shape.
+	return { value: validated as InferTupleShape<S> };
 }
 
 /** Decides strict-key policy without executing child schemas. */

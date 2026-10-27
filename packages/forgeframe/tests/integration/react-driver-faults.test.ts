@@ -19,11 +19,11 @@ import {
 	deleteRegisteredComponent,
 	registerComponent,
 } from "@/core/component-registry";
+import { create } from "@/index";
 import type {
 	AnyComponent,
 	ComponentEvents,
 	ComponentInstance,
-	ComponentOptions,
 	EventHandler,
 } from "@/types";
 import { createDeferred } from "@/utils/promise";
@@ -266,16 +266,14 @@ describe("React driver fault injection", () => {
 
 	it("treats a reserved name declared as undefined as omitted, as create() does", () => {
 		const reservedTag = "react-fault-reserved-undefined";
-		const factory: AnyComponent = Object.assign(vi.fn(), { instances: [] });
-		const options: ComponentOptions = {
+		const Component = create({
 			tag: reservedTag,
 			url: "https://host.example.com",
-			// @ts-expect-error JavaScript callers can leave a definition undefined.
+			// @ts-expect-error a JavaScript create() call can leave a definition undefined; it counts as omitted
 			props: { onClose: undefined },
-		};
-		registerComponent(factory, options);
+		});
 		try {
-			expect(() => createReactComponent(factory)).not.toThrow();
+			expect(() => createReactComponent(Component)).not.toThrow();
 		} finally {
 			deleteRegisteredComponent(reservedTag);
 		}

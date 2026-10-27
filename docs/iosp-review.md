@@ -5,7 +5,7 @@ desc: Runtime callable responsibilities, IOSP classifications, and boundary test
 tags: []
 sources: []
 created: 2026-10-01T01:55:30Z
-updated: 2026-10-27T09:09:52Z
+updated: 2026-10-27T10:05:27Z
 ---
 
 # ForgeFrame callable reference
@@ -538,7 +538,7 @@ Outer shape and length constraints and strict-key selection are separate from ne
 - **O:** `ArraySchema.constructor`, `TupleSchema.constructor`, `ObjectSchema.constructor`, `RecordSchema.constructor`, `validateArrayItems`, `validateTupleItems`, `findUnknownObjectKey`, `validateObjectFields`, `validateRecordEntries`, `checkArrayConstraints`, `checkTupleConstraints`, `checkRecordInput`.
 - **I:** `ArraySchema._validate`, `TupleSchema._validate`, `ObjectSchema._validate`, `RecordSchema._validate`.
 - **M:** `ArraySchema._clone`, `ArraySchema._withCheck`, `ArraySchema.min`, `ArraySchema.max`, `ArraySchema.nonempty`, `TupleSchema._clone`, `ObjectSchema._clone`, `ObjectSchema.strict`, `RecordSchema._clone`.
-- **O callbacks:** `ArraySchema.min.test`, `ArraySchema.max.test`, `findUnknownObjectKey.callback@388`.
+- **O callbacks:** `ArraySchema.min.test`, `ArraySchema.max.test`, `findUnknownObjectKey.callback@389`.
 - **Retained rationale —** `ArraySchema._clone`, `ArraySchema._withCheck`, `ArraySchema.min`, `ArraySchema.max`, `ArraySchema.nonempty`, `TupleSchema._clone`, `ObjectSchema._clone`, `ObjectSchema.strict`, `RecordSchema._clone`: Immutable fluent construction stays local: clone existing schema state, set the selected constraint, return the same typed builder contract. One-line shortcuts retain the fluent vocabulary; an extra wrapper would add indirection.
 
 Evidence: [props](#evidence-props); typecheck.

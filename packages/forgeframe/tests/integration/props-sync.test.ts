@@ -543,8 +543,8 @@ describe("Props sync integration", () => {
 	it("treats explicitly undefined definitions as omitted through creation, bootstrap and updates", async () => {
 		harness = createIframeIntegrationHarness();
 		const definitions: PropsDefinition<{ title: string; message: string }> = {
-			// @ts-expect-error JavaScript callers may leave an entry undefined, as
-			// conditional definitions do
+			// @ts-expect-error the annotation stands in for an untyped JavaScript
+			// definition, whose undefined entry the runtime treats as omitted
 			title: undefined,
 			message: prop.string(),
 		};
@@ -575,7 +575,8 @@ describe("Props sync integration", () => {
 		harness = createIframeIntegrationHarness();
 		const consumerDefinitions = { beta: prop.string(), title: prop.string() };
 		const hostDefinitions: PropsDefinition<{ beta: string; title: string }> = {
-			// @ts-expect-error JavaScript hosts may leave an entry undefined
+			// @ts-expect-error the annotation stands in for an untyped JavaScript
+			// host definition, whose undefined entry the runtime treats as omitted
 			beta: undefined,
 			title: prop.string(),
 		};

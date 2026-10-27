@@ -19,7 +19,7 @@ import {
 } from "@/core/host";
 import * as hostSecurity from "@/core/host/security";
 import { prop } from "@/props/prop";
-import type { PropsDefinition } from "@/types";
+import type { OriginMatcher, PropsDefinition } from "@/types";
 import { buildWindowName } from "@/window/name-payload";
 import type { WindowNamePayload } from "@/window/types";
 import { forgeFrameError } from "../forgeframe-error";
@@ -238,44 +238,64 @@ describe("Host security", () => {
 		expect(onError).not.toHaveBeenCalled();
 	});
 
-	it.each([
+	/** Starts a host for an untrusted consumer and asserts the allowlist is rejected. */
+	function expectAllowlistRejected(start: () => unknown): void {
+		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
+			createAccessibleConsumerWindow("https://evil.example.com"),
+		);
+		window.name = buildWindowName(
+			createPayload({
+				uid: "host-uid-invalid-allowlist",
+				tag: "secure-component-invalid-allowlist",
+				consumerDomain: "https://evil.example.com",
+			}),
+		);
+
+		expect(start).toThrow(
+			forgeFrameError(
+				"VALIDATION",
+				"initHost() consumerOrigins must be a non-empty origin string, a RegExp, or an array of them",
+			),
+		);
+		expect(getHost()).toBeNull();
+	}
+
+	// Values the types accept but the runtime rejects.
+	it.each<{ label: string; allowed: OriginMatcher }>([
 		{ label: "an empty string", allowed: "" },
 		{ label: "a blank string", allowed: "   " },
 		{
 			label: "an empty array entry",
 			allowed: ["https://trusted.example.com", ""],
 		},
-		{ label: "a non-pattern entry", allowed: [42] },
-		{ label: "null", allowed: null },
 	])(
 		"rejects $label as an allowlist instead of trusting every consumer",
 		({ allowed }) => {
-			vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
-				createAccessibleConsumerWindow("https://evil.example.com"),
+			expectAllowlistRejected(() =>
+				initHost({ props: {}, consumerOrigins: allowed }),
 			);
-			window.name = buildWindowName(
-				createPayload({
-					uid: "host-uid-invalid-allowlist",
-					tag: "secure-component-invalid-allowlist",
-					consumerDomain: "https://evil.example.com",
-				}),
-			);
-
-			expect(() =>
-				initHost({
-					props: {},
-					// @ts-expect-error Invalid JavaScript configuration is rejected at runtime.
-					consumerOrigins: allowed,
-				}),
-			).toThrow(
-				forgeFrameError(
-					"VALIDATION",
-					"initHost() consumerOrigins must be a non-empty origin string, a RegExp, or an array of them",
-				),
-			);
-			expect(getHost()).toBeNull();
 		},
 	);
+
+	it("rejects a non-pattern entry as an allowlist instead of trusting every consumer", () => {
+		expectAllowlistRejected(() =>
+			initHost({
+				props: {},
+				// @ts-expect-error A JavaScript caller can pass a non-pattern entry.
+				consumerOrigins: [42],
+			}),
+		);
+	});
+
+	it("rejects null as an allowlist instead of trusting every consumer", () => {
+		expectAllowlistRejected(() =>
+			initHost({
+				props: {},
+				// @ts-expect-error A JavaScript caller can pass null.
+				consumerOrigins: null,
+			}),
+		);
+	});
 
 	it("rejects a consumer origin browsers never report before reading the window", () => {
 		expect(() =>

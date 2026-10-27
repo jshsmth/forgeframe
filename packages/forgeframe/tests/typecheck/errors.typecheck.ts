@@ -104,7 +104,7 @@ const resized: Promise<void> = instance.resize({ width: 100 });
 void [shown, hidden, focused, resized];
 // @ts-expect-error show() returns void, so it cannot be chained
 instance.show().then(() => {});
-// @ts-expect-error resize() throws synchronously instead of rejecting
+// @ts-expect-error resize() returns void, so it has no .catch; it throws its errors synchronously
 instance.resize({ width: 1 }).catch(() => {});
 // I/O methods stay async.
 const io: Promise<void>[] = [instance.render("#root"), instance.close()];

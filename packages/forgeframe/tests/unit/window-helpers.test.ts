@@ -108,7 +108,7 @@ describe("matchOrigin", () => {
 	});
 
 	it("should return false for invalid pattern type", () => {
-		// @ts-expect-error JavaScript callers can pass any pattern.
+		// @ts-expect-error a non-pattern value reaching the matcher must deny, not match.
 		expect(matchOrigin(123, "https://example.com")).toBe(false);
 	});
 });
