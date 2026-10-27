@@ -23,6 +23,7 @@ import type { OriginMatcher, PropsDefinition } from "@/types";
 import { buildWindowName } from "@/window/name-payload";
 import type { WindowNamePayload } from "@/window/types";
 import { forgeFrameError } from "../forgeframe-error";
+import { createFrameWindow } from "../frame-window";
 import { requireValue } from "../require-value";
 
 const originalWindowName = window.name;
@@ -69,19 +70,30 @@ async function startBootstrappedHost(
 	return { host: requireValue(getHost()) };
 }
 
+/**
+ * Wraps a real frame window whose `location` reads through `readLocation`.
+ * jsdom's `location` cannot be redefined, so a proxy stands in for the
+ * browser's same-origin and cross-origin behavior; `postMessage` is mocked.
+ */
+function createConsumerWindow(readLocation: () => Pick<Location, "origin">) {
+	const frameWindow = createFrameWindow();
+	vi.spyOn(frameWindow, "postMessage").mockImplementation(() => undefined);
+	return new Proxy(frameWindow, {
+		get: (target, key) =>
+			key === "location" ? readLocation() : Reflect.get(target, key),
+	});
+}
+
 /** Creates a consumer window whose origin the browser exposes to the host. */
 function createAccessibleConsumerWindow(origin: string): Window {
-	return { location: { origin }, postMessage: vi.fn() } as unknown as Window;
+	return createConsumerWindow(() => ({ origin }));
 }
 
 /** Creates a cross-origin consumer window whose location the browser hides. */
 function createInaccessibleConsumerWindow(): Window {
-	return {
-		postMessage: vi.fn(),
-		get location() {
-			throw new Error("Cross-origin");
-		},
-	} as unknown as Window;
+	return createConsumerWindow(() => {
+		throw new Error("Cross-origin");
+	});
 }
 
 function dispatchConsumerMessage(
