@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 
-const version = "1.8.0";
+const version = "1.9.0";
 const installed = spawnSync("wiki", ["--version"], { encoding: "utf8" });
 
 if (installed.status !== 0 || installed.stdout.trim() !== version) {

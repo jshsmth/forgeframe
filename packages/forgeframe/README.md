@@ -1714,7 +1714,7 @@ For a custom deployment, set `VITE_HOST_URL` in the consumer build and `VITE_CON
 
 ### Architecture and Ownership
 
-The [architecture guide](https://github.com/jshsmth/ForgeFrame/blob/main/docs/architecture.md) covers state ownership and the render/bootstrap, props, callback, and React flows. The [callable reference](https://github.com/jshsmth/ForgeFrame/blob/main/docs/iosp-review.md) classifies runtime responsibilities and links their boundary tests.
+The [architecture guide](https://github.com/jshsmth/ForgeFrame/blob/main/docs/architecture.md) covers state ownership and the render/bootstrap, props, callback, and React flows. The [callable reference](https://github.com/jshsmth/ForgeFrame/blob/main/docs/callables/_index.md) classifies runtime responsibilities and links their boundary tests.
 
 - The package has two entries, built together so they share one copy of the core: `packages/forgeframe/src/index.ts` (`forgeframe`) defines the public exports, and `src/react.ts` (`forgeframe/react`) exports the React adapter. Other source barrels are internal.
 - `core/component.ts` owns component factories and instance tracking. `core/consumer.ts` coordinates rendering, the prop pipeline, and transport; `core/host/` owns host bootstrap, the `Host` handle and the host's props.
@@ -1726,9 +1726,9 @@ The [architecture guide](https://github.com/jshsmth/ForgeFrame/blob/main/docs/ar
 
 Contributor knowledge lives in the [development wiki](https://github.com/jshsmth/ForgeFrame/blob/main/docs/_index.md), managed with [Plasma Wiki](https://docs.plasma.ai/wiki/guide/index.html). The CLI generates page metadata and index navigation, and a GitHub Actions check fails on stale indexes or wiki lint issues.
 
-Install Python 3.11 or newer and the pinned CLI with `uv tool install plasma-wiki==1.8.0` (or `pipx install plasma-wiki==1.8.0`). Browse with `wiki map --path docs`, search with `wiki search --path docs "callback"`, and read a page with `wiki read architecture --path docs`. The pages are plain Markdown and can also be read directly.
+Install Python 3.11 or newer and the pinned CLI with `uv tool install plasma-wiki==1.9.0` (or `pipx install plasma-wiki==1.9.0`). Browse with `wiki map --path docs`, search with `wiki search --path docs "callback"`, and read a page with `wiki read architecture --path docs`. The pages are plain Markdown and can also be read directly.
 
-Edit page bodies and authored metadata such as `title` and `desc`. The CLI owns `name`, timestamps, headings, and the index link blocks above `***`; put index prose below that line. After adding, moving, or editing pages, run `npm run docs:update`, then `npm run docs:check` before committing. Image assets are excluded from indexing. No Obsidian vault, plugins, or wiki hooks are needed.
+Edit page bodies and authored metadata such as `title` and `desc`. The CLI owns `name`, timestamps, headings, and the index link blocks above `***`; put index prose below that line. After adding, moving, or editing pages, run `npm run docs:update`, then `npm run docs:check` before committing. Image assets are excluded from indexing. No Obsidian vault, plugins, or wiki hooks are needed. Run `wiki config --path docs` once after cloning to register the merge driver that `.gitattributes` names for `_index.md` files, so the generated index blocks merge without conflicts; run `npm run docs:update` after each merge.
 
 The wiki CLI is a contributor tool, separate from the npm package and its release checks. The Documentation workflow installs the same pinned version and runs the checks without modifying files.
 

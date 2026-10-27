@@ -13,8 +13,9 @@ and `wiki read --path docs`; use `wiki match --path docs` for regex searches.
 - Public API, usage, setup, and release commands: [README.md](README.md).
 - Subsystem changes, state ownership, and lifecycle ordering:
   [architecture](docs/architecture.md).
-- IOSP review or callable changes: [callable reference](docs/iosp-review.md).
-  Update affected classifications and run their listed boundary tests.
+- IOSP review or callable changes: [callable reference](docs/callables/_index.md).
+  Open the subsystem page you change, update affected classifications, and run
+  their listed boundary tests.
 - Test selection and fixture conventions:
   [test index](packages/forgeframe/tests/README.md).
 
