@@ -254,7 +254,6 @@ describe("Consumer lifecycle behavior", () => {
 		const waitPromise = waitForHost.call(consumer);
 		const initHandler = getHandlers(consumer).get(MESSAGE_NAME.INIT);
 
-		expect(initHandler).toBeDefined();
 		expect(
 			requireValue(initHandler)(session, createMessageSource(hostWindow)),
 		).toEqual({
@@ -273,7 +272,6 @@ describe("Consumer lifecycle behavior", () => {
 		const session = await bootstrapHost(consumer, hostWindow);
 		const initHandler = getHandlers(consumer).get(MESSAGE_NAME.INIT);
 
-		expect(initHandler).toBeDefined();
 		expect(
 			requireValue(initHandler)(session, createMessageSource(hostWindow)),
 		).toEqual({
@@ -377,7 +375,6 @@ describe("Consumer lifecycle behavior", () => {
 			.spyOn(internal.transport.messenger, "send")
 			.mockResolvedValue(undefined);
 
-		expect(initHandler).toBeDefined();
 		expect(
 			requireValue(initHandler)(session, createMessageSource(hostWindow)),
 		).toEqual({
@@ -446,7 +443,6 @@ describe("Consumer lifecycle behavior", () => {
 			});
 
 		expect(bootstrapHandler).toBeDefined();
-		expect(callHandler).toBeDefined();
 		const updatePromise = consumer.updateProps({ count: 2 });
 		const bootstrapPromise = bootstrapHandler?.(
 			{ sessionId: "new-document" },
@@ -1116,7 +1112,6 @@ describe("Consumer lifecycle behavior", () => {
 		const firstRender = consumer.render(container);
 
 		await vi.waitFor(() => {
-			expect(reentrantRender).toBeDefined();
 			expect(propUpdateResult).toBeDefined();
 		});
 		expect(prerenderSpy).toHaveBeenCalledTimes(1);

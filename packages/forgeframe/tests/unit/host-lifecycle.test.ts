@@ -383,8 +383,6 @@ describe("Host lifecycle behavior", () => {
 			host as unknown as { messenger: { handlers: Map<string, DirectHandler> } }
 		).messenger.handlers.get(MESSAGE_NAME.PROPS);
 
-		expect(propsHandler).toBeDefined();
-
 		const throwingSubscriber = vi.fn(() => {
 			throw new Error("subscriber failed");
 		});
@@ -505,8 +503,6 @@ describe("Host lifecycle behavior", () => {
 			host as unknown as { messenger: { handlers: Map<string, DirectHandler> } }
 		).messenger.handlers.get(MESSAGE_NAME.PROPS);
 
-		expect(propsHandler).toBeDefined();
-
 		const emitSpy = vi.spyOn(host.event, "emit");
 		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
@@ -535,7 +531,6 @@ describe("Host lifecycle behavior", () => {
 		).messenger.handlers.get(MESSAGE_NAME.PROPS);
 		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-		expect(propsHandler).toBeDefined();
 		expect(() =>
 			requireValue(propsHandler)(
 				{ amount: "bad-update" },

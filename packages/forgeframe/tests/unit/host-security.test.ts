@@ -201,8 +201,6 @@ describe("Host security", () => {
 			}
 		).messenger.handlers.get(MESSAGE_NAME.PROPS);
 
-		expect(propsHandler).toBeDefined();
-
 		requireValue(propsHandler)(
 			{
 				uid: "spoofed-uid",

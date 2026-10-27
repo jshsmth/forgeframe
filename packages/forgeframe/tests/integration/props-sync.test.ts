@@ -853,7 +853,7 @@ describe("undefined in factory input and updates", () => {
 	});
 
 	it("keeps a key left out, including after a reset, and sets a reset prop again", async () => {
-		const { instance, hostProps } = await renderWith({
+		const { instance, hostProps, committed } = await renderWith({
 			title: "t",
 			theme: "dark",
 			note: "kept",
@@ -863,7 +863,8 @@ describe("undefined in factory input and updates", () => {
 		expect(hostProps.note).toBe("kept");
 		await instance.updateProps({ note: undefined });
 		expect(Object.hasOwn(hostProps, "note")).toBe(false);
-		expect(Object.hasOwn(hostProps, "note")).toBe(false);
+		// The consumer snapshot keeps every declared key, now without a value.
+		expect(committed.at(-1)).toHaveProperty("note", undefined);
 		await instance.updateProps({ title: "v" });
 		expect(Object.hasOwn(hostProps, "note")).toBe(false);
 		await instance.updateProps({ note: "again" });
@@ -904,7 +905,6 @@ describe("undefined in factory input and updates", () => {
 			note: undefined,
 		});
 		expect(hostProps.theme).toBe("light");
-		expect(Object.hasOwn(hostProps, "note")).toBe(false);
 		expect(Object.hasOwn(hostProps, "note")).toBe(false);
 	});
 });

@@ -30,11 +30,12 @@ describe("Body param bootstrap integration", () => {
 	let popupHarness: PopupIntegrationHarness | null = null;
 
 	afterEach(async () => {
+		// Restore spies first, so cleanup's own restores are not overwritten.
+		vi.restoreAllMocks();
 		await iframeHarness?.cleanup();
 		await popupHarness?.cleanup();
 		iframeHarness = null;
 		popupHarness = null;
-		vi.restoreAllMocks();
 	});
 
 	it("should submit iframe body params through a hidden form and still initialize host props", async () => {

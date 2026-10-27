@@ -14,16 +14,7 @@ import {
 import { forgeFrameError } from "../forgeframe-error";
 
 describe("openPopup", () => {
-	let originalOpen: typeof window.open;
-
-	beforeEach(() => {
-		originalOpen = window.open;
-	});
-
-	afterEach(() => {
-		window.open = originalOpen;
-	});
-
+	// vi.spyOn(window, "open") is restored by restoreMocks.
 	it("should open popup with correct features", () => {
 		const mockWin = {
 			closed: false,
@@ -31,7 +22,7 @@ describe("openPopup", () => {
 			innerHeight: 600,
 		} as Window;
 
-		window.open = vi.fn().mockReturnValue(mockWin);
+		vi.spyOn(window, "open").mockReturnValue(mockWin);
 
 		const popup = openPopup({
 			url: "https://example.com",
@@ -59,7 +50,7 @@ describe("openPopup", () => {
 			innerHeight: 600,
 		} as Window;
 
-		window.open = vi.fn().mockReturnValue(mockWin);
+		vi.spyOn(window, "open").mockReturnValue(mockWin);
 
 		openPopup({
 			url: "https://example.com",
@@ -67,7 +58,7 @@ describe("openPopup", () => {
 			dimensions: { width: 500, height: 600 },
 		});
 
-		const call = (window.open as ReturnType<typeof vi.fn>).mock.calls[0];
+		const call = vi.mocked(window.open).mock.calls[0];
 		const features = call[2] as string;
 
 		expect(features).toContain("location=yes");
@@ -76,7 +67,7 @@ describe("openPopup", () => {
 	});
 
 	it("should throw POPUP_BLOCKED when popup is blocked", () => {
-		window.open = vi.fn().mockReturnValue(null);
+		vi.spyOn(window, "open").mockReturnValue(null);
 
 		expect(() =>
 			openPopup({
@@ -99,7 +90,7 @@ describe("openPopup", () => {
 			},
 		],
 	])("should throw POPUP_BLOCKED for a %s popup window", (label, mockWin) => {
-		window.open = vi.fn().mockReturnValue(mockWin);
+		vi.spyOn(window, "open").mockReturnValue(mockWin as unknown as Window);
 		const close = vi.fn();
 		Object.defineProperty(mockWin, "close", { value: close });
 
@@ -121,7 +112,7 @@ describe("openPopup", () => {
 			innerHeight: 600,
 		} as Window;
 
-		window.open = vi.fn().mockReturnValue(mockWin);
+		vi.spyOn(window, "open").mockReturnValue(mockWin);
 
 		openPopup({
 			url: "https://example.com",
@@ -129,7 +120,7 @@ describe("openPopup", () => {
 			dimensions: { width: "500px", height: "600px" },
 		});
 
-		const call = (window.open as ReturnType<typeof vi.fn>).mock.calls[0];
+		const call = vi.mocked(window.open).mock.calls[0];
 		const features = call[2] as string;
 
 		expect(features).toContain("width=500");
@@ -143,7 +134,7 @@ describe("openPopup", () => {
 			innerHeight: 500,
 		} as Window;
 
-		window.open = vi.fn().mockReturnValue(mockWin);
+		vi.spyOn(window, "open").mockReturnValue(mockWin);
 
 		openPopup({
 			url: "https://example.com",
@@ -151,7 +142,7 @@ describe("openPopup", () => {
 			dimensions: { width: "invalid", height: "invalid" },
 		});
 
-		const call = (window.open as ReturnType<typeof vi.fn>).mock.calls[0];
+		const call = vi.mocked(window.open).mock.calls[0];
 		const features = call[2] as string;
 
 		// Should use fallback of 500

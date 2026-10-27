@@ -147,9 +147,9 @@ describe("Component Creation", () => {
 			url: "https://example.com/component",
 		});
 
-		expect(MyComponent).toBeDefined();
 		expect(typeof MyComponent).toBe("function");
 		expect(MyComponent.instances).toEqual([]);
+		expect(getComponent("my-component")).toBe(MyComponent);
 	});
 
 	it("should allow relative string urls in browser environments", () => {
@@ -158,7 +158,7 @@ describe("Component Creation", () => {
 			url: "/component.html",
 		});
 
-		expect(MyComponent).toBeDefined();
+		expect(getComponent("relative-url-component")).toBe(MyComponent);
 	});
 
 	it.each([
@@ -828,7 +828,7 @@ describe("Component Creation", () => {
 
 		const instance = MyComponent({ customProp: "value" });
 
-		expect(instance).toBeDefined();
+		expect(MyComponent.instances).toEqual([instance]);
 		expect(typeof instance.render).toBe("function");
 		expect(typeof instance.close).toBe("function");
 		expect(typeof instance.updateProps).toBe("function");
@@ -849,7 +849,6 @@ describe("Component Creation", () => {
 			}
 		).resolveDimensions();
 
-		expect(MyComponent).toBeDefined();
 		expect(resolvedDimensions).toEqual({ width: 400, height: 300 });
 	});
 
@@ -861,7 +860,6 @@ describe("Component Creation", () => {
 		});
 		const instance = PopupComponent({});
 
-		expect(PopupComponent).toBeDefined();
 		expect(getConsumerInternals(instance).renderer.context).toBe(CONTEXT.POPUP);
 	});
 
@@ -1466,7 +1464,7 @@ describe("Component Registry", () => {
 		});
 
 		it("should return a component with typed props", () => {
-			create({
+			const TypedComponent = create({
 				tag: "typed-component",
 				url: "https://example.com",
 				props: {
@@ -1474,20 +1472,18 @@ describe("Component Registry", () => {
 				},
 			});
 
-			const retrieved = getComponent("typed-component");
-
-			expect(retrieved).toBeDefined();
+			expect(getComponent("typed-component")).toBe(TypedComponent);
 		});
 	});
 
 	describe("unregisterComponent", () => {
 		it("should remove a component from the registry", () => {
-			create({
+			const ToUnregister = create({
 				tag: "to-unregister",
 				url: "https://example.com",
 			});
 
-			expect(getComponent("to-unregister")).toBeDefined();
+			expect(getComponent("to-unregister")).toBe(ToUnregister);
 
 			unregisterComponent("to-unregister");
 
@@ -1512,7 +1508,7 @@ describe("Component Registry", () => {
 				url: "https://example.com/second",
 			});
 
-			expect(NewComponent).toBeDefined();
+			expect(getComponent("re-register-test")).toBe(NewComponent);
 		});
 	});
 });
