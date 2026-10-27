@@ -144,11 +144,12 @@ describe("Messenger instance routing", () => {
 			),
 			sourceWindow,
 		);
-		await new Promise((resolve) => setTimeout(resolve, 0));
+		await vi.waitFor(() =>
+			expect(sourceWindow.postMessage).toHaveBeenCalledOnce(),
+		);
 
 		expect(intendedHandler).toHaveBeenCalledOnce();
 		expect(unrelatedHandler).not.toHaveBeenCalled();
-		expect(sourceWindow.postMessage).toHaveBeenCalledOnce();
 		expect(readMessage(sourceWindow).data).toEqual({ result: "intended" });
 	});
 
