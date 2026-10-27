@@ -520,7 +520,7 @@ Component and React-wrapper types are inferred from the schemas. The factory inp
 Transport notes:
 
 - Use `deliverTo: 'same-origin'` for values that must never be exposed during cross-origin bootstrap.
-- Props always cross as JSON through the function bridge. Callbacks at any depth arrive as remote functions and `Date` values arrive as `Date`s, at bootstrap, on every update, and in `host.export(...)`. A value JSON cannot encode, such as a `BigInt` or a cycle, rejects with a `VALIDATION` error whose `cause` is the encoder's `TypeError`; an error your own `toJSON()` throws reaches you unchanged.
+- Props always cross as JSON through the function bridge. Callbacks at any depth arrive as remote functions and `Date` values arrive as `Date`s, at bootstrap, on every update, and in `host.export(...)`. A value JSON cannot encode, such as a `BigInt` or a cycle, rejects with a `VALIDATION` error; for a `BigInt` its `cause` is the encoder's `TypeError`. In the first render's props, `render()` rejects with that error as soon as the host asks for its props, instead of waiting for `initTimeout`. An error your own `toJSON()` throws reaches you unchanged.
 - Ordinary objects that contain transport marker fields stay ordinary data.
 - An object's `toJSON()` result is delivered instead of its fields, as native JSON does, so a class can hide fields such as tokens. A root `toJSON()` that returns `undefined` omits the prop. A `URL` arrives as its `href`, and boxed primitives such as `new String('ab')` arrive unboxed. A boxed primitive whose prototype was set to `null` is not unboxed: it is sent as an ordinary record of its own fields.
 - Arrays are read entry by entry, and an array's `toJSON()` is not called.
@@ -988,7 +988,7 @@ Each option takes origins: a scheme, host and port, such as `https://app.example
 - `peers` decides whether, and to which host origins, a component's instances are listed for peer discovery.
 - Use `hostOrigins` and `consumerOrigins` together for payment, auth, account, and other sensitive workflows.
 
-Each accepts a string, a `RegExp`, or an array mixing them. A string is an exact origin, or `'*'` alone, which matches any origin. The only wildcard is a leading `*.` in the host, which stands for one or more labels: `'https://*.example.com'` matches `https://app.example.com` and `https://a.b.example.com`, but not `https://example.com`, `https://evilexample.com` or `http://app.example.com`, and the scheme and port must match exactly. Any other `*`, such as `'https://*example.com'`, `'https://app.example.com*'` or `'https://api.*.example.com'`, a pattern without a scheme, such as `'*.example.com'`, and one with a path, such as `'https://app.example.com/'`, throw a `VALIDATION` error. Use a `RegExp` for anything more flexible. Empty or blank strings, `null`, and other values throw, so a missing setting such as `process.env.CONSUMER_ORIGIN || ''` cannot silently trust every origin. An empty array throws for `hostOrigins`, `peers`, and `deliverTo`, where it could never match; for `consumerOrigins` it is valid and admits no consumer, so configuration that resolves to nothing fails closed.
+Each accepts a string, a `RegExp`, or an array mixing them, including a readonly `as const` array. A string is an exact origin, or `'*'` alone, which matches any origin. The only wildcard is a leading `*.` in the host, which stands for one or more labels: `'https://*.example.com'` matches `https://app.example.com` and `https://a.b.example.com`, but not `https://example.com`, `https://evilexample.com` or `http://app.example.com`, and the scheme and port must match exactly. Any other `*`, such as `'https://*example.com'`, `'https://app.example.com*'` or `'https://api.*.example.com'`, a pattern without a scheme, such as `'*.example.com'`, one with a path, such as `'https://app.example.com/'`, and an exact origin in a form browsers never report, such as `'https://App.example.com'` or `'https://example.com:443'`, throw a `VALIDATION` error that names the form to write. Use a `RegExp` for anything more flexible. Empty or blank strings, `null`, and other values throw, so a missing setting such as `process.env.CONSUMER_ORIGIN || ''` cannot silently trust every origin. An empty array throws for `hostOrigins`, `peers`, and `deliverTo`, where it could never match; for `consumerOrigins` it is valid and admits no consumer, so configuration that resolves to nothing fails closed.
 
 No matcher, including `'*'` or a match-all `RegExp`, ever admits an opaque (`"null"`) origin, such as a document sandboxed without `allow-same-origin`. Every opaque document serializes the same way, so the origin cannot identify a peer.
 
@@ -1565,6 +1565,7 @@ import {
   type PropDefinition,
   type InferProps,
   type InferPropsInput,
+  type InferHostProps,
   type ComponentOptions,
   type ComponentBaseOptions,
   type ComponentUrlOptions,
@@ -1607,13 +1608,13 @@ Read the pieces of a component back from `typeof Component`:
 
 | Helper | Type |
 |---|---|
-| `PropsOf<typeof C>` | The normalized props the host receives |
+| `PropsOf<typeof C>` | The normalized props, as the consumer holds them |
 | `InputOf<typeof C>` | What the factory and `updateProps()` accept; wider than the props for defaults and coercions |
 | `ExportsOf<typeof C>` | The `exports` schema's output, or `unknown` |
-| `HostPropsOf<typeof C>` | What `await host.ready` resolves to: the props as the host receives them |
+| `HostPropsOf<typeof C>` | What `await host.ready` resolves to: the props as the host receives them, without `sendToHost: false` props and with `deliverTo` props optional |
 | `HostOf<typeof C>` | The `host` handle `initHost(C, ...)` returns, with `export()` typed by the exports schema |
 
-`Component<Props, Input = Props, Exports = unknown>` and `ComponentInstance<Props, Input = Props, Exports = unknown>` annotate factories and instances, and `AnyComponent` constrains a generic that accepts any component (`<C extends AnyComponent>`); `instance.exports` is `RemoteValue<Exports>`, whose methods return promises. For a schema's own types, use `StandardSchemaV1.InferOutput<typeof schema>` and `StandardSchemaV1.InferInput<typeof schema>`.
+`Component<Props, Input = Props, Exports = unknown, HostProps = Props>` and `ComponentInstance<Props, Input = Props, Exports = unknown>` annotate factories and instances, and `AnyComponent` constrains a generic that accepts any component (`<C extends AnyComponent>`); `instance.exports` is `RemoteValue<Exports>`, whose methods return promises. For a schema's own types, use `StandardSchemaV1.InferOutput<typeof schema>` and `StandardSchemaV1.InferInput<typeof schema>`.
 
 To start from a hand-written interface, check the definitions against it with `satisfies`. `PropsDefinition<P>` needs an entry for every key of `P`, and each schema's output must match: a required key rejects a schema that may produce `undefined`. Give an optional key an optional schema too; a required schema there still type-checks, but the inferred props then make the key required.
 
@@ -1639,11 +1640,13 @@ export const LoginForm = create({
 });
 ```
 
-Definitions built at runtime, such as from configuration, can be typed as `PropsDefinition<MyProps>`, and `create()` infers `MyProps` from them, both as the host props and as the factory input.
+Definitions built at runtime, such as from configuration, can be typed as `PropsDefinition<MyProps>`, and `create()` infers `MyProps` from them, both as the props and as the factory input. A single entry typed as `PropDefinition<T>` or `StandardSchemaV1<unknown, T>` works the same way: `T` is both its prop type and its input, so the prop stays required unless `T` includes `undefined`.
 
 ### Typing the host
 
-`initHost(Component, ...)` infers the host props and the `export()` type from the component, so the host needs no `Window` augmentation or separate interface. Annotate helpers that receive the props with `HostPropsOf<typeof Component>`, and helpers that need controls with `HostOf<typeof Component>`. The tag-agnostic `initHost({ props, consumerOrigins })` infers the props from the definitions it is given.
+`initHost(Component, ...)` infers the host props and the `export()` type from the component, so the host needs no `Window` augmentation or separate interface. Annotate helpers that receive the props with `HostPropsOf<typeof Component>`, and helpers that need controls with `HostOf<typeof Component>`. The tag-agnostic `initHost({ props, consumerOrigins })` infers the props from the definitions it is given, as `InferHostProps<D>`.
+
+The host type matches what the host receives. A `sendToHost: false` prop is left out, so calling it does not compile. A prop with a `deliverTo` option is optional, because whether this host receives it depends on its origin; check it before use.
 
 ```typescript
 import { initHost, type HostOf, type HostPropsOf } from 'forgeframe';
@@ -1762,7 +1765,7 @@ Version preparation and publication are separate. The Release workflow publishes
 1. Run `npm run version:patch`, `version:minor`, or `version:major` to update workspace metadata and the lockfile only. For an explicit version, use `npm version 2.0.1 -w forgeframe --no-git-tag-version`. These commands do not commit, tag, publish, or push. npm 11 re-indents `package-lock.json` with tabs; re-serialize it with 2-space indentation before committing.
 2. Run `npm run release:check` and `npm run test:browser`, review the changes, and commit the intended release source and metadata. Verify hosted CI for that commit before releasing.
 3. Create the matching annotated Git tag, such as `v2.0.1`, on that commit. Keep the working tree clean so the published files match the tagged source.
-4. Push the release commit and its specific tag explicitly. The Release workflow checks that the tag matches the package version, runs the browser suite in all three engines, and publishes with `npm publish -w forgeframe --provenance --tag <dist-tag>`, whose `prepublishOnly` runs `npm run release:check` first. It then creates the GitHub release notes. Manual workflow runs must select the matching tag.
+4. Push the release commit and its specific tag explicitly. The Release workflow runs in three jobs, each with only the permissions it needs. The verify job checks that the tag matches the package version, runs `npm run release:check` and the browser suite in all three engines, and packs the package; it has no npm or write access. The publish job, the only one that can authenticate to npm, publishes that tarball with `npm publish <tarball> --provenance --tag <dist-tag>`. The last job creates the GitHub release notes. Manual workflow runs must select the matching tag.
 
 A version with a pre-release component, such as `2.1.0-beta.1`, publishes under the `next` dist-tag and its GitHub release is marked as a pre-release, so `npm install forgeframe` keeps resolving to the latest final version; install a pre-release with `npm install forgeframe@next`. Any other version publishes under `latest`. `packages/forgeframe/scripts/release-dist-tag.mjs` makes that choice. Moving `next` after a final release (`npm dist-tag add forgeframe@<version> next`) needs the owner's npm login, because trusted publishing authenticates only the workflow's publish.
 
