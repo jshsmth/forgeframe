@@ -4,6 +4,7 @@ import { ConsumerComponent } from "@/core/consumer";
 import { ConsumerPropsPipeline } from "@/core/consumer/props-pipeline";
 import { prop } from "@/props/prop";
 import type { ComponentBaseOptions } from "@/types";
+import { forgeFrameError } from "../forgeframe-error";
 
 const consumers: ConsumerComponent<Record<string, unknown>>[] = [];
 function consumerWith(
@@ -175,12 +176,15 @@ describe("Disconnected consumer prop queue", () => {
 			.catch((error: unknown) => error);
 		await consumer.close();
 		await first;
-		expect(await second).toMatchObject({
-			message: "Cannot update props after the component has closed",
-		});
-		expect(await rendering).toMatchObject({
-			message: expect.stringContaining("closed before rendering completed"),
-		});
+		expect(await second).toEqual(
+			forgeFrameError(
+				"CLOSED",
+				"Cannot update props after the component has closed",
+			),
+		);
+		expect(await rendering).toEqual(
+			forgeFrameError("CANCELLED", "closed before rendering completed"),
+		);
 		expect(validate).toHaveBeenCalledTimes(1);
 		expect(container.children).toHaveLength(0);
 	});

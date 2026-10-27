@@ -12,6 +12,7 @@ import {
 	validateWithSchema,
 } from "@/props/schema";
 import type { PropsDefinition } from "@/types";
+import { forgeFrameError } from "../forgeframe-error";
 
 /** Creates a string schema that is itself callable, as ArkType types are. */
 function createCallableStringSchema(): StandardSchemaV1<unknown, string> &
@@ -54,7 +55,7 @@ describe("Standard Schema interoperability", () => {
 		expect(isStandardSchema(schema)).toBe(true);
 		expect(validateWithSchema(schema, "ok", "name")).toBe("ok");
 		expect(() => validateWithSchema(schema, 123, "name")).toThrow(
-			"Validation failed: name: Expected string",
+			forgeFrameError("VALIDATION", "Validation failed: name: Expected string"),
 		);
 	});
 
@@ -76,10 +77,15 @@ describe("Standard Schema interoperability", () => {
 			expect(() => normalizeProps({ name: "ok" }, definitions)).not.toThrow();
 			expect(() =>
 				normalizeProps({ name: 42 as unknown as string }, definitions),
-			).toThrow("Validation failed: name: Expected string");
-			expect(() =>
-				normalizeProps({} as { name: string }, definitions),
-			).toThrow();
+			).toThrow(
+				forgeFrameError(
+					"VALIDATION",
+					"Validation failed: name: Expected string",
+				),
+			);
+			expect(() => normalizeProps({} as { name: string }, definitions)).toThrow(
+				forgeFrameError("VALIDATION", "Validation failed: name"),
+			);
 		}
 	});
 
@@ -94,7 +100,7 @@ describe("Standard Schema interoperability", () => {
 		const instance = Component({ name: 42 as unknown as string });
 
 		await expect(instance.render(container)).rejects.toThrow(
-			"Validation failed: name: Expected string",
+			forgeFrameError("VALIDATION", "Validation failed: name: Expected string"),
 		);
 		expect(container.querySelector("iframe")).toBeNull();
 	});
@@ -116,7 +122,10 @@ describe("Standard Schema interoperability", () => {
 		};
 
 		expect(() => validateWithSchema(pathSchema, {}, "payload")).toThrow(
-			"Validation failed: payload.users.0.email: Expected email",
+			forgeFrameError(
+				"VALIDATION",
+				"Validation failed: payload.users.0.email: Expected email",
+			),
 		);
 	});
 

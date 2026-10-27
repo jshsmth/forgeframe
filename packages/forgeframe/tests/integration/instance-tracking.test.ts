@@ -10,6 +10,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { closeAll, create, prop } from "@/index";
+import { forgeFrameError } from "../forgeframe-error";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
@@ -81,7 +82,10 @@ describe("closeAll()", () => {
 			"checkout:closed",
 		]);
 		await expect(cardRendering).rejects.toThrow(
-			'Component "close-all-card-field" was closed before rendering completed',
+			forgeFrameError(
+				"CANCELLED",
+				'Component "close-all-card-field" was closed before rendering completed',
+			),
 		);
 
 		await closeAll();
@@ -195,7 +199,7 @@ describe("removed create() options", () => {
 					// Invalid JavaScript configuration is rejected at runtime.
 					...({ [option]: value } as object),
 				}),
-			).toThrow(message);
+			).toThrow(forgeFrameError("VALIDATION", message));
 			// Nothing was registered, so the tag is still free.
 			expect(() =>
 				create({

@@ -8,28 +8,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getHost } from "@/core/host/bootstrap";
 import { create, ForgeFrameError, initHost, prop } from "@/index";
+import { forgeFrameError } from "../forgeframe-error";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
 } from "./helpers";
 
 const HOST_URL = "https://host.example.com/widget";
-
-/** Asserts a ForgeFrameError with the code and, optionally, message text. */
-function expectCode(error: unknown, code: string, text?: string): void {
-	expect(error).toBeInstanceOf(ForgeFrameError);
-	expect(error).toMatchObject({ name: "ForgeFrameError", code });
-	if (text) expect((error as Error).message).toContain(text);
-}
-
-function catchError(run: () => unknown): unknown {
-	try {
-		run();
-	} catch (error) {
-		return error;
-	}
-	throw new Error("Expected a throw");
-}
 
 function createContainer(): HTMLDivElement {
 	const container = document.createElement("div");
@@ -80,59 +65,55 @@ describe("Origin naming and error codes", () => {
 	])(
 		"rejects the removed %s option, naming %s",
 		(option, value, replacement) => {
-			const error = catchError(() =>
+			expect(() =>
 				create({
 					tag: `removed-option-${option.toLowerCase()}`,
 					url: HOST_URL,
 					...({ [option]: value } as object),
 				}),
+			).toThrow(
+				forgeFrameError(
+					"VALIDATION",
+					`"${option}" was renamed. Use ${replacement}`,
+				),
 			);
-			expectCode(error, "VALIDATION", `"${option}" was renamed`);
-			expect((error as Error).message).toContain(replacement);
 		},
 	);
 
 	it("rejects initHost's removed allowedConsumerDomains option, naming consumerOrigins", () => {
-		const error = catchError(() =>
+		expect(() =>
 			initHost({
 				...({ allowedConsumerDomains: "*" } as object),
 				consumerOrigins: "*",
 			}),
-		);
-		expectCode(error, "VALIDATION", "renamed to consumerOrigins");
+		).toThrow(forgeFrameError("VALIDATION", "renamed to consumerOrigins"));
 	});
 
 	it.each([
 		["hostOrigins", "app.example.com"],
 		["peers", "true"],
 	])("rejects a %s string without a scheme", (option, value) => {
-		expectCode(
-			catchError(() =>
-				create({
-					tag: `bare-host-${option.toLowerCase()}`,
-					url: HOST_URL,
-					...({ [option]: value } as object),
-				}),
-			),
-			"VALIDATION",
-			`"${value}", which is not an origin`,
+		expect(() =>
+			create({
+				tag: `bare-host-${option.toLowerCase()}`,
+				url: HOST_URL,
+				...({ [option]: value } as object),
+			}),
+		).toThrow(
+			forgeFrameError("VALIDATION", `"${value}", which is not an origin`),
 		);
 	});
 
 	it("reserves then as a prop name with the VALIDATION code", () => {
-		expectCode(
-			catchError(() =>
-				create({
-					tag: "reserved-then",
-					url: HOST_URL,
-					// @ts-expect-error then is a reserved prop name
-					// biome-ignore lint/suspicious/noThenProperty: checks the reserved name
-					props: { then: prop.function() },
-				}),
-			),
-			"VALIDATION",
-			'Prop "then" is reserved',
-		);
+		expect(() =>
+			create({
+				tag: "reserved-then",
+				url: HOST_URL,
+				// @ts-expect-error then is a reserved prop name
+				// biome-ignore lint/suspicious/noThenProperty: checks the reserved name
+				props: { then: prop.function() },
+			}),
+		).toThrow(forgeFrameError("VALIDATION", 'Prop "then" is reserved'));
 	});
 
 	it("wraps a component validate failure as VALIDATION with the original as cause", async () => {
@@ -149,7 +130,9 @@ describe("Origin naming and error codes", () => {
 		const error = await Component({ amount: -1 })
 			.render(createContainer())
 			.catch((caught: unknown) => caught);
-		expectCode(error, "VALIDATION", "Amount must be positive");
+		expect(error).toEqual(
+			forgeFrameError("VALIDATION", "Amount must be positive"),
+		);
 		expect((error as Error).cause).toBe(reason);
 	});
 
@@ -188,17 +171,15 @@ describe("Origin naming and error codes", () => {
 		const rendering = instance.render(createContainer());
 		await instance.close();
 		const error = await rendering.catch((caught: unknown) => caught);
-		expectCode(error, "CANCELLED");
-		expectCode(
+		expect(error).toEqual(forgeFrameError("CANCELLED"));
+		expect(
 			await instance.updateProps({}).catch((caught: unknown) => caught),
-			"CLOSED",
-		);
-		expectCode(
+		).toEqual(forgeFrameError("CLOSED"));
+		expect(
 			await instance
 				.render(createContainer())
 				.catch((caught: unknown) => caught),
-			"CLOSED",
-		);
+		).toEqual(forgeFrameError("CLOSED"));
 	});
 
 	it("rejects render with CLOSED when the host closes during the handshake", async () => {
@@ -218,10 +199,8 @@ describe("Origin naming and error codes", () => {
 			.withHostGlobalsAsync(() => host.close())
 			.catch(() => {});
 
-		expectCode(
-			await rendering.catch((caught: unknown) => caught),
-			"CLOSED",
-			"closed by its host or the user",
+		expect(await rendering.catch((caught: unknown) => caught)).toEqual(
+			forgeFrameError("CLOSED", "closed by its host or the user"),
 		);
 	});
 
@@ -260,7 +239,7 @@ describe("Origin naming and error codes", () => {
 		});
 
 		const error = await host.ready.catch((caught: unknown) => caught);
-		expectCode(error, "VALIDATION", "schema exploded");
+		expect(error).toEqual(forgeFrameError("VALIDATION", "schema exploded"));
 		expect((error as Error).cause).toBe(thrown);
 		expect(emitted).toEqual([error]);
 		expect(emitted[0]).toBe(error);
@@ -295,16 +274,17 @@ describe("Origin naming and error codes", () => {
 		host.on("error", (error) => {
 			hostErrors.push(error);
 		});
-		expectCode(
-			await host.ready.catch((caught: unknown) => caught),
-			"VALIDATION",
+		expect(await host.ready.catch((caught: unknown) => caught)).toEqual(
+			forgeFrameError("VALIDATION"),
 		);
 
 		const error = await rendering.catch((caught: unknown) => caught);
-		expectCode(error, "INIT_TIMEOUT", "Expected string, got number");
-		expectCode((error as Error).cause, "VALIDATION");
+		expect(error).toEqual(
+			forgeFrameError("INIT_TIMEOUT", "Expected string, got number"),
+		);
+		expect((error as Error).cause).toEqual(forgeFrameError("VALIDATION"));
 		expect(consumerErrors).toEqual([error]);
-		for (const hostError of hostErrors) expect(hostError).toBeInstanceOf(Error);
+		expect(hostErrors).toEqual([forgeFrameError("VALIDATION")]);
 	});
 
 	it("rejects initHost with ORIGIN_REJECTED for a consumer outside consumerOrigins", async () => {
@@ -318,12 +298,13 @@ describe("Origin naming and error codes", () => {
 		activeHarness.attachHostToIframe(
 			await activeHarness.waitForIframe(container),
 		);
-		const error = catchError(() =>
+		expect(() =>
 			activeHarness.bootstrapHost(Component, {
 				consumerOrigins: "https://partner.example.com",
 			}),
+		).toThrow(
+			forgeFrameError("ORIGIN_REJECTED", "is not allowed by consumerOrigins"),
 		);
-		expectCode(error, "ORIGIN_REJECTED", "is not allowed by consumerOrigins");
 		expect(getHost()).toBeNull();
 	});
 
@@ -346,7 +327,7 @@ describe("Origin naming and error codes", () => {
 		const error = await instance
 			.updateProps({ amount: 50 })
 			.catch((caught: unknown) => caught);
-		expectCode(error, "VALIDATION");
+		expect(error).toEqual(forgeFrameError("VALIDATION"));
 	});
 
 	it("rejects a throwing remote callback with a plain Error that carries no code", async () => {
@@ -420,9 +401,9 @@ describe("Origin naming and error codes", () => {
 				.catch((caught: unknown) => caught),
 		);
 
-		expectCode(error, "VALIDATION");
+		expect(error).toEqual(forgeFrameError("VALIDATION"));
 		expect(errors).toHaveLength(1);
-		expectCode(errors[0], "VALIDATION");
+		expect(errors[0]).toEqual(forgeFrameError("VALIDATION"));
 		expect(instance.exports).toMatchObject({ ready: true });
 		expect(bridge.localFunctions.size).toBe(retained);
 	});
@@ -438,10 +419,10 @@ describe("Origin naming and error codes", () => {
 		const container = createContainer();
 		const instance = Component({ tenant: "attacker" });
 
-		expectCode(
+		expect(
 			await instance.render(container).catch((caught: unknown) => caught),
-			"ORIGIN_REJECTED",
-			"https://attacker.example.com",
+		).toEqual(
+			forgeFrameError("ORIGIN_REJECTED", "https://attacker.example.com"),
 		);
 		expect(container.querySelector("iframe")).toBeNull();
 		expect(Component.instances).toEqual([instance]);

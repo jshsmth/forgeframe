@@ -24,6 +24,7 @@ import {
 } from "@/props/prop";
 import { isStandardSchema } from "@/props/schema";
 import type { PropsDefinition } from "@/types";
+import { forgeFrameError } from "../forgeframe-error";
 
 // ============================================================================
 // StandardSchemaV1 Compliance Tests
@@ -521,10 +522,10 @@ describe("prop.date()", () => {
 
 	it("should reject invalid min and max bounds when configuring the schema", () => {
 		expect(() => prop.date().min(new Date("invalid"))).toThrow(
-			"prop.date().min() requires a valid Date",
+			forgeFrameError("VALIDATION", "prop.date().min() requires a valid Date"),
 		);
 		expect(() => prop.date().max(new Date("invalid"))).toThrow(
-			"prop.date().max() requires a valid Date",
+			forgeFrameError("VALIDATION", "prop.date().max() requires a valid Date"),
 		);
 	});
 
@@ -669,16 +670,28 @@ describe("composite schema construction", () => {
 				(...args: unknown[]) => unknown
 			>;
 			expect(() => build.object({ name: nested })).toThrow(
-				'prop.object(shape) requires a schema for "name". Use prop.any() for a field that is deliberately unchecked.',
+				forgeFrameError(
+					"VALIDATION",
+					'prop.object(shape) requires a schema for "name". Use prop.any() for a field that is deliberately unchecked.',
+				),
 			);
 			expect(() => build.record(nested)).toThrow(
-				"prop.record(value) requires a value schema. Use prop.any<Record<string, T>>() for a record whose values are deliberately unchecked.",
+				forgeFrameError(
+					"VALIDATION",
+					"prop.record(value) requires a value schema. Use prop.any<Record<string, T>>() for a record whose values are deliberately unchecked.",
+				),
 			);
 			expect(() => build.tuple(prop.string(), nested)).toThrow(
-				"prop.tuple() requires a schema at position 1. Use prop.any() for a value that is deliberately unchecked.",
+				forgeFrameError(
+					"VALIDATION",
+					"prop.tuple() requires a schema at position 1. Use prop.any() for a value that is deliberately unchecked.",
+				),
 			);
 			expect(() => build.union(prop.string(), nested)).toThrow(
-				"prop.union() requires a schema at position 1",
+				forgeFrameError(
+					"VALIDATION",
+					"prop.union() requires a schema at position 1",
+				),
 			);
 		},
 	);
@@ -689,7 +702,10 @@ describe("prop.array(item)", () => {
 		const array = prop.array as unknown as (item?: unknown) => unknown;
 		for (const item of [undefined, "string", { "~standard": {} }]) {
 			expect(() => array(item)).toThrow(
-				"prop.array(item) requires an item schema. Use prop.any<T[]>() for an array whose items are deliberately unchecked.",
+				forgeFrameError(
+					"VALIDATION",
+					"prop.array(item) requires an item schema. Use prop.any<T[]>() for an array whose items are deliberately unchecked.",
+				),
 			);
 		}
 	});
@@ -920,7 +936,10 @@ describe("prop.object(shape)", () => {
 		const object = prop.object as unknown as (shape?: unknown) => unknown;
 		for (const shape of [undefined, null, [], "shape"]) {
 			expect(() => object(shape)).toThrow(
-				"prop.object(shape) requires a shape. Use prop.record(value) for dictionaries, or prop.any<T>() for an object that is deliberately unchecked.",
+				forgeFrameError(
+					"VALIDATION",
+					"prop.object(shape) requires a shape. Use prop.record(value) for dictionaries, or prop.any<T>() for an object that is deliberately unchecked.",
+				),
 			);
 		}
 	});
@@ -1498,7 +1517,12 @@ describe("integration with normalizeProps", () => {
 		expect(() => validateProps({ name: "John" }, definitions)).not.toThrow();
 		expect(() =>
 			validateProps({ name: 123 } as unknown as { name: string }, definitions),
-		).toThrow();
+		).toThrow(
+			forgeFrameError(
+				"VALIDATION",
+				"Validation failed: name: Expected string, got number",
+			),
+		);
 	});
 
 	it("should work with prop.number().default() in component props", () => {
@@ -1527,7 +1551,12 @@ describe("integration with normalizeProps", () => {
 				{ status: "invalid" } as unknown as { status: "pending" | "active" },
 				definitions,
 			),
-		).toThrow();
+		).toThrow(
+			forgeFrameError(
+				"VALIDATION",
+				"Validation failed: status: Expected one of",
+			),
+		);
 	});
 
 	it("should work with prop.union() in component props", () => {
@@ -1542,7 +1571,12 @@ describe("integration with normalizeProps", () => {
 				{ value: true } as unknown as { value: string | number },
 				definitions,
 			),
-		).toThrow();
+		).toThrow(
+			forgeFrameError(
+				"VALIDATION",
+				"Validation failed: value: Expected string, got boolean",
+			),
+		);
 	});
 
 	it("should work with nested prop.object()", () => {
@@ -1578,7 +1612,12 @@ describe("integration with normalizeProps", () => {
 				{ tags: ["a", 1, "c"] } as unknown as { tags: string[] },
 				definitions,
 			),
-		).toThrow();
+		).toThrow(
+			forgeFrameError(
+				"VALIDATION",
+				"Validation failed: tags.1: Expected string, got number",
+			),
+		);
 	});
 
 	it("should work with prop.record()", () => {
@@ -1596,7 +1635,12 @@ describe("integration with normalizeProps", () => {
 				},
 				definitions,
 			),
-		).toThrow();
+		).toThrow(
+			forgeFrameError(
+				"VALIDATION",
+				"Validation failed: headers.authorization: Expected string, got number",
+			),
+		);
 	});
 
 	it("should work with prop.date()", () => {
@@ -1615,7 +1659,12 @@ describe("integration with normalizeProps", () => {
 				{ publishedAt: "2026-01-02" } as unknown as { publishedAt: Date },
 				definitions,
 			),
-		).toThrow();
+		).toThrow(
+			forgeFrameError(
+				"VALIDATION",
+				"Validation failed: publishedAt: Expected Date, got string",
+			),
+		);
 	});
 
 	it("should work with prop.tuple()", () => {
@@ -1634,7 +1683,12 @@ describe("integration with normalizeProps", () => {
 				{ point: [10, "20"] } as unknown as { point: [number, number] },
 				definitions,
 			),
-		).toThrow();
+		).toThrow(
+			forgeFrameError(
+				"VALIDATION",
+				"Validation failed: point.1: Expected number, got string",
+			),
+		);
 	});
 
 	it("should work with mixed prop schemas", () => {

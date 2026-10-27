@@ -3,6 +3,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { forgeFrameError } from "../forgeframe-error";
 
 afterEach(() => {
 	vi.resetModules();
@@ -28,7 +29,10 @@ describe("Component definitions across runtime transitions", () => {
 				hostOrigins: "https://allowed.example.com",
 			}),
 		).toThrow(
-			`Component URL origin "https://blocked.example.com" is not allowed by the component's hostOrigins.`,
+			forgeFrameError(
+				"ORIGIN_REJECTED",
+				`Component URL origin "https://blocked.example.com" is not allowed by the component's hostOrigins.`,
+			),
 		);
 
 		clearComponents();

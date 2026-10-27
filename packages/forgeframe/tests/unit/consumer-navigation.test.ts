@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { clearComponents, create } from "@/core/component";
 import { ConsumerComponent } from "@/core/consumer";
 import { prop } from "@/props/prop";
+import { forgeFrameError } from "../forgeframe-error";
 
 const consumers: ConsumerComponent<Record<string, unknown>>[] = [];
 
@@ -43,7 +44,10 @@ describe("Consumer navigation admission", () => {
 				hostOrigins: window.location.origin,
 			}),
 		).toThrow(
-			'Component URL origin "https://untrusted.example" is not allowed',
+			forgeFrameError(
+				"ORIGIN_REJECTED",
+				'Component URL origin "https://untrusted.example" is not allowed',
+			),
 		);
 	});
 
@@ -59,7 +63,10 @@ describe("Consumer navigation admission", () => {
 			const { container } = mount(consumer);
 			setBase("https://untrusted.example/");
 			await expect(consumer.render(container)).rejects.toThrow(
-				'Component URL origin "https://untrusted.example" is not allowed',
+				forgeFrameError(
+					"ORIGIN_REJECTED",
+					'Component URL origin "https://untrusted.example" is not allowed',
+				),
 			);
 			expect(container.querySelector("iframe")).toBeNull();
 		},
@@ -93,6 +100,11 @@ describe("Consumer navigation admission", () => {
 		expect(internals.transport.openedHostOrigin).toBe("https://host.example");
 		await expect(
 			consumer.updateProps({ order: "changed-order" }),
-		).rejects.toThrow("is not allowed by the component's hostOrigins");
+		).rejects.toThrow(
+			forgeFrameError(
+				"ORIGIN_REJECTED",
+				"is not allowed by the component's hostOrigins",
+			),
+		);
 	});
 });

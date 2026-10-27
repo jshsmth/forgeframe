@@ -12,6 +12,7 @@ import {
 	serializeMessage,
 } from "@/communication/protocol";
 import { MESSAGE_TYPE } from "@/constants";
+import { forgeFrameError } from "../forgeframe-error";
 
 describe("PROTOCOL_PREFIX", () => {
 	it("should equal the forgeframe protocol prefix literal", () => {
@@ -32,7 +33,7 @@ describe("serializeMessage", () => {
 		} catch (error) {
 			caught = error;
 		}
-		expect(caught).toMatchObject({ code: "VALIDATION" });
+		expect(caught).toEqual(forgeFrameError("VALIDATION"));
 		expect((caught as Error).cause).toBeInstanceOf(TypeError);
 		const own = new RangeError("from toJSON");
 		expect(() =>

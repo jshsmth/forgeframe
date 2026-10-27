@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MESSAGE_NAME } from "@/constants";
 import { create, prop } from "@/index";
 import type { Dimensions, PropsDefinition } from "@/types";
+import { forgeFrameError } from "../forgeframe-error";
 import {
 	getVerifiedHostOrigin,
 	setVerifiedHostOrigin,
@@ -160,7 +161,9 @@ describe("Host controls and routing integration", () => {
 		await harness.withHostGlobalsAsync(() => host.export({ next: () => 42 }));
 		const next = instance.exports as { next: () => Promise<number> };
 		await expect(next.next()).resolves.toBe(42);
-		await expect(first.m0?.()).rejects.toThrow("not found");
+		await expect(first.m0?.()).rejects.toThrow(
+			forgeFrameError("CLOSED", "not found"),
+		);
 	});
 
 	it("captures exported array entries once and rejects missing entries before replacing exports", async () => {
@@ -191,13 +194,15 @@ describe("Host controls and routing integration", () => {
 		Object.defineProperty(missing, "0", { get: () => undefined });
 		await expect(
 			host.export({ values: missing, run: () => 100 }),
-		).rejects.toThrow("undefined array entry");
+		).rejects.toThrow(forgeFrameError("VALIDATION", "undefined array entry"));
 		expect(instance.exports).toBe(previous);
 		await expect(previous.run()).resolves.toBe(42);
 		await host.export({ values: ["recovered"], run: () => 7 });
 		expect(instance.exports?.values).toEqual(["recovered"]);
 		await expect(instance.exports?.run()).resolves.toBe(7);
-		await expect(previous.run()).rejects.toThrow("not found");
+		await expect(previous.run()).rejects.toThrow(
+			forgeFrameError("CLOSED", "not found"),
+		);
 	});
 
 	it("rolls back peer registrations when final response encoding fails", async () => {
@@ -352,7 +357,10 @@ describe("Host controls and routing integration", () => {
 		await expect(
 			harness.withHostGlobalsAsync(() => host.getPeerInstances()),
 		).rejects.toThrow(
-			'Peer discovery is not enabled for component "integration-peers-disabled". Set peers: "same-origin", or an origin matcher, in its create() options.',
+			forgeFrameError(
+				"VALIDATION",
+				'Peer discovery is not enabled for component "integration-peers-disabled". Set peers: "same-origin", or an origin matcher, in its create() options.',
+			),
 		);
 	});
 
@@ -411,7 +419,10 @@ describe("Host controls and routing integration", () => {
 				host.getPeerInstances({ anyConsumer: true } as never),
 			),
 		).rejects.toThrow(
-			'getPeerInstances() option "anyConsumer" was renamed. Use { allTags: true } to include other component tags.',
+			forgeFrameError(
+				"VALIDATION",
+				'getPeerInstances() option "anyConsumer" was renamed. Use { allTags: true } to include other component tags.',
+			),
 		);
 	});
 
@@ -461,7 +472,9 @@ describe("Host controls and routing integration", () => {
 		const current = instance.exports;
 		if (!current) throw new Error("Missing replacement exports");
 		await expect(current.fresh?.()).resolves.toBe(1001);
-		await expect(previous.m0?.()).rejects.toThrow("not found");
+		await expect(previous.m0?.()).rejects.toThrow(
+			forgeFrameError("CLOSED", "not found"),
+		);
 	});
 
 	it("preserves held peer methods when discovery exceeds cumulative relay capacity", async () => {

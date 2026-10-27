@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import type { ForgeFrameErrorCode } from "@/errors";
 import { appendComponentQuery, resolveComponentHostUrl } from "@/utils/url";
+import { forgeFrameError } from "../forgeframe-error";
 
 describe("Component navigation URLs", () => {
 	it.each([
@@ -46,7 +48,7 @@ describe("Component navigation URLs", () => {
 		},
 	);
 
-	it.each([
+	it.each<[string, ForgeFrameErrorCode, string]>([
 		["http://%", "VALIDATION", "Invalid component URL"],
 		["javascript:alert(1)", "VALIDATION", "Invalid component URL protocol"],
 		[
@@ -61,11 +63,6 @@ describe("Component navigation URLs", () => {
 				"https://host.example/page",
 				"https://host.example",
 			),
-		).toThrow(
-			expect.objectContaining({
-				code,
-				message: expect.stringContaining(message),
-			}),
-		);
+		).toThrow(forgeFrameError(code, message));
 	});
 });

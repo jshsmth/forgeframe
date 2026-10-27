@@ -8,6 +8,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { assertPropDefinitions } from "@/props/definition-checks";
 import { prop } from "@/props/prop";
+import { forgeFrameError } from "../forgeframe-error";
 
 const REMOVED_SERIALIZATION_ERROR =
 	'Prop "profile" uses the removed "serialization" option. ForgeFrame 2 always sends props as JSON; remove the option.';
@@ -26,7 +27,7 @@ describe("assertPropDefinitions", () => {
 						serialization,
 					},
 				}),
-			).toThrow(REMOVED_SERIALIZATION_ERROR);
+			).toThrow(forgeFrameError("VALIDATION", REMOVED_SERIALIZATION_ERROR));
 		},
 	);
 
@@ -40,7 +41,10 @@ describe("assertPropDefinitions", () => {
 			get: lazy,
 		});
 		expect(() => assertPropDefinitions(definitions)).toThrow(
-			'Prop "profile" must be declared as a data field, not a getter or setter',
+			forgeFrameError(
+				"VALIDATION",
+				'Prop "profile" must be declared as a data field, not a getter or setter',
+			),
 		);
 		expect(lazy).not.toHaveBeenCalled();
 		const accessorOption = Object.defineProperty(
@@ -49,7 +53,7 @@ describe("assertPropDefinitions", () => {
 			{ get: () => "json" },
 		);
 		expect(() => assertPropDefinitions({ profile: accessorOption })).toThrow(
-			REMOVED_SERIALIZATION_ERROR,
+			forgeFrameError("VALIDATION", REMOVED_SERIALIZATION_ERROR),
 		);
 	});
 
@@ -63,7 +67,10 @@ describe("assertPropDefinitions", () => {
 				{ get: read, enumerable: true },
 			);
 			expect(() => assertPropDefinitions({ token: definition })).toThrow(
-				`Prop "token" ${field} must be declared as an own data field, not a getter, setter or inherited field`,
+				forgeFrameError(
+					"VALIDATION",
+					`Prop "token" ${field} must be declared as an own data field, not a getter, setter or inherited field`,
+				),
 			);
 			expect(read).not.toHaveBeenCalled();
 		},
@@ -76,7 +83,10 @@ describe("assertPropDefinitions", () => {
 		);
 		inherited.schema = prop.string();
 		expect(() => assertPropDefinitions({ token: inherited })).toThrow(
-			'Prop "token" deliverTo must be declared as an own data field',
+			forgeFrameError(
+				"VALIDATION",
+				'Prop "token" deliverTo must be declared as an own data field',
+			),
 		);
 		expect(read).not.toHaveBeenCalled();
 	});
@@ -103,7 +113,10 @@ describe("assertPropDefinitions", () => {
 					amount: { schema: prop.number(), outputSchema },
 				}),
 			).toThrow(
-				'Prop "amount" uses the removed "outputSchema" option. Each prop now has one schema, which must accept its own output unchanged. Pass the type the host should receive, accept both forms in one schema (such as z.coerce.number()), or convert the value in the host.',
+				forgeFrameError(
+					"VALIDATION",
+					'Prop "amount" uses the removed "outputSchema" option. Each prop now has one schema, which must accept its own output unchanged. Pass the type the host should receive, accept both forms in one schema (such as z.coerce.number()), or convert the value in the host.',
+				),
 			);
 		},
 	);
@@ -122,16 +135,27 @@ describe("assertPropDefinitions", () => {
 		);
 		expect(() =>
 			assertPropDefinitions({ amount: accessorOutputSchema }),
-		).toThrow('Prop "amount" uses the removed "outputSchema" option.');
+		).toThrow(
+			forgeFrameError(
+				"VALIDATION",
+				'Prop "amount" uses the removed "outputSchema" option.',
+			),
+		);
 		expect(read).not.toHaveBeenCalled();
 	});
 
 	it("requires a schema on a wrapped definition", () => {
 		expect(() => assertPropDefinitions({ ref: { queryParam: true } })).toThrow(
-			'Prop "ref" needs a schema. Use prop.any() for a value that is deliberately unchecked.',
+			forgeFrameError(
+				"VALIDATION",
+				'Prop "ref" needs a schema. Use prop.any() for a value that is deliberately unchecked.',
+			),
 		);
 		expect(() => assertPropDefinitions({ ref: "string" })).toThrow(
-			'Prop "ref" must be a schema or a { schema } definition',
+			forgeFrameError(
+				"VALIDATION",
+				'Prop "ref" must be a schema or a { schema } definition',
+			),
 		);
 	});
 
@@ -160,7 +184,10 @@ describe("assertPropDefinitions", () => {
 				secret: { schema: prop.string(), deliverTo },
 			}),
 		).toThrow(
-			'Prop "secret" deliverTo must be a non-empty origin string, a RegExp, or an array of them',
+			forgeFrameError(
+				"VALIDATION",
+				'Prop "secret" deliverTo must be a non-empty origin string, a RegExp, or an array of them',
+			),
 		);
 	});
 
@@ -170,7 +197,10 @@ describe("assertPropDefinitions", () => {
 				secret: { schema: prop.string(), deliverTo: [] },
 			}),
 		).toThrow(
-			'Prop "secret" deliverTo must list at least one origin; an empty array matches none',
+			forgeFrameError(
+				"VALIDATION",
+				'Prop "secret" deliverTo must list at least one origin; an empty array matches none',
+			),
 		);
 	});
 
@@ -183,7 +213,10 @@ describe("assertPropDefinitions", () => {
 				},
 			}),
 		).toThrow(
-			"Prop \"secret\" deliverTo cannot list 'same-origin' in an array; pass deliverTo: 'same-origin' on its own, or list origins only",
+			forgeFrameError(
+				"VALIDATION",
+				"Prop \"secret\" deliverTo cannot list 'same-origin' in an array; pass deliverTo: 'same-origin' on its own, or list origins only",
+			),
 		);
 	});
 
@@ -213,7 +246,10 @@ describe("assertPropDefinitions", () => {
 				ref: { schema: prop.string(), [option]: value },
 			}),
 		).toThrow(
-			`Prop "ref" ${option} must be a boolean or a non-empty parameter name. To encode a value, pass the encoded string as its own prop, or build the URL in a url(props) function.`,
+			forgeFrameError(
+				"VALIDATION",
+				`Prop "ref" ${option} must be a boolean or a non-empty parameter name. To encode a value, pass the encoded string as its own prop, or build the URL in a url(props) function.`,
+			),
 		);
 	});
 
@@ -227,7 +263,10 @@ describe("assertPropDefinitions", () => {
 				label: { schema: prop.string(), [field]: value },
 			}),
 		).toThrow(
-			`Prop "label" has the unknown option "${field}". A wrapped definition accepts only schema, deliverTo, sendToHost, queryParam, bodyParam.`,
+			forgeFrameError(
+				"VALIDATION",
+				`Prop "label" has the unknown option "${field}". A wrapped definition accepts only schema, deliverTo, sendToHost, queryParam, bodyParam.`,
+			),
 		);
 	});
 
@@ -236,7 +275,12 @@ describe("assertPropDefinitions", () => {
 			assertPropDefinitions({
 				label: { schema: prop.string(), [Symbol("extra")]: true },
 			}),
-		).toThrow('Prop "label" has the unknown option "Symbol(extra)"');
+		).toThrow(
+			forgeFrameError(
+				"VALIDATION",
+				'Prop "label" has the unknown option "Symbol(extra)"',
+			),
+		);
 		expect(() =>
 			assertPropDefinitions({
 				label: { schema: prop.string(), extra: undefined },
@@ -247,7 +291,12 @@ describe("assertPropDefinitions", () => {
 	it.each(["yes", 1, null])("rejects sendToHost %j", (sendToHost) => {
 		expect(() =>
 			assertPropDefinitions({ label: { schema: prop.string(), sendToHost } }),
-		).toThrow('Prop "label" sendToHost must be a boolean');
+		).toThrow(
+			forgeFrameError(
+				"VALIDATION",
+				'Prop "label" sendToHost must be a boolean',
+			),
+		);
 	});
 
 	it.each(["queryParam", "bodyParam"])(
@@ -262,7 +311,10 @@ describe("assertPropDefinitions", () => {
 					},
 				}),
 			).toThrow(
-				`Prop "token" cannot combine ${option} with deliverTo: 'same-origin'`,
+				forgeFrameError(
+					"VALIDATION",
+					`Prop "token" cannot combine ${option} with deliverTo: 'same-origin'`,
+				),
 			);
 			expect(() =>
 				assertPropDefinitions({
@@ -285,7 +337,10 @@ describe("assertPropDefinitions", () => {
 					other: { schema: prop.string(), [option]: "ref" },
 				}),
 			).toThrow(
-				`Props "ref" and "other" both use the ${option} name "ref"; one value would overwrite the other`,
+				forgeFrameError(
+					"VALIDATION",
+					`Props "ref" and "other" both use the ${option} name "ref"; one value would overwrite the other`,
+				),
 			);
 			expect(() =>
 				assertPropDefinitions({

@@ -10,6 +10,7 @@ import { unregisterComponent } from "@/core/component";
 import { getHost } from "@/core/host/bootstrap";
 import { create, prop } from "@/index";
 import type { PropsDefinition } from "@/types";
+import { forgeFrameError } from "../forgeframe-error";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
@@ -41,7 +42,7 @@ it("validates required consumer-only inputs locally while shared host definition
 		expect(hostProps.title).toBe("updated");
 		expect(Object.hasOwn(hostProps, "local")).toBe(false);
 		await expect(instance.updateProps({ local: undefined })).rejects.toThrow(
-			"Validation failed: local: Required",
+			forgeFrameError("VALIDATION", "Validation failed: local: Required"),
 		);
 		expect(hostProps.title).toBe("updated");
 	} finally {
@@ -98,12 +99,12 @@ describe("Props sync integration", () => {
 			activeHarness.withHostGlobals(() => host.destroy());
 		});
 		await expect(host.ready).rejects.toThrow(
-			"Host destroyed before bootstrap completed",
+			forgeFrameError("CLOSED", "Host destroyed before bootstrap completed"),
 		);
 		expect(getHost()).toBeNull();
 		await instance.close();
 		await expect(rendering).rejects.toThrow(
-			"was closed before rendering completed",
+			forgeFrameError("CANCELLED", "was closed before rendering completed"),
 		);
 		expect(container.querySelector("iframe")).toBeNull();
 	});
@@ -192,7 +193,7 @@ describe("Props sync integration", () => {
 
 		const rejected = expect(
 			instance.updateProps({ amount: -1 }),
-		).rejects.toThrow("Number must be >= 0");
+		).rejects.toThrow(forgeFrameError("VALIDATION", "Number must be >= 0"));
 		const next = instance.updateProps({ amount: 2 });
 		await rejected;
 		await next;
@@ -471,7 +472,7 @@ describe("Props sync integration", () => {
 			});
 			const invalid = Component({ amount: value });
 			await expect(invalid.render(container)).rejects.toThrow(
-				"Expected finite number",
+				forgeFrameError("VALIDATION", "Expected finite number"),
 			);
 			expect(container.querySelector("iframe")).toBeNull();
 			const instance = Component({ amount: 42 });
@@ -484,7 +485,7 @@ describe("Props sync integration", () => {
 			const onProps = vi.fn();
 			host.onProps(onProps);
 			await expect(instance.updateProps({ amount: value })).rejects.toThrow(
-				"Expected finite number",
+				forgeFrameError("VALIDATION", "Expected finite number"),
 			);
 			expect(hostProps.amount).toBe(42);
 			expect(hostProps.amount).toBe(42);
@@ -516,16 +517,20 @@ describe("Props sync integration", () => {
 			() => {},
 		);
 		const first = instance.updateProps({ title: "in flight" });
-		const firstRejected = expect(first).rejects.toThrow("Messenger destroyed");
+		const firstRejected = expect(first).rejects.toThrow(
+			forgeFrameError("CLOSED", "Messenger destroyed"),
+		);
 		const queued = instance.updateProps({ title: "queued" });
-		const queuedRejected = expect(queued).rejects.toThrow("closed");
+		const queuedRejected = expect(queued).rejects.toThrow(
+			forgeFrameError("CLOSED"),
+		);
 
 		await instance.close();
 		await firstRejected;
 		await queuedRejected;
 		await expect(
 			instance.updateProps({ title: "after close" }),
-		).rejects.toThrow("closed");
+		).rejects.toThrow(forgeFrameError("CLOSED"));
 		expect(validate).toHaveBeenCalledTimes(1);
 		expect(validate).toHaveBeenCalledWith({
 			props: expect.objectContaining({ title: "in flight" }),
@@ -868,7 +873,7 @@ describe("undefined in factory input and updates", () => {
 			title: "t",
 		});
 		await expect(instance.updateProps({ title: undefined })).rejects.toThrow(
-			"Validation failed: title: Required",
+			forgeFrameError("VALIDATION", "Validation failed: title: Required"),
 		);
 		expect(hostProps.title).toBe("t");
 		expect(notifications).toEqual([]);
@@ -917,10 +922,13 @@ describe("close during render", () => {
 			const rendering = instance.render(container);
 			const held = instance.updateProps({ amount: 2 });
 			const heldRejected = expect(held).rejects.toThrow(
-				"Cannot update props after the component has closed",
+				forgeFrameError(
+					"CLOSED",
+					"Cannot update props after the component has closed",
+				),
 			);
 			const renderRejected = expect(rendering).rejects.toThrow(
-				"was closed before rendering completed",
+				forgeFrameError("CANCELLED", "was closed before rendering completed"),
 			);
 			await instance.close();
 			await renderRejected;

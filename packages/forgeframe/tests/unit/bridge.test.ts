@@ -13,6 +13,7 @@ import type { Messenger } from "@/communication/messenger";
 import { MESSAGE_NAME } from "@/constants";
 import { ForgeFrameError } from "@/errors";
 import { createDeferred } from "@/utils/promise";
+import { forgeFrameError } from "../forgeframe-error";
 
 type GenericFunction = (...args: unknown[]) => unknown;
 
@@ -126,7 +127,10 @@ describe("FunctionBridge", () => {
 			const ref = guardedBridge.serialize(() => "private");
 
 			await expect(messenger.simulateCall(ref.__id__, [])).rejects.toThrow(
-				"Function call rejected from unexpected window",
+				forgeFrameError(
+					"ORIGIN_REJECTED",
+					"Function call rejected from unexpected window",
+				),
 			);
 			guardedBridge.destroy();
 		});
@@ -139,7 +143,7 @@ describe("FunctionBridge", () => {
 			}
 
 			expect(() => bridge.serialize(() => "excess")).toThrow(
-				"500 distinct callback limit",
+				forgeFrameError("CAPACITY", "500 distinct callback limit"),
 			);
 			await expect(messenger.simulateCall(firstRef.__id__, [])).resolves.toBe(
 				"first",
@@ -327,7 +331,7 @@ describe("FunctionBridge", () => {
 
 		it("should throw for unknown function ID", async () => {
 			await expect(messenger.simulateCall("unknown-id", [])).rejects.toThrow(
-				'Function with id "unknown-id" not found',
+				forgeFrameError("CLOSED", 'Function with id "unknown-id" not found'),
 			);
 		});
 
@@ -358,8 +362,7 @@ describe("FunctionBridge", () => {
 				.simulateCall(ref.__id__, [])
 				.catch((caught: unknown) => caught);
 
-			expect(error).toBeInstanceOf(ForgeFrameError);
-			expect((error as ForgeFrameError).code).toBe("CLOSED");
+			expect(error).toEqual(forgeFrameError("CLOSED"));
 		});
 	});
 
@@ -436,7 +439,9 @@ describe("FunctionBridge", () => {
 
 			bridge.destroy();
 
-			await expect(messenger.simulateCall(ref.__id__, [])).rejects.toThrow();
+			await expect(messenger.simulateCall(ref.__id__, [])).rejects.toThrow(
+				forgeFrameError("CLOSED", "not found"),
+			);
 		});
 	});
 
@@ -446,7 +451,7 @@ describe("FunctionBridge", () => {
 			const previous = bridge.serialize(callback);
 			bridge.clearLocal(true);
 			await expect(messenger.simulateCall(previous.__id__, [])).rejects.toThrow(
-				"not found",
+				forgeFrameError("CLOSED", "not found"),
 			);
 			bridge.startBatch();
 			expect(bridge.serialize(callback).__id__).toBe(previous.__id__);
@@ -473,12 +478,12 @@ describe("FunctionBridge", () => {
 				messenger.simulateCall(next[499]?.__id__ ?? "", []),
 			).resolves.toBe(999);
 			expect(() => bridge.serialize(() => 1000)).toThrow(
-				"500 distinct callback limit",
+				forgeFrameError("CAPACITY", "500 distinct callback limit"),
 			);
 			bridge.finishBatch();
 			await expect(
 				messenger.simulateCall(previous[0]?.__id__ ?? "", []),
-			).rejects.toThrow("not found");
+			).rejects.toThrow(forgeFrameError("CLOSED", "not found"));
 			await expect(
 				messenger.simulateCall(next[0]?.__id__ ?? "", []),
 			).resolves.toBe(500);
@@ -497,7 +502,7 @@ describe("FunctionBridge", () => {
 				"original",
 			);
 			await expect(messenger.simulateCall(staged.__id__, [])).rejects.toThrow(
-				"not found",
+				forgeFrameError("CLOSED", "not found"),
 			);
 			bridge.startBatch();
 			expect(bridge.serialize(original).__id__).toBe(previous.__id__);
@@ -520,7 +525,7 @@ describe("FunctionBridge", () => {
 			for (let attempt = 0; attempt < 3; attempt++) {
 				bridge.startBatch();
 				expect(() => bridge.serialize(() => attempt)).toThrow(
-					"recovery pool is full",
+					forgeFrameError("CAPACITY", "recovery pool is full"),
 				);
 				bridge.abortBatch();
 			}
@@ -537,7 +542,7 @@ describe("FunctionBridge", () => {
 			bridge.finishBatch();
 			await expect(
 				messenger.simulateCall(previous[0]?.__id__ ?? "", []),
-			).rejects.toThrow("not found");
+			).rejects.toThrow(forgeFrameError("CLOSED", "not found"));
 			await expect(
 				messenger.simulateCall(next[499]?.__id__ ?? "", []),
 			).resolves.toBe(999);
@@ -546,7 +551,7 @@ describe("FunctionBridge", () => {
 			bridge.finishBatch();
 			await expect(
 				messenger.simulateCall(next[0]?.__id__ ?? "", []),
-			).rejects.toThrow("not found");
+			).rejects.toThrow(forgeFrameError("CLOSED", "not found"));
 			await expect(messenger.simulateCall(fresh.__id__, [])).resolves.toBe(
 				"new capacity",
 			);
@@ -560,18 +565,18 @@ describe("FunctionBridge", () => {
 			bridge.startBatch("append");
 			const staged = bridge.serialize(() => "staged");
 			expect(() => bridge.serialize(() => "overflow")).toThrow(
-				"500 distinct callback limit",
+				forgeFrameError("CAPACITY", "500 distinct callback limit"),
 			);
 			bridge.abortBatch();
 			await expect(messenger.simulateCall(first.__id__, [])).resolves.toBe(
 				"first",
 			);
 			await expect(messenger.simulateCall(staged.__id__, [])).rejects.toThrow(
-				"not found",
+				forgeFrameError("CLOSED", "not found"),
 			);
 			bridge.clearLocal();
 			await expect(messenger.simulateCall(first.__id__, [])).rejects.toThrow(
-				"not found",
+				forgeFrameError("CLOSED", "not found"),
 			);
 			bridge.startBatch();
 			const fresh = bridge.serialize(() => "fresh session");
@@ -581,7 +586,7 @@ describe("FunctionBridge", () => {
 			);
 			bridge.destroy();
 			await expect(messenger.simulateCall(fresh.__id__, [])).rejects.toThrow(
-				"not found",
+				forgeFrameError("CLOSED", "not found"),
 			);
 		});
 
@@ -608,7 +613,10 @@ describe("FunctionBridge", () => {
 			bridge.finishBatch();
 
 			await expect(messenger.simulateCall(firstRef.__id__, [])).rejects.toThrow(
-				`Function with id "${firstRef.__id__}" not found`,
+				forgeFrameError(
+					"CLOSED",
+					`Function with id "${firstRef.__id__}" not found`,
+				),
 			);
 			await expect(messenger.simulateCall(secondRef.__id__, [])).resolves.toBe(
 				"second",
@@ -685,11 +693,13 @@ describe("serializeFunctions", () => {
 			}
 		}
 		expect(() => serializeFunctions(new SelfReferencing(), bridge)).toThrow(
-			"Circular reference detected in props",
+			forgeFrameError("VALIDATION", "Circular reference detected in props"),
 		);
 		expect(() =>
 			serializeFunctions({ items: [new SelfReferencing()] }, bridge),
-		).toThrow("Circular reference detected in props");
+		).toThrow(
+			forgeFrameError("VALIDATION", "Circular reference detected in props"),
+		);
 	});
 
 	it("should preserve primitives", () => {
@@ -717,7 +727,7 @@ describe("serializeFunctions", () => {
 		value.self = value;
 
 		expect(() => serializeFunctions(value, bridge)).toThrow(
-			"Circular reference detected",
+			forgeFrameError("VALIDATION", "Circular reference detected"),
 		);
 	});
 
@@ -726,7 +736,10 @@ describe("serializeFunctions", () => {
 		value.push(value);
 
 		expect(() => serializeFunctions(value, bridge)).toThrow(
-			"Circular reference detected in props - arrays cannot contain circular references",
+			forgeFrameError(
+				"VALIDATION",
+				"Circular reference detected in props - arrays cannot contain circular references",
+			),
 		);
 	});
 

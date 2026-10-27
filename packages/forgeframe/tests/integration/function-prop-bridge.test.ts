@@ -10,6 +10,7 @@ import { deserializeMessage } from "@/communication/protocol";
 import { getHost } from "@/core/host/bootstrap";
 import { create, prop } from "@/index";
 import type { PropsDefinition } from "@/types";
+import { forgeFrameError } from "../forgeframe-error";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
@@ -296,7 +297,9 @@ describe("Function prop bridge integration", () => {
 		await recovered;
 		await expect(hostProps.callbacks.c0?.()).resolves.toBe(500);
 		await expect(hostProps.callbacks.c499?.()).resolves.toBe(999);
-		await expect(cached()).rejects.toThrow("not found");
+		await expect(cached()).rejects.toThrow(
+			forgeFrameError("CLOSED", "not found"),
+		);
 	});
 
 	it("recovers callback capacity after final props message encoding fails", async () => {
@@ -344,7 +347,9 @@ describe("Function prop bridge integration", () => {
 			metadata: undefined,
 		});
 		await expect(hostProps.callbacks.fresh?.()).resolves.toBe(1001);
-		await expect(previous.c0?.()).rejects.toThrow("not found");
+		await expect(previous.c0?.()).rejects.toThrow(
+			forgeFrameError("CLOSED", "not found"),
+		);
 	});
 
 	it.each(["null-prototype", "throwing-coercion"] as const)(
@@ -459,7 +464,7 @@ describe("Function prop bridge integration", () => {
 		);
 		const failed = expect(
 			instance.updateProps({ callbacks: replacement }),
-		).rejects.toThrow("timed out");
+		).rejects.toThrow(forgeFrameError("CLOSED", "timed out"));
 		await vi.advanceTimersByTimeAsync(10001);
 		await failed;
 		await expect(cached()).resolves.toBe(0);
@@ -474,7 +479,9 @@ describe("Function prop bridge integration", () => {
 		post.mockRestore();
 		await instance.updateProps({ callbacks: replacement });
 		await expect(hostProps.callbacks.c0?.()).resolves.toBe(500);
-		await expect(cached()).rejects.toThrow("not found");
+		await expect(cached()).rejects.toThrow(
+			forgeFrameError("CLOSED", "not found"),
+		);
 		await instance.updateProps({ callbacks: { fresh: () => 1001 } });
 		await expect(hostProps.callbacks.fresh?.()).resolves.toBe(1001);
 	});
@@ -503,7 +510,9 @@ describe("Function prop bridge integration", () => {
 		await expect(cached()).resolves.toBe("original");
 		await instance.updateProps({ config: { run: () => "replacement" } });
 		await expect(hostProps.config.run()).resolves.toBe("replacement");
-		await expect(cached()).rejects.toThrow(/Function with id ".+" not found/);
+		await expect(cached()).rejects.toThrow(
+			forgeFrameError("CLOSED", /Function with id ".+" not found/),
+		);
 		expect(original).toHaveBeenCalledOnce();
 	});
 
@@ -548,7 +557,7 @@ describe("Function prop bridge integration", () => {
 					date: new Date(Number.NaN),
 				},
 			}),
-		).rejects.toThrow("Validation failed");
+		).rejects.toThrow(forgeFrameError("VALIDATION"));
 		await expect(cached()).resolves.toBe(42);
 		await instance.updateProps({
 			config: { onComplete: () => 84, list: [() => 14], date },

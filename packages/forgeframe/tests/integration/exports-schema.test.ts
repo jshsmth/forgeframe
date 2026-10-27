@@ -8,6 +8,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { create, prop, type StandardSchemaV1 } from "@/index";
+import { forgeFrameError } from "../forgeframe-error";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
@@ -98,7 +99,9 @@ describe("Exports schema integration", () => {
 		const previous = instance.exports;
 		await expect(
 			activeHarness.withHostGlobalsAsync(() => host.export({ ready: "yes" })),
-		).rejects.toThrow("Validation failed: exports.ready");
+		).rejects.toThrow(
+			forgeFrameError("VALIDATION", "Validation failed: exports.ready"),
+		);
 		expect(instance.exports).toBe(previous);
 		expect(instance.exports).toEqual({ ready: true });
 		expect(exported).toHaveLength(1);
@@ -117,7 +120,10 @@ describe("Exports schema integration", () => {
 				host.export({ label: " padded " }),
 			),
 		).rejects.toThrow(
-			"Validation failed: exports: the exports schema must return the exported value unchanged",
+			forgeFrameError(
+				"VALIDATION",
+				"Validation failed: exports: the exports schema must return the exported value unchanged",
+			),
 		);
 		expect(instance.exports).toBeUndefined();
 		expect(errors).toHaveLength(1);
@@ -137,7 +143,9 @@ describe("Exports schema integration", () => {
 			activeHarness.withHostGlobalsAsync(() =>
 				host.export({ ready: "yes" } as never),
 			),
-		).rejects.toThrow("Validation failed: exports.ready");
+		).rejects.toThrow(
+			forgeFrameError("VALIDATION", "Validation failed: exports.ready"),
+		);
 		// Nothing was sent, so the consumer neither stored nor reported it.
 		expect(instance.exports).toBeUndefined();
 		expect(errors).toEqual([]);
@@ -155,7 +163,9 @@ describe("Exports schema integration", () => {
 		);
 		await expect(
 			activeHarness.withHostGlobalsAsync(() => host.export({ ready: 1 })),
-		).rejects.toThrow("Validation failed: exports.ready");
+		).rejects.toThrow(
+			forgeFrameError("VALIDATION", "Validation failed: exports.ready"),
+		);
 		expect(instance.exports).toBeUndefined();
 		expect(errors).toHaveLength(1);
 	});

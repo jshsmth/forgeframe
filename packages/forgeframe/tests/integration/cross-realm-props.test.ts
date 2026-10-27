@@ -1,6 +1,7 @@
 import { runInNewContext } from "node:vm";
 import { afterEach, describe, expect, it } from "vitest";
 import { create, prop } from "@/index";
+import { forgeFrameError } from "../forgeframe-error";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
@@ -166,7 +167,7 @@ describe("Cross-realm prop and export delivery", () => {
 
 		await expect(
 			instance.updateProps({ createdAt: new Date("invalid") }),
-		).rejects.toThrow("Expected valid Date");
+		).rejects.toThrow(forgeFrameError("VALIDATION", "Expected valid Date"));
 		const updated = foreignValues("2026-10-02T00:00:00.000Z", "updated");
 		await instance.updateProps(updated);
 		expect(hostProps.createdAt.toISOString()).toBe("2026-10-02T00:00:00.000Z");

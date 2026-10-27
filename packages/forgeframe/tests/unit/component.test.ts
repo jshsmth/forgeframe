@@ -19,6 +19,7 @@ import { getPeerInstances } from "@/core/consumer/peers";
 import { clearHostInstance, isHost } from "@/core/host";
 import { prop } from "@/props/prop";
 import type { ComponentOptions } from "@/types";
+import { forgeFrameError } from "../forgeframe-error";
 import {
 	PEER_HOST_ORIGIN,
 	setOpenedHostOrigin,
@@ -54,19 +55,41 @@ function getConsumerInternals(instance: unknown): ConsumerInternals {
 }
 
 describe("Component Creation", () => {
+	const initTimeoutRange =
+		"Component initTimeout must be a finite number between 0 and 2147483647 milliseconds";
 	it.each([
-		{ url: 123 },
-		{ url: {} },
-		{ tag: ["valid-tag"] },
-		{ context: "unsupported" },
-		{ initTimeout: Infinity },
-		{ initTimeout: NaN },
-		{ initTimeout: -1 },
-		{ initTimeout: "1000" },
-		{ timeout: 2147483648 },
+		{
+			patch: { url: 123 },
+			message: "Component url must be a string or a function",
+		},
+		{
+			patch: { url: {} },
+			message: "Component url must be a string or a function",
+		},
+		{
+			patch: { tag: ["valid-tag"] },
+			message: 'Invalid component tag "valid-tag"',
+		},
+		{
+			patch: { context: "unsupported" },
+			message: 'Component context must be "iframe" or "popup"',
+		},
+		{ patch: { initTimeout: Infinity }, message: initTimeoutRange },
+		{ patch: { initTimeout: NaN }, message: initTimeoutRange },
+		{ patch: { initTimeout: -1 }, message: initTimeoutRange },
+		{ patch: { initTimeout: "1000" }, message: initTimeoutRange },
+		{ patch: { initTimeout: 2147483648 }, message: initTimeoutRange },
+		{
+			patch: { timeout: 1 },
+			message: 'Component option "timeout" was renamed. Use initTimeout',
+		},
+		{
+			patch: { cspNonce: "" },
+			message: "Component cspNonce must be a non-empty string",
+		},
 	])(
-		"rejects invalid JavaScript configuration before registration: %j",
-		(patch) => {
+		"rejects invalid JavaScript configuration before registration: $patch",
+		({ patch, message }) => {
 			const options = {
 				tag: "invalid-runtime-options",
 				url: "https://example.com",
@@ -74,8 +97,20 @@ describe("Component Creation", () => {
 			};
 			expect(() =>
 				create(options as unknown as ComponentOptions<Record<string, unknown>>),
-			).toThrow();
+			).toThrow(forgeFrameError("VALIDATION", message));
 			expect(getComponent("invalid-runtime-options")).toBeUndefined();
+		},
+	);
+	it.each([0, 2147483647])(
+		"accepts the initTimeout bound %d",
+		(initTimeout) => {
+			expect(() =>
+				create({
+					tag: `init-timeout-bound-${initTimeout}`,
+					url: "https://example.com",
+					initTimeout,
+				}),
+			).not.toThrow();
 		},
 	);
 	it("rejects an invalid render context without allocating resources and permits retry", async () => {
@@ -91,7 +126,7 @@ describe("Component Creation", () => {
 				container,
 				"unsupported" as unknown as typeof CONTEXT.IFRAME,
 			),
-		).rejects.toThrow("Render context");
+		).rejects.toThrow(forgeFrameError("VALIDATION", "Render context"));
 		expect(container.children).toHaveLength(0);
 		vi.spyOn(getConsumerInternals(instance), "waitForHost").mockResolvedValue(
 			undefined,
@@ -133,7 +168,9 @@ describe("Component Creation", () => {
 	])("should reject unsupported host URL %s", (url) => {
 		expect(() =>
 			create({ tag: `unsafe-url-${url.split(":")[0]}`, url }),
-		).toThrow("Only http: and https: are supported");
+		).toThrow(
+			forgeFrameError("VALIDATION", "Only http: and https: are supported"),
+		);
 	});
 
 	it("should enforce domain as a host URL allowlist", () => {
@@ -143,7 +180,12 @@ describe("Component Creation", () => {
 				url: "https://attacker.example.com/widget",
 				hostOrigins: "https://trusted.example.com",
 			}),
-		).toThrow("is not allowed by the component's hostOrigins");
+		).toThrow(
+			forgeFrameError(
+				"ORIGIN_REJECTED",
+				"is not allowed by the component's hostOrigins",
+			),
+		);
 	});
 
 	it("should validate function URLs before rendering them", async () => {
@@ -233,7 +275,7 @@ describe("Component Creation", () => {
 		const container = document.createElement("div");
 
 		await expect(invalidInstance.render(container)).rejects.toThrow(
-			"Validation failed: email: Required",
+			forgeFrameError("VALIDATION", "Validation failed: email: Required"),
 		);
 
 		const instance = MyComponent({
@@ -258,7 +300,7 @@ describe("Component Creation", () => {
 				tag: "Invalid-Tag",
 				url: "https://example.com",
 			}),
-		).toThrow("Invalid component tag");
+		).toThrow(forgeFrameError("VALIDATION", "Invalid component tag"));
 	});
 
 	it("should throw error for missing tag", () => {
@@ -267,7 +309,7 @@ describe("Component Creation", () => {
 				tag: "",
 				url: "https://example.com",
 			}),
-		).toThrow("Component tag is required");
+		).toThrow(forgeFrameError("VALIDATION", "Component tag is required"));
 	});
 
 	it("should throw error for missing url", () => {
@@ -276,7 +318,7 @@ describe("Component Creation", () => {
 				tag: "my-component",
 				url: "",
 			}),
-		).toThrow("Component url is required");
+		).toThrow(forgeFrameError("VALIDATION", "Component url is required"));
 	});
 
 	it.each([
@@ -295,7 +337,10 @@ describe("Component Creation", () => {
 					...({ [option]: value } as object),
 				}),
 			).toThrow(
-				`Component ${option} must be a non-empty origin string, a RegExp, or an array of them`,
+				forgeFrameError(
+					"VALIDATION",
+					`Component ${option} must be a non-empty origin string, a RegExp, or an array of them`,
+				),
 			);
 		},
 	);
@@ -310,7 +355,10 @@ describe("Component Creation", () => {
 					...({ [option]: [] } as object),
 				}),
 			).toThrow(
-				`Component ${option} must list at least one origin; an empty array matches none`,
+				forgeFrameError(
+					"VALIDATION",
+					`Component ${option} must list at least one origin; an empty array matches none`,
+				),
 			);
 			expect(getComponent("empty-domain-matcher-component")).toBeUndefined();
 		},
@@ -336,7 +384,12 @@ describe("Component Creation", () => {
 				url: "https://host.example.com/widget",
 				...(options as object),
 			}),
-		).toThrow('browsers report it as "https://host.example.com"');
+		).toThrow(
+			forgeFrameError(
+				"VALIDATION",
+				'browsers report it as "https://host.example.com"',
+			),
+		);
 		expect(getComponent("non-canonical-origin-component")).toBeUndefined();
 	});
 
@@ -348,7 +401,10 @@ describe("Component Creation", () => {
 				...({ peers: false } as object),
 			}),
 		).toThrow(
-			'Component peers must be "same-origin" or an origin matcher; omit it to keep peer discovery off',
+			forgeFrameError(
+				"VALIDATION",
+				'Component peers must be "same-origin" or an origin matcher; omit it to keep peer discovery off',
+			),
 		);
 	});
 
@@ -360,7 +416,10 @@ describe("Component Creation", () => {
 				...({ peers: true } as object),
 			}),
 		).toThrow(
-			'Component peers: true was renamed. Use peers: "same-origin", as deliverTo spells it.',
+			forgeFrameError(
+				"VALIDATION",
+				'Component peers: true was renamed. Use peers: "same-origin", as deliverTo spells it.',
+			),
 		);
 	});
 
@@ -372,7 +431,10 @@ describe("Component Creation", () => {
 				...({ peerDomains: "https://partner.example.com" } as object),
 			}),
 		).toThrow(
-			'Component option "peerDomains" was removed. Peer discovery is opt-in: set peers: "same-origin" for same-origin peers, or peers: <origin matcher> to also admit those host origins.',
+			forgeFrameError(
+				"VALIDATION",
+				'Component option "peerDomains" was removed. Peer discovery is opt-in: set peers: "same-origin" for same-origin peers, or peers: <origin matcher> to also admit those host origins.',
+			),
 		);
 	});
 
@@ -386,7 +448,10 @@ describe("Component Creation", () => {
 				}),
 			}),
 		).toThrow(
-			"Component hostOrigins is required when url is a function: list the host origins the function may return, or pass '*' to trust any http(s) origin.",
+			forgeFrameError(
+				"VALIDATION",
+				"Component hostOrigins is required when url is a function: list the host origins the function may return, or pass '*' to trust any http(s) origin.",
+			),
 		);
 		expect(getComponent("function-url-without-domain")).toBeUndefined();
 	});
@@ -404,7 +469,10 @@ describe("Component Creation", () => {
 				exports: exports as never,
 			}),
 		).toThrow(
-			"Component exports must be a Standard Schema, such as prop.object({ ... }) or a Zod object",
+			forgeFrameError(
+				"VALIDATION",
+				"Component exports must be a Standard Schema, such as prop.object({ ... }) or a Zod object",
+			),
 		);
 		expect(getComponent("invalid-exports-schema")).toBeUndefined();
 	});
@@ -438,7 +506,7 @@ describe("Component Creation", () => {
 				url: "https://host.example.com/widget",
 				...({ sandbox } as object),
 			}),
-		).toThrow(message);
+		).toThrow(forgeFrameError("VALIDATION", message));
 		expect(getComponent("invalid-sandbox-component")).toBeUndefined();
 	});
 
@@ -462,7 +530,10 @@ describe("Component Creation", () => {
 					attributes: { [key]: "allow-scripts" } as Record<string, string>,
 				}),
 			).toThrow(
-				`Iframe attribute "${key}" is not allowed; set the component's sandbox option instead`,
+				forgeFrameError(
+					"VALIDATION",
+					`Iframe attribute "${key}" is not allowed; set the component's sandbox option instead`,
+				),
 			);
 			expect(getComponent("attribute-sandbox-component")).toBeUndefined();
 		},
@@ -479,7 +550,10 @@ describe("Component Creation", () => {
 					...({ allowedConsumerDomains: value } as object),
 				}),
 			).toThrow(
-				'Component option "allowedConsumerDomains" was removed. Pass the allowlist to the host instead: initHost(Component, { consumerOrigins }).',
+				forgeFrameError(
+					"VALIDATION",
+					'Component option "allowedConsumerDomains" was removed. Pass the allowlist to the host instead: initHost(Component, { consumerOrigins }).',
+				),
 			);
 			expect(getComponent("removed-allowlist-component")).toBeUndefined();
 		},
@@ -515,7 +589,10 @@ describe("Component Creation", () => {
 					},
 				}),
 			).toThrow(
-				'Prop "profile" uses the removed "serialization" option. ForgeFrame 2 always sends props as JSON; remove the option.',
+				forgeFrameError(
+					"VALIDATION",
+					'Prop "profile" uses the removed "serialization" option. ForgeFrame 2 always sends props as JSON; remove the option.',
+				),
 			);
 			expect(() =>
 				create({
@@ -597,7 +674,10 @@ describe("Component Creation", () => {
 					},
 				}),
 			).toThrow(
-				`Prop "theme" uses the removed "${option}" option. ${replacement}`,
+				forgeFrameError(
+					"VALIDATION",
+					`Prop "theme" uses the removed "${option}" option. ${replacement}`,
+				),
 			);
 			expect(getComponent(tag)).toBeUndefined();
 		},
@@ -612,15 +692,24 @@ describe("Component Creation", () => {
 			});
 
 		expect(define({ queryParam: true })).toThrow(
-			'Prop "theme" needs a schema. Use prop.any() for a value that is deliberately unchecked.',
+			forgeFrameError(
+				"VALIDATION",
+				'Prop "theme" needs a schema. Use prop.any() for a value that is deliberately unchecked.',
+			),
 		);
 		expect(define({ schema: prop.string(), deliverTo: " " })).toThrow(
-			'Prop "theme" deliverTo must be a non-empty origin string, a RegExp, or an array of them',
+			forgeFrameError(
+				"VALIDATION",
+				'Prop "theme" deliverTo must be a non-empty origin string, a RegExp, or an array of them',
+			),
 		);
 		expect(
 			define({ schema: prop.string(), queryParam: () => "encoded" }),
 		).toThrow(
-			'Prop "theme" queryParam must be a boolean or a non-empty parameter name.',
+			forgeFrameError(
+				"VALIDATION",
+				'Prop "theme" queryParam must be a boolean or a non-empty parameter name.',
+			),
 		);
 		expect(getComponent("malformed-wrapped-definition")).toBeUndefined();
 	});
@@ -657,7 +746,10 @@ describe("Component Creation", () => {
 				},
 			}),
 		).toThrow(
-			'Prop "then" is reserved by ForgeFrame and cannot be defined as a custom prop',
+			forgeFrameError(
+				"VALIDATION",
+				'Prop "then" is reserved by ForgeFrame and cannot be defined as a custom prop',
+			),
 		);
 		expect(() =>
 			create({
@@ -681,7 +773,10 @@ describe("Component Creation", () => {
 				},
 			}),
 		).toThrow(
-			'Prop "children" is reserved by ForgeFrame and cannot be defined as a custom prop',
+			forgeFrameError(
+				"VALIDATION",
+				'Prop "children" is reserved by ForgeFrame and cannot be defined as a custom prop',
+			),
 		);
 	});
 
@@ -722,7 +817,7 @@ describe("Component Creation", () => {
 				tag: "duplicate-tag",
 				url: "https://example.com",
 			}),
-		).toThrow("already registered");
+		).toThrow(forgeFrameError("VALIDATION", "already registered"));
 	});
 
 	it("should create an instance when called", () => {
@@ -887,7 +982,9 @@ describe("Component Instance", () => {
 
 		await expect(
 			instance?.render(document.createElement("div")),
-		).rejects.toThrow("Validation failed: amount");
+		).rejects.toThrow(
+			forgeFrameError("VALIDATION", "Validation failed: amount"),
+		);
 	});
 
 	it("should retain deferred schema errors until a valid prop update", async () => {
@@ -901,10 +998,14 @@ describe("Component Instance", () => {
 		});
 		const instance = DeferredFailureComponent({ targetUrl: "not-a-url" });
 
-		expect(() => checkRenderValidation(instance)).toThrow("Invalid URL");
-		expect(() => checkRenderValidation(instance)).toThrow("Invalid URL");
+		expect(() => checkRenderValidation(instance)).toThrow(
+			forgeFrameError("VALIDATION", "Invalid URL"),
+		);
+		expect(() => checkRenderValidation(instance)).toThrow(
+			forgeFrameError("VALIDATION", "Invalid URL"),
+		);
 		await expect(instance.updateProps({ label: "still" })).rejects.toThrow(
-			"Invalid URL",
+			forgeFrameError("VALIDATION", "Invalid URL"),
 		);
 
 		await expect(
@@ -995,7 +1096,7 @@ describe("Component Instance", () => {
 
 		await expect(
 			instance.render(document.createElement("div")),
-		).rejects.toThrow("Unsafe URL origin");
+		).rejects.toThrow(forgeFrameError("VALIDATION", "Unsafe URL origin"));
 	});
 
 	it("should recheck time-varying schema policies at trust boundaries", () => {
@@ -1021,7 +1122,7 @@ describe("Component Instance", () => {
 		allowedOrigins.clear();
 
 		expect(() => checkRenderValidation(instance)).toThrow(
-			"URL origin is no longer allowed",
+			forgeFrameError("VALIDATION", "URL origin is no longer allowed"),
 		);
 	});
 
@@ -1053,7 +1154,7 @@ describe("Component Instance", () => {
 		normalizedDefault.href = "https://attacker.example.com/component";
 
 		expect(() => checkRenderValidation(instance)).toThrow(
-			"Unsafe default target",
+			forgeFrameError("VALIDATION", "Unsafe default target"),
 		);
 	});
 
@@ -1088,7 +1189,7 @@ describe("Component Instance", () => {
 		normalizedTarget(renderInstance).href =
 			"https://attacker.example.com/eligible";
 		expect(() => checkRenderValidation(renderInstance)).toThrow(
-			"Unsafe normalized target",
+			forgeFrameError("VALIDATION", "Unsafe normalized target"),
 		);
 
 		const updateInstance = PolicyComponent({
@@ -1098,14 +1199,19 @@ describe("Component Instance", () => {
 			"https://attacker.example.com/update";
 		await expect(
 			updateInstance.updateProps({ label: "updated" }),
-		).rejects.toThrow("Unsafe normalized target");
+		).rejects.toThrow(
+			forgeFrameError("VALIDATION", "Unsafe normalized target"),
+		);
 
 		const strippedFieldInstance = PolicyComponent({
 			target: { href: `${safeOrigin}/stripped-field` },
 		});
 		normalizedTarget(strippedFieldInstance).elevated = true;
 		expect(() => checkRenderValidation(strippedFieldInstance)).toThrow(
-			"value no longer matches its normalized schema output",
+			forgeFrameError(
+				"VALIDATION",
+				"value no longer matches its normalized schema output",
+			),
 		);
 	});
 
@@ -1141,7 +1247,7 @@ describe("Component Instance", () => {
 		});
 
 		await expect(instance.render(container)).rejects.toThrow(
-			"Unsafe normalized render target",
+			forgeFrameError("VALIDATION", "Unsafe normalized render target"),
 		);
 		expect(container.querySelectorAll("iframe")).toHaveLength(0);
 		container.remove();
@@ -1312,7 +1418,12 @@ describe("Component Instance", () => {
 			instance.updateProps({
 				targetUrl: "https://origin-b.example.com/widget",
 			}),
-		).rejects.toThrow("Cannot change component URL origin after render");
+		).rejects.toThrow(
+			forgeFrameError(
+				"ORIGIN_REJECTED",
+				"Cannot change component URL origin after render",
+			),
+		);
 
 		instanceInternal.transport.hostWindow = null;
 		await expect(instance.updateProps({})).resolves.toBeUndefined();

@@ -13,6 +13,7 @@ import { z } from "zod";
 import { getComponent } from "@/core/component";
 import { getHost } from "@/core/host/bootstrap";
 import { create, prop } from "@/index";
+import { forgeFrameError } from "../forgeframe-error";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
@@ -121,7 +122,10 @@ describe("One schema per prop", () => {
 		});
 
 		await expect(instance.updateProps({ amount: 25 })).rejects.toThrow(
-			`Validation failed: amount: ${SELF_ACCEPTANCE_RULE}; the schema changed the value.`,
+			forgeFrameError(
+				"VALIDATION",
+				`Validation failed: amount: ${SELF_ACCEPTANCE_RULE}; the schema changed the value.`,
+			),
 		);
 		expect(hostProps.amount).toBe(5);
 		expect(hostProps).toEqual({ amount: 5 });
@@ -150,7 +154,10 @@ describe("One schema per prop", () => {
 			const instance = Component({ amount: "42" } as never);
 
 			await expect(instance.render(container)).rejects.toThrow(
-				`Validation failed: amount: ${SELF_ACCEPTANCE_RULE}; the schema rejected it: amount: Invalid input: expected string, received number.`,
+				forgeFrameError(
+					"VALIDATION",
+					`Validation failed: amount: ${SELF_ACCEPTANCE_RULE}; the schema rejected it: amount: Invalid input: expected string, received number.`,
+				),
 			);
 			expect(container.querySelector("iframe")).toBeNull();
 			container.remove();
@@ -167,7 +174,10 @@ describe("One schema per prop", () => {
 				} as never,
 			}),
 		).toThrow(
-			'Prop "amount" uses the removed "outputSchema" option. Each prop now has one schema, which must accept its own output unchanged.',
+			forgeFrameError(
+				"VALIDATION",
+				'Prop "amount" uses the removed "outputSchema" option. Each prop now has one schema, which must accept its own output unchanged.',
+			),
 		);
 		expect(getComponent("removed-output-schema-consumer")).toBeUndefined();
 	});
@@ -187,7 +197,12 @@ describe("One schema per prop", () => {
 			harness?.bootstrapHost({
 				amount: { schema: z.number(), outputSchema: z.number() },
 			} as never),
-		).toThrow('Prop "amount" uses the removed "outputSchema" option.');
+		).toThrow(
+			forgeFrameError(
+				"VALIDATION",
+				'Prop "amount" uses the removed "outputSchema" option.',
+			),
+		);
 		expect(getHost()).toBeNull();
 
 		const host = harness.bootstrapHost({ amount: z.number() });
@@ -226,9 +241,14 @@ describe("One schema per prop", () => {
 		if (!host) throw new Error("Expected a host");
 		const reason =
 			"Validation failed: profile: value no longer matches its normalized schema output";
-		await expect(host.ready).rejects.toThrow(reason);
+		await expect(host.ready).rejects.toThrow(
+			forgeFrameError("VALIDATION", reason),
+		);
 		await expect(rendering).rejects.toThrow(
-			`did not initialize within 300ms. Host initialization failed: ${reason}`,
+			forgeFrameError(
+				"INIT_TIMEOUT",
+				`did not initialize within 300ms. Host initialization failed: ${reason}`,
+			),
 		);
 		expect(errors).toEqual([expect.stringContaining(reason)]);
 	});
@@ -248,11 +268,13 @@ describe("One schema per prop", () => {
 			const instance = Component({} as never);
 
 			await expect(instance.render(container)).rejects.toThrow(
-				"Validation failed: title: Required",
+				forgeFrameError("VALIDATION", "Validation failed: title: Required"),
 			);
 			await expect(
 				instance.updateProps({ title: undefined } as never),
-			).rejects.toThrow("Validation failed: title: Required");
+			).rejects.toThrow(
+				forgeFrameError("VALIDATION", "Validation failed: title: Required"),
+			);
 			container.remove();
 		},
 	);
@@ -285,7 +307,7 @@ describe("One schema per prop", () => {
 			});
 			if (!rejectedHost) throw new Error("Expected a host");
 			await expect(rejectedHost.ready).rejects.toThrow(
-				"Validation failed: title: Required",
+				forgeFrameError("VALIDATION", "Validation failed: title: Required"),
 			);
 			await missing.close();
 			container.replaceChildren();
@@ -303,7 +325,7 @@ describe("One schema per prop", () => {
 			});
 
 			await expect(present.updateProps({ title: undefined })).rejects.toThrow(
-				"Validation failed: title: Required",
+				forgeFrameError("VALIDATION", "Validation failed: title: Required"),
 			);
 			expect(hostErrors).toEqual(["Validation failed: title: Required"]);
 			expect(hostProps.title).toBe("ready");
@@ -358,7 +380,10 @@ describe("One schema per prop", () => {
 		});
 		if (!host) throw new Error("Expected a host");
 		await expect(host.ready).rejects.toThrow(
-			"Validation failed: tags: value no longer matches its normalized schema output",
+			forgeFrameError(
+				"VALIDATION",
+				"Validation failed: tags: value no longer matches its normalized schema output",
+			),
 		);
 	});
 });

@@ -3,6 +3,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { forgeFrameError } from "../forgeframe-error";
 
 afterEach(async () => {
 	const { clearComponents } = await import("@/core/component");
@@ -63,11 +64,11 @@ describe("Index node smoke", () => {
 		expect(initHost({ consumerOrigins: "*" })).toBeNull();
 		// Argument checks run before the environment check.
 		expect(() => (initHost as () => unknown)()).toThrow(
-			"initHost(Component, { consumerOrigins })",
+			forgeFrameError("VALIDATION", "initHost(Component, { consumerOrigins })"),
 		);
 		expect(() =>
 			initHost(AbsoluteUrlComponent, {} as { consumerOrigins: string }),
-		).toThrow("consumerOrigins");
+		).toThrow(forgeFrameError("VALIDATION", "consumerOrigins"));
 	});
 
 	it("should import the React entry without browser globals and server-render only the container", async () => {
@@ -98,6 +99,14 @@ describe("Index node smoke", () => {
 				tag: "node-invalid-component",
 				url: "http://",
 			}),
-		).toThrow("Invalid component URL");
+		).toThrow(
+			// vi.resetModules() gives each test its own ForgeFrameError class, so
+			// the shared instanceof matcher cannot apply here.
+			expect.objectContaining({
+				name: "ForgeFrameError",
+				code: "VALIDATION",
+				message: expect.stringContaining("Invalid component URL"),
+			}),
+		);
 	});
 });

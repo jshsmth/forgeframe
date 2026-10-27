@@ -17,6 +17,7 @@ import { getPeerInstances } from "@/core/consumer/peers";
 import { prop } from "@/props/prop";
 import * as popupRender from "@/render/popup";
 import { CleanupManager } from "@/utils/cleanup";
+import { forgeFrameError } from "../forgeframe-error";
 import { PEER_HOST_ORIGIN, setVerifiedHostOrigin } from "../peer-host-origin";
 import { requireValue } from "../require-value";
 
@@ -231,15 +232,13 @@ describe("Consumer lifecycle behavior", () => {
 
 		const waitPromise = waitForHost.call(consumer);
 		const timeoutExpectation = expect(waitPromise).rejects.toThrow(
-			"did not initialize within 5ms",
+			forgeFrameError("INIT_TIMEOUT", "did not initialize within 5ms"),
 		);
 		await vi.advanceTimersByTimeAsync(6);
 
 		await timeoutExpectation;
 		expect(onError).toHaveBeenCalledExactlyOnceWith(
-			expect.objectContaining({
-				message: expect.stringContaining("did not initialize within 5ms"),
-			}),
+			forgeFrameError("INIT_TIMEOUT", "did not initialize within 5ms"),
 		);
 	});
 
@@ -894,7 +893,9 @@ describe("Consumer lifecycle behavior", () => {
 
 		await expect(
 			getInternals(consumer).open("https://host.example.com/widget"),
-		).rejects.toThrow("Iframe not created during prerender");
+		).rejects.toThrow(
+			forgeFrameError("CLOSED", "Iframe not created during prerender"),
+		);
 	});
 
 	it("should destroy instance when render fails during open or init wait", async () => {
@@ -1029,22 +1030,24 @@ describe("Consumer lifecycle behavior", () => {
 			}
 		).destroy();
 		await expect(destroyedInstance.render(container)).rejects.toThrow(
-			"Component has been destroyed",
+			forgeFrameError("CLOSED", "Component has been destroyed"),
 		);
 
 		const renderedInstance = createConsumer();
 		getInternals(renderedInstance).rendered = true;
 		await expect(renderedInstance.render(container)).rejects.toThrow(
-			"Component has already been rendered",
+			forgeFrameError("VALIDATION", "Component has already been rendered"),
 		);
 
 		const unrenderedInstance = createConsumer();
 		await expect(unrenderedInstance.render("")).rejects.toThrow(
-			"Container is required for rendering",
+			forgeFrameError("VALIDATION", "Container is required for rendering"),
 		);
 		await expect(
 			unrenderedInstance.render("#missing-container"),
-		).rejects.toThrow('Container "#missing-container" not found');
+		).rejects.toThrow(
+			forgeFrameError("VALIDATION", 'Container "#missing-container" not found'),
+		);
 	});
 
 	it("should share one in-flight render and queue prop updates until it settles", async () => {
@@ -1162,10 +1165,12 @@ describe("Consumer lifecycle behavior", () => {
 			expect(releasePrerender).toBeTypeOf("function");
 		});
 
-		const firstRejection =
-			expect(firstRender).rejects.toThrow(cancellationMessage);
-		const secondRejection =
-			expect(secondRender).rejects.toThrow(cancellationMessage);
+		const firstRejection = expect(firstRender).rejects.toThrow(
+			forgeFrameError("CANCELLED", cancellationMessage),
+		);
+		const secondRejection = expect(secondRender).rejects.toThrow(
+			forgeFrameError("CANCELLED", cancellationMessage),
+		);
 
 		await expect(consumer.close()).resolves.toBeUndefined();
 		await Promise.all([firstRejection, secondRejection]);
@@ -1196,7 +1201,10 @@ describe("Consumer lifecycle behavior", () => {
 
 		const renderPromise = consumer.render(container);
 		const renderRejection = expect(renderPromise).rejects.toThrow(
-			'Component "consumer-lifecycle-component" was closed before rendering completed',
+			forgeFrameError(
+				"CANCELLED",
+				'Component "consumer-lifecycle-component" was closed before rendering completed',
+			),
 		);
 
 		await vi.waitFor(() => {
@@ -1222,7 +1230,10 @@ describe("Consumer lifecycle behavior", () => {
 		});
 
 		await expect(consumer.render(container)).rejects.toThrow(
-			'Component "consumer-lifecycle-component" was closed before rendering completed',
+			forgeFrameError(
+				"CANCELLED",
+				'Component "consumer-lifecycle-component" was closed before rendering completed',
+			),
 		);
 
 		expect(prerenderSpy).not.toHaveBeenCalled();
@@ -1245,7 +1256,10 @@ describe("Consumer lifecycle behavior", () => {
 			.mockResolvedValue(undefined);
 
 		await expect(consumer.render(container)).rejects.toThrow(
-			'Component "consumer-lifecycle-component" was closed before rendering completed',
+			forgeFrameError(
+				"CANCELLED",
+				'Component "consumer-lifecycle-component" was closed before rendering completed',
+			),
 		);
 		await vi.waitFor(() => {
 			expect(container.contains(lateContainer)).toBe(false);
@@ -1272,7 +1286,10 @@ describe("Consumer lifecycle behavior", () => {
 			.mockResolvedValue(undefined);
 
 		await expect(consumer.render(container)).rejects.toThrow(
-			'Component "consumer-lifecycle-component" was closed before rendering completed',
+			forgeFrameError(
+				"CANCELLED",
+				'Component "consumer-lifecycle-component" was closed before rendering completed',
+			),
 		);
 
 		expect(containerTemplate).not.toHaveBeenCalled();
@@ -1300,7 +1317,10 @@ describe("Consumer lifecycle behavior", () => {
 			.mockResolvedValue(undefined);
 
 		await expect(consumer.render(container, CONTEXT.POPUP)).rejects.toThrow(
-			'Component "consumer-lifecycle-component" was closed before rendering completed',
+			forgeFrameError(
+				"CANCELLED",
+				'Component "consumer-lifecycle-component" was closed before rendering completed',
+			),
 		);
 		await vi.waitFor(() => {
 			expect(popupWindow.close).toHaveBeenCalledTimes(1);
@@ -1330,7 +1350,10 @@ describe("Consumer lifecycle behavior", () => {
 			.mockResolvedValue(undefined);
 
 		await expect(consumer.render(container, CONTEXT.POPUP)).rejects.toThrow(
-			'Component "consumer-lifecycle-component" was closed before rendering completed',
+			forgeFrameError(
+				"CANCELLED",
+				'Component "consumer-lifecycle-component" was closed before rendering completed',
+			),
 		);
 
 		expect(dimensionCalls).toBe(2);
@@ -1350,7 +1373,7 @@ describe("Consumer lifecycle behavior", () => {
 		);
 
 		await expect(consumer.updateProps({ amount: undefined })).rejects.toThrow(
-			"Validation failed: amount: Required",
+			forgeFrameError("VALIDATION", "Validation failed: amount: Required"),
 		);
 	});
 
@@ -1365,7 +1388,7 @@ describe("Consumer lifecycle behavior", () => {
 		);
 
 		await expect(consumer.updateProps({ amount: "two" })).rejects.toThrow(
-			"Validation failed: amount",
+			forgeFrameError("VALIDATION", "Validation failed: amount"),
 		);
 	});
 
@@ -1396,7 +1419,7 @@ describe("Consumer lifecycle behavior", () => {
 			.mockResolvedValue(undefined);
 
 		await expect(consumer.updateProps({ amount: undefined })).rejects.toThrow(
-			"Validation failed: amount: Required",
+			forgeFrameError("VALIDATION", "Validation failed: amount: Required"),
 		);
 
 		expect(validate).not.toHaveBeenCalled();

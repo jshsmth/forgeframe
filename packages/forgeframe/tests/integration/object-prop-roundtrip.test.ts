@@ -1,6 +1,7 @@
 import { runInNewContext } from "node:vm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { create, prop } from "@/index";
+import { forgeFrameError } from "../forgeframe-error";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
@@ -544,11 +545,13 @@ describe("JSON encoder conversion", () => {
 
 		await expect(
 			instance.updateProps({ payload: { custom: new CyclicValue() } }),
-		).rejects.toThrow("Circular reference detected");
+		).rejects.toThrow(
+			forgeFrameError("VALIDATION", "Circular reference detected"),
+		);
 		const boxed = await instance
 			.updateProps({ payload: { custom: Object(1n) } })
 			.catch((error: unknown) => error);
-		expect(boxed).toMatchObject({ code: "VALIDATION" });
+		expect(boxed).toEqual(forgeFrameError("VALIDATION"));
 		expect((boxed as Error).cause).toBeInstanceOf(TypeError);
 		expect(hostProps.payload).toEqual({ stage: "initial" });
 		await instance.updateProps({ payload: { stage: "recovered" } });
@@ -589,9 +592,9 @@ describe("JSON encoder conversion", () => {
 			const hostReady = host?.ready.catch((error: unknown) => error);
 
 			const failure = await rendering;
-			expect(failure).toMatchObject({ code: "VALIDATION" });
+			expect(failure).toEqual(forgeFrameError("VALIDATION"));
 			if (cause) expect((failure as Error).cause).toBeInstanceOf(cause);
-			await expect(hostReady).resolves.toMatchObject({ code: "VALIDATION" });
+			await expect(hostReady).resolves.toEqual(forgeFrameError("VALIDATION"));
 			expect(Component.instances).toHaveLength(0);
 		},
 	);

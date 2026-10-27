@@ -22,6 +22,7 @@ import { createDeferred } from "@/utils/promise";
 import * as helpers from "@/window/helpers";
 import { buildWindowName } from "@/window/name-payload";
 import type { WindowNamePayload } from "@/window/types";
+import { forgeFrameError } from "../forgeframe-error";
 import { requireValue } from "../require-value";
 
 const originalWindowName = window.name;
@@ -342,7 +343,7 @@ describe("Host lifecycle behavior", () => {
 		);
 
 		await expect(host.ready).rejects.toThrow(
-			"Validation failed: secret: Required",
+			forgeFrameError("VALIDATION", "Validation failed: secret: Required"),
 		);
 		expect(host.consumerOrigin).toBe(window.location.origin);
 		expect(getHost()).toBeNull();
@@ -514,7 +515,7 @@ describe("Host lifecycle behavior", () => {
 				{ amount: "not a number" },
 				createMessageSource(window),
 			),
-		).toThrow("Validation failed: amount");
+		).toThrow(forgeFrameError("VALIDATION", "Validation failed: amount"));
 		expect(emitSpy).toHaveBeenCalledWith(EVENT.ERROR, expect.any(Error));
 		expect(consoleSpy).toHaveBeenCalledWith(
 			"Error deserializing props:",
@@ -540,7 +541,12 @@ describe("Host lifecycle behavior", () => {
 				{ amount: "bad-update" },
 				createMessageSource(window),
 			),
-		).toThrow("Validation failed: amount: Expected number, got string");
+		).toThrow(
+			forgeFrameError(
+				"VALIDATION",
+				"Validation failed: amount: Expected number, got string",
+			),
+		);
 		expect(await typedHost.ready).toEqual({ amount: 10 });
 		expect(consoleSpy).toHaveBeenCalledWith(
 			"Error deserializing props:",

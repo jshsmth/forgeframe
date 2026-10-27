@@ -10,6 +10,8 @@ import { deserializeMessage } from "@/communication/protocol";
 import { MESSAGE_NAME } from "@/constants";
 import { deleteRegisteredComponent } from "@/core/component-registry";
 import { create, ForgeFrameError, initHost, isHost, prop } from "@/index";
+import { forgeFrameError } from "../forgeframe-error";
+import { requireValue } from "../require-value";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
@@ -134,7 +136,10 @@ describe("Explicit host start-up", () => {
 				}),
 			),
 		).toThrow(
-			'Component option "allowedConsumerDomains" was removed. Pass the allowlist to the host instead: initHost(Component, { consumerOrigins }).',
+			forgeFrameError(
+				"VALIDATION",
+				'Component option "allowedConsumerDomains" was removed. Pass the allowlist to the host instead: initHost(Component, { consumerOrigins }).',
+			),
 		);
 		expect(await isSettled(activeHarness, rendering)).toBe(false);
 	});
@@ -272,11 +277,11 @@ describe("Explicit host start-up", () => {
 
 				expect(() =>
 					activeHarness.withHostGlobals(() => call(Component)),
-				).toThrow(message);
+				).toThrow(forgeFrameError("VALIDATION", message));
 				if (namesCallShape !== false) {
 					expect(() =>
 						activeHarness.withHostGlobals(() => call(Component)),
-					).toThrow(V2_CALL_SHAPE);
+					).toThrow(forgeFrameError("VALIDATION", V2_CALL_SHAPE));
 				}
 				await activeHarness.flushMessages();
 				expect(sent).toEqual([]);
@@ -300,7 +305,10 @@ describe("Explicit host start-up", () => {
 					consumerOrigins: ["https://other-consumer.example.com"],
 				}),
 			).toThrow(
-				`Consumer origin "${activeHarness.consumerOrigin}" is not allowed`,
+				forgeFrameError(
+					"ORIGIN_REJECTED",
+					`Consumer origin "${activeHarness.consumerOrigin}" is not allowed`,
+				),
 			);
 			await activeHarness.flushMessages();
 			expect(sent).toEqual([]);
@@ -320,7 +328,7 @@ describe("Explicit host start-up", () => {
 
 			expect(() =>
 				activeHarness.bootstrapHost(Component, { consumerOrigins: [] }),
-			).toThrow("is not allowed");
+			).toThrow(forgeFrameError("ORIGIN_REJECTED", "is not allowed"));
 			await activeHarness.flushMessages();
 			expect(sent).toEqual([]);
 		});
@@ -382,11 +390,16 @@ describe("Explicit host start-up", () => {
 			});
 
 			const host = activeHarness.bootstrapHost(StrictHostSide);
-			await expect(host?.ready).rejects.toThrow("Number must be >= 100");
+			await expect(host?.ready).rejects.toThrow(
+				forgeFrameError("VALIDATION", "Number must be >= 100"),
+			);
 			const hostReason =
 				"Host initialization failed: Validation failed: amount: Number must be >= 100";
 			await expect(rendering).rejects.toThrow(
-				`did not initialize within 300ms. ${hostReason}`,
+				forgeFrameError(
+					"INIT_TIMEOUT",
+					`did not initialize within 300ms. ${hostReason}`,
+				),
 			);
 			expect(errors).toEqual([expect.stringContaining(hostReason)]);
 		});
@@ -407,7 +420,9 @@ describe("Explicit host start-up", () => {
 			});
 
 			const failed = activeHarness.bootstrapHost(StrictHostSide);
-			await expect(failed?.ready).rejects.toThrow("Number must be >= 100");
+			await expect(failed?.ready).rejects.toThrow(
+				forgeFrameError("VALIDATION", "Number must be >= 100"),
+			);
 			await activeHarness.flushMessages();
 
 			const retried = activeHarness.bootstrapHost(Component);
@@ -426,7 +441,10 @@ describe("Explicit host start-up", () => {
 			const sent = recordMessagesToConsumer(activeHarness);
 
 			expect(() => activeHarness.bootstrapHost(Other)).toThrow(
-				'initHost() received component "tag-mismatch-other", but this window was opened for "tag-mismatch-consumer"',
+				forgeFrameError(
+					"VALIDATION",
+					'initHost() received component "tag-mismatch-other", but this window was opened for "tag-mismatch-consumer"',
+				),
 			);
 			await activeHarness.flushMessages();
 			expect(sent).toEqual([]);
@@ -449,12 +467,18 @@ describe("Explicit host start-up", () => {
 			if (!host) throw new Error("Expected a host");
 			const activeError =
 				"A ForgeFrame host is already active in this window; call destroy() first";
-			expect(() => activeHarness.bootstrapHost(Component)).toThrow(activeError);
-			expect(() => activeHarness.bootstrapHost()).toThrow(activeError);
+			expect(() => activeHarness.bootstrapHost(Component)).toThrow(
+				forgeFrameError("VALIDATION", activeError),
+			);
+			expect(() => activeHarness.bootstrapHost()).toThrow(
+				forgeFrameError("VALIDATION", activeError),
+			);
 
 			await host.ready;
 			await rendering;
-			expect(() => activeHarness.bootstrapHost(Component)).toThrow(activeError);
+			expect(() => activeHarness.bootstrapHost(Component)).toThrow(
+				forgeFrameError("VALIDATION", activeError),
+			);
 		});
 	});
 
@@ -529,9 +553,9 @@ describe("Explicit host start-up", () => {
 			});
 
 			const host = activeHarness.bootstrapHost(Component, { autoInit: false });
-			await host?.ready;
+			await requireValue(host).ready;
 			await expect(rendering).rejects.toThrow(
-				"did not initialize within 200ms",
+				forgeFrameError("INIT_TIMEOUT", "did not initialize within 200ms"),
 			);
 		});
 	});
@@ -652,15 +676,14 @@ describe("Explicit host start-up", () => {
 			host.on("error", (error) => {
 				errors.push(error);
 			});
-			await expect(host.ready).rejects.toThrow("Number must be >= 100");
+			await expect(host.ready).rejects.toThrow(
+				forgeFrameError("VALIDATION", "Number must be >= 100"),
+			);
 			await activeHarness.flushMessages();
 
 			expect(errors).toEqual([
-				expect.objectContaining({
-					message: expect.stringContaining("Number must be >= 100"),
-				}),
+				forgeFrameError("VALIDATION", "Number must be >= 100"),
 			]);
-			expect(errors[0]).toBeInstanceOf(Error);
 			expect(errors[0]).not.toHaveProperty(
 				"message",
 				expect.stringContaining("Failed to initialize host component"),

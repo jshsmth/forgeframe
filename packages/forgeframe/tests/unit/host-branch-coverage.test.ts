@@ -17,6 +17,7 @@ import * as hostSecurity from "@/core/host/security";
 import { ForgeFrameError } from "@/errors";
 import { buildWindowName } from "@/window/name-payload";
 import type { WindowNamePayload } from "@/window/types";
+import { forgeFrameError } from "../forgeframe-error";
 import { requireValue } from "../require-value";
 
 type HandlerSource = Parameters<MessageHandler>[1];
@@ -149,13 +150,15 @@ describe("Host branch coverage and edge paths", () => {
 			});
 			if (!autoInit) host.init();
 
-			await expect(host.ready).rejects.toThrow();
-			await Promise.resolve();
-
 			const reason =
 				failure === "a failed request"
 					? "Consumer did not respond"
 					: "Invalid consumer bootstrap response";
+			await expect(host.ready).rejects.toThrow(
+				forgeFrameError("VALIDATION", reason),
+			);
+			await Promise.resolve();
+
 			expect(errors).toHaveLength(1);
 			expect(errors[0]).toBeInstanceOf(Error);
 			expect(errors[0]).toMatchObject({

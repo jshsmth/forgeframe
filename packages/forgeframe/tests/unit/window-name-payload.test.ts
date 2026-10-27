@@ -14,6 +14,7 @@ import {
 	readWindowNamePayload,
 } from "@/window/name-payload";
 import type { WindowNamePayload } from "@/window/types";
+import { forgeFrameError } from "../forgeframe-error";
 
 function createPayload(
 	overrides: Partial<WindowNamePayload> = {},
@@ -73,7 +74,7 @@ describe("buildWindowName", () => {
 				...createPayload(),
 				circular,
 			} as WindowNamePayload),
-		).toThrow("Failed to encode payload");
+		).toThrow(forgeFrameError("VALIDATION", "Failed to encode payload"));
 	});
 
 	it("should not depend on Blob when measuring encoded payload size", () => {

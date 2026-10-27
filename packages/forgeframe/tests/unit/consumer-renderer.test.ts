@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CONTEXT } from "@/constants";
 import { ConsumerRenderer } from "@/core/consumer/renderer";
 import type { NormalizedOptions } from "@/core/consumer/types";
+import { forgeFrameError } from "../forgeframe-error";
 
 function createRenderer(
 	options: Partial<NormalizedOptions<Record<string, unknown>>> = {},
@@ -397,6 +398,11 @@ describe("ConsumerRenderer submitBodyForm", () => {
 				"https://host.example.com/widget",
 				new URLSearchParams({ token: "abc123" }),
 			),
-		).toThrow("Document root is unavailable for bodyParam form submission");
+		).toThrow(
+			forgeFrameError(
+				"VALIDATION",
+				"Document root is unavailable for bodyParam form submission",
+			),
+		);
 	});
 });

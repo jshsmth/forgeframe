@@ -17,6 +17,7 @@ import {
 } from "@/props/normalize";
 import { prop } from "@/props/prop";
 import type { PropDefinition, PropsDefinition } from "@/types";
+import { forgeFrameError } from "../forgeframe-error";
 
 const crossOriginHost = {
 	hostOrigin: "https://host.example.com",
@@ -84,10 +85,10 @@ describe("Props Normalization", () => {
 		};
 
 		expect(() => normalizeProps({ wrapped: "ok" }, definitions)).toThrow(
-			"Validation failed: direct: Required",
+			forgeFrameError("VALIDATION", "Validation failed: direct: Required"),
 		);
 		expect(() => normalizeProps({ direct: "ok" }, definitions)).toThrow(
-			"Validation failed: wrapped: Required",
+			forgeFrameError("VALIDATION", "Validation failed: wrapped: Required"),
 		);
 	});
 
@@ -108,7 +109,7 @@ describe("Props Normalization", () => {
 			name: "Ada",
 		});
 		expect(() => normalizeProps({ name: " A " }, definitions)).toThrow(
-			"Validation failed: name:",
+			forgeFrameError("VALIDATION", "Validation failed: name:"),
 		);
 	});
 
@@ -135,7 +136,7 @@ describe("Props Normalization", () => {
 
 		expect(normalizeProps({ value: valid }, definitions).value).toEqual(valid);
 		expect(() => normalizeProps({ value: invalid }, definitions)).toThrow(
-			"Validation failed: value:",
+			forgeFrameError("VALIDATION", "Validation failed: value:"),
 		);
 	});
 });
