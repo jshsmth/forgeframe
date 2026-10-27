@@ -385,7 +385,7 @@ export interface ComponentBaseOptions<P = Record<string, unknown>> {
 }
 
 /**
- * A component's `peers` option: omitted, `true`, or an origin matcher.
+ * A component's `peers` option: omitted, `'same-origin'`, or an origin matcher.
  * @internal
  */
 export type PeersOption = ComponentBaseOptions["peers"];
