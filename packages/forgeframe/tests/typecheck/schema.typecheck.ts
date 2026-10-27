@@ -19,13 +19,7 @@ import type {
 	StandardSchemaV1SuccessResult,
 	StandardSchemaV1Types,
 } from "@/props/schema";
-
-type IsEqual<A, B> =
-	(<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2
-		? true
-		: false;
-
-type Assert<T extends true> = T;
+import type { Assert, IsEqual } from "./assert";
 
 type ExampleSchema = StandardSchemaV1<
 	{ rawEmail: string },

@@ -24,6 +24,7 @@ import {
 	type ReactComponentProps,
 	type ReactInstance,
 } from "../../src/react";
+import type { IsEqual } from "./assert";
 
 const RequiredComponent = create({
 	tag: "required-react-typecheck",
@@ -46,6 +47,20 @@ const missingRequired = <RequiredReact />;
 const requiredUndefined = <RequiredReact label={undefined} />;
 void missingRequired;
 void requiredUndefined;
+
+// The wrapper's own callbacks and options keep their exact types.
+type RequiredReactProps = ComponentProps<typeof RequiredReact>;
+export const onErrorPayload: IsEqual<
+	Parameters<NonNullable<RequiredReactProps["onError"]>>,
+	[error: Error]
+> = true;
+export const contextOption: IsEqual<
+	RequiredReactProps["context"],
+	"iframe" | "popup" | undefined
+> = true;
+// @ts-expect-error context is "iframe" or "popup"
+const modalContext = <RequiredReact label="ready" context="modal" />;
+void modalContext;
 
 // An entry annotated as PropDefinition<T> keeps T as its JSX input.
 const annotatedCode: PropDefinition<string> = { schema: prop.string() };

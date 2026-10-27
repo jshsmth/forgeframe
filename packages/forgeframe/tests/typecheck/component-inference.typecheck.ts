@@ -25,14 +25,7 @@ import {
 	prop,
 	type StandardSchemaV1,
 } from "../../src";
-
-/** Whether each type is assignable to the other. */
-type IsEquivalent<A, B> = [A] extends [B]
-	? [B] extends [A]
-		? true
-		: false
-	: false;
-type Assert<T extends true> = T;
+import type { Assert, IsEqual, Simplify } from "./assert";
 
 const InferredComponent = create({
 	tag: "inferred-component",
@@ -55,8 +48,18 @@ const inferredHostCount: number | undefined = (
 )?.count;
 void inferredHostCount;
 
-// @ts-expect-error inferred direct schemas reject the wrong value type
-void InferredComponent({ label: 1, count: 1, onSubmit: () => undefined });
+void InferredComponent({
+	// @ts-expect-error inferred direct schemas reject the wrong value type
+	label: 1,
+	count: 1,
+	onSubmit: () => undefined,
+});
+void InferredComponent({
+	label: "ready",
+	// @ts-expect-error each inferred field keeps its own type
+	count: "1",
+	onSubmit: () => undefined,
+});
 
 void InferredComponent({
 	label: "ready",
@@ -123,7 +126,7 @@ const LoginForm = create({
 	props: loginDefinitions,
 });
 export const loginPropsRoundTrip: Assert<
-	IsEquivalent<PropsOf<typeof LoginForm>, LoginProps>
+	IsEqual<Simplify<PropsOf<typeof LoginForm>>, LoginProps>
 > = true;
 
 const missingDefinition = {
@@ -180,7 +183,7 @@ void thirdPartyMismatch;
 // PropsOf and InputOf read a component's props and factory input.
 type LoginInput = InputOf<typeof LoginForm>;
 export const loginInputKeepsRequiredKeys: Assert<
-	IsEquivalent<
+	IsEqual<
 		LoginInput,
 		{
 			email: string;
@@ -204,7 +207,7 @@ const loginComponent: Component<LoginProps, LoginInput> = LoginForm;
 void loginComponent;
 // Without an exports schema, exports are unknown.
 export const loginExportsUnknown: Assert<
-	IsEquivalent<ExportsOf<typeof LoginForm>, unknown>
+	IsEqual<ExportsOf<typeof LoginForm>, unknown>
 > = true;
 
 // An exports schema types instance.exports and ExportsOf.
@@ -217,8 +220,8 @@ const ExportingComponent = create({
 	}),
 });
 export const exportsInferred: Assert<
-	IsEquivalent<
-		ExportsOf<typeof ExportingComponent>,
+	IsEqual<
+		Simplify<ExportsOf<typeof ExportingComponent>>,
 		{ validate: () => boolean; ready: boolean }
 	>
 > = true;
@@ -686,7 +689,7 @@ const Propless = create({
 });
 void Propless();
 export const proplessProps: Assert<
-	IsEquivalent<keyof PropsOf<typeof Propless>, never>
+	IsEqual<keyof PropsOf<typeof Propless>, never>
 > = true;
 
 // Callback defaults are factories, in direct and wrapped definitions.
@@ -904,8 +907,8 @@ void AnnotatedEntries({ count: 1 });
 void AnnotatedEntries({ ref: 42, count: 1 });
 // @ts-expect-error an annotated schema keeps its type as input
 void AnnotatedEntries({ ref: "a", count: "1" });
-const annotatedEntriesInput: IsEquivalent<
-	InputOf<typeof AnnotatedEntries>,
+const annotatedEntriesInput: IsEqual<
+	Simplify<InputOf<typeof AnnotatedEntries>>,
 	{ ref: string; count: number; note?: string | undefined }
 > = true;
 void annotatedEntriesInput;
