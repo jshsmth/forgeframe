@@ -24,6 +24,7 @@ import {
 } from "../payment/simulation";
 import { requireValue } from "../require-value";
 import { consumerUrl } from "./consumer-url";
+import { focusLandingControl } from "./landing-focus";
 import "./payment.css";
 
 /** Set by browser tests to expose the ready props; production builds drop the hook. */
@@ -205,6 +206,7 @@ function renderForm(
  * does not include the consumer runtime that `create()` brings.
  * After readiness, the host show/focus controls reveal the loading iframe before
  * the demo-fill shortcut receives focus without scrolling away from the amount.
+ * See {@link focusLandingControl}.
  */
 async function start(): Promise<void> {
 	try {
@@ -232,7 +234,7 @@ async function start(): Promise<void> {
 		await props.onReady();
 		await host.show();
 		await host.focus();
-		field<HTMLButtonElement>("#use-demo-details").focus({
+		focusLandingControl(field<HTMLButtonElement>("#use-demo-details"), {
 			preventScroll: true,
 		});
 	} catch {
