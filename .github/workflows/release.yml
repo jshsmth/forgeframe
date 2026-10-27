@@ -15,6 +15,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
 
     outputs:
       dist-tag: ${{ steps.dist-tag.outputs.tag }}
@@ -78,6 +79,7 @@ jobs:
   publish:
     needs: verify
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     permissions:
       # Authenticate to npm through trusted publishing and sign provenance.
@@ -107,6 +109,7 @@ jobs:
   github-release:
     needs: [verify, publish]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     permissions:
       # Create the GitHub release.

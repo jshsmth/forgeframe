@@ -148,7 +148,8 @@ describe("package contract", () => {
 		const packageJson = readJson<ForgeFramePackageJson>(
 			resolve(packageRoot, "package.json"),
 		);
-		expect(rootPackageJson.scripts.release).toBe("npm publish -w forgeframe");
+		// Releases publish only from the Release workflow, with provenance.
+		expect(rootPackageJson.scripts.release).toBeUndefined();
 		expect(packageJson.scripts.prepublishOnly).toBe(
 			"npm run release:check --prefix ../..",
 		);

@@ -1,0 +1,12 @@
+# Keeps the SHA-pinned workflow actions current. One grouped pull request a
+# week; the version comment next to each SHA updates with it.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"

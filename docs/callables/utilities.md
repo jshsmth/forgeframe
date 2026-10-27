@@ -5,7 +5,7 @@ desc: Utility and window-name callables with their IOSP classifications and boun
 tags: []
 sources: []
 created: 2026-10-27T21:30:00Z
-updated: 2026-10-27T21:30:00Z
+updated: 2026-10-27T22:13:25Z
 ---
 
 # Utility and window callables
@@ -48,9 +48,9 @@ Evidence: [utilities](_index.md#evidence-utilities), [messaging](_index.md#evide
 
 ### [utils/origin-pattern.ts](../../packages/forgeframe/src/utils/origin-pattern.ts)
 
-Wildcard compilation and stateless regex testing are cohesive algorithms. Keep the compile cache and the `lastIndex` protection. `'*'` compiles to any origin; the only other wildcard is `scheme://*.rest` (`LEADING_LABEL_WILDCARD`), where `*` stands for one or more leading host labels with the scheme and port fixed; any other wildcard compiles to a pattern that matches nothing. `assertOriginMatcher` rejects configured matchers that would silently disable or widen an origin policy: values other than non-empty strings, `RegExp`s, or arrays of them, strings without a scheme (`isBareHostPattern`), such as `example.com`, `*.example.com` or `"true"`, a pattern with a path, query or fragment (`hasPathOrQuery`), such as `https://app.example.com/`, which can never equal an origin, an exact origin in a form browsers never report (`isNonCanonicalOrigin`, which compares it with `readOrigin`, the `URL` parser's origin), such as `https://Shop.example.com` or `https://example.com:443`, and a misplaced wildcard (`isMisplacedWildcard`), such as `https://*example.com`. An empty array matches nothing, so it is rejected unless the caller passes `"allowed"`, which only the `consumerOrigins` allowlist does, to fail closed.
+Wildcard compilation and stateless regex testing are cohesive algorithms. Keep the compile cache and the `lastIndex` protection. `'*'` compiles to any origin; the only other wildcard is `scheme://*.rest` (`LEADING_LABEL_WILDCARD`), where `*` stands for one or more leading host labels with the scheme and port fixed; any other wildcard compiles to a pattern that matches nothing. `assertOriginMatcher` rejects configured matchers that would silently disable or widen an origin policy: values other than non-empty strings, `RegExp`s, or arrays of them, strings without a scheme (`isBareHostPattern`), such as `example.com`, `*.example.com` or `"true"`, a pattern with a path, query or fragment (`hasPathOrQuery`), such as `https://app.example.com/`, which can never equal an origin, an exact origin or `scheme://*.rest` wildcard in a form browsers never report (`isNonCanonicalOrigin`, which compares it with `readCanonicalPattern`: the `URL` parser's origin from `readOrigin`, read for a wildcard through a probe label in place of `*`; an entry with a backslash, which the parser reads as a path separator, has none), such as `https://Shop.example.com`, `https://example.com:443` or `https://*.example.com:443`, or a `file:` origin, which is opaque, and a misplaced wildcard (`isMisplacedWildcard`), such as `https://*example.com`. An empty array matches nothing, so it is rejected unless the caller passes `"allowed"`, which only the `consumerOrigins` allowlist does, to fail closed.
 
-- **O:** `escapeRegExp`, `compileWildcardOriginPattern`, `testOriginRegExpStateless`, `assertOriginMatcher`, `assertOriginMatcher.isPattern`, `isBareHostPattern`, `hasPathOrQuery`, `isNonCanonicalOrigin`, `readOrigin`, `isMisplacedWildcard`.
+- **O:** `escapeRegExp`, `compileWildcardOriginPattern`, `testOriginRegExpStateless`, `assertOriginMatcher`, `assertOriginMatcher.isPattern`, `isBareHostPattern`, `hasPathOrQuery`, `isNonCanonicalOrigin`, `readCanonicalPattern`, `readOrigin`, `isMisplacedWildcard`.
 
 Evidence: [utilities](_index.md#evidence-utilities); typecheck.
 
@@ -97,9 +97,12 @@ Evidence: [realm-values.test](../../packages/forgeframe/tests/unit/realm-values.
 
 ### [utils/uid.ts](../../packages/forgeframe/src/utils/uid.ts)
 
-Random ID creation is one platform operation. Keep the ID length and wire-visible shape.
+Random ID creation is one platform operation. IDs are base-36 strings with 64 bits from `crypto.getRandomValues()` (`randomBase36`, two zero-padded 7-digit words); `generateUID` prefixes a base-36 timestamp. Origin and source checks guard every message, so IDs are not secrets, but they stay unpredictable. Keep the base-36 shape.
 
-- **O:** `generateUID`, `generateShortUID`.
+- **O:** `randomBase36`.
+- **I:** `generateShortUID`.
+- **M:** `generateUID`.
+- **Retained rationale —** `generateUID`: It formats one timestamp next to the shared random part; a named timestamp operation would wrap a single `toString(36)`.
 
 Evidence: [utilities](_index.md#evidence-utilities); typecheck.
 

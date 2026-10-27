@@ -402,6 +402,7 @@ describe("Component Creation", () => {
 	it.each([
 		{ options: { hostOrigins: "https://Host.example.com" } },
 		{ options: { peers: ["https://host.example.com:443"] } },
+		{ options: { peers: ["https://*.host.example.com:443"] } },
 		{
 			options: {
 				props: {
@@ -422,7 +423,7 @@ describe("Component Creation", () => {
 		).toThrow(
 			forgeFrameError(
 				"VALIDATION",
-				'browsers report it as "https://host.example.com"',
+				"can never match because browsers report it as",
 			),
 		);
 		expect(getComponent("non-canonical-origin-component")).toBeUndefined();

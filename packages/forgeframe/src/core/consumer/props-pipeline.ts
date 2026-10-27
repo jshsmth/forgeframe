@@ -94,7 +94,9 @@ export class ConsumerPropsPipeline<P extends Record<string, unknown>> {
 			this.props = normalizeProps(this.inputProps, this.options.props) as P;
 		} catch (error) {
 			// Construction stays usable so the failure surfaces at render, or is
-			// cleared by a successful update.
+			// cleared by a successful update. These props are not `P` yet: every
+			// reader calls revalidateSchemaValues() first, which rethrows this
+			// failure, and only an update merges into them.
 			this.pendingNormalizationError = { error };
 			this.props = buildUnnormalizedProps(
 				this.inputProps,

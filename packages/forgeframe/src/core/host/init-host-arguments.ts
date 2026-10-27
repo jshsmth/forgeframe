@@ -14,6 +14,7 @@ import { EMPTY_PROP_DEFINITIONS } from "../../props/definitions";
 import type { StandardSchemaV1 } from "../../props/schema";
 import type { PropsDefinition } from "../../types/props";
 import type { OriginMatcher } from "../../types/utility";
+import { normalizeError } from "../../utils/error";
 import { assertOriginMatcher } from "../../utils/origin-pattern";
 import { getComponentOptions } from "../component-registry";
 import { assertPropDefinitionsObject } from "./reserved-props";
@@ -132,7 +133,7 @@ function readInitHostOptions(
 			"allowed",
 		);
 	} catch (error) {
-		throw callShapeError(`${(error as Error).message}.`);
+		throw callShapeError(`${normalizeError(error).message}.`);
 	}
 	if (autoInit !== undefined && typeof autoInit !== "boolean") {
 		throw callShapeError("initHost() autoInit must be a boolean.");

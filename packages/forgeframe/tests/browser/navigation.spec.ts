@@ -1,6 +1,7 @@
 import { createServer, type Server } from "node:http";
 import { expect, test } from "@playwright/test";
 import type { ComponentInstance, Host, RemoteValue } from "../../src/types";
+import { hostFrame } from "./host-frame";
 import { buildLibrary } from "./library-build";
 
 type WidgetProps = {
@@ -102,8 +103,13 @@ let hostOrigin: string;
 let attackerOrigin: string;
 const servers: Server[] = [];
 let library: ReadonlyMap<string, string>;
+/** Requests the host server's delivery page received in the current test. */
 const deliveryRequests: Array<{ url: string; method: string; body: string }> =
 	[];
+
+test.beforeEach(() => {
+	deliveryRequests.length = 0;
+});
 
 function respondToDelivery(
 	req: import("node:http").IncomingMessage,
@@ -667,7 +673,6 @@ for (const method of ["GET", "POST"] as const) {
 		test(`lazy iframe ${method} initializes while concealed and retains configured display ${display}`, async ({
 			page,
 		}) => {
-			deliveryRequests.length = 0;
 			let releaseNavigation = () => {};
 			const navigationAllowed = new Promise<void>((resolve) => {
 				releaseNavigation = resolve;
@@ -756,7 +761,6 @@ for (const method of ["GET", "POST"] as const) {
 test("lazy iframe applies a show requested before frame creation", async ({
 	page,
 }) => {
-	deliveryRequests.length = 0;
 	await page.goto(consumerOrigin);
 	const outcome = await page.evaluate(
 		async ({ hostOrigin }) => {
@@ -848,7 +852,6 @@ for (const control of ["hide", "show"] as const) {
 test("lazy iframe cancellation before navigation removes loading content", async ({
 	page,
 }) => {
-	deliveryRequests.length = 0;
 	await page.goto(consumerOrigin);
 	const result = await page.evaluate(async (hostOrigin) => {
 		const libraryUrl = "/library.js";
@@ -1010,12 +1013,9 @@ test("preserves foreign-window dates and ordinary records", async ({
 		},
 		{ hostOrigin },
 	);
-	const hostFrame = page
-		.frames()
-		.find((frame) => frame.url() === `${hostOrigin}/realm-values`);
-	if (!hostFrame) throw new Error("Missing host frame");
+	const realmHost = await hostFrame(page, `${hostOrigin}/realm-values`);
 	expect(
-		await hostFrame.evaluate(() => {
+		await realmHost.evaluate(() => {
 			const props = window.received;
 			return {
 				date: props.createdAt instanceof Date,
@@ -1030,7 +1030,7 @@ test("preserves foreign-window dates and ordinary records", async ({
 		iso: "2026-01-02T03:04:05.678Z",
 		record: { name: "initial" },
 	});
-	await hostFrame.evaluate(async () => {
+	await realmHost.evaluate(async () => {
 		const realm = document.createElement("iframe");
 		document.body.append(realm);
 		// defaultView, unlike contentWindow, is typed with the realm's globals.
@@ -1065,7 +1065,6 @@ for (const context of ["iframe", "popup"] as const) {
 	test(`${context} POST supports field names that shadow form methods`, async ({
 		page,
 	}) => {
-		deliveryRequests.length = 0;
 		await page.goto(consumerOrigin);
 		await page.evaluate(
 			async ({ hostOrigin, context }) => {
@@ -1231,7 +1230,6 @@ for (const context of ["iframe", "popup"] as const) {
 			test(`${context} ${method} keeps navigation and prop policy consistent during ${scenario}`, async ({
 				page,
 			}) => {
-				deliveryRequests.length = 0;
 				await prepareDelivery(page, context, method, scenario);
 				const opened = context === "popup" ? page.waitForEvent("popup") : null;
 				await page.locator("#open-delivery").click();
@@ -1307,7 +1305,6 @@ for (const context of ["iframe", "popup"] as const) {
 	test(`${context} rejects a changed base origin before any restricted HTTP request`, async ({
 		page,
 	}) => {
-		deliveryRequests.length = 0;
 		await page.goto(consumerOrigin);
 		const outcome = await page.evaluate(
 			async ({ consumerOrigin, attackerOrigin, context }) => {
@@ -1675,9 +1672,7 @@ for (const context of ["iframe", "popup"] as const) {
 		const hostPage = popup ? await popup : page;
 		expect(await page.evaluate(() => window.outcome)).toBe("ready");
 		const host =
-			context === "popup"
-				? hostPage
-				: page.frames().find((frame) => frame.url().startsWith(hostOrigin));
+			context === "popup" ? hostPage : await hostFrame(page, hostOrigin);
 		if (!host) throw new Error("Missing host window");
 		const loaded = hostPage.waitForEvent("framenavigated", {
 			predicate: (frame) => frame.url() === `${hostOrigin}/early-update`,
@@ -1701,9 +1696,7 @@ for (const context of ["iframe", "popup"] as const) {
 		const hostPage = popup ? await popup : page;
 		expect(await page.evaluate(() => window.outcome)).toBe("ready");
 		const host =
-			context === "popup"
-				? hostPage
-				: page.frames().find((frame) => frame.url().startsWith(hostOrigin));
+			context === "popup" ? hostPage : await hostFrame(page, hostOrigin);
 		if (!host) throw new Error("Missing host window");
 		await host.waitForFunction(() => window.ready === true);
 		expect(await host.evaluate(() => window.firstError)).toContain(
@@ -1722,9 +1715,7 @@ for (const context of ["iframe", "popup"] as const) {
 		const hostPage = popup ? await popup : page;
 		expect(await page.evaluate(() => window.outcome)).toBe("ready");
 		const host =
-			context === "popup"
-				? hostPage
-				: page.frames().find((frame) => frame.url().startsWith(hostOrigin));
+			context === "popup" ? hostPage : await hostFrame(page, hostOrigin);
 		if (!host) throw new Error("Missing host window");
 		await host.waitForFunction(() => window.ready === true);
 		expect(
@@ -1795,9 +1786,7 @@ for (const context of ["iframe", "popup"] as const) {
 		);
 		const hostPage = popup ? await popup : page;
 		const host =
-			context === "popup"
-				? hostPage
-				: page.frames().find((frame) => frame.url().startsWith(hostOrigin));
+			context === "popup" ? hostPage : await hostFrame(page, hostOrigin);
 		if (!host) throw new Error("Missing host window");
 		const loaded = hostPage.waitForEvent("framenavigated", {
 			predicate: (frame) => frame.url().startsWith(hostOrigin),
@@ -1819,9 +1808,7 @@ for (const context of ["iframe", "popup"] as const) {
 		const hostPage = popup ? await popup : page;
 		expect(await page.evaluate(() => window.outcome)).toBe("ready");
 		const host =
-			context === "popup"
-				? hostPage
-				: page.frames().find((frame) => frame.url().startsWith(hostOrigin));
+			context === "popup" ? hostPage : await hostFrame(page, hostOrigin);
 		expect(host).toBeDefined();
 		if (!host) throw new Error("Missing host window");
 		expect(await page.evaluate(() => window.outcome)).toBe("ready");

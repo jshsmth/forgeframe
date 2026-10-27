@@ -123,6 +123,22 @@ describe("assertOriginMatcher", () => {
 		["https://example.com:443", 'browsers report it as "https://example.com"'],
 		["https://user@example.com", 'browsers report it as "https://example.com"'],
 		["https://exa mple.com", "is not a valid origin"],
+		[
+			"https://*.example.com:443",
+			'browsers report it as "https://*.example.com"',
+		],
+		["http://*.example.com:80", 'browsers report it as "http://*.example.com"'],
+		["https://*.user@example.com", "is not a valid origin"],
+		["https://Example.com:443/x", 'such as "https://example.com"'],
+		["file://", "is not a valid origin"],
+		["file:///tmp", "is not a valid origin"],
+		["https://*.ex\\ample.com", "is not a valid origin"],
+		["https://ex\\ample.com", "is not a valid origin"],
+		[
+			"https://*.bücher.example",
+			'browsers report it as "https://*.xn--bcher-kva.example"',
+		],
+		["https://*.exa mple.com", "is not a valid origin"],
 	])("rejects %s", async (pattern, message) => {
 		const { assertOriginMatcher } = await loadOriginPatternModule();
 		expect(() => assertOriginMatcher([pattern], "Matcher")).toThrow(message);
@@ -134,6 +150,8 @@ describe("assertOriginMatcher", () => {
 		"https://*.example.com:8443",
 		"https://a.test",
 		"https://*.Example.com",
+		"HTTPS://*.example.com",
+		"capacitor://*.localhost",
 		"http://localhost:5173",
 		"https://[::1]:8443",
 		"capacitor://localhost",

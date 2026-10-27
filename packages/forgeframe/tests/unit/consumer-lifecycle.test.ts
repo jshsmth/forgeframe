@@ -219,6 +219,28 @@ function dispatchHostMessage(
 	);
 }
 
+/**
+ * Waits until `sourceWindow` receives the reply to the last dispatched
+ * request, so the consumer has finished handling it and a negative assertion
+ * that follows cannot pass only because the handler has not run yet.
+ */
+async function waitForReply(sourceWindow: Window): Promise<void> {
+	const requestId = `req-${dispatchedMessageCount}`;
+	const replied = () =>
+		getPostedMessages(sourceWindow).some(
+			([data]) =>
+				JSON.parse(String(data).slice("forgeframe:".length)).id === requestId,
+		);
+	// Polls microtasks rather than timers, so tests that fake timers do not
+	// advance their clock while waiting.
+	for (let tick = 0; tick < 100 && !replied(); tick++) await Promise.resolve();
+	expect(replied()).toBe(true);
+}
+
+/**
+ * Lets pending promise callbacks run. Only for checks that nothing happens
+ * where no reply or event marks the end of the work.
+ */
 async function flushMessages(): Promise<void> {
 	await Promise.resolve();
 	await Promise.resolve();
@@ -358,7 +380,7 @@ describe("Consumer lifecycle behavior", () => {
 			origin: redirectedOrigin,
 			claimedUid: consumer.uid,
 		});
-		await flushMessages();
+		await waitForReply(hostWindow);
 		await consumer.updateProps({ amount: 2 });
 
 		expect(internal.transport.hostInitialized).toBe(true);
@@ -508,7 +530,7 @@ describe("Consumer lifecycle behavior", () => {
 			data: session,
 			claimedUid: consumer.uid,
 		});
-		await flushMessages();
+		await waitForReply(spoofedWindow);
 
 		expect(internal.transport.hostInitialized).toBe(false);
 		expect(readResponseData(spoofedWindow)).toEqual({ success: false });
@@ -518,7 +540,7 @@ describe("Consumer lifecycle behavior", () => {
 			data: session,
 			claimedUid: consumer.uid,
 		});
-		await flushMessages();
+		await waitForReply(hostWindow);
 
 		expect(readResponseData(hostWindow)).toEqual({ success: true });
 		await expect(waitPromise).resolves.toBeUndefined();
@@ -536,7 +558,7 @@ describe("Consumer lifecycle behavior", () => {
 		dispatchHostMessage(MESSAGE_NAME.CLOSE, spoofedWindow, {
 			claimedUid: consumer.uid,
 		});
-		await flushMessages();
+		await waitForReply(spoofedWindow);
 
 		expect(closeSpy).not.toHaveBeenCalled();
 		expect(readResponseData(spoofedWindow)).toEqual({ success: false });
@@ -544,7 +566,7 @@ describe("Consumer lifecycle behavior", () => {
 		dispatchHostMessage(MESSAGE_NAME.CLOSE, hostWindow, {
 			claimedUid: consumer.uid,
 		});
-		await flushMessages();
+		await waitForReply(hostWindow);
 
 		expect(closeSpy).toHaveBeenCalledTimes(1);
 		expect(readResponseData(hostWindow)).toEqual({ success: true });
@@ -622,7 +644,7 @@ describe("Consumer lifecycle behavior", () => {
 			data: { message: "spoofed host failed" },
 			claimedUid: consumer.uid,
 		});
-		await flushMessages();
+		await waitForReply(spoofedWindow);
 
 		expect(onError).not.toHaveBeenCalled();
 		expect(readResponseData(spoofedWindow)).toEqual({ success: false });
@@ -631,7 +653,7 @@ describe("Consumer lifecycle behavior", () => {
 			data: { message: "host failed" },
 			claimedUid: consumer.uid,
 		});
-		await flushMessages();
+		await waitForReply(hostWindow);
 
 		expect(onError).toHaveBeenCalledWith(
 			expect.objectContaining({ message: "host failed" }),
@@ -650,7 +672,7 @@ describe("Consumer lifecycle behavior", () => {
 			data: { ready: false },
 			claimedUid: consumer.uid,
 		});
-		await flushMessages();
+		await waitForReply(spoofedWindow);
 
 		expect(consumer.exports).toBeUndefined();
 		expect(readResponseData(spoofedWindow)).toEqual({ success: false });
@@ -659,7 +681,7 @@ describe("Consumer lifecycle behavior", () => {
 			data: { ready: true },
 			claimedUid: consumer.uid,
 		});
-		await flushMessages();
+		await waitForReply(hostWindow);
 
 		expect(consumer.exports).toEqual({ ready: true });
 		expect(readResponseData(hostWindow)).toEqual({ success: true });
@@ -693,7 +715,7 @@ describe("Consumer lifecycle behavior", () => {
 			},
 			claimedUid: requester.uid,
 		});
-		await flushMessages();
+		await waitForReply(spoofedWindow);
 
 		expect(readResponseData(spoofedWindow)).toEqual({ success: false });
 
@@ -704,7 +726,7 @@ describe("Consumer lifecycle behavior", () => {
 			},
 			claimedUid: requester.uid,
 		});
-		await flushMessages();
+		await waitForReply(hostWindow);
 
 		expect(readResponseData(hostWindow)).toEqual([
 			{
@@ -754,7 +776,7 @@ describe("Consumer lifecycle behavior", () => {
 			data: { uid: victim.uid, tag: "peer-scope-victim" },
 			claimedUid: requester.uid,
 		});
-		await flushMessages();
+		await waitForReply(hostWindow);
 
 		expect(readResponseData(hostWindow)).toEqual([
 			{
@@ -772,7 +794,7 @@ describe("Consumer lifecycle behavior", () => {
 			},
 			claimedUid: requester.uid,
 		});
-		await flushMessages();
+		await waitForReply(hostWindow);
 
 		expect(readResponseData(hostWindow)).toEqual([
 			{
@@ -830,7 +852,7 @@ describe("Consumer lifecycle behavior", () => {
 			data: {},
 			claimedUid: requester.uid,
 		});
-		await flushMessages();
+		await waitForReply(hostWindow);
 
 		const response = JSON.parse(
 			String(getPostedMessages(hostWindow).at(-1)?.[0]).slice(

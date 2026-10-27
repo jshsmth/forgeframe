@@ -33,6 +33,7 @@ import type {
 } from "../types/runtime";
 import type { Dimensions } from "../types/utility";
 import { CleanupManager } from "../utils/cleanup";
+import { normalizeError } from "../utils/error";
 import { createDeferred, type Deferred } from "../utils/promise";
 import { generateUID } from "../utils/uid";
 import { appendComponentQuery, resolveComponentHostUrl } from "../utils/url";
@@ -901,7 +902,7 @@ export class ConsumerComponent<
 		try {
 			validateExports(this.options.exportsSchema, exports);
 		} catch (error) {
-			this.#emitter.emit(EVENT.ERROR, error as Error);
+			this.#emitter.emit(EVENT.ERROR, normalizeError(error));
 			throw error;
 		}
 		this.exports = exports;

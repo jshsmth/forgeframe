@@ -1,7 +1,7 @@
 # ForgeFrame
 
 [![npm version](https://img.shields.io/npm/v/forgeframe.svg)](https://www.npmjs.com/package/forgeframe)
-[![GitHub Release](https://img.shields.io/github/v/release/jshsmth/ForgeFrame)](https://github.com/jshsmth/ForgeFrame/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/jshsmth/forgeframe)](https://github.com/jshsmth/forgeframe/releases)
 
 A TypeScript library for embedding cross-domain iframes and popups. The embedding page passes typed data and callbacks to a page on another origin, such as a payment form, sign-in widget, third-party integration, or micro-frontend. No runtime dependencies; ships as an ESM build.
 
@@ -238,6 +238,8 @@ if (host) {
 In the consumer app, create an instance with props and render it.
 
 ```typescript
+import { LoginForm } from './login-form';
+
 const login = LoginForm({
   email: 'user@example.com',
   onLogin: (user) => console.log('User logged in:', user),
@@ -256,7 +258,9 @@ See [Instance Lifecycle](#instance-lifecycle) for URL resolution and for closing
 Subscribe to lifecycle events through `instance.event`. `on()` and `once()` return an unsubscribe function, and each handler receives a typed payload.
 
 ```typescript
-const instance = LoginForm({ /* props */ });
+import { LoginForm } from './login-form';
+
+const instance = LoginForm({ onLogin: (user) => console.log('Signed in:', user.name) });
 
 instance.event.on('rendered', () => console.log('Login form is ready'));
 instance.event.on('close', () => console.log('Login form closing'));
@@ -990,7 +994,7 @@ Each option takes origins: a scheme, host and port, such as `https://app.example
 - `peers` decides whether, and to which host origins, a component's instances are listed for peer discovery.
 - Use `hostOrigins` and `consumerOrigins` together for payment, auth, account, and other sensitive workflows.
 
-Each accepts a string, a `RegExp`, or an array mixing them, including a readonly `as const` array. A string is an exact origin, or `'*'` alone, which matches any origin. The only wildcard is a leading `*.` in the host, which stands for one or more labels: `'https://*.example.com'` matches `https://app.example.com` and `https://a.b.example.com`, but not `https://example.com`, `https://evilexample.com` or `http://app.example.com`, and the scheme and port must match exactly. Any other `*`, such as `'https://*example.com'`, `'https://app.example.com*'` or `'https://api.*.example.com'`, a pattern without a scheme, such as `'*.example.com'`, one with a path, such as `'https://app.example.com/'`, and an exact origin in a form browsers never report, such as `'https://App.example.com'` or `'https://example.com:443'`, throw a `VALIDATION` error that names the form to write. Use a `RegExp` for anything more flexible. Empty or blank strings, `null`, and other values throw, so a missing setting such as `process.env.CONSUMER_ORIGIN || ''` cannot silently trust every origin. An empty array throws for `hostOrigins`, `peers`, and `deliverTo`, where it could never match; for `consumerOrigins` it is valid and admits no consumer, so configuration that resolves to nothing fails closed.
+Each accepts a string, a `RegExp`, or an array mixing them, including a readonly `as const` array. A string is an exact origin, or `'*'` alone, which matches any origin. The only wildcard is a leading `*.` in the host, which stands for one or more labels: `'https://*.example.com'` matches `https://app.example.com` and `https://a.b.example.com`, but not `https://example.com`, `https://evilexample.com` or `http://app.example.com`, and the scheme and port must match exactly. Any other `*`, such as `'https://*example.com'`, `'https://app.example.com*'` or `'https://api.*.example.com'`, a pattern without a scheme, such as `'*.example.com'`, one with a path, such as `'https://app.example.com/'`, and an exact origin or wildcard in a form browsers never report, such as `'https://App.example.com'`, `'https://example.com:443'` or `'https://*.example.com:443'`, throw a `VALIDATION` error that names the form to write. Use a `RegExp` for anything more flexible. Empty or blank strings, `null`, and other values throw, so a missing setting such as `process.env.CONSUMER_ORIGIN || ''` cannot silently trust every origin. An empty array throws for `hostOrigins`, `peers`, and `deliverTo`, where it could never match; for `consumerOrigins` it is valid and admits no consumer, so configuration that resolves to nothing fails closed.
 
 No matcher, including `'*'` or a match-all `RegExp`, ever admits an opaque (`"null"`) origin, such as a document sandboxed without `allow-same-origin`. Every opaque document serializes the same way, so the origin cannot identify a peer.
 
@@ -1136,18 +1140,19 @@ Codes cross windows: a prop update the host rejects arrives as `VALIDATION`, as 
 
 ## Versioning
 
-ForgeFrame follows semantic versioning for its public API. Breaking changes ship only in a new major version; minor and patch releases add features and fix bugs without breaking existing callers. Error message text is not part of the API: branch on `ForgeFrameError.code` (see [Errors](#errors)). Read the [GitHub release notes](https://github.com/jshsmth/ForgeFrame/releases) before upgrading.
+ForgeFrame follows semantic versioning for its public API. Breaking changes ship only in a new major version; minor and patch releases add features and fix bugs without breaking existing callers. Error message text is not part of the API: branch on `ForgeFrameError.code` (see [Errors](#errors)). Read the [GitHub release notes](https://github.com/jshsmth/forgeframe/releases) before upgrading.
 
 In 2.x:
 
 - Minor releases may add error codes, lifecycle events, options and host controls. Existing failures keep their codes, so give every `switch` on `error.code` a `default` branch. A peer that receives a code its version does not know sees a plain `Error` with the message.
 - A newer 2.x side may send a request an older 2.x side does not know; the older side answers `VERSION_MISMATCH` at once instead of timing out, so a feature the other side lacks fails fast. Run the same 2.x version on both sides when you can.
 - Minimum supported versions (browsers, Node.js for tooling, TypeScript) move only in a minor release, and the release notes say so. 2.0.0 needs TypeScript 5.0 or later.
+- A minor or patch release may tighten a type so that code which already failed at runtime stops compiling, as 2.1.0 did for `updateProps()` with `undefined` for a required prop. Runtime behavior that worked keeps working.
 
 Upgrading:
 
 - **From 1.x:** follow [Migrating from v1 to v2](#migrating-from-v1-to-v2). Install the same 2.x version in the consumer and the host and deploy them together. A v2 host's `initHost()` throws an upgrade error when a 1.x consumer embeds it, and a v2 consumer's handshake timeout says to check that both sides run the same ForgeFrame major version when a 1.x host cannot start.
-- **From 1.0.x:** read the [1.1.0 release notes](https://github.com/jshsmth/ForgeFrame/releases/tag/v1.1.0) first; the migration guide starts from 1.1.0.
+- **From 1.0.x:** read the [1.1.0 release notes](https://github.com/jshsmth/forgeframe/releases/tag/v1.1.0) first; the migration guide starts from 1.1.0.
 - **From 0.x:** upgrade straight to 2.x with the migration guide. A v2 host refuses 0.x consumers the same way it refuses 1.x consumers.
 
 ---
@@ -1714,7 +1719,7 @@ For a custom deployment, set `VITE_HOST_URL` in the consumer build and `VITE_CON
 
 ### Architecture and Ownership
 
-The [architecture guide](https://github.com/jshsmth/ForgeFrame/blob/main/docs/architecture.md) covers state ownership and the render/bootstrap, props, callback, and React flows. The [callable reference](https://github.com/jshsmth/ForgeFrame/blob/main/docs/callables/_index.md) classifies runtime responsibilities and links their boundary tests.
+The [architecture guide](https://github.com/jshsmth/forgeframe/blob/main/docs/architecture.md) covers state ownership and the render/bootstrap, props, callback, and React flows. The [callable reference](https://github.com/jshsmth/forgeframe/blob/main/docs/callables/_index.md) classifies runtime responsibilities and links their boundary tests.
 
 - The package has two entries, built together so they share one copy of the core: `packages/forgeframe/src/index.ts` (`forgeframe`) defines the public exports, and `src/react.ts` (`forgeframe/react`) exports the React adapter. Other source barrels are internal.
 - `core/component.ts` owns component factories and instance tracking. `core/consumer.ts` coordinates rendering, the prop pipeline, and transport; `core/host/` owns host bootstrap, the `Host` handle and the host's props.
@@ -1724,7 +1729,7 @@ The [architecture guide](https://github.com/jshsmth/ForgeFrame/blob/main/docs/ar
 
 ### Project Wiki
 
-Contributor knowledge lives in the [development wiki](https://github.com/jshsmth/ForgeFrame/blob/main/docs/_index.md), managed with [Plasma Wiki](https://docs.plasma.ai/wiki/guide/index.html). The CLI generates page metadata and index navigation, and a GitHub Actions check fails on stale indexes or wiki lint issues.
+Contributor knowledge lives in the [development wiki](https://github.com/jshsmth/forgeframe/blob/main/docs/_index.md), managed with [Plasma Wiki](https://docs.plasma.ai/wiki/guide/index.html). The CLI generates page metadata and index navigation, and a GitHub Actions check fails on stale indexes or wiki lint issues.
 
 Install Python 3.11 or newer and the pinned CLI with `uv tool install plasma-wiki==1.9.0` (or `pipx install plasma-wiki==1.9.0`). Browse with `wiki map --path docs`, search with `wiki search --path docs "callback"`, and read a page with `wiki read architecture --path docs`. The pages are plain Markdown and can also be read directly.
 
@@ -1758,9 +1763,9 @@ Tests and playground bindings use explicit value guards, so a missing fixture or
 | `npm run test:package` | Pack and install the built library in an isolated project; verify both entries' ESM imports, `require()` through the `default` condition, and NodeNext consumer types (root types checked before React is installed, and again with TypeScript 5.0, which it downloads); compile every README TypeScript example outside the migration guide. Mark a block that is not meant to compile with `<!-- readme-check: skip -->` on the line before it |
 | `npm run release:check` | Lint, types, tests once with coverage, builds, bundle size, dependency audit, package dry run, and installed-package checks; does not publish |
 
-See the [test index](https://github.com/jshsmth/ForgeFrame/blob/main/packages/forgeframe/tests/README.md) for suite selection and single-file commands. jsdom tests do not replace browser testing of cross-origin navigation, popup blockers, or visual behavior. `npm audit` needs registry access; if the audit service fails, the release check is incomplete even when the local checks pass.
+See the [test index](https://github.com/jshsmth/forgeframe/blob/main/packages/forgeframe/tests/README.md) for suite selection and single-file commands. jsdom tests do not replace browser testing of cross-origin navigation, popup blockers, or visual behavior. `npm audit` needs registry access; if the audit service fails, the release check is incomplete even when the local checks pass.
 
-Install browser engines with `npx playwright install chromium firefox webkit` before running `npm run test:browser`. CI installs their system dependencies and runs all three engines on Node 24, with one retry: a test that passes only on retry still fails the run, and the traces, screenshots and videos of failed tests are uploaded as the `playwright-report` artifact. A release needs both the local checks and hosted CI to pass. WebKit covers the Safari engine, not physical Safari or devices.
+Install browser engines with `npx playwright install chromium firefox webkit` before running `npm run test:browser`. CI runs all three engines on Node 24 in the Playwright container image, which ships the browsers and their system libraries; keep the image tag in `.github/workflows/test.yml` in step with `@playwright/test`. Browser tests get one retry: a test that passes only on retry still fails the run, and the traces, screenshots and videos of failed tests are uploaded as the `playwright-report` artifact. A release needs both the local checks and hosted CI to pass. WebKit covers the Safari engine, not physical Safari or devices.
 
 Edit documentation in the root `README.md`. The library build copies it to `packages/forgeframe/README.md` for npm; commit the refreshed copy and do not edit it directly. TypeScript generates the declarations under `dist/`, and `scripts/fix-dts-imports.mjs` adjusts them for NodeNext consumers; do not edit them by hand.
 
@@ -1777,7 +1782,7 @@ A version with a pre-release component, such as `2.1.0-beta.1`, publishes under 
 
 If the workflow fails before anything reaches npm, fix the problem through a normal pull request, then recreate the tag on the fixed commit or use the next pre-release number. If npm published but a later step failed, do not publish again: create the GitHub release by hand from the tag. A published version number can never be reused; fix a bad release with a new patch version and deprecate the bad one if necessary.
 
-Trusted publishing needs a one-time setup on npmjs.com: in the `forgeframe` package settings, add a trusted publisher for this GitHub repository with the workflow file `release.yml`. `npm run release` still publishes from a local machine after `npm run release:check`, without the browser suite, and that copy has no provenance.
+Trusted publishing needs a one-time setup on npmjs.com: in the `forgeframe` package settings, add a trusted publisher for this GitHub repository with the workflow file `release.yml`. There is no local publish script: every release goes through the workflow, so each published version has provenance and passed the browser suite.
 
 There are no `release:patch`, `release:minor`, or `release:major` scripts, because workspace versioning does not create commits or tags. `npm run release:check` verifies locally without publishing or pushing.
 

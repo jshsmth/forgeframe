@@ -37,4 +37,9 @@ npm run test:coverage
 For cross-window, popup, or React lifecycle changes, also run
 `npm run test:browser`, which needs the engines from
 `npx playwright install chromium firefox webkit`. For documentation changes,
-run `npm run docs:check`.
+run `npm run docs:check`. Before a release, or to run everything CI checks
+except the browser suite and the wiki, run `npm run release:check`.
+
+Pull requests run the Test workflow (unit, integration, package and bundle
+checks on Node 22, 24 and 26, plus the browser suite) and the Documentation
+workflow. Every job must pass before merging.

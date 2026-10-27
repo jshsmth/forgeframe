@@ -345,13 +345,10 @@ describe("render template helpers", () => {
 			expect(prerender.style.transition).toBe("opacity 150ms ease-out");
 			expect(actual.style.display).toBe("none");
 
-			vi.advanceTimersByTime(149);
-			await Promise.resolve();
+			await vi.advanceTimersByTimeAsync(149);
 			expect(container.contains(prerender)).toBe(true);
 
-			vi.advanceTimersByTime(1);
-			await Promise.resolve();
-			await Promise.resolve();
+			await vi.advanceTimersByTimeAsync(1);
 
 			expect(container.contains(prerender)).toBe(false);
 			expect(actual.style.display).toBe("");
@@ -387,13 +384,10 @@ describe("render template helpers", () => {
 			expect(actual.style.opacity).toBe("1");
 			expect(actual.style.transition).toBe("opacity 150ms ease-in");
 
-			vi.advanceTimersByTime(149);
-			await Promise.resolve();
+			await vi.advanceTimersByTimeAsync(149);
 			expect(resolved).toBe(false);
 
-			vi.advanceTimersByTime(1);
-			await Promise.resolve();
-			await Promise.resolve();
+			await vi.advanceTimersByTimeAsync(1);
 			expect(resolved).toBe(true);
 		});
 

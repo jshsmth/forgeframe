@@ -322,7 +322,7 @@ export class ConsumerTransport<
 					),
 			);
 		} catch (err) {
-			onError(err as Error);
+			onError(normalizeError(err));
 			throw err;
 		} finally {
 			if (this.initPromise === initPromise) {

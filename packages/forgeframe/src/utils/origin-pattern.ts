@@ -117,8 +117,9 @@ export function testOriginRegExpStateless(
  * them, is an empty array where `emptyArray` is `"rejected"`, lists a string
  * without a scheme, such as `example.com` or `*.example.com`, or puts `*`
  * anywhere but the leading host labels, as in `https://*.example.com`, or
- * lists an exact origin in a form browsers never report, such as
- * `https://Shop.example.com` or `https://example.com:443`.
+ * lists an exact origin or wildcard in a form browsers never report, such
+ * as `https://Shop.example.com`, `https://example.com:443` or
+ * `https://*.example.com:443`.
  *
  * @internal
  */
@@ -152,17 +153,21 @@ export function assertOriginMatcher(
 	}
 	const withPath = entries.find(hasPathOrQuery);
 	if (withPath !== undefined) {
+		const base = withPath.replace(/^([^:]+:\/\/[^/?#]*).*$/, "$1");
+		const canonical = readCanonicalPattern(base);
 		throw new ForgeFrameError(
 			"VALIDATION",
-			`${option} lists "${withPath}", but an origin has no path, query or fragment; write only the scheme, host and port, such as "${withPath.replace(/^([^:]+:\/\/[^/?#]*).*$/, "$1")}"`,
+			/^file:/i.test(base)
+				? `${option} lists "${withPath}", which is not a valid origin and can never match one`
+				: `${option} lists "${withPath}", but an origin has no path, query or fragment; write only the scheme, host and port, such as "${canonical && canonical !== "null" ? canonical : base}"`,
 		);
 	}
 	const nonCanonical = entries.find(isNonCanonicalOrigin);
 	if (nonCanonical !== undefined) {
-		const origin = readOrigin(nonCanonical);
+		const origin = readCanonicalPattern(nonCanonical);
 		throw new ForgeFrameError(
 			"VALIDATION",
-			origin === undefined
+			origin === undefined || origin === "null"
 				? `${option} lists "${nonCanonical}", which is not a valid origin and can never match one`
 				: `${option} lists "${nonCanonical}", which can never match because browsers report it as "${origin}"; write that instead`,
 		);
@@ -190,15 +195,43 @@ function hasPathOrQuery(entry: unknown): entry is string {
 }
 
 /**
- * Whether an exact origin string differs from the origin browsers report for
- * it, such as `https://Shop.example.com`, `https://example.com:443` or one
- * with userinfo, so it can never match. A custom scheme such as
- * `capacitor://localhost` has no URL origin to compare, so it is kept.
+ * Whether an exact origin string or a leading-label wildcard differs from the
+ * form browsers report, such as `https://Shop.example.com`,
+ * `https://*.example.com:443` or one with userinfo, so it can never match.
+ * Wildcards match case-insensitively, so case alone does not count. A custom
+ * scheme such as `capacitor://localhost` has no URL origin to compare, so it
+ * is kept. Misplaced wildcards are left to `isMisplacedWildcard`.
  */
 function isNonCanonicalOrigin(entry: unknown): entry is string {
-	if (typeof entry !== "string" || entry.includes("*")) return false;
-	const origin = readOrigin(entry);
-	return origin !== "null" && origin !== entry;
+	if (typeof entry !== "string" || entry === "*") return false;
+	const wildcard = entry.includes("*");
+	if (wildcard && !LEADING_LABEL_WILDCARD.test(entry)) return false;
+	const canonical = readCanonicalPattern(entry);
+	// A file: URL has an opaque origin, which no matcher admits.
+	if (canonical === "null") return /^file:/i.test(entry);
+	return wildcard
+		? canonical?.toLowerCase() !== entry.toLowerCase()
+		: canonical !== entry;
+}
+
+/**
+ * The form browsers report for an exact origin or a `scheme://*.rest`
+ * wildcard: `"null"` for a custom scheme, or `undefined` when it does not
+ * parse. A wildcard is read through a probe label in place of `*`.
+ */
+function readCanonicalPattern(entry: string): string | undefined {
+	// The URL parser reads a backslash as a path separator, which would
+	// silently cut the host short.
+	if (entry.includes("\\")) return undefined;
+	const wildcard = LEADING_LABEL_WILDCARD.exec(entry);
+	if (!wildcard) return readOrigin(entry);
+	const scheme = wildcard[1] ?? "";
+	const origin = readOrigin(`${scheme}x.${wildcard[2] ?? ""}`);
+	if (origin === undefined || origin === "null") return origin;
+	const probePrefix = `${scheme.toLowerCase()}x.`;
+	return origin.startsWith(probePrefix)
+		? `${scheme.toLowerCase()}*.${origin.slice(probePrefix.length)}`
+		: undefined;
 }
 
 /**
