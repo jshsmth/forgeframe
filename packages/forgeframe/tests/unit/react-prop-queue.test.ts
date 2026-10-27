@@ -5,6 +5,7 @@ import {
 	enqueuePropSnapshot,
 	failPropUpdate,
 	type ReactPropQueue,
+	shallowEqualProps,
 	snapshotProps,
 } from "@/drivers/react/prop-sync";
 
@@ -59,5 +60,17 @@ describe("React prop commit and retry policy", () => {
 		failPropUpdate(queue, queue.queue[0]);
 		expect(queue.queue).toEqual([]);
 		expect(enqueuePropSnapshot(queue, { count: 2 })).toBe(true);
+	});
+});
+
+describe("shallowEqualProps", () => {
+	it.each([
+		[{ a: 1 }, { a: 1 }, true],
+		[{ a: 1 }, { a: 2 }, false],
+		[{ a: 1 }, { a: 1, b: 2 }, false],
+		// Same number of keys, different names, equal (undefined) values.
+		[{ a: undefined }, { b: undefined }, false],
+	])("compares %j with %j: %s", (previous, next, equal) => {
+		expect(shallowEqualProps(previous, next)).toBe(equal);
 	});
 });

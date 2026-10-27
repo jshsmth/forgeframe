@@ -292,6 +292,25 @@ describe("watchPopupClose", () => {
 		expect(callback).toHaveBeenCalledTimes(1);
 	});
 
+	it("logs a close callback that throws", () => {
+		const failure = new Error("callback failed");
+		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+		watchPopupClose(
+			{ closed: true } as Window,
+			() => {
+				throw failure;
+			},
+			{ initialInterval: 100, maxInterval: 100, multiplier: 1 },
+		);
+		vi.advanceTimersByTime(100);
+
+		expect(consoleSpy).toHaveBeenCalledExactlyOnceWith(
+			"Error in popup close callback:",
+			failure,
+		);
+	});
+
 	it("should use default interval of 100ms (with exponential backoff)", () => {
 		const callback = vi.fn();
 		let isClosed = false;

@@ -30,6 +30,19 @@ describe("createIframeElement", () => {
 		expect(iframe.style.height).toBe("300px");
 	});
 
+	it("skips style entries whose value is undefined", () => {
+		const iframe = createIframeElement({
+			name: "test-iframe",
+			dimensions: { width: 100, height: 100 },
+			sandbox: null,
+			style: { "--brand": undefined, color: "red" },
+		});
+
+		// A custom property would otherwise store the literal "undefined".
+		expect(iframe.style.getPropertyValue("--brand")).toBe("");
+		expect(iframe.style.color).toBe("red");
+	});
+
 	it("should set default frame attributes", () => {
 		const iframe = createIframeElement({
 			name: "test-iframe",
