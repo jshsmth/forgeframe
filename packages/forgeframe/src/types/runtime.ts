@@ -512,13 +512,16 @@ export interface ComponentInstance<
 /**
  * Component factory function and static properties.
  *
- * @typeParam Props - The normalized props the host receives
+ * @typeParam Props - The normalized props, as the consumer holds them
  * @typeParam Input - The factory input, inferred from the prop schemas: defaults
  * make keys optional and coercions accept wider types than the props. The
  * props argument is required exactly when a key of `Input` is required.
  * @typeParam Exports - The value the host exports, from the `exports` schema
  * @typeParam HostProps - The normalized props the host receives: `Props`
- * without `sendToHost: false` props, with `deliverTo` props optional
+ * without `sendToHost: false` props, with `deliverTo` props optional. It
+ * defaults to `Props`, so a three-parameter annotation or a `Component<P>`
+ * parameter rejects a component that withholds props; use `typeof C`, or
+ * constrain generics with {@link AnyComponent}.
  *
  * @remarks
  * This is the return type of `create()`. Call it to create consumer

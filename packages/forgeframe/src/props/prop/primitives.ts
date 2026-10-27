@@ -356,7 +356,7 @@ export class DateSchema extends PropSchema<Date> {
 	 * @param date - Minimum date, inclusive.
 	 * @returns A cloned date schema with the minimum date constraint.
 	 *
-	 * @throws Error if `date` is an invalid `Date`.
+	 * @throws ForgeFrameError `VALIDATION` if `date` is an invalid `Date`.
 	 */
 	min(date: Date): DateSchema {
 		const minTime = validateDateBound(date, "min");
@@ -373,7 +373,7 @@ export class DateSchema extends PropSchema<Date> {
 	 * @param date - Maximum date, inclusive.
 	 * @returns A cloned date schema with the maximum date constraint.
 	 *
-	 * @throws Error if `date` is an invalid `Date`.
+	 * @throws ForgeFrameError `VALIDATION` if `date` is an invalid `Date`.
 	 */
 	max(date: Date): DateSchema {
 		const maxTime = validateDateBound(date, "max");

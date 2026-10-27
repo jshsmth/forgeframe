@@ -29,6 +29,11 @@ export type PropDelivery = "same-origin" | OriginMatcher;
  * normalized values again with the same schema at later trust boundaries,
  * including on the host.
  *
+ * Annotating an entry with this type widens `sendToHost` and `deliverTo` to
+ * optional, so {@link InferHostProps} types the prop as delivered even when
+ * it is withheld. Use `satisfies PropDefinition<T>` to keep the literal
+ * options for the host type.
+ *
  * @example
  * ```typescript
  * import { prop } from 'forgeframe';
@@ -107,6 +112,10 @@ export type SelfAcceptanceError =
  * a separate input type. TypeScript cannot check here that a schema accepts
  * its own output, so the runtime checks it when props are normalized;
  * `create()` also checks it at compile time.
+ *
+ * Prefer `satisfies` over an annotation when an entry sets `sendToHost: false`
+ * or `deliverTo`: an annotated map loses those literal options, so
+ * {@link InferHostProps} types every prop as delivered.
  *
  * @example
  * ```typescript
@@ -245,7 +254,8 @@ type OptionalHostPropDefinitionKeys<D extends Record<string, unknown>> =
  * out props declared `sendToHost: false`, and makes props with a `deliverTo`
  * option optional, because whether a host receives them depends on its
  * origin. It reads the literal options of each entry, so an entry annotated
- * as `PropDefinition<T>`, whose options are optional, counts as delivered.
+ * as `PropDefinition<T>`, whose options are optional, counts as delivered;
+ * check such definitions with `satisfies` instead.
  *
  * @typeParam D - A map of prop names to schema-backed definitions.
  * @public

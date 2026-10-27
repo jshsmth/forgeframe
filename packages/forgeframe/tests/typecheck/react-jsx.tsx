@@ -12,7 +12,12 @@ import {
 	type ReactElement,
 } from "react";
 import { z } from "zod";
-import { type AnyComponent, create, prop } from "../../src";
+import {
+	type AnyComponent,
+	create,
+	type PropDefinition,
+	prop,
+} from "../../src";
 import {
 	createReactComponent,
 	type ReactComponentOf,
@@ -41,6 +46,24 @@ const missingRequired = <RequiredReact />;
 const requiredUndefined = <RequiredReact label={undefined} />;
 void missingRequired;
 void requiredUndefined;
+
+// An entry annotated as PropDefinition<T> keeps T as its JSX input.
+const annotatedCode: PropDefinition<string> = { schema: prop.string() };
+const AnnotatedReact = createReactComponent(
+	create({
+		tag: "annotated-react-typecheck",
+		url: "https://example.com/annotated",
+		props: { code: annotatedCode },
+	}),
+);
+const annotatedElement = <AnnotatedReact code="a" />;
+// @ts-expect-error an annotated entry stays required in JSX
+const annotatedMissing = <AnnotatedReact />;
+// @ts-expect-error an annotated entry keeps its type as JSX input
+const annotatedWrongType = <AnnotatedReact code={42} />;
+void annotatedElement;
+void annotatedMissing;
+void annotatedWrongType;
 
 // The container ref is the wrapper's div.
 const containerRef = createRef<HTMLDivElement>();

@@ -3,16 +3,23 @@
  *
  * Pins prop and exports inference through `initHost(Component, ...)`,
  * `HostPropsOf` and `HostOf`, the `Host` handle it returns, the tag-agnostic form's
- * inferred props, and the v1 start-up and read paths that no longer exist.
+ * inferred props, how annotated and `satisfies` definitions type withheld
+ * props, and the v1 start-up and read paths that no longer exist.
  */
 // @ts-expect-error ForgeFrame 2 has no default export; use named imports.
 import ForgeFrame, {
+	type AnyComponent,
+	type Component,
 	create,
+	type ExportsOf,
 	type Host,
 	type HostOf,
 	type HostPropsOf,
 	type InitHostOptions,
+	type InputOf,
 	initHost,
+	type PropDefinition,
+	type PropsDefinition,
 	type PropsOf,
 	prop,
 	type RemoteValue,
@@ -232,6 +239,34 @@ const withheldConsumerProps: IsEquivalent<
 > = true;
 void withheldConsumerProps;
 
+// HostProps defaults to Props, so a component that withholds props needs
+// `typeof C`, an AnyComponent constraint or the fourth type argument: the raw
+// host props, before callbacks become promise-returning.
+type WithheldProps = PropsOf<typeof WithheldForm>;
+type WithheldInput = InputOf<typeof WithheldForm>;
+type WithheldExports = ExportsOf<typeof WithheldForm>;
+// @ts-expect-error the three-parameter form types the host props as Props
+const threeParameterForm: Component<
+	WithheldProps,
+	WithheldInput,
+	WithheldExports
+> = WithheldForm;
+void threeParameterForm;
+const fourParameterForm: Component<
+	WithheldProps,
+	WithheldInput,
+	WithheldExports,
+	Omit<WithheldProps, "onClose" | "secret" | "token"> & {
+		secret?: string;
+		token?: string;
+	}
+> = WithheldForm;
+void fourParameterForm;
+function acceptAnyComponent<C extends AnyComponent>(component: C): C {
+	return component;
+}
+void acceptAnyComponent(WithheldForm);
+
 const withheldHost = initHost(WithheldForm, { consumerOrigins: "*" });
 const withheldHandle: HostOf<typeof WithheldForm> | null = withheldHost;
 void withheldHandle;
@@ -264,4 +299,74 @@ if (agnosticWithheld) {
 		{ label: string; scoped?: string }
 	> = true;
 	void agnosticProps;
+}
+
+// The host type reads each entry's literal options. `satisfies` keeps them, so
+// a withheld prop is left out; an annotation widens them to `sendToHost?:
+// boolean`, so every annotated prop is typed as delivered, although a
+// sendToHost: false prop is undefined on the host at runtime.
+interface CheckoutProps {
+	amount: number;
+	onClose: () => void;
+}
+const checkoutEntries = {
+	amount: prop.number(),
+	onClose: { schema: prop.function<() => void>(), sendToHost: false },
+} satisfies PropsDefinition<CheckoutProps>;
+const annotatedCheckoutEntries: PropsDefinition<CheckoutProps> =
+	checkoutEntries;
+const SatisfiedCheckout = create({
+	tag: "typed-satisfied-checkout",
+	url: "https://pay.example.com/checkout",
+	props: checkoutEntries,
+});
+const AnnotatedCheckout = create({
+	tag: "typed-annotated-checkout",
+	url: "https://pay.example.com/checkout",
+	props: annotatedCheckoutEntries,
+});
+const satisfiedCheckoutHost: IsEquivalent<
+	HostPropsOf<typeof SatisfiedCheckout>,
+	{ amount: number }
+> = true;
+void satisfiedCheckoutHost;
+// Host callbacks return promises.
+type AnnotatedCheckoutHostProps = {
+	amount: number;
+	onClose: () => Promise<void>;
+};
+const annotatedCheckoutHost: IsEquivalent<
+	HostPropsOf<typeof AnnotatedCheckout>,
+	AnnotatedCheckoutHostProps
+> = true;
+void annotatedCheckoutHost;
+
+const satisfiedEntry = {
+	schema: prop.string(),
+	sendToHost: false,
+} satisfies PropDefinition<string>;
+const annotatedEntry: PropDefinition<string> = satisfiedEntry;
+const EntryForms = create({
+	tag: "typed-entry-forms",
+	url: "https://pay.example.com/entries",
+	props: { satisfied: satisfiedEntry, annotated: annotatedEntry },
+});
+const entryFormsHost: IsEquivalent<
+	HostPropsOf<typeof EntryForms>,
+	{ annotated: string }
+> = true;
+void entryFormsHost;
+
+// The tag-agnostic form reads the same options.
+const annotatedAgnostic = initHost({
+	consumerOrigins: "*",
+	props: annotatedCheckoutEntries,
+});
+if (annotatedAgnostic) {
+	const props = await annotatedAgnostic.ready;
+	const annotatedAgnosticProps: IsEquivalent<
+		typeof props,
+		AnnotatedCheckoutHostProps
+	> = true;
+	void annotatedAgnosticProps;
 }
