@@ -57,7 +57,8 @@ function collect(
 	result: Awaited<ReturnType<typeof build>>,
 ): void {
 	const built = Array.isArray(result) ? result[0] : result;
-	if (!("output" in built)) throw new Error("Unexpected watch build");
+	if (built === undefined || !("output" in built))
+		throw new Error("Unexpected watch build");
 	for (const entry of built.output)
 		files.set(
 			entry.fileName,

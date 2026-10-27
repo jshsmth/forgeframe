@@ -18,10 +18,11 @@ import {
 	normalizeDemoCardNumber,
 	shouldDeclineAttempt,
 } from "../../../playground/payment/simulation";
+import { requireValue } from "../require-value";
 
 function sample() {
 	const invoices = seedInvoices();
-	const invoice = invoices[0];
+	const invoice = requireValue(invoices[0]);
 	const session: PaymentSessionState = { invoice, cancelled: false };
 	const receipt: DemoReceipt = {
 		invoiceId: invoice.id,
@@ -287,16 +288,18 @@ describe("merchant payment acceptance", () => {
 
 	it("keeps invoice continuation independent from payment and reset admission", () => {
 		const { invoices, invoice, receipt } = sample();
-		invoices[1].receipt = { ...receipt, invoiceId: invoices[1].id };
+		const second = requireValue(invoices[1]);
+		const third = requireValue(invoices[2]);
+		second.receipt = { ...receipt, invoiceId: second.id };
 		expect(paymentControls(invoices, invoice, false, false)).toEqual({
 			busy: false,
 			paid: false,
-			nextInvoice: invoices[2],
+			nextInvoice: third,
 		});
 		expect(paymentControls(invoices, invoice, true, false).busy).toBe(true);
 		expect(paymentControls(invoices, invoice, false, true).busy).toBe(true);
 		invoice.receipt = receipt;
-		invoices[2].receipt = { ...receipt, invoiceId: invoices[2].id };
+		third.receipt = { ...receipt, invoiceId: third.id };
 		expect(paymentControls(invoices, invoice, false, false)).toEqual({
 			busy: false,
 			paid: true,

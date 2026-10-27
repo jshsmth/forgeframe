@@ -143,7 +143,7 @@ export function renderInvoices(
 		for (const [label, value] of [
 			["Receipt", receipt.transactionId],
 			["Paid", paidAt],
-		]) {
+		] as const) {
 			const row = document.createElement("div");
 			row.append(text("dt", label), text("dd", value));
 			metadata.append(row);

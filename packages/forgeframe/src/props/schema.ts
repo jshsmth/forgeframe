@@ -127,7 +127,9 @@ export interface StandardSchemaV1Issue {
 	/** Human-readable error message */
 	readonly message: string;
 	/** Path to the invalid value (for nested objects/arrays) */
-	readonly path?: ReadonlyArray<PropertyKey | StandardSchemaV1PathSegment>;
+	readonly path?:
+		| ReadonlyArray<PropertyKey | StandardSchemaV1PathSegment>
+		| undefined;
 	/** Optional machine-readable error code */
 	readonly code?: string | undefined;
 	/** The input value that caused this issue */

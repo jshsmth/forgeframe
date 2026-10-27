@@ -128,16 +128,16 @@ export class TupleSchema<
 
 	constructor(schemas: S) {
 		super();
-		// Copy positions while retaining the caller's inferred tuple shape.
-		const items: PropSchema<unknown, unknown>[] = [];
-		for (let index = 0; index < schemas.length; index++) {
+		// Copy own positions, so a shadowed iterator or null prototype cannot
+		// change the snapshot, while retaining the caller's inferred tuple shape.
+		const items: S = Object.assign([], schemas);
+		for (let index = 0; index < items.length; index++) {
 			assertNestedSchema(
-				schemas[index],
+				items[index],
 				`prop.tuple() requires a schema at position ${index}. Use prop.any() for a value that is deliberately unchecked.`,
 			);
-			items.push(schemas[index]);
 		}
-		this._itemSchemas = items as unknown as S;
+		this._itemSchemas = items;
 	}
 
 	/** @internal */
@@ -365,8 +365,8 @@ function validateTupleItems<S extends readonly PropSchema<unknown, unknown>[]>(
 ): StandardSchemaV1Result<InferTupleShape<S>> {
 	const validated: unknown[] = [];
 
-	for (let i = 0; i < itemSchemas.length; i++) {
-		const result = validateSchemaSync(itemSchemas[i], value[i]);
+	for (const [i, itemSchema] of itemSchemas.entries()) {
+		const result = validateSchemaSync(itemSchema, value[i]);
 		if (result.issues) {
 			return { issues: prependIssuePath(result.issues, i) };
 		}

@@ -224,11 +224,13 @@ export function createComponent(
 	const component = create({
 		tag: uniqueTag,
 		url: config.url,
-		dimensions,
 		style: config.style as Record<string, string>,
-		attributes: config.attributes,
-		initTimeout: config.timeout,
 		props: buildPropsSchema(config),
+		...(dimensions === undefined ? {} : { dimensions }),
+		...(config.attributes === undefined
+			? {}
+			: { attributes: config.attributes }),
+		...(config.timeout === undefined ? {} : { initTimeout: config.timeout }),
 	});
 
 	return component;

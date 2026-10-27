@@ -100,7 +100,7 @@ void callableHostName;
 interface LoginProps {
 	email: string;
 	rememberMe: boolean;
-	ref?: string;
+	ref?: string | undefined;
 	onLogin: (user: { id: string }) => void;
 }
 

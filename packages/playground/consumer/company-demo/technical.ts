@@ -1,4 +1,5 @@
 import { formatMoney } from "../../payment/contract";
+import { requireValue } from "../../require-value";
 import { element } from "./ui";
 
 /** Display-only observations, never a replacement for the real ForgeFrame channel. */
@@ -213,7 +214,7 @@ function renderSource(): void {
 	element("#source-filename").textContent = filename(source);
 }
 function renderStep(): void {
-	const step = steps[selectedStep];
+	const step = requireValue(steps[selectedStep]);
 	const observed = current().steps[selectedStep];
 	for (const button of document.querySelectorAll<HTMLButtonElement>(
 		"[data-step]",

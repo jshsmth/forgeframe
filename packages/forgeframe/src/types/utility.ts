@@ -58,15 +58,15 @@ export interface Dimensions {
  */
 export interface IframeAttributes {
 	/** Title attribute for accessibility */
-	title?: string;
+	title?: string | undefined;
 	/** Permissions policy (e.g., 'camera; microphone') */
-	allow?: string;
+	allow?: string | undefined;
 	/** Allow fullscreen mode */
-	allowFullscreen?: boolean;
+	allowFullscreen?: boolean | undefined;
 	/** Loading strategy */
-	loading?: "lazy" | "eager";
+	loading?: "lazy" | "eager" | undefined;
 	/** Referrer policy */
-	referrerPolicy?: ReferrerPolicy;
+	referrerPolicy?: ReferrerPolicy | undefined;
 	/** Not allowed: set the sandbox with the component's `sandbox` option. */
 	sandbox?: never;
 	/** Additional custom attributes */

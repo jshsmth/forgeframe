@@ -14,6 +14,7 @@ import {
 import { MESSAGE_TYPE } from "@/constants";
 import { forgeFrameError } from "../forgeframe-error";
 import { createFrameWindow } from "../frame-window";
+import { requireValue } from "../require-value";
 
 type SourceWindow = Window & { postMessage: ReturnType<typeof vi.fn> };
 
@@ -215,9 +216,9 @@ describe("Messenger", () => {
 
 			// Simulate response
 			const sentMessage = JSON.parse(
-				(
-					targetWindow.postMessage as ReturnType<typeof vi.fn>
-				).mock.calls[0][0].slice("forgeframe:".length),
+				requireValue(
+					(targetWindow.postMessage as ReturnType<typeof vi.fn>).mock.calls[0],
+				)[0].slice("forgeframe:".length),
 			);
 
 			const response = createResponseMessage(
@@ -288,9 +289,9 @@ describe("Messenger", () => {
 			);
 
 			const sentMessage = JSON.parse(
-				(
-					targetWindow.postMessage as ReturnType<typeof vi.fn>
-				).mock.calls[0][0].slice("forgeframe:".length),
+				requireValue(
+					(targetWindow.postMessage as ReturnType<typeof vi.fn>).mock.calls[0],
+				)[0].slice("forgeframe:".length),
 			);
 
 			const response = createResponseMessage(
@@ -317,9 +318,9 @@ describe("Messenger", () => {
 			);
 
 			const sentMessage = JSON.parse(
-				(
-					targetWindow.postMessage as ReturnType<typeof vi.fn>
-				).mock.calls[0][0].slice("forgeframe:".length),
+				requireValue(
+					(targetWindow.postMessage as ReturnType<typeof vi.fn>).mock.calls[0],
+				)[0].slice("forgeframe:".length),
 			);
 
 			const spoofedResponse = createResponseMessage(
@@ -356,9 +357,9 @@ describe("Messenger", () => {
 			);
 
 			const sentMessage = JSON.parse(
-				(
-					targetWindow.postMessage as ReturnType<typeof vi.fn>
-				).mock.calls[0][0].slice("forgeframe:".length),
+				requireValue(
+					(targetWindow.postMessage as ReturnType<typeof vi.fn>).mock.calls[0],
+				)[0].slice("forgeframe:".length),
 			);
 
 			const wrongOriginResponse = createResponseMessage(
@@ -429,9 +430,9 @@ describe("Messenger", () => {
 				"normalizedOrigin",
 			);
 
-			const [serialized, targetOrigin] = (
-				targetWindow.postMessage as ReturnType<typeof vi.fn>
-			).mock.calls[0];
+			const [serialized, targetOrigin] = requireValue(
+				(targetWindow.postMessage as ReturnType<typeof vi.fn>).mock.calls[0],
+			);
 			expect(targetOrigin).toBe("https://target.com");
 			const sentMessage = JSON.parse(serialized.slice("forgeframe:".length));
 
@@ -671,8 +672,9 @@ describe("Messenger", () => {
 			);
 
 			// Parse the response
-			const responseStr = (targetWindow.postMessage as ReturnType<typeof vi.fn>)
-				.mock.calls[0][0];
+			const responseStr = requireValue(
+				(targetWindow.postMessage as ReturnType<typeof vi.fn>).mock.calls[0],
+			)[0];
 			const responseData = JSON.parse(responseStr.slice("forgeframe:".length));
 
 			expect(responseData.type).toBe(MESSAGE_TYPE.RESPONSE);
@@ -705,8 +707,9 @@ describe("Messenger", () => {
 			await vi.waitFor(() =>
 				expect(targetWindow.postMessage).toHaveBeenCalledOnce(),
 			);
-			const responseStr = (targetWindow.postMessage as ReturnType<typeof vi.fn>)
-				.mock.calls[0][0];
+			const responseStr = requireValue(
+				(targetWindow.postMessage as ReturnType<typeof vi.fn>).mock.calls[0],
+			)[0];
 			const responseData = JSON.parse(responseStr.slice("forgeframe:".length));
 
 			expect(responseData.error).toEqual({ message: "Handler error" });

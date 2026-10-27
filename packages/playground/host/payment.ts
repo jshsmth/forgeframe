@@ -46,7 +46,12 @@ function field<T extends HTMLElement>(selector: string): T {
  */
 function collectReceiptEvidence(digits: string): ReceiptEvidence {
 	return {
-		transactionId: `HP-${crypto.getRandomValues(new Uint32Array(1))[0].toString(16).padStart(8, "0").toUpperCase()}`,
+		transactionId: `HP-${requireValue(
+			crypto.getRandomValues(new Uint32Array(1))[0],
+		)
+			.toString(16)
+			.padStart(8, "0")
+			.toUpperCase()}`,
 		paidAt: new Date().toISOString(),
 		lastFour: digits.slice(-4),
 	};

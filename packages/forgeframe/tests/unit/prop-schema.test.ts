@@ -110,7 +110,7 @@ describe("prop.string()", () => {
 		const result = schema["~standard"].validate(123);
 		expect(result).toHaveProperty("issues");
 		expect(
-			(result as { issues: Array<{ message: string }> }).issues[0].message,
+			(result as { issues: Array<{ message: string }> }).issues[0]?.message,
 		).toContain("Expected string");
 	});
 
@@ -119,7 +119,7 @@ describe("prop.string()", () => {
 		const result = schema["~standard"].validate(undefined);
 		expect(result).toHaveProperty("issues");
 		expect(
-			(result as { issues: Array<{ message: string }> }).issues[0].message,
+			(result as { issues: Array<{ message: string }> }).issues[0]?.message,
 		).toBe("Required");
 	});
 
@@ -249,7 +249,7 @@ describe("prop.string()", () => {
 		const schema = prop.string().pattern(/^[a-z]+$/, "Only lowercase letters");
 		const result = schema["~standard"].validate("ABC");
 		expect(
-			(result as { issues: Array<{ message: string }> }).issues[0].message,
+			(result as { issues: Array<{ message: string }> }).issues[0]?.message,
 		).toBe("Only lowercase letters");
 	});
 
@@ -739,7 +739,7 @@ describe("prop.array(item)", () => {
 		const schema = prop.array(prop.string());
 		const result = await schema["~standard"].validate(["a", 1, "c"]);
 		if (!result.issues) throw new Error("Expected validation issues");
-		expect(result.issues[0].path).toEqual([1]);
+		expect(result.issues[0]?.path).toEqual([1]);
 	});
 
 	it("should validate min length", () => {
@@ -910,7 +910,7 @@ describe("prop.tuple()", () => {
 		const schema = prop.tuple(prop.string(), prop.number().int());
 		const result = await schema["~standard"].validate(["x", 1.5]);
 		if (!result.issues) throw new Error("Expected validation issues");
-		expect(result.issues[0].path).toEqual([1]);
+		expect(result.issues[0]?.path).toEqual([1]);
 	});
 
 	it("should support empty tuples", () => {
@@ -1048,7 +1048,7 @@ describe("prop.object(shape)", () => {
 			user: { email: "invalid" },
 		});
 		if (!result.issues) throw new Error("Expected validation issues");
-		expect(result.issues[0].path).toEqual(["user", "email"]);
+		expect(result.issues[0]?.path).toEqual(["user", "email"]);
 	});
 
 	it("should allow extra keys by default", () => {
@@ -1068,7 +1068,7 @@ describe("prop.object(shape)", () => {
 		const result = schema["~standard"].validate({ name: "John", extra: true });
 		expect(result).toHaveProperty("issues");
 		expect(
-			(result as { issues: Array<{ message: string }> }).issues[0].message,
+			(result as { issues: Array<{ message: string }> }).issues[0]?.message,
 		).toContain("Unknown key");
 	});
 
@@ -1117,7 +1117,7 @@ describe("prop.record()", () => {
 		const schema = prop.record(prop.number().int());
 		const result = await schema["~standard"].validate({ count: 1.5 });
 		if (!result.issues) throw new Error("Expected validation issues");
-		expect(result.issues[0].path).toEqual(["count"]);
+		expect(result.issues[0]?.path).toEqual(["count"]);
 	});
 
 	it("should support default", () => {
@@ -1259,13 +1259,13 @@ describe("prop.enum()", () => {
 		const schema = prop.enum(["a", "b", "c"] as const);
 		const result = schema["~standard"].validate("d");
 		expect(
-			(result as { issues: Array<{ message: string }> }).issues[0].message,
+			(result as { issues: Array<{ message: string }> }).issues[0]?.message,
 		).toContain('"a"');
 		expect(
-			(result as { issues: Array<{ message: string }> }).issues[0].message,
+			(result as { issues: Array<{ message: string }> }).issues[0]?.message,
 		).toContain('"b"');
 		expect(
-			(result as { issues: Array<{ message: string }> }).issues[0].message,
+			(result as { issues: Array<{ message: string }> }).issues[0]?.message,
 		).toContain('"c"');
 	});
 
@@ -1359,10 +1359,10 @@ describe("prop.union()", () => {
 			(result as { issues: Array<{ message: string }> }).issues,
 		).toHaveLength(2);
 		expect(
-			(result as { issues: Array<{ message: string }> }).issues[0].message,
+			(result as { issues: Array<{ message: string }> }).issues[0]?.message,
 		).toContain("Expected string");
 		expect(
-			(result as { issues: Array<{ message: string }> }).issues[1].message,
+			(result as { issues: Array<{ message: string }> }).issues[1]?.message,
 		).toContain("Expected integer");
 	});
 

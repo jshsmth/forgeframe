@@ -44,7 +44,7 @@ export interface HostStartOptions {
 	 * The component's `exports` schema, checked before each export is sent;
 	 * absent for the tag-agnostic form.
 	 */
-	exportsSchema?: StandardSchemaV1;
+	exportsSchema?: StandardSchemaV1 | undefined;
 	consumerOrigins: OriginMatcher;
 	autoInit: boolean;
 }

@@ -84,11 +84,9 @@ export class EnumSchema<T extends string | number> extends PropSchema<T> {
 
 	constructor(values: readonly T[]) {
 		super();
-		const allowedValues: T[] = [];
-		for (let index = 0; index < values.length; index++) {
-			allowedValues.push(values[index]);
-		}
-		this._values = allowedValues;
+		// Copy own values, so a shadowed iterator or null prototype cannot change
+		// the snapshot.
+		this._values = Object.assign([], values);
 		this._valueSet = new Set(this._values);
 	}
 
@@ -144,19 +142,20 @@ export class UnionSchema<
 			);
 		}
 
-		const branches: PropSchema<unknown, unknown>[] = [];
-		for (let index = 0; index < schemas.length; index++) {
+		// Copy own branches, so a shadowed iterator or null prototype cannot
+		// change the snapshot.
+		const branches: S = Object.assign([], schemas);
+		for (let index = 0; index < branches.length; index++) {
 			assertNestedSchema(
-				schemas[index],
+				branches[index],
 				`prop.union() requires a schema at position ${index}`,
 			);
-			branches.push(schemas[index]);
 		}
-		this._schemas = branches as unknown as S;
+		this._schemas = branches;
 	}
 
 	/** @internal */
-	protected _validateInput(
+	protected override _validateInput(
 		value: unknown,
 	): StandardSchemaV1Result<InferUnionSchemaOutput<S>> {
 		return validateSchemaPresence(

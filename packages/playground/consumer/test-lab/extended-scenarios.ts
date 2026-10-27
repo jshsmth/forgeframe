@@ -960,11 +960,13 @@ export async function runStressScenario(
 					requireValue(instance.exports).readState(),
 				),
 			);
-			updatedCount += states.filter(
-				(state, index) =>
-					state.label === `${entries[index].label}-updated` &&
-					state.uid === entries[index].instance.uid,
-			).length;
+			updatedCount += states.filter((state, index) => {
+				const entry = requireValue(entries[index]);
+				return (
+					state.label === `${entry.label}-updated` &&
+					state.uid === entry.instance.uid
+				);
+			}).length;
 
 			await Promise.all(
 				entries.map(async ({ container, instance }) => {

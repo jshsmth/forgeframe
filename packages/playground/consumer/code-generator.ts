@@ -29,7 +29,7 @@ function generatePropSchemaCode(
 		array: "prop.array(prop.any())",
 		object: "prop.any()",
 	};
-	let code = builders[(type || "string").toLowerCase()] ?? builders.string;
+	let code = builders[(type || "string").toLowerCase()] ?? "prop.string()";
 
 	if (defaultValue !== undefined) {
 		code += `.default(${JSON.stringify(defaultValue)})`;

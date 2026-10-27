@@ -27,7 +27,7 @@ export interface PlaygroundConfig {
 	style?: Record<string, string | number>;
 	attributes?: Record<string, string | boolean>;
 	timeout?: number;
-	modalStyle?: ModalStyle;
+	modalStyle?: ModalStyle | undefined;
 	props?: {
 		/** Prop definitions. Type can be: 'string', 'number', 'boolean', 'function', 'array', 'object' */
 		name?: { type: string; required?: boolean; default?: string };

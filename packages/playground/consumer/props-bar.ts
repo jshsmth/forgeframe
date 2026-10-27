@@ -54,14 +54,14 @@ export function getDefaultValue(propDef: Record<string, unknown>): unknown {
 
 function escapeHtml(value: string): string {
 	return value.replace(/[&<>"']/g, (character) => {
-		const entities: Record<string, string> = {
+		const entities: Readonly<Record<string, string | undefined>> = {
 			"&": "&amp;",
 			"<": "&lt;",
 			">": "&gt;",
 			'"': "&quot;",
 			"'": "&#39;",
 		};
-		return entities[character];
+		return entities[character] ?? character;
 	});
 }
 

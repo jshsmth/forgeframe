@@ -76,7 +76,8 @@ void nestedReset;
 declare const remoteVoid: RemoteValue<() => void>;
 const voidResult: Promise<void> = remoteVoid();
 declare const remoteArray: RemoteValue<Array<{ run: () => string }>>;
-const arrayResult: Promise<string> = remoteArray[0].run();
+declare const remoteArrayItem: (typeof remoteArray)[number];
+const arrayResult: Promise<string> = remoteArrayItem.run();
 
 declare const remoteJsonCallback: RemoteValue<
 	(data: { label: string }) => { total: number }

@@ -66,9 +66,9 @@ export class HostComponent<P extends Record<string, unknown>> {
 
 	private readonly consumerOrigins: OriginMatcher;
 
-	private readonly exportsSchema?: StandardSchemaV1;
+	private readonly exportsSchema: StandardSchemaV1 | undefined;
 
-	private readonly onDestroy?: () => void;
+	private readonly onDestroy: (() => void) | undefined;
 
 	/** Selects and checks the consumer origin, then requests BOOTSTRAP. */
 	constructor(payload: WindowNamePayload, options: HostRuntimeOptions<P>) {

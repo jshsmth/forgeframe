@@ -60,7 +60,11 @@ async function startBootstrappedHost(
 		.mockResolvedValueOnce({ props })
 		.mockResolvedValue(undefined);
 	await requireValue(
-		initHost({ props: propDefinitions, consumerOrigins: "*", autoInit: false }),
+		initHost({
+			...(propDefinitions === undefined ? {} : { props: propDefinitions }),
+			consumerOrigins: "*",
+			autoInit: false,
+		}),
 	).ready;
 	return { host: requireValue(getHost()) };
 }
