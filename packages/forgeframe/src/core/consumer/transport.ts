@@ -598,7 +598,7 @@ function readHostError(data: {
  * @internal
  */
 function staticTrustedUrl(options: {
-	readonly hostOrigins?: OriginMatcher;
+	readonly hostOrigins?: OriginMatcher | undefined;
 	readonly url: unknown;
 }): string | null {
 	return options.hostOrigins === undefined && typeof options.url === "string"

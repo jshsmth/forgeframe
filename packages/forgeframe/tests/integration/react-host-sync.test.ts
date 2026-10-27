@@ -12,6 +12,34 @@ import {
 	type IframeIntegrationHarness,
 } from "./helpers";
 
+/**
+ * Renders two wrappers, one with an object ref and one with a callback ref,
+ * and records the object ref's node from a parent layout effect.
+ */
+function RefLayoutParent({
+	Wrapped,
+	observed,
+	forwardedRef,
+}: {
+	Wrapped: React.ComponentType<{
+		title: string;
+		ref?: React.Ref<HTMLDivElement>;
+	}>;
+	observed: Array<HTMLDivElement | null>;
+	forwardedRef: React.RefCallback<HTMLDivElement>;
+}) {
+	const ref = React.useRef<HTMLDivElement>(null);
+	React.useLayoutEffect(() => {
+		observed.push(ref.current);
+	}, [observed]);
+	return React.createElement(
+		React.Fragment,
+		null,
+		React.createElement(Wrapped, { title: "layout", ref }),
+		React.createElement(Wrapped, { title: "cleanup", ref: forwardedRef }),
+	);
+}
+
 describe("React commits across the host boundary", () => {
 	let harness: IframeIntegrationHarness;
 	let container: HTMLDivElement;
@@ -92,21 +120,14 @@ describe("React commits across the host boundary", () => {
 			if (node) attached.push(node);
 			return cleanup;
 		});
-		function Parent() {
-			const ref = React.useRef<HTMLDivElement>(null);
-			React.useLayoutEffect(() => {
-				observed.push(ref.current);
-			}, []);
-			return React.createElement(
-				React.Fragment,
-				null,
-				React.createElement(Wrapped, { title: "layout", ref }),
-				React.createElement(Wrapped, { title: "cleanup", ref: forwardedRef }),
-			);
-		}
-
 		await React.act(async () => {
-			root.render(React.createElement(Parent));
+			root.render(
+				React.createElement(RefLayoutParent, {
+					Wrapped,
+					observed,
+					forwardedRef,
+				}),
+			);
 		});
 		expect(observed).toEqual([container.firstElementChild]);
 		expect(forwardedRef).toHaveBeenCalledExactlyOnceWith(container.children[1]);

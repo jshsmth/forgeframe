@@ -31,15 +31,15 @@ export interface HostRuntimeOptions<P> {
 	/** Validates the consumer's props, or keeps them unchecked. */
 	props: HostPropDefinitions<P>;
 	/** Checks each export before it is sent; without it, exports are sent unchecked. */
-	exportsSchema?: StandardSchemaV1;
+	exportsSchema?: StandardSchemaV1 | undefined;
 	/** Checked against the selected consumer origin before BOOTSTRAP is sent. */
 	consumerOrigins: OriginMatcher;
 	/** The parent or opener window, resolved before the runtime is built. */
 	consumerWindow: Window;
 	/** Sends INIT as soon as `ready` resolves; otherwise INIT waits for `init()`. */
-	autoInit?: boolean;
+	autoInit?: boolean | undefined;
 	/** Runs first in `destroy()`, before resources are released. */
-	onDestroy?: () => void;
+	onDestroy?: (() => void) | undefined;
 }
 
 export interface HostPropsRuntimeOptions {

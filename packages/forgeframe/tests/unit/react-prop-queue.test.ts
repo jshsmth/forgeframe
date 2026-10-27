@@ -8,6 +8,7 @@ import {
 	shallowEqualProps,
 	snapshotProps,
 } from "@/drivers/react/prop-sync";
+import { requireValue } from "../require-value";
 
 describe("React prop commit and retry policy", () => {
 	it("sends undefined for known keys a commit leaves out or sets to undefined", () => {
@@ -49,15 +50,15 @@ describe("React prop commit and retry policy", () => {
 		};
 		expect(enqueuePropSnapshot(queue, { count: 1 })).toBe(true);
 		expect(enqueuePropSnapshot(queue, { count: 1 })).toBe(false);
-		const first = queue.queue[0];
+		const first = requireValue(queue.queue[0]);
 		failPropUpdate(queue, first);
 		expect(queue.comparableProps).toBeNull();
-		expect(queue.queue[0].retryOnFailure).toBe(false);
+		expect(queue.queue[0]?.retryOnFailure).toBe(false);
 		enqueuePropSnapshot(queue, { count: 2 });
-		acknowledgePropUpdate(queue, queue.queue[0]);
+		acknowledgePropUpdate(queue, requireValue(queue.queue[0]));
 		expect(queue.comparableProps).toEqual({ count: 1 });
 		expect(queue.queue.map((update) => update.desired)).toEqual([{ count: 2 }]);
-		failPropUpdate(queue, queue.queue[0]);
+		failPropUpdate(queue, requireValue(queue.queue[0]));
 		expect(queue.queue).toEqual([]);
 		expect(enqueuePropSnapshot(queue, { count: 2 })).toBe(true);
 	});

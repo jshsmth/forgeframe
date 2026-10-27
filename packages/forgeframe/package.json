@@ -27,7 +27,7 @@
 		"clean": "rm -rf dist",
 		"build": "node -e \"require('node:fs').copyFileSync('../../README.md', 'README.md')\" && vite build && tsc --emitDeclarationOnly && node scripts/fix-dts-imports.mjs",
 		"typecheck": "tsc --noEmit && npm run typecheck:tests",
-		"typecheck:tests": "tsc -p tests/typecheck/tsconfig.json --noEmit && tsc -p tests/unit/tsconfig.json --noEmit && tsc -p tests/integration/tsconfig.json --noEmit && tsc -p tests/browser/tsconfig.json --noEmit",
+		"typecheck:tests": "tsc -p tests/typecheck/tsconfig.json --noEmit && tsc -p tests/typecheck/tsconfig.json --noEmit --exactOptionalPropertyTypes false --noUncheckedIndexedAccess false && tsc -p tests/unit/tsconfig.json --noEmit && tsc -p tests/integration/tsconfig.json --noEmit && tsc -p tests/browser/tsconfig.json --noEmit",
 		"test": "vitest",
 		"test:run": "vitest run",
 		"test:coverage": "vitest run --coverage",
@@ -57,8 +57,8 @@
 	"devDependencies": {
 		"@types/react": "^19.3.0",
 		"@types/react-dom": "^19.3.0",
-		"react": "^19.3.0",
-		"react-dom": "^19.3.0",
+		"react": "^19.3.1",
+		"react-dom": "^19.3.1",
 		"valibot": "^1.5.0",
 		"zod": "^4.6.5"
 	},

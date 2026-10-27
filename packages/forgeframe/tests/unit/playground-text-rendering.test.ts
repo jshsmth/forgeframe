@@ -91,7 +91,7 @@ describe("playground cross-window text", () => {
 		const messages = [
 			'<img src="missing" data-injected="yes">',
 			'&lt;svg&gt; & "quoted"',
-		];
+		] as const;
 		log(messages[0], "error");
 		log(messages[1], "success");
 		expect(document.querySelector("[data-injected], img, svg")).toBeNull();

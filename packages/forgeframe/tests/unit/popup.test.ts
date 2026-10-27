@@ -21,6 +21,7 @@ import {
 } from "@/render/popup";
 import { forgeFrameError } from "../forgeframe-error";
 import { createFrameWindow } from "../frame-window";
+import { requireValue } from "../require-value";
 
 /** A real window whose `closed` reads `closed()`, open by default. */
 function popupWindow(closed: () => boolean = () => false): Window {
@@ -81,7 +82,7 @@ describe("openPopup", () => {
 			dimensions: { width: 500, height: 600 },
 		});
 
-		const call = vi.mocked(window.open).mock.calls[0];
+		const call = requireValue(vi.mocked(window.open).mock.calls[0]);
 		const features = call[2] as string;
 
 		expect(features).toContain("location=yes");
@@ -139,7 +140,7 @@ describe("openPopup", () => {
 			dimensions: { width: "500px", height: "600px" },
 		});
 
-		const call = vi.mocked(window.open).mock.calls[0];
+		const call = requireValue(vi.mocked(window.open).mock.calls[0]);
 		const features = call[2] as string;
 
 		expect(features).toContain("width=500");
@@ -155,7 +156,7 @@ describe("openPopup", () => {
 			dimensions: { width: "invalid", height: "invalid" },
 		});
 
-		const call = vi.mocked(window.open).mock.calls[0];
+		const call = requireValue(vi.mocked(window.open).mock.calls[0]);
 		const features = call[2] as string;
 
 		// Should use fallback of 500

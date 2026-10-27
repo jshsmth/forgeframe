@@ -12,13 +12,14 @@ updated: 2026-10-01T07:49:42Z
 
 [[architecture|architecture]]: Consumer and host state ownership, transport contracts, and lifecycle flows.
 
-[[iosp-review|iosp-review]]: Runtime callable responsibilities, IOSP classifications, and boundary test evidence.
+[[callables/_index|callables/]]: Runtime callable responsibilities, IOSP classifications, and boundary test evidence.
 
 ***
 
 Use [architecture](architecture.md) for subsystem ownership and render/bootstrap,
-props, callback, and React flows. Use the [callable reference](iosp-review.md)
-when changing individual runtime operations or selecting their boundary tests.
+props, callback, and React flows. Use the [callable reference](callables/_index.md)
+when changing individual runtime operations or selecting their boundary tests;
+it links one page per subsystem, so open only the one you need.
 
 Public usage, contributor commands, and wiki setup live in the
 [root README](../README.md). Suite selection and fixture conventions live in the

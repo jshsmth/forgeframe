@@ -739,11 +739,13 @@ for (const method of ["GET", "POST"] as const) {
 				),
 			).toEqual(Array(4).fill(method === "GET" ? "important" : ""));
 			expect(deliveryRequests).toHaveLength(1);
-			expect(deliveryRequests[0].method).toBe(method);
+			const [delivery] = deliveryRequests;
+			if (delivery === undefined) throw new Error("Expected one delivery");
+			expect(delivery.method).toBe(method);
 			const params = new URLSearchParams(
 				method === "GET"
-					? new URL(deliveryRequests[0].url, hostOrigin).search
-					: deliveryRequests[0].body,
+					? new URL(delivery.url, hostOrigin).search
+					: delivery.body,
 			);
 			expect(params.get("count")).toBe("7");
 			expect(params.get("allowed")).toBe("lazy-value");

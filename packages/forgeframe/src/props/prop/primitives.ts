@@ -418,7 +418,7 @@ export class FunctionSchema<
 	T extends (...args: any[]) => any = (...args: any[]) => any,
 > extends PropSchema<T> {
 	/** Checks factory outputs without invoking the returned callback or applying the default again. */
-	protected _validateInput(value: unknown): StandardSchemaV1Result<T> {
+	protected override _validateInput(value: unknown): StandardSchemaV1Result<T> {
 		if (value === undefined && this._default !== undefined) {
 			const fallback = this._getDefaultValue();
 			if (

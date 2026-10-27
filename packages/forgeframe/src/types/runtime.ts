@@ -413,7 +413,10 @@ type RequiredInputKey<Input> = {
  *
  * @public
  */
-export type PropsPatch<Input, Patch extends Partial<Input>> = Patch & {
+export type PropsPatch<
+	Input,
+	Patch extends { [K in keyof Input]?: Input[K] | undefined },
+> = Patch & {
 	[K in keyof Patch]: K extends RequiredInputKey<Input>
 		? Input[K]
 		: K extends keyof Input
@@ -526,9 +529,9 @@ export interface ComponentInstance<
 	 * @param props - Partial props to merge with existing
 	 * @returns Promise that resolves when props are updated
 	 */
-	updateProps<const Patch extends Partial<Input>>(
-		props: PropsPatch<Input, Patch>,
-	): Promise<void>;
+	updateProps<
+		const Patch extends { [K in keyof Input]?: Input[K] | undefined },
+	>(props: PropsPatch<Input, Patch>): Promise<void>;
 
 	/**
 	 * Subscribes to lifecycle events with `on` and `once`.
@@ -542,7 +545,7 @@ export interface ComponentInstance<
 	 * Data exported from the host component via `host.export()`, once
 	 * it has passed the component's `exports` schema.
 	 */
-	readonly exports?: RemoteValue<Exports>;
+	readonly exports?: RemoteValue<Exports> | undefined;
 }
 
 /**

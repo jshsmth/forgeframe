@@ -109,7 +109,11 @@ test.afterAll(async () => {
 /** Renders a host page from the consumer page and records its lifecycle. */
 async function renderHost(
 	page: Page,
-	options: { path: string; context?: "iframe" | "popup"; sandbox?: string },
+	options: {
+		path: string;
+		context?: "iframe" | "popup";
+		sandbox?: string | undefined;
+	},
 ): Promise<string> {
 	await page.goto(consumerOrigin);
 	return page.evaluate(

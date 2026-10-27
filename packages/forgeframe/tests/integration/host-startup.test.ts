@@ -46,7 +46,9 @@ describe("Explicit host start-up", () => {
 			tag: options.tag,
 			url: HOST_URL,
 			props: { amount: prop.number() },
-			initTimeout: options.initTimeout,
+			...(options.initTimeout === undefined
+				? {}
+				: { initTimeout: options.initTimeout }),
 		});
 		const container = document.createElement("div");
 		document.body.append(container);

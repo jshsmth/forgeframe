@@ -109,9 +109,9 @@ function createConsumer(
  * Tracks factory-created instances so the file's cleanup closes them, even
  * when an assertion fails before the end of a test.
  */
-function trackInstances<T extends { close(): Promise<void> }>(
-	...instances: T[]
-): T[] {
+function trackInstances<const T extends readonly { close(): Promise<void> }[]>(
+	...instances: T
+): T {
 	createdConsumers.push(...instances);
 	return instances;
 }

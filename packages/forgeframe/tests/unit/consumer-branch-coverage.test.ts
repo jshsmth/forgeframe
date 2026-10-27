@@ -163,7 +163,7 @@ describe("Consumer branch coverage and edge paths", () => {
 			getInternals(consumer).transport.messenger.allowedOriginPatterns;
 
 		expect(patterns).toHaveLength(1);
-		expect(patterns[0].test("https://api.trusted.example.com")).toBe(true);
+		expect(patterns[0]?.test("https://api.trusted.example.com")).toBe(true);
 	});
 
 	it("should focus iframe and popup contexts through dedicated render helpers", async () => {

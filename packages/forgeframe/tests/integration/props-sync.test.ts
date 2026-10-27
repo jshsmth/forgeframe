@@ -11,6 +11,7 @@ import { getHost } from "@/core/host/bootstrap";
 import { create, prop } from "@/index";
 import type { InferPropsInput, PropsDefinition } from "@/types";
 import { forgeFrameError } from "../forgeframe-error";
+import { requireValue } from "../require-value";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
@@ -783,10 +784,9 @@ describe("Props sync integration", () => {
 		expect(hostProps.publishedAt).toBeInstanceOf(Date);
 		expect(hostProps.publishedAt.toISOString()).toBe(updatedDate.toISOString());
 		expect(onProps).toHaveBeenCalledTimes(1);
-		expect(onProps.mock.calls[0][0].publishedAt).toBeInstanceOf(Date);
-		expect(onProps.mock.calls[0][0].publishedAt.toISOString()).toBe(
-			updatedDate.toISOString(),
-		);
+		const [published] = requireValue(onProps.mock.calls[0]);
+		expect(published.publishedAt).toBeInstanceOf(Date);
+		expect(published.publishedAt.toISOString()).toBe(updatedDate.toISOString());
 	});
 });
 

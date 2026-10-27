@@ -213,7 +213,7 @@ export class HostTransport {
 	): Promise<PeerInfo[]> {
 		assertPeerInstancesOptions(options);
 		const response = await this.messenger.send<
-			{ options?: GetPeerInstancesOptions },
+			{ options?: GetPeerInstancesOptions | undefined },
 			PeerInfo[]
 		>(
 			this.options.consumerWindow,

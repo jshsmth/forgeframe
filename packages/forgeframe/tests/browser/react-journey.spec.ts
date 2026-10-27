@@ -44,7 +44,8 @@ function productionLibrary(files: ReadonlyMap<string, string>): Plugin {
 
 function bundle(result: Awaited<ReturnType<typeof build>>): string {
 	const built = Array.isArray(result) ? result[0] : result;
-	if (!("output" in built)) throw new Error("Unexpected watch build");
+	if (built === undefined || !("output" in built))
+		throw new Error("Unexpected watch build");
 	const chunk = built.output.find((entry) => entry.type === "chunk");
 	if (!chunk) throw new Error("Missing browser fixture bundle");
 	return chunk.code;

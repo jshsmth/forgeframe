@@ -18,6 +18,7 @@ import {
 	type PaymentProps,
 	paymentProps,
 } from "../../payment/contract";
+import { requireValue } from "../../require-value";
 import {
 	commitPaymentResult,
 	type PaymentControls,
@@ -80,7 +81,7 @@ interface PaymentSession extends PaymentSessionState {
 }
 
 let invoices = seedInvoices();
-let selected = invoices[0];
+let selected = requireValue(invoices[0]);
 let active: PaymentSession | null = null;
 let resetting = false;
 let phase: IntegrationSnapshot["phase"] = "idle";
@@ -325,7 +326,7 @@ element("#reset-demo").addEventListener("click", () => {
 		render();
 		await cancelPayment();
 		invoices = seedInvoices();
-		selected = invoices[0];
+		selected = requireValue(invoices[0]);
 		eventCount = 0;
 		events.replaceChildren();
 		logEvent("Demo reset · all sample invoices restored");

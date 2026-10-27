@@ -35,7 +35,10 @@ afterEach(() => {
 describe("Props serialization behavior", () => {
 	it("should skip undefined keys while serializing props", () => {
 		const { bridge } = createBridgeWithMessenger();
-		const serialized = serializeProps<{ defined: string; missing?: string }>(
+		const serialized = serializeProps<{
+			defined: string;
+			missing?: string | undefined;
+		}>(
 			{
 				defined: "ok",
 				missing: undefined,

@@ -1714,7 +1714,7 @@ For a custom deployment, set `VITE_HOST_URL` in the consumer build and `VITE_CON
 
 ### Architecture and Ownership
 
-The [architecture guide](https://github.com/jshsmth/ForgeFrame/blob/main/docs/architecture.md) covers state ownership and the render/bootstrap, props, callback, and React flows. The [callable reference](https://github.com/jshsmth/ForgeFrame/blob/main/docs/iosp-review.md) classifies runtime responsibilities and links their boundary tests.
+The [architecture guide](https://github.com/jshsmth/ForgeFrame/blob/main/docs/architecture.md) covers state ownership and the render/bootstrap, props, callback, and React flows. The [callable reference](https://github.com/jshsmth/ForgeFrame/blob/main/docs/callables/_index.md) classifies runtime responsibilities and links their boundary tests.
 
 - The package has two entries, built together so they share one copy of the core: `packages/forgeframe/src/index.ts` (`forgeframe`) defines the public exports, and `src/react.ts` (`forgeframe/react`) exports the React adapter. Other source barrels are internal.
 - `core/component.ts` owns component factories and instance tracking. `core/consumer.ts` coordinates rendering, the prop pipeline, and transport; `core/host/` owns host bootstrap, the `Host` handle and the host's props.
@@ -1726,19 +1726,19 @@ The [architecture guide](https://github.com/jshsmth/ForgeFrame/blob/main/docs/ar
 
 Contributor knowledge lives in the [development wiki](https://github.com/jshsmth/ForgeFrame/blob/main/docs/_index.md), managed with [Plasma Wiki](https://docs.plasma.ai/wiki/guide/index.html). The CLI generates page metadata and index navigation, and a GitHub Actions check fails on stale indexes or wiki lint issues.
 
-Install Python 3.11 or newer and the pinned CLI with `uv tool install plasma-wiki==1.8.0` (or `pipx install plasma-wiki==1.8.0`). Browse with `wiki map --path docs`, search with `wiki search --path docs "callback"`, and read a page with `wiki read architecture --path docs`. The pages are plain Markdown and can also be read directly.
+Install Python 3.11 or newer and the pinned CLI with `uv tool install plasma-wiki==1.9.0` (or `pipx install plasma-wiki==1.9.0`). Browse with `wiki map --path docs`, search with `wiki search --path docs "callback"`, and read a page with `wiki read architecture --path docs`. The pages are plain Markdown and can also be read directly.
 
-Edit page bodies and authored metadata such as `title` and `desc`. The CLI owns `name`, timestamps, headings, and the index link blocks above `***`; put index prose below that line. After adding, moving, or editing pages, run `npm run docs:update`, then `npm run docs:check` before committing. Image assets are excluded from indexing. No Obsidian vault, plugins, or wiki hooks are needed.
+Edit page bodies and authored metadata such as `title` and `desc`. The CLI owns `name`, timestamps, headings, and the index link blocks above `***`; put index prose below that line. After adding, moving, or editing pages, run `npm run docs:update`, then `npm run docs:check` before committing. Image assets are excluded from indexing. No Obsidian vault, plugins, or wiki hooks are needed. Run `npm run docs:setup` once after cloning to register the merge driver that `.gitattributes` names for `_index.md` files, so the generated index blocks merge without conflicts; run `npm run docs:update` after each merge. It registers only the driver, unlike `wiki config`, which also installs Obsidian files this repo does not use.
 
 The wiki CLI is a contributor tool, separate from the npm package and its release checks. The Documentation workflow installs the same pinned version and runs the checks without modifying files.
 
 ### Checks
 
-Development uses TypeScript 7 and Biome with default formatting and recommended lint rules. `npm ci` installs the pinned tools, and npm scripts run the local `tsc` and `biome`. Biome skips generated builds, coverage, and the npm lockfile, and does not format Markdown, YAML, or TOML.
+Development uses TypeScript 7 and Biome with default formatting and recommended lint rules. `npm ci` installs the pinned tools, and npm scripts run the local `tsc` and `biome`. TypeScript runs in strict mode with `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitOverride`, and `noImplicitReturns`, and checks library declarations. The compile-time API contracts also run without the two optional-property flags, so the public types work under both settings. Biome fails on warnings, skips generated builds, coverage, and the npm lockfile, and leaves Markdown unformatted so it cannot rewrite the wiki's `***` and `[[` syntax.
 
 In VS Code, use the Biome extension (`biomejs.biome`) and the TypeScript 7 language service (`TypeScriptTeam.native-preview`); in other editors, use their Biome and TypeScript 7 LSP integrations. Consumers of the package do not need TypeScript 7.
 
-Tests and playground bindings use explicit value guards, so a missing fixture or element fails instead of silently skipping an assertion or action. Intentional React effect signatures, prototype-safety fixtures, and CSS precedence overrides have local Biome suppressions with explanations.
+Tests and playground bindings use explicit value guards, so a missing fixture or element fails instead of silently skipping an assertion or action. `@ts-expect-error` appears only where a test asserts that the types reject an input: in the compile-time contracts, and in runtime tests that pass a JavaScript caller's invalid input. A local Biome suppression, with its reason, remains only where the code must break a rule: the React effect that mounts once per context, the variadic `any` bound callback types need, the type test that proves `IsEqual` rejects `any`, and fixtures that define a `then` prop to check that the name is reserved.
 
 | Command | What it checks |
 |---------|----------------|

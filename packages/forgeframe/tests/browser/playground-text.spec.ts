@@ -10,7 +10,8 @@ let hostOrigin: string;
 
 function output(result: Awaited<ReturnType<typeof build>>) {
 	const built = Array.isArray(result) ? result[0] : result;
-	if (!("output" in built)) throw new Error("Unexpected watch build");
+	if (built === undefined || !("output" in built))
+		throw new Error("Unexpected watch build");
 	return built.output;
 }
 function code(result: Awaited<ReturnType<typeof build>>): string {

@@ -14,7 +14,8 @@ export async function buildLibrary(): Promise<ReadonlyMap<string, string>> {
 		build: { write: false },
 	});
 	const built = Array.isArray(result) ? result[0] : result;
-	if (!("output" in built)) throw new Error("Unexpected watch build");
+	if (built === undefined || !("output" in built))
+		throw new Error("Unexpected watch build");
 	const files = new Map<string, string>();
 	for (const entry of built.output) {
 		if (entry.type !== "chunk") continue;

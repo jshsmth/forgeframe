@@ -80,7 +80,7 @@ export class ConsumerComponent<
 	readonly #emitter: EventEmitter<ComponentEvents<P, Exports>>;
 
 	/** Data exported by the host component. */
-	public exports?: RemoteValue<Exports>;
+	public exports?: RemoteValue<Exports> | undefined;
 
 	/** @internal */
 	private _uid: string;
