@@ -168,12 +168,9 @@ describe("HostTransport", () => {
 		const { transport, consumerWindow } = createTransport();
 		const callback = vi.fn(() => "answered");
 		// Only a consumer's own peer call registers an inbound peer callback, so
-		// the test serializes one on the private peer bridge directly.
-		const peerBridge = (
-			transport as unknown as {
-				peerBridge: { serialize: (fn: () => string) => { __id__: string } };
-			}
-		).peerBridge;
+		// the test serializes one on the private peer bridge directly (bracket
+		// access keeps its real FunctionBridge type).
+		const peerBridge = transport["peerBridge"];
 		const { __id__: id } = peerBridge.serialize(callback);
 		const peerCall = requireValue(
 			getHandler(transport, MESSAGE_NAME.PEER_CALL),
@@ -379,26 +376,44 @@ describe("HostTransport", () => {
 		);
 	});
 
-	it.each([
-		[
-			{ anyConsumer: true },
-			'getPeerInstances() option "anyConsumer" was renamed. Use { allTags: true } to include other component tags.',
-		],
-		[{ allTags: "yes" }, "getPeerInstances() allTags must be a boolean"],
-		[null, "getPeerInstances() options must be an object"],
-	])(
-		"rejects invalid peer options %j before sending",
-		async (options, message) => {
-			const { transport } = createTransport();
-			const sendSpy = vi.spyOn(transport.messenger, "send");
+	/** Asserts that a getPeerInstances() call rejects before sending anything. */
+	async function expectPeerOptionsRejected(
+		call: (transport: HostTransport) => Promise<unknown>,
+		message: string,
+	): Promise<void> {
+		const { transport } = createTransport();
+		const sendSpy = vi.spyOn(transport.messenger, "send");
 
-			await expect(
-				// @ts-expect-error Invalid JavaScript options are rejected at runtime.
-				transport.getPeerInstances(options),
-			).rejects.toThrow(message);
-			expect(sendSpy).not.toHaveBeenCalled();
-		},
-	);
+		await expect(call(transport)).rejects.toThrow(message);
+		expect(sendSpy).not.toHaveBeenCalled();
+	}
+
+	it("rejects the removed anyConsumer peer option before sending", async () => {
+		await expectPeerOptionsRejected(
+			(transport) =>
+				// @ts-expect-error anyConsumer is a removed option.
+				transport.getPeerInstances({ anyConsumer: true }),
+			'getPeerInstances() option "anyConsumer" was renamed. Use { allTags: true } to include other component tags.',
+		);
+	});
+
+	it("rejects a non-boolean allTags peer option before sending", async () => {
+		await expectPeerOptionsRejected(
+			(transport) =>
+				// @ts-expect-error A JavaScript caller can pass a non-boolean allTags.
+				transport.getPeerInstances({ allTags: "yes" }),
+			"getPeerInstances() allTags must be a boolean",
+		);
+	});
+
+	it("rejects null peer options before sending", async () => {
+		await expectPeerOptionsRejected(
+			(transport) =>
+				// @ts-expect-error A JavaScript caller can pass null options.
+				transport.getPeerInstances(null),
+			"getPeerInstances() options must be an object",
+		);
+	});
 
 	it("should serialize overlapping function export batches in call order", async () => {
 		const { transport } = createTransport();

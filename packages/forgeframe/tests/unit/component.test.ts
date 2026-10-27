@@ -616,7 +616,7 @@ describe("Component Creation", () => {
 					props: {
 						profile: {
 							schema: prop.any<Record<string, unknown>>(),
-							// @ts-expect-error removed options are unknown wrapped fields
+							// @ts-expect-error removed options are unknown wrapped fields; a JavaScript caller may still pass serialization as undefined, which the runtime accepts
 							serialization,
 						},
 					},
@@ -644,7 +644,7 @@ describe("Component Creation", () => {
 			props: {
 				profile: {
 					schema: prop.any<Record<string, unknown>>(),
-					// @ts-expect-error removed options are unknown wrapped fields
+					// @ts-expect-error removed options are unknown wrapped fields; a JavaScript caller may still pass serialization as undefined, which the runtime accepts
 					serialization: undefined,
 				},
 			},
@@ -703,7 +703,7 @@ describe("Component Creation", () => {
 					tag,
 					url: "https://example.com",
 					props: {
-						// @ts-expect-error removed options are unknown wrapped fields
+						// @ts-expect-error removed options are unknown wrapped fields; a JavaScript caller may still pass serialization as undefined, which the runtime accepts
 						theme: { schema: prop.string(), [option]: value },
 					},
 				}),
@@ -718,28 +718,47 @@ describe("Component Creation", () => {
 	);
 
 	it("rejects malformed wrapped definitions before registering", () => {
-		const define = (theme: unknown) => () =>
+		expect(() =>
 			create({
 				tag: "malformed-wrapped-definition",
 				url: "https://example.com",
-				// @ts-expect-error Each call passes a malformed definition.
-				props: { theme },
-			});
-
-		expect(define({ queryParam: true })).toThrow(
+				props: {
+					// @ts-expect-error A wrapped definition needs a schema.
+					theme: { queryParam: true },
+				},
+			}),
+		).toThrow(
 			forgeFrameError(
 				"VALIDATION",
 				'Prop "theme" needs a schema. Use prop.any() for a value that is deliberately unchecked.',
 			),
 		);
-		expect(define({ schema: prop.string(), deliverTo: " " })).toThrow(
+		// A blank origin is type-valid; only the runtime rejects it.
+		expect(() =>
+			create({
+				tag: "malformed-wrapped-definition",
+				url: "https://example.com",
+				props: { theme: { schema: prop.string(), deliverTo: " " } },
+			}),
+		).toThrow(
 			forgeFrameError(
 				"VALIDATION",
 				'Prop "theme" deliverTo must be a non-empty origin string, a RegExp, or an array of them',
 			),
 		);
-		expect(
-			define({ schema: prop.string(), queryParam: () => "encoded" }),
+		const encodeTheme = (): string => "encoded";
+		expect(() =>
+			create({
+				tag: "malformed-wrapped-definition",
+				url: "https://example.com",
+				props: {
+					theme: {
+						schema: prop.string(),
+						// @ts-expect-error queryParam must be a boolean or a parameter name.
+						queryParam: encodeTheme,
+					},
+				},
+			}),
 		).toThrow(
 			forgeFrameError(
 				"VALIDATION",

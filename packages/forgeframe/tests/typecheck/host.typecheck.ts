@@ -59,6 +59,11 @@ export const hostControls: IsEqual<
 	],
 	[Promise<void>, Promise<void>, () => void]
 > = true;
+// init() returns nothing; failures go to on('error').
+export const hostInitReturnsVoid: IsEqual<
+	ReturnType<PaymentHost["init"]>,
+	void
+> = true;
 export const hostErrorPayload: IsEqual<
 	Parameters<Parameters<PaymentHost["on"]>[1]>[0],
 	Error
@@ -116,8 +121,6 @@ if (host) {
 	void host.onError;
 
 	host.init();
-	// @ts-expect-error init() returns nothing; failures go to on('error').
-	void host.init().then;
 	host.destroy();
 
 	// Observer typing remains compatible with synchronous, async, and implicit-value handlers.
@@ -227,7 +230,7 @@ if (host) {
 	void props.consumer;
 	// @ts-expect-error nested children were removed; import child components directly.
 	void props.children;
-	// @ts-expect-error a prop named then is reserved.
+	// @ts-expect-error the props from ready have no then member, so they are not thenable.
 	void props.then;
 }
 

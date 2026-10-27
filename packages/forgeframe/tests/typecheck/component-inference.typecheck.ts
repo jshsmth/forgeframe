@@ -270,7 +270,7 @@ void ExternalSchemaComponent({
 });
 
 void ExternalSchemaComponent({
-	// @ts-expect-error third-party Standard Schema inputs are inferred
+	// @ts-expect-error a Zod schema's inferred input rejects a number for a string prop
 	zodValue: 1,
 	valibotValue: "ok",
 	wrappedValue: 42,
@@ -495,7 +495,7 @@ const resetUpdate: Promise<void> = coercingInstance.updateProps({
 void resetUpdate;
 // @ts-expect-error updates accept declared props only
 void coercingInstance.updateProps({ unknownProp: 1 });
-// @ts-expect-error an undeclared key is rejected next to a declared one
+// @ts-expect-error an undeclared key collapses the whole patch to never, so the declared key reports too
 void coercingInstance.updateProps({ count: 1, unknownProp: 1 });
 // @ts-expect-error a required prop rejects undefined, as in the factory input
 void coercingInstance.updateProps({ startsAt: undefined });

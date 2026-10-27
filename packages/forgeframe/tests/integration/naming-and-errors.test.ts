@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { getHost } from "@/core/host/bootstrap";
 import { create, ForgeFrameError, initHost, prop } from "@/index";
 import { forgeFrameError } from "../forgeframe-error";
+import { requireValue } from "../require-value";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
@@ -386,16 +387,13 @@ describe("Origin naming and error codes", () => {
 		const rendering = instance.render(container);
 		const { host } = await harness.bootstrapIframeHost(container, {});
 		await rendering;
-		const bridge = (
-			getHost() as unknown as {
-				bridge: { localFunctions: Map<string, unknown> };
-			}
-		).bridge;
+		// Bracket access reaches private members with their real types.
+		const bridge = requireValue(getHost())["transport"].bridge;
 
 		await harness.withHostGlobalsAsync(() =>
 			host.export({ ready: true, refresh: () => 1 }),
 		);
-		const retained = bridge.localFunctions.size;
+		const retained = bridge["localFunctions"].size;
 		const error = await harness.withHostGlobalsAsync(() =>
 			host
 				.export({ ready: "yes", extra: () => 2, more: () => 3 })
@@ -406,7 +404,7 @@ describe("Origin naming and error codes", () => {
 		expect(errors).toHaveLength(1);
 		expect(errors[0]).toEqual(forgeFrameError("VALIDATION"));
 		expect(instance.exports).toMatchObject({ ready: true });
-		expect(bridge.localFunctions.size).toBe(retained);
+		expect(bridge["localFunctions"].size).toBe(retained);
 	});
 
 	it("rejects a URL outside hostOrigins with ORIGIN_REJECTED and keeps the instance open for a retry", async () => {
