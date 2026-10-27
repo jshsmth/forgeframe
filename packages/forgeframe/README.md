@@ -564,6 +564,8 @@ A patch is shallow, and `undefined` means "not supplied", the same as in the fac
 | `undefined`, optional without a default | no value: the host has no `x` key in its props or the `onProps` payload |
 | `undefined`, required | the update rejects with the schema's message, and nothing changes |
 
+In TypeScript, `updateProps()` takes a `PropsPatch`: it accepts declared props only, and `undefined` only for optional and defaulted props, so resetting a required prop with an object literal or a precisely typed patch is a compile-time error, as it is in the factory input. A patch typed `Partial<Input>` still compiles and meets the runtime rejection above, as JavaScript callers do. Generic code that forwards a patch for a generic `I` types it as `PropsPatch<I, Partial<I>>`; a plain `Partial<I>` parameter no longer compiles there.
+
 Updates run in call order across the whole lifecycle, including updates requested from a schema transform, the component's `validate`, a `url` function or a lifecycle listener:
 
 - **Before `render()`:** `render()` waits for them, so the initial query/body parameters and bootstrap props use their result.
