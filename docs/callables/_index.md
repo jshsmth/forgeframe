@@ -1,11 +1,11 @@
 ---
-name: callables/_index
+name: callables
 title: ForgeFrame callable reference
 desc: Runtime callable responsibilities, IOSP classifications, and boundary test evidence.
 tags: []
 sources: []
 created: 2026-10-01T01:55:30Z
-updated: 2026-10-27T21:30:00Z
+updated: 2026-10-27T21:31:52Z
 ---
 
 # ForgeFrame callable reference

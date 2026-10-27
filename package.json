@@ -28,6 +28,7 @@
 		"format": "biome format --write .",
 		"format:check": "biome format .",
 		"check:ci": "biome ci --error-on-warnings .",
+		"docs:setup": "git config merge.wiki.name \"Plasma Wiki index merge\" && git config merge.wiki.driver \"wiki _merge %O %A %B %L %P\"",
 		"docs:update": "wiki update --path docs",
 		"docs:check": "node scripts/check-wiki.mjs",
 		"test:browser": "npm run test:browser -w forgeframe",
