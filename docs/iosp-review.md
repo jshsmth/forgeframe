@@ -5,7 +5,7 @@ desc: Runtime callable responsibilities, IOSP classifications, and boundary test
 tags: []
 sources: []
 created: 2026-10-01T01:55:30Z
-updated: 2026-10-27T10:05:27Z
+updated: 2026-10-27T10:24:05Z
 ---
 
 # ForgeFrame callable reference
@@ -292,7 +292,7 @@ The constructor takes one options object (`HostRuntimeOptions`: definitions, the
 
 - **O:** `assertBootstrapResponse`, `HostComponent.constructor.getConsumerOrigin`, `HostComponent.constructor.beforeInit`, `HostComponent.constructor.getConsumerWindow`, `HostComponent.constructor.getBridge`, `HostComponent.constructor.get`, `HostComponent.constructor.isConsumerWindow`.
 - **I:** `HostComponent.constructor`, `HostComponent.constructor.applySerializedProps`, `HostComponent.initializeFromConsumer`, `HostComponent.receiveBootstrap`, `HostComponent.export`, `HostComponent.close`, `HostComponent.focus`, `HostComponent.resize`, `HostComponent.show`, `HostComponent.hide`, `HostComponent.reportError`, `HostComponent.getPeerInstances`, `HostComponent.onProps`, `HostComponent.init`, `HostComponent.destroy`.
-- **O callbacks:** `HostComponent.constructor.callback@134`.
+- **O callbacks:** `HostComponent.constructor.callback@124`.
 
 Evidence: [host](#evidence-host); typecheck.
 

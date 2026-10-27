@@ -111,16 +111,6 @@ export class HostComponent<P extends Record<string, unknown>> {
 				getBridge: () => this.transport.bridge,
 			});
 			this.propsRuntime = propsRuntime;
-			Object.defineProperties(this, {
-				messenger: {
-					configurable: true,
-					get: () => this.transport.messenger,
-				},
-				bridge: {
-					configurable: true,
-					get: () => this.transport.bridge,
-				},
-			});
 
 			this.transport.registerPropsHandler({
 				isConsumerWindow: (source) => source.window === this.consumerWindow,
