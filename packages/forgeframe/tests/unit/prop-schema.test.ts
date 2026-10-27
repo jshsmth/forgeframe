@@ -1561,6 +1561,13 @@ describe("integration with normalizeProps", () => {
 			message: "Validation failed: value: Expected Date, got string",
 		},
 		{
+			schema: "prop.tuple() given a non-array",
+			definition: prop.tuple(prop.number(), prop.number()),
+			valid: [1, 2],
+			invalid: "1,2",
+			message: "Validation failed: value: Expected tuple, got string",
+		},
+		{
 			schema: "prop.tuple()",
 			definition: prop.tuple(prop.number(), prop.number()),
 			valid: [10, 20],

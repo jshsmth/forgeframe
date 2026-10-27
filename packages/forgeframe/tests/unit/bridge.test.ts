@@ -161,6 +161,14 @@ describe("FunctionBridge", () => {
 			guardedBridge.destroy();
 		});
 
+		it("refuses to start a batch while one is active", () => {
+			bridge.startBatch();
+			expect(() => bridge.startBatch()).toThrow(
+				forgeFrameError("VALIDATION", "batch already active"),
+			);
+			bridge.abortBatch();
+		});
+
 		it("rejects excess local references without evicting existing callbacks", async () => {
 			const firstRef = bridge.serialize(() => "first");
 

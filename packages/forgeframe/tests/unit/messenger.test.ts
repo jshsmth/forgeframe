@@ -842,6 +842,26 @@ describe("Messenger", () => {
 			expect(handler).toHaveBeenCalledOnce();
 		});
 
+		it("should ignore a trusted message whose source cannot receive replies", () => {
+			const handler = vi.fn();
+			messenger.on("test", handler);
+			const request = serializeMessage(
+				createRequestMessage(
+					"req-1",
+					"test",
+					{},
+					{ uid: "test-uid", domain: "https://host.com" },
+				),
+			);
+
+			dispatchMessage(request, null as unknown as Window);
+			dispatchMessage(request, {} as Window);
+			expect(handler).not.toHaveBeenCalled();
+
+			dispatchMessage(request, createSourceWindow());
+			expect(handler).toHaveBeenCalledOnce();
+		});
+
 		it("should accept messages from trusted origins", () => {
 			const handler = vi.fn().mockReturnValue({ ok: true });
 			messenger.on("test", handler);

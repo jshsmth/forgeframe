@@ -33,3 +33,13 @@ describe("popup pixel dimensions", () => {
 		expect(normalizeDimensionToCSS("50vh")).toBe("50vh");
 	});
 });
+
+describe("dimension edge values", () => {
+	it("defaults a missing CSS dimension to 100%", () => {
+		expect(normalizeDimensionToCSS(undefined)).toBe("100%");
+	});
+
+	it("uses the fallback for a pixel string too large to be finite", () => {
+		expect(normalizeDimensionToNumber("9".repeat(400), 500)).toBe(500);
+	});
+});

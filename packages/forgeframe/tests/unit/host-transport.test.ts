@@ -473,6 +473,16 @@ describe("HostTransport", () => {
 		},
 	);
 
+	it("reports no init failure after teardown", () => {
+		const { transport } = createTransport();
+		const send = vi.spyOn(transport.messenger, "send");
+
+		transport.destroy();
+		transport.reportInitFailure(new Error("late failure"));
+
+		expect(send).not.toHaveBeenCalled();
+	});
+
 	it("should destroy the messenger and bridge only once", () => {
 		const { transport } = createTransport();
 		const messengerDestroySpy = vi.spyOn(transport.messenger, "destroy");
