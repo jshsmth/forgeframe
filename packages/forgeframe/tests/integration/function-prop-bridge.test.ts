@@ -615,9 +615,13 @@ describe("Function prop bridge integration", () => {
 		);
 		await rendering;
 
-		await expect(hostProps.getResult()).rejects.toThrow(
-			"Could not serialize response",
-		);
+		// The encoder's reason crosses the wire in the message.
+		await expect(hostProps.getResult()).rejects.toMatchObject({
+			code: "VALIDATION",
+			message: expect.stringMatching(
+				/^Could not serialize response for "[^"]+": .*circular/i,
+			),
+		});
 		result = 42;
 		await expect(hostProps.getResult()).resolves.toBe(42);
 	});

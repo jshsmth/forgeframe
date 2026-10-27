@@ -136,6 +136,8 @@ describe("assertOriginMatcher", () => {
 		"https://*.Example.com",
 		"http://localhost:5173",
 		"https://[::1]:8443",
+		"capacitor://localhost",
+		"chrome-extension://abcdefghijklmnop",
 	])("accepts %s", async (pattern) => {
 		const { assertOriginMatcher } = await loadOriginPatternModule();
 		expect(() => assertOriginMatcher(pattern, "Matcher")).not.toThrow();

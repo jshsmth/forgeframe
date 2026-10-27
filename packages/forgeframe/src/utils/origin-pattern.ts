@@ -192,21 +192,22 @@ function hasPathOrQuery(entry: unknown): entry is string {
 /**
  * Whether an exact origin string differs from the origin browsers report for
  * it, such as `https://Shop.example.com`, `https://example.com:443` or one
- * with userinfo, so it can never match.
+ * with userinfo, so it can never match. A custom scheme such as
+ * `capacitor://localhost` has no URL origin to compare, so it is kept.
  */
 function isNonCanonicalOrigin(entry: unknown): entry is string {
-	return (
-		typeof entry === "string" &&
-		!entry.includes("*") &&
-		readOrigin(entry) !== entry
-	);
+	if (typeof entry !== "string" || entry.includes("*")) return false;
+	const origin = readOrigin(entry);
+	return origin !== "null" && origin !== entry;
 }
 
-/** The origin a browser reports for an origin string, or `undefined` for none. */
+/**
+ * The origin the URL parser reports for an origin string: `"null"` for a
+ * custom scheme, or `undefined` when it does not parse.
+ */
 function readOrigin(entry: string): string | undefined {
 	try {
-		const { origin } = new URL(entry);
-		return origin === "null" ? undefined : origin;
+		return new URL(entry).origin;
 	} catch {
 		return undefined;
 	}

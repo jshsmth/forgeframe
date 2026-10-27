@@ -244,7 +244,8 @@ type OptionalHostPropDefinitionKeys<D extends Record<string, unknown>> =
  * Unlike {@link InferProps}, which is the consumer's view, this type leaves
  * out props declared `sendToHost: false`, and makes props with a `deliverTo`
  * option optional, because whether a host receives them depends on its
- * origin.
+ * origin. It reads the literal options of each entry, so an entry annotated
+ * as `PropDefinition<T>`, whose options are optional, counts as delivered.
  *
  * @typeParam D - A map of prop names to schema-backed definitions.
  * @public

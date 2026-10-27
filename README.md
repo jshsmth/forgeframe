@@ -1188,7 +1188,7 @@ Work through these in order. The first three affect every integration; test afte
 
 ### Named imports only
 
-The default `ForgeFrame` object is gone; import each function by name.
+The `ForgeFrame` object is gone, both as the default export and as the named `import { ForgeFrame } from 'forgeframe'`; import each function by name.
 
 ```typescript
 // v1
@@ -1301,6 +1301,7 @@ instance.event.on('error', onError);
 | Removing handlers | `instance.event.off('close', fn)` or `instance.event.removeAllListeners()` | `on()` and `once()` return an unsubscribe function; ForgeFrame removes every listener after `closed` | Keep the returned function and call it |
 | Emitting | `instance.event.emit('close')` | Removed | Call `instance.close()` |
 | Waiting for exports | Polling `instance.exports` | `instance.event.once('exports', fn)`; the payload equals `instance.exports` | Subscribe to `exports` |
+| Template focus | `TemplateContext.focus()` returned a promise | It is synchronous and returns `void` | Drop any `await` or `.then()` on it |
 | CSP nonce | `Checkout({ cspNonce })`, which also sent the nonce to the host | `create({ ..., cspNonce })`; never sent to the host; custom templates read `TemplateContext.cspNonce` | Move it to the component options |
 | `timeout` and `dimensions` as props | `Checkout({ timeout, dimensions })`, which was ignored | Component options only | Set them on `create()` |
 | Host prop subscription | `const { cancel } = hostProps.onProps(fn); cancel();` | `const stop = host.onProps(fn); stop();`; `fn` gets the same props shape as `ready` | Call the returned function |

@@ -398,14 +398,21 @@ export class ConsumerComponent<
 		this.closePromise = closeTask.promise;
 
 		this.closing = true;
-		if (this.activeRenderTask && !this.rendered) {
-			// Held updates, released as render() rejects, name this error as cause.
-			const cancellation = this.createRenderCancellationError();
-			this.renderFailure = cancellation;
-			this.activeRenderTask.reject(cancellation);
-		}
+		this.cancelActiveRender();
 		void this.performClose().then(closeTask.resolve, closeTask.reject);
 		return closeTask.promise;
+	}
+
+	/**
+	 * Rejects a render still in progress with its cancellation error, recorded
+	 * first as `renderFailure`, so the updates it held name the same error as
+	 * `cause`. A render that already completed is left alone.
+	 */
+	private cancelActiveRender(): void {
+		if (!this.activeRenderTask || this.rendered) return;
+		const cancellation = this.createRenderCancellationError();
+		this.renderFailure = cancellation;
+		this.activeRenderTask.reject(cancellation);
 	}
 
 	/**

@@ -316,6 +316,30 @@ describe("Component Creation", () => {
 		},
 	);
 
+	it.each([
+		{ options: { hostOrigins: "https://Host.example.com" } },
+		{ options: { peers: ["https://host.example.com:443"] } },
+		{
+			options: {
+				props: {
+					token: {
+						schema: prop.string(),
+						deliverTo: "https://Host.example.com",
+					},
+				},
+			},
+		},
+	])("rejects an origin browsers never report in $options", ({ options }) => {
+		expect(() =>
+			create({
+				tag: "non-canonical-origin-component",
+				url: "https://host.example.com/widget",
+				...(options as object),
+			}),
+		).toThrow('browsers report it as "https://host.example.com"');
+		expect(getComponent("non-canonical-origin-component")).toBeUndefined();
+	});
+
 	it("rejects peers: false and names the way to keep discovery off", () => {
 		expect(() =>
 			create({

@@ -217,9 +217,17 @@ export class ConsumerTransport<
 		try {
 			return await handlers.onBootstrap(source, resetLocalReferences);
 		} catch (error) {
-			this.initPromise?.reject(normalizeError(error));
+			this.failPendingHandshake(normalizeError(error));
 			throw error;
 		}
+	}
+
+	/**
+	 * Rejects a pending handshake with `error`; `waitForHost` releases it.
+	 * Unlike `rejectPendingInit`, it leaves the host window's state alone.
+	 */
+	private failPendingHandshake(error: Error): void {
+		this.initPromise?.reject(error);
 	}
 
 	/**

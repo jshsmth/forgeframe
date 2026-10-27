@@ -296,6 +296,15 @@ describe("Host security", () => {
 		},
 	);
 
+	it("rejects a consumer origin browsers never report before reading the window", () => {
+		expect(() =>
+			initHost({ props: {}, consumerOrigins: "https://Shop.example.com" }),
+		).toThrow(
+			'initHost() consumerOrigins lists "https://Shop.example.com", which can never match because browsers report it as "https://shop.example.com"',
+		);
+		expect(getHost()).toBeNull();
+	});
+
 	it("keeps an empty allowlist array as a policy that admits no consumer", () => {
 		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
 			createAccessibleConsumerWindow("https://trusted.example.com"),
