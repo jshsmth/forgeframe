@@ -45,6 +45,18 @@ jobs:
       - name: Run browser suite
         run: npm run test:browser
 
+      - name: Upload browser test report
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: playwright-report
+          path: |
+            packages/forgeframe/playwright-report
+            packages/forgeframe/test-results
+          if-no-files-found: ignore
+          retention-days: 7
+          overwrite: true
+
       # A pre-release (2.0.0-beta.1) publishes to `next`; a final release to `latest`.
       - name: Choose npm dist-tag
         id: dist-tag
