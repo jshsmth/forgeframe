@@ -502,7 +502,9 @@ export class Messenger {
 			return serializeMessage(
 				createResponseMessage(message.id, data, source, error),
 			);
-		} catch {
+		} catch (serializeError) {
+			// The cause stays local; its message tells the requester what failed.
+			const cause = normalizeError(serializeError);
 			return serializeMessage(
 				createResponseMessage(
 					message.id,
@@ -510,7 +512,8 @@ export class Messenger {
 					source,
 					new ForgeFrameError(
 						"VALIDATION",
-						`Could not serialize response for "${message.name}"`,
+						`Could not serialize response for "${message.name}": ${cause.message}`,
+						{ cause },
 					),
 				),
 			);
