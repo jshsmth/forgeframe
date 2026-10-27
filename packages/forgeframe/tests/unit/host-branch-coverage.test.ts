@@ -15,6 +15,7 @@ import {
 } from "@/core/host";
 import * as hostSecurity from "@/core/host/security";
 import { ForgeFrameError } from "@/errors";
+import { createDeferred } from "@/utils/promise";
 import { buildWindowName } from "@/window/name-payload";
 import type { WindowNamePayload } from "@/window/types";
 import { forgeFrameError } from "../forgeframe-error";
@@ -125,6 +126,50 @@ describe("Host branch coverage and edge paths", () => {
 			undefined,
 		]);
 	});
+
+	const teardownFailure = new Error("consumer window went away");
+	it.each([
+		{
+			// Without the destroyed check, the invalid response would reject
+			// with VALIDATION instead.
+			outcome: "resolves",
+			settle: (response: ReturnType<typeof createDeferred<unknown>>) =>
+				response.resolve({ invalid: true }),
+			error: forgeFrameError(
+				"CLOSED",
+				"Host destroyed before bootstrap completed",
+			),
+		},
+		{
+			// Without the destroyed check, the failure would be wrapped as
+			// VALIDATION and posted to the consumer as an init failure.
+			outcome: "rejects",
+			settle: (response: ReturnType<typeof createDeferred<unknown>>) =>
+				response.reject(teardownFailure),
+			error: teardownFailure,
+		},
+	])(
+		"rejects ready unchanged and sends nothing more when the host is destroyed before BOOTSTRAP $outcome",
+		async ({ settle, error }) => {
+			window.name = buildWindowName(createPayload());
+			const response = createDeferred<unknown>();
+			const send = vi
+				.spyOn(Messenger.prototype, "send")
+				.mockReturnValueOnce(response.promise as Promise<never>);
+			vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
+			const host = requireValue(
+				initHost({ consumerOrigins: window.location.origin }),
+			);
+			const ready = host.ready.catch((caught: unknown) => caught);
+
+			host.destroy();
+			settle(response);
+
+			expect(await ready).toEqual(error);
+			// No INIT and no init failure follow the BOOTSTRAP request.
+			expect(send).toHaveBeenCalledOnce();
+		},
+	);
 
 	it.each([
 		{ autoInit: true, failure: "an invalid response" },

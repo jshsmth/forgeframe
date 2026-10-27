@@ -65,6 +65,37 @@ describe("CleanupManager", () => {
 		expect(results).toEqual(["sync", "async"]);
 	});
 
+	it("runs every task in LIFO order when earlier ones throw or reject", async () => {
+		const manager = new CleanupManager();
+		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		const order: string[] = [];
+		const thrown = new Error("sync cleanup failure");
+		const rejected = new Error("async cleanup failure");
+
+		manager.register(() => {
+			order.push("first");
+		});
+		manager.register(async () => {
+			order.push("rejects");
+			throw rejected;
+		});
+		manager.register(() => {
+			order.push("throws");
+			throw thrown;
+		});
+		manager.register(() => {
+			order.push("last");
+		});
+
+		await expect(manager.cleanup()).resolves.toBeUndefined();
+
+		expect(order).toEqual(["last", "throws", "rejects", "first"]);
+		expect(consoleSpy.mock.calls).toEqual([
+			["Error in cleanup task:", thrown],
+			["Error in cleanup task:", rejected],
+		]);
+	});
+
 	it("should only cleanup once", async () => {
 		const manager = new CleanupManager();
 		let count = 0;
@@ -85,9 +116,8 @@ describe("CleanupManager", () => {
 
 		await manager.cleanup();
 		manager.register(executed);
-		await new Promise((resolve) => setTimeout(resolve, 0));
 
-		expect(executed).toHaveBeenCalled();
+		await vi.waitFor(() => expect(executed).toHaveBeenCalledOnce());
 	});
 
 	it("should catch async errors for tasks registered after cleanup", async () => {
@@ -99,11 +129,11 @@ describe("CleanupManager", () => {
 			throw new Error("late async cleanup failure");
 		});
 
-		await new Promise((resolve) => setTimeout(resolve, 0));
-
-		expect(consoleSpy).toHaveBeenCalledWith(
-			"Error in cleanup task:",
-			expect.any(Error),
+		await vi.waitFor(() =>
+			expect(consoleSpy).toHaveBeenCalledExactlyOnceWith(
+				"Error in cleanup task:",
+				expect.objectContaining({ message: "late async cleanup failure" }),
+			),
 		);
 	});
 });

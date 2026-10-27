@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CONTEXT, MESSAGE_NAME } from "@/constants";
 import { HostTransport } from "@/core/host/transport";
 import type { HostTransportOptions } from "@/core/host/types";
+import { ForgeFrameError } from "@/errors";
 import { EventEmitter } from "@/events/emitter";
 import type { HostEvents } from "@/types";
 import { createDeferred } from "@/utils/promise";
@@ -416,6 +417,61 @@ describe("HostTransport", () => {
 		await expect(secondExport).resolves.toBeUndefined();
 		expect(sendSpy).toHaveBeenCalledTimes(2);
 	});
+
+	it.each([
+		{
+			case: "after delivery with a transport error",
+			delivered: true,
+			error: new Error("consumer did not answer"),
+			answer: "exported",
+		},
+		{
+			case: "after delivery with a consumer VALIDATION rejection",
+			delivered: true,
+			error: new ForgeFrameError("VALIDATION", "invalid export"),
+			answer: forgeFrameError("CLOSED", "not found"),
+		},
+		{
+			case: "before delivery",
+			delivered: false,
+			error: new Error("postMessage blocked"),
+			answer: forgeFrameError("CLOSED", "not found"),
+		},
+	])(
+		"keeps exported callbacks only when a failed export may be stored: $case",
+		async ({ delivered, error, answer: expected }) => {
+			const { transport, consumerWindow } = createTransport();
+			const sendSpy = vi
+				.spyOn(transport.messenger, "send")
+				.mockImplementationOnce(async (...args) => {
+					if (delivered) args[5]?.();
+					throw error;
+				});
+			const exported = vi.fn(() => "exported");
+
+			await expect(transport.exportData({ exported })).rejects.toBe(error);
+
+			const sent = requireValue(sendSpy.mock.calls[0])[3] as {
+				exported: { __id__: string };
+			};
+			const id = sent.exported.__id__;
+			const call = requireValue(getHandler(transport, MESSAGE_NAME.CALL));
+			// The CALL handler throws synchronously for a released callback.
+			const answer = Promise.resolve().then(() =>
+				call(
+					{ id, args: [] },
+					{
+						uid: "consumer",
+						domain: "https://consumer.example.com",
+						window: consumerWindow,
+					},
+				),
+			);
+			await expect(answer.catch((caught: unknown) => caught)).resolves.toEqual(
+				expected,
+			);
+		},
+	);
 
 	it("should destroy the messenger and bridge only once", () => {
 		const { transport } = createTransport();

@@ -362,6 +362,62 @@ describe("ConsumerTransport", () => {
 		).resolves.toBe("second");
 	});
 
+	it("releases only the new callback snapshot when a props send fails before delivery", async () => {
+		const transport = createTransport();
+		transport.attachHostWindow(window, HOST_ORIGIN);
+		const sendSpy = vi.spyOn(transport.messenger, "send");
+		sendSpy.mockResolvedValueOnce(undefined);
+		const source = hostSource(window);
+		await transport.sendPropsUpdateToHost(
+			{ onReady: () => "first" },
+			createOptions().props,
+		);
+		// The send fails without reporting a delivery attempt.
+		sendSpy.mockRejectedValueOnce(new Error("postMessage blocked"));
+
+		await expect(
+			transport.sendPropsUpdateToHost(
+				{ onReady: () => "second" },
+				createOptions().props,
+			),
+		).rejects.toThrow("postMessage blocked");
+
+		await expect(
+			Promise.resolve().then(() =>
+				callConsumerCallback(
+					transport,
+					sentCallbackId(sendSpy, 1, "onReady"),
+					source,
+				),
+			),
+		).rejects.toThrow(forgeFrameError("CLOSED", "not found"));
+		await expect(
+			callConsumerCallback(
+				transport,
+				sentCallbackId(sendSpy, 0, "onReady"),
+				source,
+			),
+		).resolves.toBe("first");
+	});
+
+	it("sends nothing when the host window has closed", async () => {
+		const transport = createTransport();
+		const closedHost = {
+			postMessage: vi.fn(),
+			closed: true,
+		} as unknown as Window;
+		transport.attachHostWindow(closedHost, HOST_ORIGIN);
+		const sendSpy = vi.spyOn(transport.messenger, "send");
+
+		await expect(
+			transport.sendPropsUpdateToHost(
+				{ onReady: () => "unsent" },
+				createOptions().props,
+			),
+		).resolves.toBeUndefined();
+		expect(sendSpy).not.toHaveBeenCalled();
+	});
+
 	it("should keep existing callback references when serialization fails mid-batch", async () => {
 		const transport = createTransport();
 		transport.attachHostWindow(window, HOST_ORIGIN);
