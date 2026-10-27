@@ -103,8 +103,6 @@ test.beforeAll(async () => {
 		<button id="invoke">Call consumer</button><output id="result"></output>
 		<script type="module">
 		import {initHost,prop} from '/library.js';
-		const delay = Number(new URLSearchParams(location.search).get('delay') ?? 0);
-		await new Promise((resolve) => setTimeout(resolve, delay));
 		const host = initHost({props:{label:prop.string(), count:prop.number().min(0), theme:prop.string(), onAction:prop.function()}, consumerOrigins:['${consumerOrigin}']});
 		const props = await host.ready;
 		await host.export({ greet: (name) => 'hello ' + name + ' from ' + props.label });
@@ -159,10 +157,7 @@ for (const strict of [false, true]) {
 				cleanups: strict ? 1 : 0,
 			});
 		await expect(page.locator("#mount iframe")).toHaveCount(1);
-		const frame = await (
-			await page.locator("#mount iframe").elementHandle()
-		)?.contentFrame();
-		if (!frame) throw new Error("Missing React host iframe");
+		const frame = page.locator("#mount iframe").contentFrame();
 		await expect(frame.locator("#snapshot")).toHaveText("initial:1:dark");
 		await page.locator("#use-instance").click();
 		await expect(page.locator("#instance-result")).toHaveText(
@@ -226,16 +221,33 @@ for (const strict of [false, true]) {
 	}) => {
 		const pageErrors: string[] = [];
 		page.on("pageerror", (error) => pageErrors.push(error.message));
+		// Hold the host document until the second commit is made, so the
+		// commit always lands while the frame is still loading.
+		let releaseHost = () => {};
+		const hostAllowed = new Promise<void>((resolve) => {
+			releaseHost = resolve;
+		});
+		await page.route(`${hostOrigin}/**`, async (route) => {
+			await hostAllowed;
+			await route.continue();
+		});
 		await page.goto(
-			`${consumerOrigin}/?host=${encodeURIComponent(hostOrigin)}&strict=${strict}&hostDelay=750`,
+			`${consumerOrigin}/?host=${encodeURIComponent(hostOrigin)}&strict=${strict}`,
 		);
 		await page.locator("#start").click();
 		await expect(page.locator("#mount iframe")).toHaveCount(1);
 		await page.locator("#update").click();
-		const frame = await (
-			await page.locator("#mount iframe").elementHandle()
-		)?.contentFrame();
-		if (!frame) throw new Error("Missing React host iframe");
+		// The second commit lands while the host document is still held.
+		await expect
+			.poll(() =>
+				page.evaluate(() => window.reactJourney.snapshot().committedLabel),
+			)
+			.toBe("updated");
+		expect(
+			await page.evaluate(() => window.reactJourney.snapshot().rendered),
+		).toBe(0);
+		releaseHost();
+		const frame = page.locator("#mount iframe").contentFrame();
 		await expect(frame.locator("#history")).toHaveText(
 			"initial:1:dark|updated:2:dark",
 		);

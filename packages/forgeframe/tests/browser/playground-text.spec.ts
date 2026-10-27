@@ -27,6 +27,8 @@ async function listen(server: Server): Promise<string> {
 }
 
 test.beforeAll(async () => {
+	// Several Vite builds run here, once per worker.
+	test.setTimeout(120_000);
 	const files = new Map<string, string | Uint8Array>();
 	const consumerFiles = new Map<string, string | Uint8Array>();
 	const scripts: { library: ReadonlyMap<string, string>; logger: string } = {
@@ -185,6 +187,8 @@ for (const context of ["iframe", "popup"] as const) {
 	}) => {
 		const markup = '<img src="missing" data-injected="yes"> & <svg></svg>';
 		const key = 'extra" data-injected="key"><svg>';
+		const pageErrors: string[] = [];
+		page.on("pageerror", (error) => pageErrors.push(error.message));
 		await page.goto(consumerOrigin);
 		await page.evaluate(
 			async ({ hostOrigin, context, markup, key }) => {
@@ -221,8 +225,9 @@ for (const context of ["iframe", "popup"] as const) {
 			{ hostOrigin, context, markup, key },
 		);
 		const opened = context === "popup" ? page.waitForEvent("popup") : null;
-		await page.click("#open");
+		await page.locator("#open").click();
 		const popup = await opened;
+		popup?.on("pageerror", (error) => pageErrors.push(error.message));
 		await page.evaluate(
 			() => (window as unknown as { outcome: Promise<void> }).outcome,
 		);
@@ -230,24 +235,30 @@ for (const context of ["iframe", "popup"] as const) {
 			popup ??
 			page.frames().find((frame) => frame.url().startsWith(hostOrigin));
 		if (!host) throw new Error("Missing initialized playground host");
-		if (popup)
-			expect(
-				await popup.evaluate(() => ({
-					width: innerWidth,
-					height: innerHeight,
-				})),
-			).toEqual({ width: 500, height: 500 });
+		if (popup) {
+			// Window chrome differs by engine and OS; the content box stays close.
+			const size = await popup.evaluate(() => ({
+				width: innerWidth,
+				height: innerHeight,
+			}));
+			expect(size.width).toBeGreaterThanOrEqual(480);
+			expect(size.width).toBeLessThanOrEqual(500);
+			expect(size.height).toBeGreaterThanOrEqual(420);
+			expect(size.height).toBeLessThanOrEqual(500);
+		}
 		expect(
 			await host.evaluate(
 				(key) => document.getElementById(`prop-${key}`)?.textContent,
 				key,
 			),
 		).toBe(markup);
+		// Injected nodes must never exist, even briefly, so count once.
 		expect(await host.locator("[data-injected], img").count()).toBe(0);
 		await host.locator("#btn-greet").click();
 		await expect(page.locator(".log-entry .message")).toHaveText(
 			`Hello! Name: ${markup}, Count: 7`,
 		);
+		// Injected nodes must never exist, even briefly, so count once.
 		expect(await page.locator("[data-injected], img, svg").count()).toBe(0);
 		await page.evaluate(async () => {
 			await (
@@ -261,6 +272,7 @@ for (const context of ["iframe", "popup"] as const) {
 		await expect(host.locator("#prop-name")).toHaveText(
 			'<b data-injected="update">updated</b>',
 		);
+		// Injected nodes must never exist, even briefly, so count once.
 		expect(await host.locator("[data-injected]").count()).toBe(0);
 		await host.locator("#btn-export").click();
 		await expect
@@ -275,9 +287,6 @@ for (const context of ["iframe", "popup"] as const) {
 				),
 			)
 			.toBe(7);
-		const pageErrors: string[] = [];
-		page.on("pageerror", (error) => pageErrors.push(error.message));
-		popup?.on("pageerror", (error) => pageErrors.push(error.message));
 		await host.locator("#btn-close").click();
 		await expect(page.locator("#mount iframe")).toHaveCount(0);
 		if (popup) await expect.poll(() => popup.isClosed()).toBe(true);
@@ -339,9 +348,10 @@ test("playground Set applies an edit when blur refreshes the code preview", asyn
 		"Draft changes pending",
 	);
 	await expect(host.locator("#prop-name")).toHaveText("initial");
-	const bounds = await page
-		.locator('button[data-update-prop="name"]')
-		.boundingBox();
+	const setButton = page.locator('button[data-update-prop="name"]');
+	// Read the layout only once the button has settled in the viewport.
+	await expect(setButton).toBeInViewport();
+	const bounds = await setButton.boundingBox();
 	if (!bounds) throw new Error("Missing Set button");
 	// Use physical pointer events without locator retries after blur.
 	await page.mouse.click(
@@ -377,9 +387,9 @@ test("playground labels controls, disables unavailable styles and reflows at mob
 	await expect(page.getByLabel("name", { exact: true })).toHaveValue("");
 	await expect(page.getByLabel("count", { exact: true })).toHaveValue("0");
 	await expect(page.locator(".code-panel")).not.toHaveAttribute("open");
-	expect(
-		await page.evaluate(() => document.documentElement.scrollWidth),
-	).toBeLessThanOrEqual(390);
+	await expect
+		.poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+		.toBeLessThanOrEqual(390);
 	const popup = page.getByRole("button", { name: "Popup", exact: true });
 	await popup.click();
 	await expect(popup).toHaveAttribute("aria-pressed", "true");
@@ -407,9 +417,9 @@ test("playground labels controls, disables unavailable styles and reflows at mob
 	await page.getByLabel("name", { exact: true }).fill("Mobile test");
 	await page.locator("#btn-render").click();
 	await expect(page.locator("#status-text")).toHaveText("Rendered");
-	expect(
-		await page.evaluate(() => document.documentElement.scrollWidth),
-	).toBeLessThanOrEqual(390);
+	await expect
+		.poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+		.toBeLessThanOrEqual(390);
 	await page.locator("#btn-close").click();
 	await expect(page.locator("iframe")).toHaveCount(0);
 });
@@ -493,9 +503,9 @@ test("test lab filters routes and stops safely between scenarios", async ({
 	await expect(page.locator("#catalog-empty")).toBeVisible();
 	await page.getByRole("searchbox", { name: "Find a scenario" }).fill("");
 	await expect(page.locator(".scenario-card:visible")).toHaveCount(18);
-	expect(
-		await page.evaluate(() => document.documentElement.scrollWidth),
-	).toBeLessThanOrEqual(390);
+	await expect
+		.poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+		.toBeLessThanOrEqual(390);
 	const run = page.getByRole("button", { name: "Run all automatic scenarios" });
 	await run.click();
 	await page.getByRole("button", { name: "Stop after this scenario" }).click();
