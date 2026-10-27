@@ -141,6 +141,46 @@ describe("React driver fault injection", () => {
 		expect(container.textContent).toBe("");
 	});
 
+	it("ignores a render that resolves after unmount", async () => {
+		const onRendered = vi.fn();
+		const onError = vi.fn();
+		const instanceRef = vi.fn();
+		await commit({ amount: 1, onRendered, onError, instanceRef });
+		await React.act(async () => root.unmount());
+		// afterEach unmounts again, so it gets a fresh root.
+		root = createRoot(container);
+		expect(instance(0).close).toHaveBeenCalledOnce();
+
+		await settle(() => instance(0).renderTask.resolve());
+
+		expect(onRendered).not.toHaveBeenCalled();
+		expect(onError).not.toHaveBeenCalled();
+		expect(instanceRef).not.toHaveBeenCalledWith(
+			expect.objectContaining({ uid: "fake-1" }),
+		);
+	});
+
+	it("ignores a stale render success after a context remount", async () => {
+		const onRendered = vi.fn();
+		const instanceRef = vi.fn();
+		await commit({ amount: 1, context: "popup", onRendered, instanceRef });
+		await commit({ amount: 1, context: "iframe", onRendered, instanceRef });
+
+		await settle(() => instance(0).renderTask.resolve());
+
+		expect(onRendered).not.toHaveBeenCalled();
+		expect(instanceRef).not.toHaveBeenCalledWith(
+			expect.objectContaining({ uid: "fake-1" }),
+		);
+
+		await settle(() => instance(1).renderTask.resolve());
+
+		expect(onRendered).toHaveBeenCalledOnce();
+		expect(instanceRef).toHaveBeenLastCalledWith(
+			expect.objectContaining({ uid: "fake-2" }),
+		);
+	});
+
 	it("ignores a stale update result after a context remount and starts the new instance's queue fresh", async () => {
 		const onError = vi.fn();
 		await commit({ amount: 1, context: "iframe", onError });
