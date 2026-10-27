@@ -884,6 +884,25 @@ const annotatedEntriesInput: IsEquivalent<
 > = true;
 void annotatedEntriesInput;
 
+// z.ZodType<T> declares its input as unknown, so the key is optional and
+// accepts any value; z.ZodType<T, T> keeps T as the input.
+interface ZodUser {
+	id: string;
+}
+const looseUser: z.ZodType<ZodUser> = z.object({ id: z.string() });
+const strictUser: z.ZodType<ZodUser, ZodUser> = z.object({ id: z.string() });
+const ZodAnnotated = create({
+	tag: "typed-zod-annotated",
+	url: "https://example.com",
+	props: { loose: looseUser, strict: strictUser },
+});
+void ZodAnnotated({ strict: { id: "a" } });
+void ZodAnnotated({ loose: 42, strict: { id: "a" } });
+// @ts-expect-error z.ZodType<T, T> stays required
+void ZodAnnotated({ loose: { id: "a" } });
+// @ts-expect-error z.ZodType<T, T> keeps T as its input
+void ZodAnnotated({ strict: 42 });
+
 // A concrete coercing schema keeps its wider declared input.
 const CoercedEntries = create({
 	tag: "typed-coerced-entries",

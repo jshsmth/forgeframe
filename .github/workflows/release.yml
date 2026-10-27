@@ -50,9 +50,10 @@ jobs:
         id: dist-tag
         run: node packages/forgeframe/scripts/release-dist-tag.mjs >> "$GITHUB_OUTPUT"
 
-      # The publish job uploads exactly this verified tarball.
+      # The publish job uploads this tarball, packed from the verified checkout.
+      # npm pack does not create its destination directory.
       - name: Pack the package
-        run: npm pack -w forgeframe --pack-destination release
+        run: mkdir -p release && npm pack -w forgeframe --pack-destination release
 
       - name: Upload the package tarball
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

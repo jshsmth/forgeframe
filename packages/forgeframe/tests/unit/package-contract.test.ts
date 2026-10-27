@@ -287,6 +287,10 @@ describe("package contract", () => {
 				.split(/\n {2}(?=[a-z-]+:\n)/)
 				.find((block) => block.startsWith(`${name}:`)) ?? "";
 		expect(job("verify")).toContain("npm run release:check");
+		// npm pack fails with ENOENT when the destination does not exist.
+		expect(job("verify")).toContain(
+			"mkdir -p release && npm pack -w forgeframe --pack-destination release",
+		);
 		expect(job("verify")).not.toContain("permissions:");
 		expect(job("publish")).toContain("id-token: write");
 		expect(job("publish")).not.toContain("contents: write");
