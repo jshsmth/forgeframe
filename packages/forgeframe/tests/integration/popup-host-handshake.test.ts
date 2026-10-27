@@ -5,8 +5,9 @@
  * through the real popup messaging pipeline.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { create, ForgeFrameError, prop } from "@/index";
+import { create, prop } from "@/index";
 import type { PropsDefinition } from "@/types";
+import { forgeFrameError } from "../forgeframe-error";
 import {
 	createPopupIntegrationHarness,
 	type PopupIntegrationHarness,
@@ -207,8 +208,7 @@ describe("Popup host handshake integration", () => {
 		const instance = PopupComponent({});
 
 		const rejection = instance.render(container, "popup");
-		await expect(rejection).rejects.toBeInstanceOf(ForgeFrameError);
-		await expect(rejection).rejects.toMatchObject({ code: "POPUP_BLOCKED" });
+		await expect(rejection).rejects.toThrow(forgeFrameError("POPUP_BLOCKED"));
 		expect(container.childElementCount).toBe(0);
 		expect(harness.getLastPopupOpen()).toBeNull();
 		// The instance stays open, so the caller can fall back to an iframe.
@@ -218,7 +218,7 @@ describe("Popup host handshake integration", () => {
 		const fallback = instance.render(container, "iframe");
 		expect(container.querySelector("iframe")).not.toBeNull();
 		await instance.close();
-		await expect(fallback).rejects.toMatchObject({ code: "CANCELLED" });
+		await expect(fallback).rejects.toThrow(forgeFrameError("CANCELLED"));
 		expect(closed).toHaveBeenCalledOnce();
 	});
 });

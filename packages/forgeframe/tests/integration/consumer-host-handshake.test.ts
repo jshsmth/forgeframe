@@ -14,6 +14,7 @@ import type {
 	ComponentUrlOptions,
 	PropsDefinition,
 } from "@/types";
+import { forgeFrameError } from "../forgeframe-error";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
@@ -52,7 +53,7 @@ describe("Consumer/host handshake integration", () => {
 		document.body.append(container);
 
 		await expect(Component({ amount: -1 }).render(container)).rejects.toThrow(
-			"Amount must be positive",
+			forgeFrameError("VALIDATION", "Amount must be positive"),
 		);
 		expect(container.querySelector("iframe")).toBeNull();
 	});
@@ -116,7 +117,9 @@ describe("Consumer/host handshake integration", () => {
 		await rendering;
 		activeHarness.withHostGlobals(() => host.destroy());
 		expect(getHost()).toBeNull();
-		await expect(host.hide()).rejects.toThrow();
+		await expect(host.hide()).rejects.toThrow(
+			forgeFrameError("CLOSED", "Messenger has been destroyed"),
+		);
 		const nextHost = activeHarness.bootstrapHost(definitions);
 		if (!nextHost) throw new Error("Expected host reinitialization");
 		expect(nextHost).not.toBe(host);
@@ -158,11 +161,16 @@ describe("Consumer/host handshake integration", () => {
 
 		const host = activeHarness.bootstrapHost({ amount: prop.string() });
 		if (!host) throw new Error("Expected a host");
-		await expect(host.ready).rejects.toThrow("Expected string, got number");
+		await expect(host.ready).rejects.toThrow(
+			forgeFrameError("VALIDATION", "Expected string, got number"),
+		);
 		const hostReason =
 			"Host initialization failed: Validation failed: amount: Expected string, got number";
 		await expect(rendering).rejects.toThrow(
-			`did not initialize within 300ms. ${hostReason}`,
+			forgeFrameError(
+				"INIT_TIMEOUT",
+				`did not initialize within 300ms. ${hostReason}`,
+			),
 		);
 		expect(errors).toEqual([
 			expect.stringContaining(`did not initialize within 300ms. ${hostReason}`),
@@ -189,7 +197,9 @@ describe("Consumer/host handshake integration", () => {
 		);
 
 		const failed = activeHarness.bootstrapHost({ amount: prop.string() });
-		await expect(failed?.ready).rejects.toThrow("Expected string, got number");
+		await expect(failed?.ready).rejects.toThrow(
+			forgeFrameError("VALIDATION", "Expected string, got number"),
+		);
 		// The failed start released the host before this handler ran.
 		expect(getHost()).toBeNull();
 		await activeHarness.flushMessages();
@@ -223,7 +233,10 @@ describe("Consumer/host handshake integration", () => {
 			},
 		};
 		expect(() => harness?.bootstrapHost(legacyDefinitions)).toThrow(
-			'Prop "profile" uses the removed "serialization" option. ForgeFrame 2 always sends props as JSON; remove the option.',
+			forgeFrameError(
+				"VALIDATION",
+				'Prop "profile" uses the removed "serialization" option. ForgeFrame 2 always sends props as JSON; remove the option.',
+			),
 		);
 		expect(getHost()).toBeNull();
 
@@ -456,7 +469,9 @@ describe("Prop updates requested during render", () => {
 		const valid = instance.updateProps({ amount: 3 });
 		const { host, notifications } = await startRecordingHost(container);
 		await expect(rendering).resolves.toBeUndefined();
-		await expect(invalid).rejects.toThrow("Validation failed: amount");
+		await expect(invalid).rejects.toThrow(
+			forgeFrameError("VALIDATION", "Validation failed: amount"),
+		);
 		await valid;
 		expect((await host.ready).amount).toBe(3);
 		expect(notifications).toEqual([1, 3]);
@@ -476,7 +491,10 @@ describe("Prop updates requested during render", () => {
 		const { host } = await startRecordingHost(container);
 		await rendering;
 		await expect(moved).rejects.toThrow(
-			"Cannot change component URL origin after render",
+			forgeFrameError(
+				"ORIGIN_REJECTED",
+				"Cannot change component URL origin after render",
+			),
 		);
 		expect((await host.ready).amount).toBe(1);
 	});
@@ -489,13 +507,16 @@ describe("Prop updates requested during render", () => {
 		const queued = instance.updateProps({ amount: 2 });
 		const queuedFailure = queued.catch((error: unknown) => error);
 		const renderFailure = await rendering.catch((error: unknown) => error);
-		expect(renderFailure).toMatchObject({ code: "INIT_TIMEOUT" });
+		expect(renderFailure).toEqual(forgeFrameError("INIT_TIMEOUT"));
 		// The held update names the render failure, so callers can tell it apart.
-		expect(await queuedFailure).toMatchObject({
-			code: "CLOSED",
-			message: "Cannot update props after the component has closed",
-			cause: renderFailure,
-		});
+		const queuedError = await queuedFailure;
+		expect(queuedError).toEqual(
+			forgeFrameError(
+				"CLOSED",
+				"Cannot update props after the component has closed",
+			),
+		);
+		expect((queuedError as Error).cause).toBe(renderFailure);
 		expect(validate).toHaveBeenCalledTimes(1);
 	});
 
@@ -509,9 +530,9 @@ describe("Prop updates requested during render", () => {
 			.catch((error: unknown) => error);
 		await instance.close();
 		const cancellation = await renderFailure;
-		expect(cancellation).toMatchObject({ code: "CANCELLED" });
+		expect(cancellation).toEqual(forgeFrameError("CANCELLED"));
 		const queued = await queuedFailure;
-		expect(queued).toMatchObject({ code: "CLOSED" });
+		expect(queued).toEqual(forgeFrameError("CLOSED"));
 		// The same error object render() rejected with, not an equal copy.
 		expect((queued as Error).cause).toBe(cancellation);
 	});
@@ -530,11 +551,12 @@ describe("Prop updates requested during render", () => {
 		await startRecordingHost(container);
 		await expect(rendering).resolves.toBeUndefined();
 		await expect(joined).resolves.toBeUndefined();
-		expect(await otherContext).toMatchObject({
-			code: "VALIDATION",
-			message: expect.stringContaining("different container or context"),
-		});
-		expect(await otherContainer).toMatchObject({ code: "VALIDATION" });
+		expect(await otherContext).toEqual(
+			forgeFrameError("VALIDATION", "different container or context"),
+		);
+		expect(await otherContainer).toEqual(
+			forgeFrameError("VALIDATION", "different container or context"),
+		);
 	});
 
 	it("resolves render() when a rendered listener closes the instance", async () => {
@@ -551,7 +573,7 @@ describe("Prop updates requested during render", () => {
 		const closed = await instance
 			.updateProps({ amount: 2 })
 			.catch((error: unknown) => error);
-		expect(closed).toMatchObject({ code: "CLOSED" });
+		expect(closed).toEqual(forgeFrameError("CLOSED"));
 		// A close after a completed render names no render failure.
 		expect((closed as Error).cause).toBeUndefined();
 	});
@@ -585,7 +607,9 @@ describe("Prop updates requested during render", () => {
 		});
 		await earlier;
 		expect(heldSettled).toBe(false);
-		await expect(failed).rejects.toThrow();
+		await expect(failed).rejects.toThrow(
+			forgeFrameError("VALIDATION", 'Container "#missing-container" not found'),
+		);
 		await held;
 
 		const rendering = instance.render(container);

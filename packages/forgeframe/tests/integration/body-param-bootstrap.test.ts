@@ -7,6 +7,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { create, prop } from "@/index";
 import type { PropsDefinition } from "@/types";
+import { forgeFrameError } from "../forgeframe-error";
 import {
 	createIframeIntegrationHarness,
 	createPopupIntegrationHarness,
@@ -131,7 +132,10 @@ describe("Body param bootstrap integration", () => {
 		const detached = document.createElement("div");
 
 		await expect(instance.render(detached)).rejects.toThrow(
-			"Iframe container must be attached to the document",
+			forgeFrameError(
+				"VALIDATION",
+				"Iframe container must be attached to the document",
+			),
 		);
 		expect(iframeHarness.getLastFormSubmission()).toBeNull();
 		expect(open).not.toHaveBeenCalled();

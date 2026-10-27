@@ -13,6 +13,7 @@ import {
 	type StandardSchemaV1PathSegment,
 	validateWithSchema,
 } from "@/props/schema";
+import { forgeFrameError } from "../forgeframe-error";
 
 type StandardSchemaPath = PropertyKey | StandardSchemaV1PathSegment;
 
@@ -178,7 +179,12 @@ describe("schema contracts with real schema libraries", () => {
 					{ users: [{ email: "not-an-email" }] },
 					"payload",
 				),
-			).toThrow("Validation failed: payload.users.0.email");
+			).toThrow(
+				forgeFrameError(
+					"VALIDATION",
+					"Validation failed: payload.users.0.email",
+				),
+			);
 		});
 	});
 });

@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { type StandardSchemaV1, validateWithSchema } from "@/props/schema";
+import { forgeFrameError } from "../forgeframe-error";
 
 describe("validateWithSchema path formatting", () => {
 	it("should format mixed key/index path segments", () => {
@@ -24,7 +25,10 @@ describe("validateWithSchema path formatting", () => {
 		};
 
 		expect(() => validateWithSchema(schema, {}, "payload")).toThrow(
-			"Validation failed: payload.users.1.email: Invalid email",
+			forgeFrameError(
+				"VALIDATION",
+				"Validation failed: payload.users.1.email: Invalid email",
+			),
 		);
 	});
 
@@ -52,7 +56,10 @@ describe("validateWithSchema path formatting", () => {
 		};
 
 		expect(() => validateWithSchema(schema, {}, "payload")).toThrow(
-			"Validation failed: payload.users.1.[object Object]: Invalid value",
+			forgeFrameError(
+				"VALIDATION",
+				"Validation failed: payload.users.1.[object Object]: Invalid value",
+			),
 		);
 	});
 });

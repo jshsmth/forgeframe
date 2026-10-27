@@ -4,6 +4,7 @@ import { validateNormalizedProps } from "@/props/normalize";
 import { prop } from "@/props/prop";
 import type { StandardSchemaV1 } from "@/props/schema";
 import { isDate, isPlainObject } from "@/utils/realm-values";
+import { forgeFrameError } from "../forgeframe-error";
 
 const timestamp = "2026-10-01T00:00:00.000Z";
 
@@ -93,7 +94,12 @@ describe("Realm-independent value admission", () => {
 		};
 		expect(() =>
 			validateNormalizedProps({ date }, { date: changedDate }),
-		).toThrow();
+		).toThrow(
+			forgeFrameError(
+				"VALIDATION",
+				"Validation failed: date: value no longer matches",
+			),
+		);
 		expect(() =>
 			validateNormalizedProps(
 				{ record },
@@ -108,6 +114,6 @@ describe("Realm-independent value admission", () => {
 				{ record: untrimmed },
 				{ record: prop.record(prop.string().trim()) },
 			),
-		).toThrow();
+		).toThrow(forgeFrameError("VALIDATION", "Validation failed: record"));
 	});
 });

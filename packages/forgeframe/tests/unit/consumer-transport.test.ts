@@ -21,6 +21,7 @@ import {
 	hostSource,
 	sentCallbackId,
 } from "../consumer-bridge";
+import { forgeFrameError } from "../forgeframe-error";
 import { requireValue } from "../require-value";
 
 type TestProps = {
@@ -91,7 +92,7 @@ function expectRecoveryPoolFull(
 ): void {
 	transport.bridge.startBatch();
 	expect(() => transport.bridge.serialize(() => "probe")).toThrow(
-		"recovery pool is full",
+		forgeFrameError("CAPACITY", "recovery pool is full"),
 	);
 	transport.bridge.abortBatch();
 }
@@ -206,7 +207,7 @@ describe("ConsumerTransport", () => {
 		await bootstrap({ sessionId: "second" }, source);
 		await expect(
 			callConsumerCallback(transport, requireValue(retained[0]).__id__, source),
-		).rejects.toThrow("not found");
+		).rejects.toThrow(forgeFrameError("CLOSED", "not found"));
 		transport.bridge.startBatch();
 		expect(() => transport.bridge.serialize(() => "admitted")).not.toThrow();
 		transport.bridge.abortBatch();
@@ -346,7 +347,10 @@ describe("ConsumerTransport", () => {
 				payload: { circular },
 			}),
 		).toThrow(
-			"Circular reference detected in props - arrays cannot contain circular references",
+			forgeFrameError(
+				"VALIDATION",
+				"Circular reference detected in props - arrays cannot contain circular references",
+			),
 		);
 
 		const rolledBack = requireValue(serializeSpy.mock.results[1]).value as {
@@ -357,7 +361,7 @@ describe("ConsumerTransport", () => {
 		).resolves.toBe("retained");
 		await expect(
 			callConsumerCallback(transport, rolledBack.__id__, source),
-		).rejects.toThrow("not found");
+		).rejects.toThrow(forgeFrameError("CLOSED", "not found"));
 	});
 
 	it("should short-circuit waitForHost when initialization already completed", async () => {
@@ -385,7 +389,10 @@ describe("ConsumerTransport", () => {
 		);
 		const replacement = createDeferred<void>();
 		const rejection = expect(waiting).rejects.toThrow(
-			'Host component "consumer-transport-component" (uid: consumer-transport-uid) did not initialize within 25ms.',
+			forgeFrameError(
+				"INIT_TIMEOUT",
+				'Host component "consumer-transport-component" (uid: consumer-transport-uid) did not initialize within 25ms.',
+			),
 		);
 
 		transport.initPromise = replacement;

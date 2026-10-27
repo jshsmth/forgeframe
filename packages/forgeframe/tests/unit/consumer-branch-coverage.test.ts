@@ -15,6 +15,7 @@ import {
 	hostSource,
 	sentCallbackId,
 } from "../consumer-bridge";
+import { forgeFrameError } from "../forgeframe-error";
 
 const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
 
@@ -277,7 +278,7 @@ describe("Consumer branch coverage and edge paths", () => {
 	it("should reject invalid origins when resolving URL origin", () => {
 		const consumer = createConsumer();
 		expect(() => getInternals(consumer).resolveUrlOrigin("http://%")).toThrow(
-			"Invalid component URL",
+			forgeFrameError("VALIDATION", "Invalid component URL"),
 		);
 	});
 
@@ -287,7 +288,12 @@ describe("Consumer branch coverage and edge paths", () => {
 		});
 		expect(() =>
 			getInternals(consumer).resolveUrlOrigin("https://host.example.com"),
-		).toThrow("is not allowed by the component's hostOrigins");
+		).toThrow(
+			forgeFrameError(
+				"ORIGIN_REJECTED",
+				"is not allowed by the component's hostOrigins",
+			),
+		);
 	});
 
 	it("should reject invalid URLs during trusted-origin sync", () => {
@@ -325,7 +331,7 @@ describe("Consumer branch coverage and edge paths", () => {
 
 		await expect(
 			callHostCallback(consumer, sentCallbackId(sendSpy, 0, "onSubmit")),
-		).rejects.toThrow("not found");
+		).rejects.toThrow(forgeFrameError("CLOSED", "not found"));
 		await expect(
 			callHostCallback(consumer, sentCallbackId(sendSpy, 1, "onSubmit")),
 		).resolves.toBe("second");
@@ -364,7 +370,7 @@ describe("Consumer branch coverage and edge paths", () => {
 			consumer.updateProps({ onSubmit: () => "next" }),
 		).resolves.toBeUndefined();
 		await expect(callHostCallback(consumer, previousRefId)).rejects.toThrow(
-			"not found",
+			forgeFrameError("CLOSED", "not found"),
 		);
 		await expect(
 			callHostCallback(consumer, sentCallbackId(sendSpy, 1, "onSubmit")),
@@ -423,7 +429,7 @@ describe("Consumer branch coverage and edge paths", () => {
 		await expect(secondUpdate).resolves.toBeUndefined();
 		await expect(
 			callHostCallback(consumer, sentCallbackId(sendSpy, 0, "onSubmit")),
-		).rejects.toThrow("not found");
+		).rejects.toThrow(forgeFrameError("CLOSED", "not found"));
 		await expect(
 			callHostCallback(consumer, sentCallbackId(sendSpy, 1, "onSubmit")),
 		).resolves.toBe("second");
@@ -563,7 +569,10 @@ describe("Consumer branch coverage and edge paths", () => {
 				}
 			).createIframeElement("window-name"),
 		).toThrow(
-			`Iframe attribute "SandBox" is not allowed; set the component's sandbox option instead`,
+			forgeFrameError(
+				"VALIDATION",
+				`Iframe attribute "SandBox" is not allowed; set the component's sandbox option instead`,
+			),
 		);
 		expect(createElement).not.toHaveBeenCalledWith("iframe");
 	});

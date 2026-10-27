@@ -11,6 +11,7 @@ import {
 	resizePopup,
 	watchPopupClose,
 } from "@/render/popup";
+import { forgeFrameError } from "../forgeframe-error";
 
 describe("openPopup", () => {
 	let originalOpen: typeof window.open;
@@ -83,12 +84,7 @@ describe("openPopup", () => {
 				name: "test-popup",
 				dimensions: { width: 500, height: 600 },
 			}),
-		).toThrow(
-			expect.objectContaining({
-				name: "ForgeFrameError",
-				code: "POPUP_BLOCKED",
-			}),
-		);
+		).toThrow(forgeFrameError("POPUP_BLOCKED"));
 	});
 
 	it.each([
@@ -113,7 +109,7 @@ describe("openPopup", () => {
 				name: "test-popup",
 				dimensions: { width: 500, height: 600 },
 			}),
-		).toThrow(expect.objectContaining({ code: "POPUP_BLOCKED" }));
+		).toThrow(forgeFrameError("POPUP_BLOCKED"));
 		// A window that only looked blocked is closed, not left untracked.
 		if (label === "zero-dimension") expect(close).toHaveBeenCalledOnce();
 	});

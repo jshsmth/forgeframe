@@ -10,6 +10,7 @@ import { deserializeMessage } from "@/communication/protocol";
 import { MESSAGE_NAME, PROTOCOL_VERSION } from "@/constants";
 import { getHost } from "@/core/host/bootstrap";
 import { create, isHost, prop } from "@/index";
+import { forgeFrameError } from "../forgeframe-error";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
@@ -156,7 +157,7 @@ describe("Bootstrap protocol version", () => {
 
 			expect(() =>
 				activeHarness.bootstrapHost({ amount: prop.number() }),
-			).toThrow(expect.objectContaining({ code: "VERSION_MISMATCH", message }));
+			).toThrow(forgeFrameError("VERSION_MISMATCH", message));
 			await activeHarness.flushMessages();
 
 			expect(posted).not.toHaveBeenCalled();

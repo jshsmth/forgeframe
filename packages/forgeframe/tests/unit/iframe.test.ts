@@ -12,6 +12,7 @@ import {
 	resizeIframe,
 	showIframe,
 } from "@/render/iframe";
+import { forgeFrameError } from "../forgeframe-error";
 
 describe("createIframeElement", () => {
 	it("should create an unattached iframe with its name and dimensions", () => {
@@ -66,7 +67,12 @@ describe("createIframeElement", () => {
 					sandbox: null,
 					attributes: { [attribute]: "attacker-controlled" },
 				}),
-			).toThrow(`Iframe attribute "${attribute}" is managed by ForgeFrame`);
+			).toThrow(
+				forgeFrameError(
+					"VALIDATION",
+					`Iframe attribute "${attribute}" is managed by ForgeFrame`,
+				),
+			);
 		},
 	);
 
@@ -81,7 +87,10 @@ describe("createIframeElement", () => {
 					sandbox: null,
 				}),
 			).toThrow(
-				`Iframe attribute "${attribute}" is not allowed; set the component's sandbox option instead`,
+				forgeFrameError(
+					"VALIDATION",
+					`Iframe attribute "${attribute}" is not allowed; set the component's sandbox option instead`,
+				),
 			);
 		},
 	);

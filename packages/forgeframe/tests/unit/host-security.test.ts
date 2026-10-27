@@ -22,6 +22,7 @@ import { prop } from "@/props/prop";
 import type { PropsDefinition } from "@/types";
 import { buildWindowName } from "@/window/name-payload";
 import type { WindowNamePayload } from "@/window/types";
+import { forgeFrameError } from "../forgeframe-error";
 import { requireValue } from "../require-value";
 
 const originalWindowName = window.name;
@@ -290,7 +291,10 @@ describe("Host security", () => {
 					consumerOrigins: allowed,
 				}),
 			).toThrow(
-				"initHost() consumerOrigins must be a non-empty origin string, a RegExp, or an array of them",
+				forgeFrameError(
+					"VALIDATION",
+					"initHost() consumerOrigins must be a non-empty origin string, a RegExp, or an array of them",
+				),
 			);
 			expect(getHost()).toBeNull();
 		},
@@ -300,7 +304,10 @@ describe("Host security", () => {
 		expect(() =>
 			initHost({ props: {}, consumerOrigins: "https://Shop.example.com" }),
 		).toThrow(
-			'initHost() consumerOrigins lists "https://Shop.example.com", which can never match because browsers report it as "https://shop.example.com"',
+			forgeFrameError(
+				"VALIDATION",
+				'initHost() consumerOrigins lists "https://Shop.example.com", which can never match because browsers report it as "https://shop.example.com"',
+			),
 		);
 		expect(getHost()).toBeNull();
 	});
@@ -318,7 +325,10 @@ describe("Host security", () => {
 		);
 
 		expect(() => initHost({ props: {}, consumerOrigins: [] })).toThrow(
-			'Consumer origin "https://trusted.example.com" is not allowed',
+			forgeFrameError(
+				"ORIGIN_REJECTED",
+				'Consumer origin "https://trusted.example.com" is not allowed',
+			),
 		);
 	});
 
@@ -337,7 +347,12 @@ describe("Host security", () => {
 
 		expect(() =>
 			initHost({ props: {}, consumerOrigins: "https://trusted.example.com" }),
-		).toThrow('Consumer origin "https://evil.example.com" is not allowed');
+		).toThrow(
+			forgeFrameError(
+				"ORIGIN_REJECTED",
+				'Consumer origin "https://evil.example.com" is not allowed',
+			),
+		);
 	});
 
 	it("should keep the bootstrap window name and allow a same-page retry when allowlist validation fails", () => {
@@ -356,7 +371,7 @@ describe("Host security", () => {
 
 		expect(() =>
 			initHost({ props: {}, consumerOrigins: "https://trusted.example.com" }),
-		).toThrow("is not allowed");
+		).toThrow(forgeFrameError("ORIGIN_REJECTED", "is not allowed"));
 
 		expect(window.name).toBe(bootstrapWindowName);
 		expect(getHost()).toBeNull();
@@ -411,7 +426,7 @@ describe("Host security", () => {
 
 		expect(() =>
 			initHost({ props: {}, consumerOrigins: "https://trusted.example.com" }),
-		).toThrow("https://evil.example.com");
+		).toThrow(forgeFrameError("ORIGIN_REJECTED", "https://evil.example.com"));
 	});
 
 	it("should bind host consumer domain to the accessible consumer origin instead of the claimed payload origin", () => {
@@ -449,7 +464,12 @@ describe("Host security", () => {
 		);
 		expect(() =>
 			initHost({ props: {}, consumerOrigins: "https://trusted.example.com" }),
-		).toThrow('Consumer origin "https://evil.example.com" is not allowed');
+		).toThrow(
+			forgeFrameError(
+				"ORIGIN_REJECTED",
+				'Consumer origin "https://evil.example.com" is not allowed',
+			),
+		);
 		expect(postMessage).not.toHaveBeenCalled();
 
 		window.name = buildWindowName(
@@ -461,7 +481,9 @@ describe("Host security", () => {
 		);
 		expect(() =>
 			initHost({ props: {}, consumerOrigins: "https://trusted.example.com" }),
-		).toThrow("Could not verify consumer origin");
+		).toThrow(
+			forgeFrameError("ORIGIN_REJECTED", "Could not verify consumer origin"),
+		);
 		expect(postMessage).not.toHaveBeenCalled();
 
 		window.name = buildWindowName(

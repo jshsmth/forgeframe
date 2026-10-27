@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { clearComponents, create } from "@/core/component";
 import { ForgeFrameError } from "@/errors";
 import type { Dimensions } from "@/types";
+import { forgeFrameError } from "../forgeframe-error";
 
 const SIZE: Dimensions = { width: 10, height: 20 };
 
@@ -237,7 +238,10 @@ describe("instance.event", () => {
 			// @ts-expect-error JavaScript callers can pass any name.
 			instance.event.on("toString", () => {}),
 		).toThrow(
-			'Unknown component event "toString". Supported events: render, rendered, error, close, closed, props, resize, focus, exports',
+			forgeFrameError(
+				"VALIDATION",
+				'Unknown component event "toString". Supported events: render, rendered, error, close, closed, props, resize, focus, exports',
+			),
 		);
 		expect(() =>
 			// @ts-expect-error JavaScript callers can pass any handler.

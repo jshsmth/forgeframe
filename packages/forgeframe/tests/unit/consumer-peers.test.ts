@@ -12,6 +12,7 @@ import {
 	type PeerCandidate,
 	selectPeerInstances,
 } from "@/core/consumer/peers";
+import { forgeFrameError } from "../forgeframe-error";
 import { setVerifiedHostOrigin } from "../peer-host-origin";
 
 const REQUESTER_ORIGIN = "https://widgets.example.com";
@@ -39,7 +40,10 @@ describe("assertPeersEnabled", () => {
 		expect(() =>
 			assertPeersEnabled({ tag: "private-widget", peers: undefined }),
 		).toThrow(
-			'Peer discovery is not enabled for component "private-widget". Set peers: "same-origin", or an origin matcher, in its create() options.',
+			forgeFrameError(
+				"VALIDATION",
+				'Peer discovery is not enabled for component "private-widget". Set peers: "same-origin", or an origin matcher, in its create() options.',
+			),
 		);
 	});
 

@@ -7,6 +7,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { create, prop } from "@/index";
+import { forgeFrameError } from "../forgeframe-error";
 import {
 	createIframeIntegrationHarness,
 	createPopupIntegrationHarness,
@@ -65,7 +66,12 @@ describe("Secure defaults integration", () => {
 					// Invalid JavaScript configuration is rejected at runtime.
 					...({ url: () => HOST_URL } as unknown as { url: string }),
 				}),
-			).toThrow("Component hostOrigins is required when url is a function");
+			).toThrow(
+				forgeFrameError(
+					"VALIDATION",
+					"Component hostOrigins is required when url is a function",
+				),
+			);
 		});
 
 		it.each([
@@ -116,7 +122,10 @@ describe("Secure defaults integration", () => {
 			const container = mountContainer();
 
 			await expect(Component().render(container)).rejects.toThrow(
-				'Component URL origin "https://attacker.example.com" is not allowed',
+				forgeFrameError(
+					"ORIGIN_REJECTED",
+					'Component URL origin "https://attacker.example.com" is not allowed',
+				),
 			);
 			expect(container.querySelector("iframe")).toBeNull();
 		});
@@ -133,7 +142,10 @@ describe("Secure defaults integration", () => {
 			await expect(
 				Component().render(mountContainer(), "popup"),
 			).rejects.toThrow(
-				'Component URL origin "https://attacker.example.com" is not allowed',
+				forgeFrameError(
+					"ORIGIN_REJECTED",
+					'Component URL origin "https://attacker.example.com" is not allowed',
+				),
 			);
 			expect(activeHarness.getLastPopupOpen()).toBeNull();
 		});
@@ -183,7 +195,10 @@ describe("Secure defaults integration", () => {
 			const container = mountContainer();
 
 			await expect(Component().render(container)).rejects.toThrow(
-				`Iframe attribute "SANDBOX" is not allowed; set the component's sandbox option instead`,
+				forgeFrameError(
+					"VALIDATION",
+					`Iframe attribute "SANDBOX" is not allowed; set the component's sandbox option instead`,
+				),
 			);
 			expect(container.querySelector("iframe")).toBeNull();
 		});

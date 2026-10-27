@@ -1,11 +1,12 @@
 /** React commits synchronize through the real consumer/host messaging pipeline. */
 
-import { create, ForgeFrameError, prop } from "forgeframe";
+import { create, prop } from "forgeframe";
 import { createReactComponent, type ReactInstance } from "forgeframe/react";
 import * as React from "react";
 import type { Root } from "react-dom/client";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { forgeFrameError } from "../forgeframe-error";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
@@ -383,9 +384,7 @@ describe("React commits across the host boundary", () => {
 		);
 		expect(hostProps.amount).toBe(1);
 		expect(onError).toHaveBeenCalledExactlyOnceWith(
-			expect.objectContaining({
-				message: expect.stringContaining("Number must be >= 0"),
-			}),
+			forgeFrameError("VALIDATION", "Number must be >= 0"),
 		);
 		await React.act(async () =>
 			root.render(React.createElement(Wrapped, { amount: 2, onError })),
@@ -578,9 +577,7 @@ describe("React commits across the host boundary", () => {
 		});
 		await vi.waitFor(() => expect(onError).toHaveBeenCalledOnce());
 		expect(onError).toHaveBeenCalledWith(
-			expect.objectContaining({
-				message: expect.stringContaining("Number must be >= 0"),
-			}),
+			forgeFrameError("VALIDATION", "Number must be >= 0"),
 		);
 		expect(hostProps.amount).toBe(1);
 		expect(snapshots).toEqual([]);
@@ -644,7 +641,7 @@ describe("React commits across the host boundary", () => {
 		await vi.waitFor(() => expect(onError).toHaveBeenCalled());
 		await harness.flushMessages();
 		expect(onError).toHaveBeenCalledOnce();
-		expectCode(onError.mock.calls[0]?.[0], "INIT_TIMEOUT");
+		expect(onError.mock.calls[0]?.[0]).toEqual(forgeFrameError("INIT_TIMEOUT"));
 	});
 
 	it("sets instanceRef after render resolves, before onRendered, and exposes exports, resize and events", async () => {
@@ -816,7 +813,9 @@ describe("React commits across the host boundary", () => {
 			root.render(React.createElement(Wrapped, { ...props, context: "popup" })),
 		);
 		await vi.waitFor(() => expect(onError).toHaveBeenCalledOnce());
-		expectCode(onError.mock.calls[0]?.[0], "POPUP_BLOCKED");
+		expect(onError.mock.calls[0]?.[0]).toEqual(
+			forgeFrameError("POPUP_BLOCKED"),
+		);
 		expect(instanceRef.mock.calls).toEqual([[iframeHandle], [null]]);
 		expect(onRendered).toHaveBeenCalledOnce();
 	});
@@ -892,15 +891,11 @@ describe("React commits across the host boundary", () => {
 		const call = createReactComponent as unknown as (
 			...args: unknown[]
 		) => unknown;
-		expectCode(
-			catchError(() => call(Component, { React })),
-			"VALIDATION",
-			"`react` peer dependency",
+		expect(() => call(Component, { React })).toThrow(
+			forgeFrameError("VALIDATION", "`react` peer dependency"),
 		);
-		expectCode(
-			catchError(() => call(() => null)),
-			"VALIDATION",
-			"component returned by create()",
+		expect(() => call(() => null)).toThrow(
+			forgeFrameError("VALIDATION", "component returned by create()"),
 		);
 		const Reserved = create({
 			tag: "react-reserved-props",
@@ -910,10 +905,8 @@ describe("React commits across the host boundary", () => {
 				instanceRef: prop.string().optional(),
 			},
 		});
-		expectCode(
-			catchError(() => createReactComponent(Reserved)),
-			"VALIDATION",
-			'"onClose", "instanceRef"',
+		expect(() => createReactComponent(Reserved)).toThrow(
+			forgeFrameError("VALIDATION", '"onClose", "instanceRef"'),
 		);
 		// React consumes `key` itself, so the wrapper could never forward it.
 		const KeyProp = create({
@@ -921,26 +914,8 @@ describe("React commits across the host boundary", () => {
 			url: "https://host.example.com/widget",
 			props: { key: prop.string() },
 		});
-		expectCode(
-			catchError(() => createReactComponent(KeyProp)),
-			"VALIDATION",
-			'"key"',
+		expect(() => createReactComponent(KeyProp)).toThrow(
+			forgeFrameError("VALIDATION", '"key"'),
 		);
 	});
 });
-
-/** Asserts a ForgeFrameError with the code and, optionally, message text. */
-function expectCode(error: unknown, code: string, text?: string): void {
-	expect(error).toBeInstanceOf(ForgeFrameError);
-	expect(error).toMatchObject({ code });
-	if (text) expect((error as Error).message).toContain(text);
-}
-
-function catchError(run: () => unknown): unknown {
-	try {
-		run();
-	} catch (error) {
-		return error;
-	}
-	throw new Error("Expected a throw");
-}

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { create, prop } from "@/index";
+import { forgeFrameError } from "../forgeframe-error";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
@@ -82,7 +83,10 @@ describe("Array prop transport", () => {
 				expect(hostProps).not.toHaveProperty("restricted");
 			} else {
 				await expect(update).rejects.toThrow(
-					"Cannot serialize undefined array entry",
+					forgeFrameError(
+						"VALIDATION",
+						"Cannot serialize undefined array entry",
+					),
 				);
 				expect(hostProps.visible).toBe("initial");
 				// A follow-up unrelated patch proves the rejected candidate did not commit.
@@ -120,7 +124,10 @@ describe("Array prop transport", () => {
 			});
 			if (action === "render") {
 				await expect(instance.render(container)).rejects.toThrow(
-					"Cannot serialize undefined array entry",
+					forgeFrameError(
+						"VALIDATION",
+						"Cannot serialize undefined array entry",
+					),
 				);
 				expect(container.children).toHaveLength(0);
 				await instance.updateProps({ record: valid() });
@@ -165,7 +172,7 @@ describe("Array prop transport", () => {
 				items: kind === "hole" ? new Array<string | undefined>(1) : [undefined],
 			});
 			await expect(instance.render(container)).rejects.toThrow(
-				"Cannot serialize undefined array entry",
+				forgeFrameError("VALIDATION", "Cannot serialize undefined array entry"),
 			);
 			expect(container.children).toHaveLength(0);
 			await instance.updateProps({ items: ["corrected"] });
@@ -199,7 +206,7 @@ describe("Array prop transport", () => {
 		);
 		await rendering;
 		await expect(instance.updateProps({ items: [undefined] })).rejects.toThrow(
-			"Cannot serialize undefined array entry",
+			forgeFrameError("VALIDATION", "Cannot serialize undefined array entry"),
 		);
 		expect(hostProps.items).toEqual(["initial"]);
 		await instance.updateProps({});
@@ -259,7 +266,9 @@ describe("Array prop transport", () => {
 		await rendering;
 		await expect(
 			instance.updateProps({ record: { items: [undefined] } }),
-		).rejects.toThrow('at ["record","items","0"]');
+		).rejects.toThrow(
+			forgeFrameError("VALIDATION", 'at ["record","items","0"]'),
+		);
 		await instance.updateProps({});
 		expect(hostProps.record).toEqual({ items: ["initial"] });
 	});
@@ -362,7 +371,9 @@ describe("Array prop transport", () => {
 			instance.updateProps({
 				record: { items: [undefined], toJSON: "ordinary field" },
 			}),
-		).rejects.toThrow('at ["record","items","0"]');
+		).rejects.toThrow(
+			forgeFrameError("VALIDATION", 'at ["record","items","0"]'),
+		);
 		await instance.updateProps({});
 		expect(hostProps.record).toEqual({ items: ["initial"] });
 	});
@@ -418,7 +429,7 @@ describe("Array prop transport", () => {
 			},
 		});
 		await expect(instance.updateProps({ record })).rejects.toThrow(
-			'at ["record","items","0"]',
+			forgeFrameError("VALIDATION", 'at ["record","items","0"]'),
 		);
 		await instance.updateProps({});
 		expect(hostProps.record).toEqual({ items: ["initial"] });

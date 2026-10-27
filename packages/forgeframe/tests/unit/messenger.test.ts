@@ -12,6 +12,7 @@ import {
 	serializeMessage,
 } from "@/communication/protocol";
 import { MESSAGE_TYPE } from "@/constants";
+import { forgeFrameError } from "../forgeframe-error";
 
 describe("Messenger", () => {
 	let messenger: Messenger;
@@ -222,7 +223,9 @@ describe("Messenger", () => {
 
 			vi.advanceTimersByTime(100);
 
-			await expect(sendPromise).rejects.toThrow("timed out");
+			await expect(sendPromise).rejects.toThrow(
+				forgeFrameError("CLOSED", "timed out"),
+			);
 
 			vi.useRealTimers();
 		});
@@ -232,7 +235,9 @@ describe("Messenger", () => {
 
 			await expect(
 				messenger.send(targetWindow, "https://target.com", "test"),
-			).rejects.toThrow("Messenger has been destroyed");
+			).rejects.toThrow(
+				forgeFrameError("CLOSED", "Messenger has been destroyed"),
+			);
 		});
 
 		it("stops a send when JSON conversion destroys the messenger", async () => {
@@ -245,7 +250,7 @@ describe("Messenger", () => {
 							return { converted: true };
 						},
 					}),
-				).rejects.toThrow("Messenger destroyed");
+				).rejects.toThrow(forgeFrameError("CLOSED", "Messenger destroyed"));
 				expect(targetWindow.postMessage).not.toHaveBeenCalled();
 				expect(vi.getTimerCount()).toBe(0);
 			} finally {
@@ -369,7 +374,10 @@ describe("Messenger", () => {
 				await expect(
 					messenger.send(targetWindow, targetOrigin, "invalidTarget"),
 				).rejects.toThrow(
-					`Cannot send "invalidTarget": target origin "${targetOrigin}" is not an absolute URL`,
+					forgeFrameError(
+						"VALIDATION",
+						`Cannot send "invalidTarget": target origin "${targetOrigin}" is not an absolute URL`,
+					),
 				);
 
 				expect(targetWindow.postMessage).not.toHaveBeenCalled();
@@ -386,7 +394,10 @@ describe("Messenger", () => {
 				await expect(
 					messenger.send(targetWindow, targetOrigin, "opaqueTarget"),
 				).rejects.toThrow(
-					`Cannot send "opaqueTarget": target origin "${targetOrigin}" is opaque`,
+					forgeFrameError(
+						"ORIGIN_REJECTED",
+						`Cannot send "opaqueTarget": target origin "${targetOrigin}" is opaque`,
+					),
 				);
 
 				expect(targetWindow.postMessage).not.toHaveBeenCalled();
@@ -522,7 +533,7 @@ describe("Messenger", () => {
 
 			expect(() =>
 				messenger.post(targetWindow, "https://target.com", "test"),
-			).toThrow("Messenger has been destroyed");
+			).toThrow(forgeFrameError("CLOSED", "Messenger has been destroyed"));
 		});
 
 		it.each(["*", "/", "target.com"])(
@@ -535,7 +546,10 @@ describe("Messenger", () => {
 				expect(() =>
 					messenger.post(targetWindow, targetOrigin, "notify"),
 				).toThrow(
-					`Cannot send "notify": target origin "${targetOrigin}" is not an absolute URL`,
+					forgeFrameError(
+						"VALIDATION",
+						`Cannot send "notify": target origin "${targetOrigin}" is not an absolute URL`,
+					),
 				);
 				expect(targetWindow.postMessage).not.toHaveBeenCalled();
 			},
@@ -549,7 +563,10 @@ describe("Messenger", () => {
 			expect(() =>
 				messenger.post(targetWindow, "data:text/plain,hi", "notify"),
 			).toThrow(
-				'Cannot send "notify": target origin "data:text/plain,hi" is opaque',
+				forgeFrameError(
+					"ORIGIN_REJECTED",
+					'Cannot send "notify": target origin "data:text/plain,hi" is opaque',
+				),
 			);
 			expect(targetWindow.postMessage).not.toHaveBeenCalled();
 		});
@@ -1218,7 +1235,9 @@ describe("Messenger", () => {
 
 			messenger.destroy();
 
-			await expect(sendPromise).rejects.toThrow("Messenger destroyed");
+			await expect(sendPromise).rejects.toThrow(
+				forgeFrameError("CLOSED", "Messenger destroyed"),
+			);
 
 			vi.useRealTimers();
 		});
@@ -1256,10 +1275,12 @@ describe("Messenger", () => {
 			expect(source.postMessage).not.toHaveBeenCalled();
 			await expect(
 				messenger.send(targetWindow, "https://target.com", "test"),
-			).rejects.toThrow("Messenger has been destroyed");
+			).rejects.toThrow(
+				forgeFrameError("CLOSED", "Messenger has been destroyed"),
+			);
 			expect(() =>
 				messenger.post(targetWindow, "https://target.com", "test"),
-			).toThrow("Messenger has been destroyed");
+			).toThrow(forgeFrameError("CLOSED", "Messenger has been destroyed"));
 		});
 	});
 });

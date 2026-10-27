@@ -13,6 +13,7 @@ import {
 	validateWithSchema,
 } from "@/props/schema";
 import type { PropsDefinition } from "@/types";
+import { forgeFrameError } from "../forgeframe-error";
 
 // ============================================================================
 // Test Utilities
@@ -164,7 +165,10 @@ describe("validateWithSchema", () => {
 			issues: [{ message: "Invalid value" }],
 		}));
 		expect(() => validateWithSchema(schema, "bad", "testProp")).toThrow(
-			"Validation failed: testProp: Invalid value",
+			forgeFrameError(
+				"VALIDATION",
+				"Validation failed: testProp: Invalid value",
+			),
 		);
 	});
 
@@ -173,7 +177,10 @@ describe("validateWithSchema", () => {
 			issues: [{ message: "Error 1" }, { message: "Error 2" }],
 		}));
 		expect(() => validateWithSchema(schema, "bad", "testProp")).toThrow(
-			"Validation failed: testProp: Error 1; testProp: Error 2",
+			forgeFrameError(
+				"VALIDATION",
+				"Validation failed: testProp: Error 1; testProp: Error 2",
+			),
 		);
 	});
 
@@ -182,7 +189,10 @@ describe("validateWithSchema", () => {
 			issues: [{ message: "Invalid", path: ["user", "email"] }],
 		}));
 		expect(() => validateWithSchema(schema, {}, "config")).toThrow(
-			"Validation failed: config.user.email: Invalid",
+			forgeFrameError(
+				"VALIDATION",
+				"Validation failed: config.user.email: Invalid",
+			),
 		);
 	});
 
@@ -191,7 +201,7 @@ describe("validateWithSchema", () => {
 			issues: [{ message: "Invalid", path: [{ key: "items" }, { key: "0" }] }],
 		}));
 		expect(() => validateWithSchema(schema, {}, "data")).toThrow(
-			"Validation failed: data.items.0: Invalid",
+			forgeFrameError("VALIDATION", "Validation failed: data.items.0: Invalid"),
 		);
 	});
 
@@ -200,17 +210,20 @@ describe("validateWithSchema", () => {
 			issues: [{ message: "Invalid", path: [{ key: "items" }, { index: 0 }] }],
 		}));
 		expect(() => validateWithSchema(schema, {}, "data")).toThrow(
-			"Validation failed: data.items.0: Invalid",
+			forgeFrameError("VALIDATION", "Validation failed: data.items.0: Invalid"),
 		);
 	});
 
 	it("should throw clear error for async schemas", () => {
 		const schema = createAsyncMockSchema(() => ({ value: "test" }));
 		expect(() => validateWithSchema(schema, "value", "asyncProp")).toThrow(
-			'Prop "asyncProp" uses an async schema',
+			forgeFrameError("VALIDATION", 'Prop "asyncProp" uses an async schema'),
 		);
 		expect(() => validateWithSchema(schema, "value", "asyncProp")).toThrow(
-			"ForgeFrame only supports synchronous schema validation",
+			forgeFrameError(
+				"VALIDATION",
+				"ForgeFrame only supports synchronous schema validation",
+			),
 		);
 	});
 
@@ -227,7 +240,7 @@ describe("validateWithSchema", () => {
 		};
 		expect(result).not.toBeInstanceOf(Promise);
 		expect(() => validateWithSchema(schema, "input", "name")).toThrow(
-			"uses an async schema",
+			forgeFrameError("VALIDATION", "uses an async schema"),
 		);
 		const nestedSchema = prop.string();
 		vi.spyOn(nestedSchema["~standard"], "validate").mockReturnValue(result);
@@ -235,7 +248,9 @@ describe("validateWithSchema", () => {
 			prop
 				.object({ name: nestedSchema })
 				["~standard"].validate({ name: "input" }),
-		).toThrow("Async schema validation is not supported");
+		).toThrow(
+			forgeFrameError("VALIDATION", "Async schema validation is not supported"),
+		);
 	});
 
 	it.each(["native", "foreign"])(
@@ -253,7 +268,7 @@ describe("validateWithSchema", () => {
 				},
 			};
 			expect(() => validateWithSchema(schema, "input", "name")).toThrow(
-				"uses an async schema",
+				forgeFrameError("VALIDATION", "uses an async schema"),
 			);
 			const nested = prop.string();
 			const validate = vi
@@ -264,7 +279,12 @@ describe("validateWithSchema", () => {
 					prop.object({ name: nested })["~standard"].validate({
 						name: "input",
 					}),
-				).toThrow("Async schema validation is not supported");
+				).toThrow(
+					forgeFrameError(
+						"VALIDATION",
+						"Async schema validation is not supported",
+					),
+				);
 				// Vitest reports any unobserved rejection after this event-loop turn.
 				await new Promise<void>((resolve) => setTimeout(resolve, 0));
 			} finally {
@@ -311,7 +331,7 @@ describe("normalizeProps with schema", () => {
 
 		// Invalid email
 		expect(() => validateProps({ email: "invalid" }, definitions)).toThrow(
-			"Must be an email",
+			forgeFrameError("VALIDATION", "Must be an email"),
 		);
 	});
 
@@ -342,7 +362,9 @@ describe("normalizeProps with schema", () => {
 			validateProps({ name: undefined } as unknown as { name: string }, {
 				name: { schema: required },
 			}),
-		).toThrow("Validation failed: name: Required");
+		).toThrow(
+			forgeFrameError("VALIDATION", "Validation failed: name: Required"),
+		);
 		expect(() =>
 			validateProps({ name: undefined } as unknown as { name: string }, {
 				name: { schema: lenient },
@@ -381,7 +403,10 @@ describe("normalizeProps with schema", () => {
 		};
 
 		expect(() => validateProps({ value: "42" }, definitions)).toThrow(
-			"Validation failed: value: the prop schema must accept its own output unchanged, because ForgeFrame validates delivered values with the same schema; the schema changed the value.",
+			forgeFrameError(
+				"VALIDATION",
+				"Validation failed: value: the prop schema must accept its own output unchanged, because ForgeFrame validates delivered values with the same schema; the schema changed the value.",
+			),
 		);
 	});
 });
@@ -405,7 +430,7 @@ describe("prop schema API", () => {
 		// Invalid type
 		expect(() =>
 			validateProps({ name: 123 as unknown as string, age: 25 }, definitions),
-		).toThrow("Expected string");
+		).toThrow(forgeFrameError("VALIDATION", "Expected string"));
 	});
 
 	it("should work with required validation", () => {
@@ -418,7 +443,9 @@ describe("prop schema API", () => {
 				{ name: undefined } as unknown as { name: string },
 				definitions,
 			),
-		).toThrow("Validation failed: name: Required");
+		).toThrow(
+			forgeFrameError("VALIDATION", "Validation failed: name: Required"),
+		);
 	});
 
 	it("should allow mixing custom schema and prop schemas", () => {

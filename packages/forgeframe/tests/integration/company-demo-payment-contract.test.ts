@@ -4,6 +4,7 @@ import {
 	type PaymentProps,
 	paymentProps,
 } from "../../../playground/payment/contract";
+import { forgeFrameError } from "../forgeframe-error";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
@@ -43,7 +44,7 @@ describe("company payment amount contract", () => {
 			document.body.append(container);
 			await expect(
 				Payment(invoiceProps(amount)).render(container),
-			).rejects.toThrow(/amountCents/);
+			).rejects.toThrow(forgeFrameError("VALIDATION", /amountCents/));
 			expect(container.querySelector("iframe")).toBeNull();
 		},
 	);
@@ -65,7 +66,9 @@ describe("company payment amount contract", () => {
 			harness.attachHostToIframe(iframe);
 			const host = harness.bootstrapHost(paymentProps);
 			if (!host) throw new Error("Missing payment host");
-			await expect(host.ready).rejects.toThrow(/amountCents/);
+			await expect(host.ready).rejects.toThrow(
+				forgeFrameError("VALIDATION", /amountCents/),
+			);
 		},
 	);
 
@@ -90,7 +93,7 @@ describe("company payment amount contract", () => {
 			for (const invalid of invalidAmounts) {
 				await expect(
 					instance.updateProps({ amountCents: invalid }),
-				).rejects.toThrow(/amountCents/);
+				).rejects.toThrow(forgeFrameError("VALIDATION", /amountCents/));
 				expect(hostProps.amountCents).toBe(amount);
 			}
 			await instance.updateProps({ amountCents: 15400 });
@@ -116,7 +119,7 @@ describe("company payment amount contract", () => {
 		for (const invalid of invalidAmounts) {
 			await expect(
 				instance.updateProps({ amountCents: invalid }),
-			).rejects.toThrow(/amountCents/);
+			).rejects.toThrow(forgeFrameError("VALIDATION", /amountCents/));
 			expect(hostProps.amountCents).toBe(17600);
 		}
 		await instance.updateProps({ amountCents: 15400 });
