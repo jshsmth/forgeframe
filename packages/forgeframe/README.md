@@ -739,7 +739,7 @@ Peer discovery is opt-in. A component that sets `peers: 'same-origin'` in `creat
 | `props.email`, `props.onLogin` | Your custom props and callbacks, from `await host.ready` |
 | `uid`, `tag` | This instance's identifiers |
 | `close()` | Close the component |
-| `focus()` | Request focus for iframe/popup; resolves once this window has focus, or after a short wait, so the host can then focus its own element. It resolves without waiting when the consumer page has no focus to pass on |
+| `focus()` | Request focus for iframe/popup; resolves once this window has focus, or after a short wait, so the host can then focus its own element. It resolves without waiting when the consumer page has no focus to pass on. WebKit ignores `focus()` on elements in a cross-origin iframe until that frame has user activation, which can arrive a few frames later, so check `document.activeElement` and retry if the focus must land |
 | `resize()` | Resize the component |
 | `show()`, `hide()` | Toggle visibility |
 | `onProps()` | Listen for prop updates (returns an unsubscribe function) |
