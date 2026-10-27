@@ -1509,21 +1509,77 @@ function validateProps(props: object, definitions: object): void {
 }
 
 describe("integration with normalizeProps", () => {
-	it("should work with prop.string() in component props", () => {
-		const definitions: PropsDefinition<{ name: string }> = {
-			name: prop.string(),
-		};
+	it.each([
+		{
+			schema: "prop.string()",
+			definition: prop.string(),
+			valid: "John",
+			invalid: 123,
+			message: "Validation failed: value: Expected string, got number",
+		},
+		{
+			schema: "prop.enum()",
+			definition: prop.enum(["pending", "active"] as const),
+			valid: "active",
+			invalid: "invalid",
+			message: "Validation failed: value: Expected one of",
+		},
+		{
+			schema: "prop.union()",
+			definition: prop.union(prop.string(), prop.number()),
+			valid: 42,
+			invalid: true,
+			message: "Validation failed: value: Expected string, got boolean",
+		},
+		{
+			schema: "prop.union() with its first member",
+			definition: prop.union(prop.string(), prop.number()),
+			valid: "hello",
+			invalid: true,
+			message: "Validation failed: value: Expected string, got boolean",
+		},
+		{
+			schema: "prop.array(item)",
+			definition: prop.array(prop.string()),
+			valid: ["a", "b", "c"],
+			invalid: ["a", 1, "c"],
+			message: "Validation failed: value.1: Expected string, got number",
+		},
+		{
+			schema: "prop.record()",
+			definition: prop.record(prop.string()),
+			valid: { authorization: "token" },
+			invalid: { authorization: 123 },
+			message:
+				"Validation failed: value.authorization: Expected string, got number",
+		},
+		{
+			schema: "prop.date()",
+			definition: prop.date().min(new Date("2026-01-01T00:00:00.000Z")),
+			valid: new Date("2026-01-02T00:00:00.000Z"),
+			invalid: "2026-01-02",
+			message: "Validation failed: value: Expected Date, got string",
+		},
+		{
+			schema: "prop.tuple()",
+			definition: prop.tuple(prop.number(), prop.number()),
+			valid: [10, 20],
+			invalid: [10, "20"],
+			message: "Validation failed: value.1: Expected number, got string",
+		},
+	])(
+		"$schema accepts a valid component prop and rejects an invalid one",
+		({ definition, valid, invalid, message }) => {
+			const definitions = { value: definition } as PropsDefinition<{
+				value: unknown;
+			}>;
 
-		expect(() => validateProps({ name: "John" }, definitions)).not.toThrow();
-		expect(() =>
-			validateProps({ name: 123 } as unknown as { name: string }, definitions),
-		).toThrow(
-			forgeFrameError(
-				"VALIDATION",
-				"Validation failed: name: Expected string, got number",
-			),
-		);
-	});
+			expect(() => validateProps({ value: valid }, definitions)).not.toThrow();
+			expect(() => validateProps({ value: invalid }, definitions)).toThrow(
+				forgeFrameError("VALIDATION", message),
+			);
+		},
+	);
 
 	it("should work with prop.number().default() in component props", () => {
 		const definitions: PropsDefinition<{ count: number }> = {
@@ -1533,50 +1589,6 @@ describe("integration with normalizeProps", () => {
 		const props = { count: undefined } as unknown as { count: number };
 		validateProps(props, definitions);
 		expect(props.count).toBe(0);
-	});
-
-	it("should work with prop.enum() in component props", () => {
-		const definitions: PropsDefinition<{ status: "pending" | "active" }> = {
-			status: prop.enum(["pending", "active"] as const),
-		};
-
-		expect(() =>
-			validateProps<{ status: "pending" | "active" }>(
-				{ status: "active" },
-				definitions,
-			),
-		).not.toThrow();
-		expect(() =>
-			validateProps(
-				{ status: "invalid" } as unknown as { status: "pending" | "active" },
-				definitions,
-			),
-		).toThrow(
-			forgeFrameError(
-				"VALIDATION",
-				"Validation failed: status: Expected one of",
-			),
-		);
-	});
-
-	it("should work with prop.union() in component props", () => {
-		const definitions: PropsDefinition<{ value: string | number }> = {
-			value: prop.union(prop.string(), prop.number()),
-		};
-
-		expect(() => validateProps({ value: "hello" }, definitions)).not.toThrow();
-		expect(() => validateProps({ value: 42 }, definitions)).not.toThrow();
-		expect(() =>
-			validateProps(
-				{ value: true } as unknown as { value: string | number },
-				definitions,
-			),
-		).toThrow(
-			forgeFrameError(
-				"VALIDATION",
-				"Validation failed: value: Expected string, got boolean",
-			),
-		);
 	});
 
 	it("should work with nested prop.object()", () => {
@@ -1597,98 +1609,6 @@ describe("integration with normalizeProps", () => {
 		const props = { config: {} } as unknown as UserConfig;
 		validateProps(props, definitions);
 		expect(props.config).toEqual({ theme: "light", debug: false });
-	});
-
-	it("should work with prop.array(item)", () => {
-		const definitions: PropsDefinition<{ tags: string[] }> = {
-			tags: prop.array(prop.string()),
-		};
-
-		expect(() =>
-			validateProps({ tags: ["a", "b", "c"] }, definitions),
-		).not.toThrow();
-		expect(() =>
-			validateProps(
-				{ tags: ["a", 1, "c"] } as unknown as { tags: string[] },
-				definitions,
-			),
-		).toThrow(
-			forgeFrameError(
-				"VALIDATION",
-				"Validation failed: tags.1: Expected string, got number",
-			),
-		);
-	});
-
-	it("should work with prop.record()", () => {
-		const definitions: PropsDefinition<{ headers: Record<string, string> }> = {
-			headers: prop.record(prop.string()),
-		};
-
-		expect(() =>
-			validateProps({ headers: { authorization: "token" } }, definitions),
-		).not.toThrow();
-		expect(() =>
-			validateProps(
-				{ headers: { authorization: 123 } } as unknown as {
-					headers: Record<string, string>;
-				},
-				definitions,
-			),
-		).toThrow(
-			forgeFrameError(
-				"VALIDATION",
-				"Validation failed: headers.authorization: Expected string, got number",
-			),
-		);
-	});
-
-	it("should work with prop.date()", () => {
-		const definitions: PropsDefinition<{ publishedAt: Date }> = {
-			publishedAt: prop.date().min(new Date("2026-01-01T00:00:00.000Z")),
-		};
-
-		expect(() =>
-			validateProps(
-				{ publishedAt: new Date("2026-01-02T00:00:00.000Z") },
-				definitions,
-			),
-		).not.toThrow();
-		expect(() =>
-			validateProps(
-				{ publishedAt: "2026-01-02" } as unknown as { publishedAt: Date },
-				definitions,
-			),
-		).toThrow(
-			forgeFrameError(
-				"VALIDATION",
-				"Validation failed: publishedAt: Expected Date, got string",
-			),
-		);
-	});
-
-	it("should work with prop.tuple()", () => {
-		const definitions: PropsDefinition<{ point: [number, number] }> = {
-			point: prop.tuple(prop.number(), prop.number()),
-		};
-
-		expect(() =>
-			validateProps<{ point: [number, number] }>(
-				{ point: [10, 20] },
-				definitions,
-			),
-		).not.toThrow();
-		expect(() =>
-			validateProps(
-				{ point: [10, "20"] } as unknown as { point: [number, number] },
-				definitions,
-			),
-		).toThrow(
-			forgeFrameError(
-				"VALIDATION",
-				"Validation failed: point.1: Expected number, got string",
-			),
-		);
 	});
 
 	it("should work with mixed prop schemas", () => {

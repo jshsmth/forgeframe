@@ -3,7 +3,19 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { forgeFrameError } from "../forgeframe-error";
+
+/**
+ * Matches a ForgeFrameError by name and code. vi.resetModules() gives each
+ * test its own ForgeFrameError class, so the shared instanceof matcher cannot
+ * apply in this file.
+ */
+function codedError(code: string, message: string) {
+	return expect.objectContaining({
+		name: "ForgeFrameError",
+		code,
+		message: expect.stringContaining(message),
+	});
+}
 
 afterEach(async () => {
 	const { clearComponents } = await import("@/core/component");
@@ -64,11 +76,11 @@ describe("Index node smoke", () => {
 		expect(initHost({ consumerOrigins: "*" })).toBeNull();
 		// Argument checks run before the environment check.
 		expect(() => (initHost as () => unknown)()).toThrow(
-			forgeFrameError("VALIDATION", "initHost(Component, { consumerOrigins })"),
+			codedError("VALIDATION", "initHost(Component, { consumerOrigins })"),
 		);
 		expect(() =>
 			initHost(AbsoluteUrlComponent, {} as { consumerOrigins: string }),
-		).toThrow(forgeFrameError("VALIDATION", "consumerOrigins"));
+		).toThrow(codedError("VALIDATION", "consumerOrigins"));
 	});
 
 	it("should import the React entry without browser globals and server-render only the container", async () => {
@@ -99,14 +111,6 @@ describe("Index node smoke", () => {
 				tag: "node-invalid-component",
 				url: "http://",
 			}),
-		).toThrow(
-			// vi.resetModules() gives each test its own ForgeFrameError class, so
-			// the shared instanceof matcher cannot apply here.
-			expect.objectContaining({
-				name: "ForgeFrameError",
-				code: "VALIDATION",
-				message: expect.stringContaining("Invalid component URL"),
-			}),
-		);
+		).toThrow(codedError("VALIDATION", "Invalid component URL"));
 	});
 });

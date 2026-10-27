@@ -34,6 +34,8 @@ describe("React commits across the host boundary", () => {
 
 	afterEach(async () => {
 		await React.act(async () => root.unmount());
+		// Restore spies first, so cleanup's own restores are not overwritten.
+		vi.restoreAllMocks();
 		await harness.cleanup();
 		vi.unstubAllGlobals();
 	});

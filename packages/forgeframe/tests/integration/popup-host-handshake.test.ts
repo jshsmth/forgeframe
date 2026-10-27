@@ -186,10 +186,11 @@ describe("Popup host handshake integration", () => {
 		const outcome = instance
 			.render(container, "popup")
 			.catch((error: unknown) => error);
-		const popupOpen = await harness.waitForPopupOpen();
-		expect(await outcome).toBeInstanceOf(Error);
+		await harness.waitForPopupOpen();
+		expect(await outcome).toEqual(
+			forgeFrameError("INIT_TIMEOUT", "did not initialize within 10ms"),
+		);
 		expect(container.childElementCount).toBe(0);
-		expect(popupOpen).not.toBeNull();
 		expect(closeSpy).toHaveBeenCalledOnce();
 	});
 

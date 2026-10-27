@@ -29,6 +29,9 @@ export default defineConfig({
 		include: ["tests/**/*.test.ts"],
 		restoreMocks: true,
 		clearMocks: true,
+		// Stubbed globals and env vars never leak into the next test.
+		unstubGlobals: true,
+		unstubEnvs: true,
 		coverage: {
 			include: ["src/**/*.ts"],
 			exclude: [

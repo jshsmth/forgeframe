@@ -44,9 +44,10 @@ describe("Function prop bridge integration", () => {
 
 	afterEach(async () => {
 		vi.useRealTimers();
+		// Restore spies first, so cleanup's own restores are not overwritten.
+		vi.restoreAllMocks();
 		await harness?.cleanup();
 		harness = null;
-		vi.restoreAllMocks();
 	});
 
 	it("waits for a consumer callback that runs longer than the messaging timeout", async () => {

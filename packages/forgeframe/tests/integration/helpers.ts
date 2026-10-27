@@ -6,6 +6,7 @@
  * separate jsdom window with an explicit consumer allowlist.
  */
 import { JSDOM } from "jsdom";
+import { vi } from "vitest";
 import {
 	createRequestMessage,
 	serializeMessage,
@@ -454,24 +455,22 @@ function createBaseIntegrationHarness(options?: {
 		}
 	};
 
-	const waitForIframe = async (
+	// vi.waitFor polls on real timers, so it also works while a test fakes
+	// them; under fake timers each poll also advances the fake clock by 50ms.
+	const waitForIframe = (
 		container: ParentNode = document,
-	): Promise<HTMLIFrameElement> => {
-		const timeoutAt = Date.now() + 1000;
-
-		while (Date.now() < timeoutAt) {
-			const iframe = container.querySelector("iframe");
-			if (iframe instanceof consumerWindow.HTMLIFrameElement) {
+	): Promise<HTMLIFrameElement> =>
+		vi.waitFor(
+			() => {
+				const iframe = container.querySelector("iframe");
+				if (!(iframe instanceof consumerWindow.HTMLIFrameElement))
+					throw new Error(
+						"Timed out waiting for the ForgeFrame iframe to be created",
+					);
 				return iframe;
-			}
-
-			await waitForNextTick();
-		}
-
-		throw new Error(
-			"Timed out waiting for the ForgeFrame iframe to be created",
+			},
+			{ timeout: 1000 },
 		);
-	};
 
 	const attachHostToIframe = (iframe: HTMLIFrameElement): void => {
 		activeIframe = iframe;
