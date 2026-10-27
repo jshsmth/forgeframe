@@ -391,6 +391,37 @@ export interface ComponentBaseOptions<P = Record<string, unknown>> {
 export type PeersOption = ComponentBaseOptions["peers"];
 
 /**
+ * The keys of `Input` that the factory input requires: the same rule
+ * `InferPropsInput` applies to the definitions, read from the input type.
+ * @internal
+ */
+type RequiredInputKey<Input> = {
+	[K in keyof Input]-?: undefined extends Input[K] ? never : K;
+}[keyof Input];
+
+/**
+ * A patch for {@link ComponentInstance.updateProps}: any subset of the
+ * declared props. `undefined` resets a prop, so it is accepted for optional
+ * and defaulted props only; a required prop needs a value, as in the
+ * factory input. Undeclared keys are rejected.
+ *
+ * @remarks
+ * The check reads the patch's own type, so it catches object literals and
+ * precisely typed patches. A patch typed `Partial<Input>` still compiles and
+ * meets the runtime rejection instead. Generic code that forwards a patch
+ * for a generic `I` types it as `PropsPatch<I, Partial<I>>`.
+ *
+ * @public
+ */
+export type PropsPatch<Input, Patch extends Partial<Input>> = Patch & {
+	[K in keyof Patch]: K extends RequiredInputKey<Input>
+		? Input[K]
+		: K extends keyof Input
+			? Patch[K]
+			: `"${K & string}" is not a declared prop`;
+};
+
+/**
  * Instance of a rendered component.
  *
  * @typeParam Props - The normalized props, as the consumer sees them
@@ -487,12 +518,17 @@ export interface ComponentInstance<
 	 * Update the component's props.
 	 *
 	 * @remarks
-	 * Props are normalized and validated before being sent to the host.
+	 * Props are normalized and validated before being sent to the host. A key
+	 * left out keeps its value; a key set to `undefined` resets the prop to
+	 * its default, so required props reject `undefined` here as they do in
+	 * the factory input.
 	 *
 	 * @param props - Partial props to merge with existing
 	 * @returns Promise that resolves when props are updated
 	 */
-	updateProps(props: Partial<Input>): Promise<void>;
+	updateProps<const Patch extends Partial<Input>>(
+		props: PropsPatch<Input, Patch>,
+	): Promise<void>;
 
 	/**
 	 * Subscribes to lifecycle events with `on` and `once`.

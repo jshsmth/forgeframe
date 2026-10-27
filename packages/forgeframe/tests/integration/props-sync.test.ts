@@ -41,6 +41,8 @@ it("validates required consumer-only inputs locally while shared host definition
 		await instance.updateProps({ local: "changed", title: "updated" });
 		expect(hostProps.title).toBe("updated");
 		expect(Object.hasOwn(hostProps, "local")).toBe(false);
+		// @ts-expect-error a required prop rejects undefined; this checks the
+		// runtime guard JavaScript callers reach
 		await expect(instance.updateProps({ local: undefined })).rejects.toThrow(
 			forgeFrameError("VALIDATION", "Validation failed: local: Required"),
 		);
@@ -872,6 +874,8 @@ describe("undefined in factory input and updates", () => {
 		const { instance, hostProps, committed, notifications } = await renderWith({
 			title: "t",
 		});
+		// @ts-expect-error a required prop rejects undefined; this checks the
+		// runtime guard JavaScript callers reach
 		await expect(instance.updateProps({ title: undefined })).rejects.toThrow(
 			forgeFrameError("VALIDATION", "Validation failed: title: Required"),
 		);

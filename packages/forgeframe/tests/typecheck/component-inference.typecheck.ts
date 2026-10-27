@@ -21,6 +21,7 @@ import {
 	type PropDefinition,
 	type PropsDefinition,
 	type PropsOf,
+	type PropsPatch,
 	prop,
 	type StandardSchemaV1,
 } from "../../src";
@@ -491,6 +492,31 @@ const resetUpdate: Promise<void> = coercingInstance.updateProps({
 void resetUpdate;
 // @ts-expect-error updates accept declared props only
 void coercingInstance.updateProps({ unknownProp: 1 });
+// @ts-expect-error an undeclared key is rejected next to a declared one
+void coercingInstance.updateProps({ count: 1, unknownProp: 1 });
+// @ts-expect-error a required prop rejects undefined, as in the factory input
+void coercingInstance.updateProps({ startsAt: undefined });
+declare const maybeStart: Date | undefined;
+// @ts-expect-error a value that may be undefined cannot reset a required prop
+void coercingInstance.updateProps({ startsAt: maybeStart });
+// A required prop takes any accepted input; an optional one may be undefined.
+void coercingInstance.updateProps({ startsAt: new Date(), count: undefined });
+declare const maybeCount: number | undefined;
+void coercingInstance.updateProps({ count: maybeCount });
+// A Partial<Input> variable cannot prove a key is present, so it compiles and
+// a required undefined meets the runtime rejection instead.
+declare const loosePatch: Partial<InputOf<typeof CoercingComponent>>;
+void coercingInstance.updateProps(loosePatch);
+// Generic code types its patch parameter as PropsPatch<I, Partial<I>>.
+function updateAny<P extends object, I extends object>(
+	instance: ComponentInstance<P, I>,
+	patch: PropsPatch<I, Partial<I>>,
+): Promise<void> {
+	return instance.updateProps(patch);
+}
+void updateAny(coercingInstance, { count: 2 });
+// @ts-expect-error the generic helper still rejects undeclared keys
+void updateAny(coercingInstance, { count: 2, unknownProp: 1 });
 // @ts-expect-error coercing inputs are still typed by their schema
 void CoercingComponent({ amount: "41", startsAt: 1 });
 
