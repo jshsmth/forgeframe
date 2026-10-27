@@ -8,6 +8,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import {
+	createDeliveryTarget,
 	getPropsForHost,
 	isPropDelivered,
 	normalizeProps,
@@ -16,6 +17,7 @@ import {
 	validateUnchanged,
 } from "@/props/normalize";
 import { prop } from "@/props/prop";
+import type { StandardSchemaV1 } from "@/props/schema";
 import type { PropDefinition, PropsDefinition } from "@/types";
 import { forgeFrameError } from "../forgeframe-error";
 
@@ -185,6 +187,59 @@ describe("validateUnchanged", () => {
 		).toEqual({ status: "changed" });
 	});
 
+	/** A schema that accepts anything and returns `output`. */
+	function returning(output: unknown): StandardSchemaV1 {
+		return {
+			"~standard": {
+				version: 1,
+				vendor: "test",
+				validate: () => ({ value: output }),
+			},
+		};
+	}
+	class Point {
+		x = 1;
+	}
+	const cyclic = (): Record<string, unknown> => {
+		const value: Record<string, unknown> = { name: "loop" };
+		value.self = value;
+		return value;
+	};
+	const cycleToCopy = (): Record<string, unknown> => {
+		const inner: Record<string, unknown> = { name: "loop" };
+		inner.self = inner;
+		return { name: "loop", self: inner };
+	};
+
+	it.each([
+		[
+			"a URL with another href",
+			new URL("https://a.example/"),
+			new URL("https://b.example/"),
+		],
+		[
+			"a URL turned into its string",
+			new URL("https://a.example/"),
+			"https://a.example/",
+		],
+		["an array turned into an object", [1], { 0: 1 }],
+		["an object turned into an array", { 0: 1 }, [1]],
+		["a class instance turned into a plain object", new Point(), { x: 1 }],
+		["a plain object turned into a class instance", { x: 1 }, new Point()],
+		["a non-plain object with the same prototype", new Map(), new Map()],
+		["a cycle that points elsewhere", cyclic(), cycleToCopy()],
+	])("reports %s as changed", (_label, input, output) => {
+		expect(validateUnchanged(returning(output), input, "value")).toEqual({
+			status: "changed",
+		});
+	});
+
+	it("accepts a cyclic value whose output has the same cycle", () => {
+		expect(validateUnchanged(returning(cyclic()), cyclic(), "value")).toEqual({
+			status: "unchanged",
+		});
+	});
+
 	it("reports the schema's issues for a value it rejects", () => {
 		expect(
 			validateUnchanged(z.string().transform(Number), 42, "amount"),
@@ -196,6 +251,21 @@ describe("validateUnchanged", () => {
 });
 
 describe("Delivery policy", () => {
+	it.each([
+		["https://app.example.com", "https://app.example.com", true],
+		["https://app.example.com", "https://other.example.com", false],
+		// Opaque documents all serialize as "null", so equal strings prove nothing.
+		["null", "null", false],
+	])(
+		"createDeliveryTarget(%s, %s) is same-origin: %s",
+		(hostOrigin, consumerOrigin, sameOrigin) => {
+			expect(createDeliveryTarget(hostOrigin, consumerOrigin)).toEqual({
+				hostOrigin,
+				sameOrigin,
+			});
+		},
+	);
+
 	const sameOriginHost = {
 		hostOrigin: "https://app.example.com",
 		sameOrigin: true,

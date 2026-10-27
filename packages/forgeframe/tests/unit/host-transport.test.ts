@@ -12,6 +12,7 @@ import type { HostTransportOptions } from "@/core/host/types";
 import { EventEmitter } from "@/events/emitter";
 import type { HostEvents } from "@/types";
 import { createDeferred } from "@/utils/promise";
+import { forgeFrameError } from "../forgeframe-error";
 import { requireValue } from "../require-value";
 
 type PropsHandlerSource = {
@@ -47,7 +48,7 @@ function createTransport({
 	return { transport, event, consumerWindow };
 }
 
-function getPropsHandler(transport: HostTransport) {
+function getHandler(transport: HostTransport, name: string) {
 	return (
 		transport.messenger as unknown as {
 			handlers: Map<
@@ -55,7 +56,7 @@ function getPropsHandler(transport: HostTransport) {
 				(data: unknown, source: PropsHandlerSource) => unknown
 			>;
 		}
-	).handlers.get(MESSAGE_NAME.PROPS);
+	).handlers.get(name);
 }
 
 async function flushMicrotasks(): Promise<void> {
@@ -82,7 +83,7 @@ describe("HostTransport", () => {
 			applySerializedProps,
 		});
 		const response = Promise.resolve(
-			getPropsHandler(transport)?.(
+			getHandler(transport, MESSAGE_NAME.PROPS)?.(
 				{ amount: 42 },
 				{
 					uid: "host-transport-uid",
@@ -108,7 +109,7 @@ describe("HostTransport", () => {
 			applySerializedProps,
 		});
 
-		const handler = getPropsHandler(transport);
+		const handler = getHandler(transport, MESSAGE_NAME.PROPS);
 		const foreignWindow = { postMessage: vi.fn() } as unknown as Window;
 		const payload = { amount: 42 };
 
@@ -137,6 +138,59 @@ describe("HostTransport", () => {
 			}),
 		).toEqual({ success: true });
 		expect(applySerializedProps).toHaveBeenCalledWith(payload);
+	});
+
+	it("runs peer callbacks only for calls from the consumer window at its origin", async () => {
+		const { transport, consumerWindow } = createTransport();
+		const callback = vi.fn(() => "answered");
+		// Only a consumer's own peer call registers an inbound peer callback, so
+		// the test serializes one on the private peer bridge directly.
+		const peerBridge = (
+			transport as unknown as {
+				peerBridge: { serialize: (fn: () => string) => { __id__: string } };
+			}
+		).peerBridge;
+		const { __id__: id } = peerBridge.serialize(callback);
+		const peerCall = requireValue(
+			getHandler(transport, MESSAGE_NAME.PEER_CALL),
+		);
+		const call = (source: PropsHandlerSource) =>
+			Promise.resolve().then(() => peerCall({ id, args: [] }, source));
+
+		await expect(
+			call({
+				uid: "foreign",
+				domain: "https://consumer.example.com",
+				window: { postMessage: vi.fn() } as unknown as Window,
+			}),
+		).rejects.toThrow(
+			forgeFrameError(
+				"ORIGIN_REJECTED",
+				"Function call rejected from unexpected window",
+			),
+		);
+		await expect(
+			call({
+				uid: "navigated",
+				domain: "https://evil.example.com",
+				window: consumerWindow,
+			}),
+		).rejects.toThrow(
+			forgeFrameError(
+				"ORIGIN_REJECTED",
+				"Function call rejected from unexpected window",
+			),
+		);
+		expect(callback).not.toHaveBeenCalled();
+
+		await expect(
+			call({
+				uid: "consumer",
+				domain: "https://consumer.example.com",
+				window: consumerWindow,
+			}),
+		).resolves.toBe("answered");
+		expect(callback).toHaveBeenCalledOnce();
 	});
 
 	it("sends INIT once, after bootstrap settles, and never after destroy", async () => {

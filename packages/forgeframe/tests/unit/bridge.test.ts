@@ -14,6 +14,7 @@ import { MESSAGE_NAME } from "@/constants";
 import { ForgeFrameError } from "@/errors";
 import { createDeferred } from "@/utils/promise";
 import { forgeFrameError } from "../forgeframe-error";
+import { requireValue } from "../require-value";
 
 type GenericFunction = (...args: unknown[]) => unknown;
 
@@ -132,6 +133,31 @@ describe("FunctionBridge", () => {
 					"Function call rejected from unexpected window",
 				),
 			);
+			guardedBridge.destroy();
+		});
+
+		it("answers liveness checks only from the expected peer window", () => {
+			const guardedBridge = new FunctionBridge(
+				messenger as unknown as Messenger,
+				(source) => source.domain === "https://expected.example",
+			);
+			// The mock keeps the latest registration: the guarded bridge's handler.
+			const liveness = requireValue(
+				messenger.handlers.get(`${MESSAGE_NAME.CALL}_liveness`),
+			);
+			const source = (domain: string) => ({
+				uid: "test",
+				domain,
+				window: { postMessage: vi.fn() } as unknown as Window,
+			});
+
+			expect(() => liveness({}, source("https://other.example"))).toThrow(
+				forgeFrameError(
+					"ORIGIN_REJECTED",
+					"Liveness check rejected from unexpected window",
+				),
+			);
+			expect(liveness({}, source("https://expected.example"))).toBe(true);
 			guardedBridge.destroy();
 		});
 

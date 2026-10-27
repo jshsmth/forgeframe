@@ -213,6 +213,39 @@ describe("ConsumerTransport", () => {
 		transport.bridge.abortBatch();
 	});
 
+	it.each([
+		["no data", undefined],
+		["null", null],
+		["no session ID", {}],
+		["a non-string session ID", { sessionId: 1 }],
+		["an empty session ID", { sessionId: "" }],
+	])(
+		"rejects a bootstrap request with %s from the verified host",
+		async (_label, request) => {
+			const transport = createTransport();
+			const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+			transport.attachHostWindow(hostWindow, HOST_ORIGIN);
+			const onBootstrap = vi.fn(async () => ({ props: {} }));
+			transport.setupMessageHandlers({ ...createHandlers(), onBootstrap });
+			const bootstrap = requireValue(
+				getHandler(transport, MESSAGE_NAME.BOOTSTRAP),
+			);
+
+			await expect(
+				Promise.resolve().then(() =>
+					bootstrap(request, {
+						uid: "consumer-transport-uid",
+						domain: HOST_ORIGIN,
+						window: hostWindow,
+					}),
+				),
+			).rejects.toThrow(
+				forgeFrameError("VALIDATION", "Invalid host bootstrap request"),
+			);
+			expect(onBootstrap).not.toHaveBeenCalled();
+		},
+	);
+
 	it("requires INIT to match the latest verified bootstrap session", async () => {
 		const transport = createTransport();
 		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
