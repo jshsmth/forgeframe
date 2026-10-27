@@ -79,9 +79,6 @@ jobs:
     # step with package.json.
     container:
       image: mcr.microsoft.com/playwright:v1.64.1-noble
-      # Firefox refuses to start as root when HOME belongs to another user.
-      env:
-        HOME: /root
 
     steps:
       - name: Checkout repository
@@ -97,8 +94,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Firefox refuses to start as root when HOME belongs to another user.
+      # Actions sets HOME=/github/home for container steps, overriding the
+      # container's env, so set it on the step.
       - name: Run browser suite
         run: npm run test:browser
+        env:
+          HOME: /root
 
       # Traces, screenshots and videos of failed browser tests, kept for a week.
       - name: Upload browser test report
