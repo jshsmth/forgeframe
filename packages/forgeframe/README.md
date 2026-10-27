@@ -1753,7 +1753,7 @@ Tests and playground bindings use explicit value guards, so a missing fixture or
 | `npm run check:ci` | Non-writing Biome checks for CI |
 | `npm run docs:check` | Pinned Plasma Wiki version, generated-index freshness, and wiki lint |
 | `npm run docs:update` | Regenerate wiki metadata and indexes after documentation edits |
-| `npm run typecheck` | Library source, compile-time API contracts, and playground types |
+| `npm run typecheck` | Library source, compile-time API contracts, playground types, and the Vite, Vitest, and Playwright configs |
 | `npm run test:run` | Unit and integration tests in jsdom, plus Node-specific suites |
 | `npm run test:coverage` | The same tests with coverage thresholds enforced |
 | `npm run test:browser` | Cross-origin iframe and popup regressions in Chromium, Firefox, and WebKit |
