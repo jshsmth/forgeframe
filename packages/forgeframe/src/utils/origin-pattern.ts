@@ -116,7 +116,9 @@ export function testOriginRegExpStateless(
  * @throws If the value is not a non-empty string, a `RegExp`, or an array of
  * them, is an empty array where `emptyArray` is `"rejected"`, lists a string
  * without a scheme, such as `example.com` or `*.example.com`, or puts `*`
- * anywhere but the leading host labels, as in `https://*.example.com`.
+ * anywhere but the leading host labels, as in `https://*.example.com`, or
+ * lists an exact origin in a form browsers never report, such as
+ * `https://Shop.example.com` or `https://example.com:443`.
  *
  * @internal
  */
@@ -155,6 +157,16 @@ export function assertOriginMatcher(
 			`${option} lists "${withPath}", but an origin has no path, query or fragment; write only the scheme, host and port, such as "${withPath.replace(/^([^:]+:\/\/[^/?#]*).*$/, "$1")}"`,
 		);
 	}
+	const nonCanonical = entries.find(isNonCanonicalOrigin);
+	if (nonCanonical !== undefined) {
+		const origin = readOrigin(nonCanonical);
+		throw new ForgeFrameError(
+			"VALIDATION",
+			origin === undefined
+				? `${option} lists "${nonCanonical}", which is not a valid origin and can never match one`
+				: `${option} lists "${nonCanonical}", which can never match because browsers report it as "${origin}"; write that instead`,
+		);
+	}
 	const misplacedWildcard = entries.find(isMisplacedWildcard);
 	if (misplacedWildcard !== undefined) {
 		throw new ForgeFrameError(
@@ -175,6 +187,29 @@ function isBareHostPattern(entry: unknown): entry is string {
 /** Whether a string pattern with a scheme continues past the host and port. */
 function hasPathOrQuery(entry: unknown): entry is string {
 	return typeof entry === "string" && /^[^:]+:\/\/[^/?#]*[/?#]/.test(entry);
+}
+
+/**
+ * Whether an exact origin string differs from the origin browsers report for
+ * it, such as `https://Shop.example.com`, `https://example.com:443` or one
+ * with userinfo, so it can never match.
+ */
+function isNonCanonicalOrigin(entry: unknown): entry is string {
+	return (
+		typeof entry === "string" &&
+		!entry.includes("*") &&
+		readOrigin(entry) !== entry
+	);
+}
+
+/** The origin a browser reports for an origin string, or `undefined` for none. */
+function readOrigin(entry: string): string | undefined {
+	try {
+		const { origin } = new URL(entry);
+		return origin === "null" ? undefined : origin;
+	} catch {
+		return undefined;
+	}
 }
 
 /** Whether a string pattern uses `*` other than as `scheme://*.rest`. */

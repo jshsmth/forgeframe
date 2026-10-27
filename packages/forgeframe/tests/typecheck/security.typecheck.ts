@@ -119,3 +119,20 @@ const peers: Promise<PeerInfo[]> = host.getPeerInstances(allTags);
 void [anyConsumer, peers];
 
 export type { RemovedSiblingInfo };
+
+// Readonly origin lists, such as `as const` arrays, are accepted everywhere a
+// matcher is.
+const trustedOrigins = [
+	"https://shop.example.com",
+	/^https:\/\/[a-z]+\.example\.com$/,
+] as const;
+create({
+	tag: "typed-readonly-origins",
+	url: "https://widgets.example.com/widget",
+	hostOrigins: trustedOrigins,
+	peers: trustedOrigins,
+	props: {
+		token: { schema: prop.string(), deliverTo: trustedOrigins },
+	},
+});
+initHost(Widget, { consumerOrigins: trustedOrigins });
