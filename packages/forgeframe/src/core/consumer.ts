@@ -365,8 +365,9 @@ export class ConsumerComponent<
 				this.teardownRenderResources();
 				throw err;
 			}
+			// close() already recorded the cancellation it rejected render() with.
 			const failure = renderWasCancelled
-				? this.createRenderCancellationError()
+				? (this.renderFailure ?? this.createRenderCancellationError())
 				: err;
 			// Updates rejected by this teardown name the render failure as cause.
 			this.renderFailure = failure;
@@ -397,7 +398,12 @@ export class ConsumerComponent<
 		this.closePromise = closeTask.promise;
 
 		this.closing = true;
-		this.activeRenderTask?.reject(this.createRenderCancellationError());
+		if (this.activeRenderTask && !this.rendered) {
+			// Held updates, released as render() rejects, name this error as cause.
+			const cancellation = this.createRenderCancellationError();
+			this.renderFailure = cancellation;
+			this.activeRenderTask.reject(cancellation);
+		}
 		void this.performClose().then(closeTask.resolve, closeTask.reject);
 		return closeTask.promise;
 	}

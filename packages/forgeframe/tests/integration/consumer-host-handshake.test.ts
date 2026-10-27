@@ -499,6 +499,23 @@ describe("Prop updates requested during render", () => {
 		expect(validate).toHaveBeenCalledTimes(1);
 	});
 
+	it("names close()'s own cancellation as the cause of updates held by an interrupted render", async () => {
+		const { Component, container } = setup();
+		const instance = Component({ amount: 1 });
+		const rendering = instance.render(container);
+		const renderFailure = rendering.catch((error: unknown) => error);
+		const queuedFailure = instance
+			.updateProps({ amount: 2 })
+			.catch((error: unknown) => error);
+		await instance.close();
+		const cancellation = await renderFailure;
+		expect(cancellation).toMatchObject({ code: "CANCELLED" });
+		const queued = await queuedFailure;
+		expect(queued).toMatchObject({ code: "CLOSED" });
+		// The same error object render() rejected with, not an equal copy.
+		expect((queued as Error).cause).toBe(cancellation);
+	});
+
 	it("joins the in-progress render for the same arguments and rejects different ones", async () => {
 		const { Component, container } = setup();
 		const instance = Component({ amount: 1 });
