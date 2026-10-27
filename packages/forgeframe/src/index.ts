@@ -94,6 +94,7 @@ export type {
 	PropDelivery,
 	PropsDefinition,
 	PropsOf,
+	PropsPatch,
 	RemoteValue,
 	// Standard Schema types
 	StandardSchemaV1,
