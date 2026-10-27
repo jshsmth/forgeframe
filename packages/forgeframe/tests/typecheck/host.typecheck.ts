@@ -13,9 +13,17 @@ import ForgeFrame, {
 	type HostPropsOf,
 	type InitHostOptions,
 	initHost,
+	type PropsOf,
 	prop,
 	type RemoteValue,
 } from "@/index";
+
+/** Whether each type is assignable to the other. */
+type IsEquivalent<A, B> = [A] extends [B]
+	? [B] extends [A]
+		? true
+		: false
+	: false;
 
 void ForgeFrame;
 
@@ -189,4 +197,71 @@ if (host) {
 	void props.children;
 	// @ts-expect-error a prop named then is reserved.
 	void props.then;
+}
+
+// The host type matches what the host receives: sendToHost: false props are
+// left out, and deliverTo props are optional; the consumer view keeps both.
+const WithheldForm = create({
+	tag: "typed-withheld-form",
+	url: "https://pay.example.com/form",
+	props: {
+		amount: prop.number(),
+		onClose: {
+			schema: prop.function<() => void>(),
+			sendToHost: false,
+		},
+		secret: { schema: prop.string(), deliverTo: "same-origin" },
+		token: { schema: prop.string(), deliverTo: "https://pay.example.com" },
+		sent: { schema: prop.string(), sendToHost: true },
+	},
+});
+type WithheldHostProps = {
+	amount: number;
+	secret?: string;
+	token?: string;
+	sent: string;
+};
+const withheldHostProps: IsEquivalent<
+	HostPropsOf<typeof WithheldForm>,
+	WithheldHostProps
+> = true;
+void withheldHostProps;
+const withheldConsumerProps: IsEquivalent<
+	PropsOf<typeof WithheldForm>,
+	WithheldHostProps & { onClose: () => void; secret: string; token: string }
+> = true;
+void withheldConsumerProps;
+
+const withheldHost = initHost(WithheldForm, { consumerOrigins: "*" });
+const withheldHandle: HostOf<typeof WithheldForm> | null = withheldHost;
+void withheldHandle;
+if (withheldHost) {
+	const props = await withheldHost.ready;
+	// @ts-expect-error a sendToHost: false prop never reaches the host
+	props.onClose();
+	// @ts-expect-error a deliverTo prop may be withheld from this host
+	const secretLength: number = props.secret.length;
+	void secretLength;
+	withheldHost.onProps((next) => {
+		// @ts-expect-error onProps sees the same host props as ready
+		void next.onClose;
+	});
+}
+
+// The tag-agnostic form applies the same rules to its own definitions.
+const agnosticWithheld = initHost({
+	consumerOrigins: "*",
+	props: {
+		label: prop.string(),
+		hidden: { schema: prop.string(), sendToHost: false },
+		scoped: { schema: prop.string(), deliverTo: "same-origin" },
+	},
+});
+if (agnosticWithheld) {
+	const props = await agnosticWithheld.ready;
+	const agnosticProps: IsEquivalent<
+		typeof props,
+		{ label: string; scoped?: string }
+	> = true;
+	void agnosticProps;
 }

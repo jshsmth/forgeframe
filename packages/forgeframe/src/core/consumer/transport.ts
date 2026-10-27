@@ -26,6 +26,8 @@ import type {
 	RemoteValue,
 } from "../../types/runtime";
 import type { Dimensions, OriginMatcher } from "../../types/utility";
+import { normalizeError } from "../../utils/error";
+import { stringifyForWire } from "../../utils/json";
 import { createDeferred, promiseTimeout } from "../../utils/promise";
 import { getOrigin, isWindowClosed, matchOrigin } from "../../window/helpers";
 import {
@@ -188,6 +190,9 @@ export class ConsumerTransport<
 		const finishBatch = options?.finishBatch ?? true;
 		try {
 			const serialized = serializeProps(propsForHost, this.bridge);
+			// Values the bridge keeps, such as a BigInt, fail here with a cause
+			// rather than in the message that carries them.
+			stringifyForWire(serialized, "the props");
 			if (finishBatch) {
 				this.bridge.finishBatch();
 			}
@@ -196,6 +201,33 @@ export class ConsumerTransport<
 			this.bridge.abortBatch();
 			throw error;
 		}
+	}
+
+	/**
+	 * Reads the props snapshot a bootstrap request answers. A snapshot that
+	 * cannot be sent, such as one holding a `BigInt`, fails a pending
+	 * handshake now with its reason: a host retrying on the same page would
+	 * read the same props.
+	 */
+	private async readBootstrapSnapshot(
+		handlers: ConsumerTransportHandlers<Exports>,
+		source: VerifiedMessageSource,
+		resetLocalReferences: boolean,
+	): Promise<HostBootstrapData> {
+		try {
+			return await handlers.onBootstrap(source, resetLocalReferences);
+		} catch (error) {
+			this.failPendingHandshake(normalizeError(error));
+			throw error;
+		}
+	}
+
+	/**
+	 * Rejects a pending handshake with `error`; `waitForHost` releases it.
+	 * Unlike `rejectPendingInit`, it leaves the host window's state alone.
+	 */
+	private failPendingHandshake(error: Error): void {
+		this.initPromise?.reject(error);
 	}
 
 	/**
@@ -336,7 +368,8 @@ export class ConsumerTransport<
 						success: true,
 					});
 				}
-				const snapshot = await handlers.onBootstrap(
+				const snapshot = await this.readBootstrapSnapshot(
+					handlers,
 					source,
 					resetLocalReferences,
 				);

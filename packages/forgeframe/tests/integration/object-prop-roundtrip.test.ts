@@ -555,6 +555,47 @@ describe("JSON encoder conversion", () => {
 		expect(hostProps.payload).toEqual({ stage: "recovered" });
 	});
 
+	it.each([
+		{ label: "a BigInt", payload: () => ({ amount: 1n }), cause: TypeError },
+		{
+			label: "a cycle",
+			payload: () => {
+				const cyclic: Record<string, unknown> = {};
+				cyclic.self = cyclic;
+				return cyclic;
+			},
+			cause: undefined,
+		},
+	])(
+		"rejects a first render holding $label with VALIDATION, not INIT_TIMEOUT",
+		async ({ payload, cause }) => {
+			harness = createIframeIntegrationHarness();
+			const container = document.createElement("div");
+			document.body.append(container);
+			const definitions = { payload: prop.any() };
+			const Component = create({
+				tag: "unsendable-first-render",
+				url: "https://host.example.com/widget",
+				props: definitions,
+				initTimeout: 60_000,
+			});
+			const instance = Component({ payload: payload() });
+			const rendering = instance
+				.render(container)
+				.catch((error: unknown) => error);
+			const iframe = await harness.waitForIframe(container);
+			harness.attachHostToIframe(iframe);
+			const host = harness.bootstrapHost(definitions);
+			const hostReady = host?.ready.catch((error: unknown) => error);
+
+			const failure = await rendering;
+			expect(failure).toMatchObject({ code: "VALIDATION" });
+			if (cause) expect((failure as Error).cause).toBeInstanceOf(cause);
+			await expect(hostReady).resolves.toMatchObject({ code: "VALIDATION" });
+			expect(Component.instances).toHaveLength(0);
+		},
+	);
+
 	it("delivers a boxed primitive whose prototype was removed as an ordinary record", async () => {
 		harness = createIframeIntegrationHarness();
 		const container = document.createElement("div");

@@ -365,8 +365,9 @@ export class ConsumerComponent<
 				this.teardownRenderResources();
 				throw err;
 			}
+			// close() already recorded the cancellation it rejected render() with.
 			const failure = renderWasCancelled
-				? this.createRenderCancellationError()
+				? (this.renderFailure ?? this.createRenderCancellationError())
 				: err;
 			// Updates rejected by this teardown name the render failure as cause.
 			this.renderFailure = failure;
@@ -397,9 +398,21 @@ export class ConsumerComponent<
 		this.closePromise = closeTask.promise;
 
 		this.closing = true;
-		this.activeRenderTask?.reject(this.createRenderCancellationError());
+		this.cancelActiveRender();
 		void this.performClose().then(closeTask.resolve, closeTask.reject);
 		return closeTask.promise;
+	}
+
+	/**
+	 * Rejects a render still in progress with its cancellation error, recorded
+	 * first as `renderFailure`, so the updates it held name the same error as
+	 * `cause`. A render that already completed is left alone.
+	 */
+	private cancelActiveRender(): void {
+		if (!this.activeRenderTask || this.rendered) return;
+		const cancellation = this.createRenderCancellationError();
+		this.renderFailure = cancellation;
+		this.activeRenderTask.reject(cancellation);
 	}
 
 	/**

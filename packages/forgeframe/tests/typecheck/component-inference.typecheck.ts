@@ -22,6 +22,7 @@ import {
 	type PropsDefinition,
 	type PropsOf,
 	prop,
+	type StandardSchemaV1,
 } from "../../src";
 
 /** Whether each type is assignable to the other. */
@@ -850,6 +851,50 @@ void AnnotatedComponent({});
 void AnnotatedComponent({ name: 1 });
 const annotatedInput: InputOf<typeof AnnotatedComponent> = { name: "a" };
 void annotatedInput;
+
+// A single entry annotated as PropDefinition<T> or StandardSchemaV1<unknown, T>
+// keeps T as its input, and stays required when T excludes undefined.
+const annotatedRef: PropDefinition<string> = {
+	schema: prop.string().min(1),
+	queryParam: "ref",
+};
+const annotatedSchema: StandardSchemaV1<unknown, number> = prop.number();
+const annotatedOptional: PropDefinition<string | undefined> = {
+	schema: prop.string().optional(),
+};
+const AnnotatedEntries = create({
+	tag: "typed-annotated-entries",
+	url: "https://example.com",
+	props: {
+		ref: annotatedRef,
+		count: annotatedSchema,
+		note: annotatedOptional,
+	},
+});
+void AnnotatedEntries({ ref: "a", count: 1 });
+// @ts-expect-error an annotated entry stays required
+void AnnotatedEntries({ count: 1 });
+// @ts-expect-error an annotated entry keeps its type as input
+void AnnotatedEntries({ ref: 42, count: 1 });
+// @ts-expect-error an annotated schema keeps its type as input
+void AnnotatedEntries({ ref: "a", count: "1" });
+const annotatedEntriesInput: IsEquivalent<
+	InputOf<typeof AnnotatedEntries>,
+	{ ref: string; count: number; note?: string | undefined }
+> = true;
+void annotatedEntriesInput;
+
+// A concrete coercing schema keeps its wider declared input.
+const CoercedEntries = create({
+	tag: "typed-coerced-entries",
+	url: "https://example.com",
+	props: {
+		count: z.coerce.number(),
+		wrapped: { schema: z.coerce.number(), queryParam: true },
+		anything: prop.any(),
+	},
+});
+void CoercedEntries({ count: "1", wrapped: "2", anything: 0 });
 
 declare const readonlyExportsInstance: ComponentInstance<
 	Record<string, never>,

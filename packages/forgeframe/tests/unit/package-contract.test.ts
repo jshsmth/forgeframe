@@ -271,10 +271,31 @@ describe("package contract", () => {
 		// GitHub Actions expressions, built so they are not read as template placeholders.
 		const expression = (body: string) => `\${{ ${body} }}`;
 		expect(workflow).toContain(
-			`npm publish -w forgeframe --provenance --tag ${expression("steps.dist-tag.outputs.tag")}`,
+			`npm publish ./release/*.tgz --provenance --tag ${expression("needs.verify.outputs.dist-tag")}`,
 		);
 		expect(workflow).toContain(
-			`prerelease: ${expression("steps.dist-tag.outputs.tag == 'next'")}`,
+			`prerelease: ${expression("needs.verify.outputs.dist-tag == 'next'")}`,
 		);
+	});
+
+	it("should give only the publish job the npm identity and only the release job write access", () => {
+		const workflow = readText(
+			resolve(repoRoot, ".github/workflows/release.yml"),
+		);
+		const job = (name: string) =>
+			workflow
+				.split(/\n {2}(?=[a-z-]+:\n)/)
+				.find((block) => block.startsWith(`${name}:`)) ?? "";
+		expect(job("verify")).toContain("npm run release:check");
+		expect(job("verify")).not.toContain("permissions:");
+		expect(job("publish")).toContain("id-token: write");
+		expect(job("publish")).not.toContain("contents: write");
+		expect(job("github-release")).toContain("contents: write");
+		expect(job("github-release")).not.toContain("id-token");
+		expect(workflow.match(/id-token: write/g)).toHaveLength(1);
+		// Every action is pinned to a commit.
+		for (const [, ref] of workflow.matchAll(/uses: [^@\s]+@(\S+)/g)) {
+			expect(ref).toMatch(/^[0-9a-f]{40}$/);
+		}
 	});
 });

@@ -385,7 +385,7 @@ export interface ComponentBaseOptions<P = Record<string, unknown>> {
 }
 
 /**
- * A component's `peers` option: omitted, `true`, or an origin matcher.
+ * A component's `peers` option: omitted, `'same-origin'`, or an origin matcher.
  * @internal
  */
 export type PeersOption = ComponentBaseOptions["peers"];
@@ -393,7 +393,7 @@ export type PeersOption = ComponentBaseOptions["peers"];
 /**
  * Instance of a rendered component.
  *
- * @typeParam Props - The normalized props the host receives
+ * @typeParam Props - The normalized props, as the consumer sees them
  * @typeParam Input - The factory input, inferred from the prop schemas: defaults
  * make keys optional and coercions accept wider types than the props
  * @typeParam Exports - The value the host exports, from the `exports` schema
@@ -517,6 +517,8 @@ export interface ComponentInstance<
  * make keys optional and coercions accept wider types than the props. The
  * props argument is required exactly when a key of `Input` is required.
  * @typeParam Exports - The value the host exports, from the `exports` schema
+ * @typeParam HostProps - The normalized props the host receives: `Props`
+ * without `sendToHost: false` props, with `deliverTo` props optional
  *
  * @remarks
  * This is the return type of `create()`. Call it to create consumer
@@ -543,6 +545,7 @@ export interface Component<
 	Props = Record<string, unknown>,
 	Input = Props,
 	Exports = unknown,
+	HostProps = Props,
 > {
 	/**
 	 * Create a new component instance with props.
@@ -562,7 +565,17 @@ export interface Component<
 	 * so read it again after closing instances.
 	 */
 	readonly instances: readonly ComponentInstance<Props, Input, Exports>[];
+
+	/**
+	 * The props this component's host receives. Type-only: never set at
+	 * runtime; read it with {@link HostPropsOf}.
+	 * @internal
+	 */
+	readonly [hostPropsType]?: HostProps;
 }
+
+/** Keys the type-only host props of a {@link Component}. @internal */
+declare const hostPropsType: unique symbol;
 
 /**
  * Any component returned by `create()`, whatever its props, input and exports.
@@ -574,7 +587,7 @@ export interface Component<
  * @public
  */
 // biome-ignore lint/suspicious/noExplicitAny: Matches every component; the factory input is contravariant.
-export type AnyComponent = Component<any, any, any>;
+export type AnyComponent = Component<any, any, any, any>;
 
 /**
  * The normalized props a component's host receives.
@@ -587,7 +600,7 @@ export type AnyComponent = Component<any, any, any>;
  * @public
  */
 export type PropsOf<C extends AnyComponent> =
-	C extends Component<infer Props, infer _Input, infer _Exports>
+	C extends Component<infer Props, infer _Input, infer _Exports, infer _Host>
 		? Props
 		: never;
 
@@ -597,7 +610,7 @@ export type PropsOf<C extends AnyComponent> =
  * @public
  */
 export type InputOf<C extends AnyComponent> =
-	C extends Component<infer _Props, infer Input, infer _Exports>
+	C extends Component<infer _Props, infer Input, infer _Exports, infer _Host>
 		? Input
 		: never;
 
@@ -607,12 +620,16 @@ export type InputOf<C extends AnyComponent> =
  * @public
  */
 export type ExportsOf<C extends AnyComponent> =
-	C extends Component<infer _Props, infer _Input, infer Exports>
+	C extends Component<infer _Props, infer _Input, infer Exports, infer _Host>
 		? Exports
 		: never;
 
 /**
  * The props a component's host receives from `await host.ready`.
+ *
+ * @remarks
+ * Props declared `sendToHost: false` are left out, and props with a
+ * `deliverTo` option are optional; {@link PropsOf} is the consumer's view.
  *
  * @example
  * ```typescript
@@ -623,7 +640,20 @@ export type ExportsOf<C extends AnyComponent> =
  *
  * @public
  */
-export type HostPropsOf<C extends AnyComponent> = RemoteValue<PropsOf<C>>;
+export type HostPropsOf<C extends AnyComponent> = RemoteValue<
+	RawHostPropsOf<C>
+>;
+
+/** A component's host props before {@link RemoteValue} applies. @internal */
+type RawHostPropsOf<C extends AnyComponent> =
+	C extends Component<
+		infer _Props,
+		infer _Input,
+		infer _Exports,
+		infer HostProps
+	>
+		? HostProps
+		: never;
 
 /**
  * The host handle `initHost(Component, ...)` returns for a component.
@@ -638,7 +668,10 @@ export type HostPropsOf<C extends AnyComponent> = RemoteValue<PropsOf<C>>;
  *
  * @public
  */
-export type HostOf<C extends AnyComponent> = Host<PropsOf<C>, ExportsOf<C>>;
+export type HostOf<C extends AnyComponent> = Host<
+	RawHostPropsOf<C>,
+	ExportsOf<C>
+>;
 
 /**
  * A peer component instance that `getPeerInstances()` lists.

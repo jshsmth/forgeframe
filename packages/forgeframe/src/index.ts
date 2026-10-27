@@ -81,6 +81,7 @@ export type {
 	HostPropsOf,
 	IframeAttributes,
 	IframeStyles,
+	InferHostProps,
 	InferProps,
 	InferPropsInput,
 	InitHostOptions,

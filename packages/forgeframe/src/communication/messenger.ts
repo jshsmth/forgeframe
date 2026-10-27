@@ -200,13 +200,7 @@ export class Messenger {
 	 * @param origin - Origin pattern to trust (string, RegExp, or array)
 	 */
 	addTrustedOrigin(origin: OriginMatcher): void {
-		if (Array.isArray(origin)) {
-			for (const d of origin) {
-				this.addTrustedOrigin(d);
-			}
-		} else if (origin instanceof RegExp) {
-			this.allowedOriginPatterns.push(origin);
-		} else {
+		if (typeof origin === "string") {
 			const wildcardPattern = compileWildcardOriginPattern(origin);
 			if (wildcardPattern) {
 				if (!this.wildcardPatternRegistry.has(origin)) {
@@ -215,6 +209,12 @@ export class Messenger {
 				}
 			} else {
 				this.allowedOrigins.add(origin);
+			}
+		} else if (origin instanceof RegExp) {
+			this.allowedOriginPatterns.push(origin);
+		} else {
+			for (const d of origin) {
+				this.addTrustedOrigin(d);
 			}
 		}
 	}
@@ -225,15 +225,7 @@ export class Messenger {
 	 * @param origin - Origin pattern to remove (string, RegExp, or array)
 	 */
 	removeTrustedOrigin(origin: OriginMatcher): void {
-		if (Array.isArray(origin)) {
-			for (const d of origin) {
-				this.removeTrustedOrigin(d);
-			}
-		} else if (origin instanceof RegExp) {
-			this.allowedOriginPatterns = this.allowedOriginPatterns.filter(
-				(pattern) => pattern !== origin,
-			);
-		} else {
+		if (typeof origin === "string") {
 			const wildcardPattern = this.wildcardPatternRegistry.get(origin);
 			if (wildcardPattern) {
 				this.allowedOriginPatterns = this.allowedOriginPatterns.filter(
@@ -242,6 +234,14 @@ export class Messenger {
 				this.wildcardPatternRegistry.delete(origin);
 			}
 			this.allowedOrigins.delete(origin);
+		} else if (origin instanceof RegExp) {
+			this.allowedOriginPatterns = this.allowedOriginPatterns.filter(
+				(pattern) => pattern !== origin,
+			);
+		} else {
+			for (const d of origin) {
+				this.removeTrustedOrigin(d);
+			}
 		}
 	}
 
@@ -502,7 +502,9 @@ export class Messenger {
 			return serializeMessage(
 				createResponseMessage(message.id, data, source, error),
 			);
-		} catch {
+		} catch (serializeError) {
+			// The cause stays local; its message tells the requester what failed.
+			const cause = normalizeError(serializeError);
 			return serializeMessage(
 				createResponseMessage(
 					message.id,
@@ -510,7 +512,8 @@ export class Messenger {
 					source,
 					new ForgeFrameError(
 						"VALIDATION",
-						`Could not serialize response for "${message.name}"`,
+						`Could not serialize response for "${message.name}": ${cause.message}`,
+						{ cause },
 					),
 				),
 			);

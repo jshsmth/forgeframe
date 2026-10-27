@@ -9,39 +9,38 @@ on:
 permissions:
   contents: read
 
+# Each job gets only the permissions its own steps need: the tests and the
+# toolchain never run with the npm publishing identity or a write token.
+# Third-party actions are pinned by commit SHA.
 jobs:
-  publish:
+  verify:
     runs-on: ubuntu-latest
 
-    permissions:
-      # Create the GitHub release.
-      contents: write
-      # Authenticate to npm through trusted publishing and sign provenance.
-      id-token: write
+    outputs:
+      dist-tag: ${{ steps.dist-tag.outputs.tag }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
           check-latest: true
           cache: npm
-          registry-url: 'https://registry.npmjs.org'
 
       - name: Validate release tag matches package version
         run: node packages/forgeframe/scripts/check-release-tag.mjs
-
-      - name: Use an npm version that supports trusted publishing
-        run: npm install -g npm@^11.5.1
 
       - name: Install dependencies
         run: npm ci
 
       - name: Install browser engines
         run: npx playwright install --with-deps chromium firefox webkit
+
+      - name: Run release checks
+        run: npm run release:check
 
       - name: Run browser suite
         run: npm run test:browser
@@ -51,12 +50,58 @@ jobs:
         id: dist-tag
         run: node packages/forgeframe/scripts/release-dist-tag.mjs >> "$GITHUB_OUTPUT"
 
-      # prepublishOnly runs `npm run release:check` before anything is uploaded.
-      - name: Publish to npm with provenance
-        run: npm publish -w forgeframe --provenance --tag ${{ steps.dist-tag.outputs.tag }}
+      # The publish job uploads exactly this verified tarball.
+      - name: Pack the package
+        run: npm pack -w forgeframe --pack-destination release
 
+      - name: Upload the package tarball
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: package
+          path: release/*.tgz
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+
+    permissions:
+      # Authenticate to npm through trusted publishing and sign provenance.
+      id-token: write
+
+    steps:
+      - name: Download the package tarball
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: package
+          path: release
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          check-latest: true
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Use an npm version that supports trusted publishing
+        run: npm install -g npm@11.21.1
+
+      # Publishing a tarball runs no package scripts; the verify job ran them.
+      - name: Publish to npm with provenance
+        run: npm publish ./release/*.tgz --provenance --tag ${{ needs.verify.outputs.dist-tag }}
+
+  github-release:
+    needs: [verify, publish]
+    runs-on: ubuntu-latest
+
+    permissions:
+      # Create the GitHub release.
+      contents: write
+
+    steps:
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           generate_release_notes: true
-          prerelease: ${{ steps.dist-tag.outputs.tag == 'next' }}
+          prerelease: ${{ needs.verify.outputs.dist-tag == 'next' }}

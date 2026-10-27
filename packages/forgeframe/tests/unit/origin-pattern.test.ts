@@ -116,6 +116,13 @@ describe("assertOriginMatcher", () => {
 			'an origin has no path, query or fragment; write only the scheme, host and port, such as "https://*.example.com"',
 		],
 		["https://app.example.com/login", 'such as "https://app.example.com"'],
+		[
+			"https://Shop.example.com",
+			'browsers report it as "https://shop.example.com"',
+		],
+		["https://example.com:443", 'browsers report it as "https://example.com"'],
+		["https://user@example.com", 'browsers report it as "https://example.com"'],
+		["https://exa mple.com", "is not a valid origin"],
 	])("rejects %s", async (pattern, message) => {
 		const { assertOriginMatcher } = await loadOriginPatternModule();
 		expect(() => assertOriginMatcher([pattern], "Matcher")).toThrow(message);
@@ -126,6 +133,11 @@ describe("assertOriginMatcher", () => {
 		"https://*.example.com",
 		"https://*.example.com:8443",
 		"https://a.test",
+		"https://*.Example.com",
+		"http://localhost:5173",
+		"https://[::1]:8443",
+		"capacitor://localhost",
+		"chrome-extension://abcdefghijklmnop",
 	])("accepts %s", async (pattern) => {
 		const { assertOriginMatcher } = await loadOriginPatternModule();
 		expect(() => assertOriginMatcher(pattern, "Matcher")).not.toThrow();
