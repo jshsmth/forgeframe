@@ -24,13 +24,7 @@ import ForgeFrame, {
 	prop,
 	type RemoteValue,
 } from "@/index";
-
-/** Whether each type is assignable to the other. */
-type IsEquivalent<A, B> = [A] extends [B]
-	? [B] extends [A]
-		? true
-		: false
-	: false;
+import type { IsEqual, Simplify } from "./assert";
 
 void ForgeFrame;
 
@@ -46,6 +40,29 @@ const PaymentForm = create({
 type PaymentProps = { amount: number; onSuccess: (id: string) => void };
 
 const host = initHost(PaymentForm, { consumerOrigins: "*" });
+type PaymentHost = NonNullable<typeof host>;
+// ready resolves to the inferred host props; the error event carries an Error.
+export const readyResolvesProps: IsEqual<
+	PaymentHost["ready"],
+	Promise<RemoteValue<PaymentProps>>
+> = true;
+export const onPropsPayload: IsEqual<
+	Parameters<Parameters<PaymentHost["onProps"]>[0]>[0],
+	RemoteValue<PaymentProps>
+> = true;
+// Controls resolve to void; a widened return type would fail here.
+export const hostControls: IsEqual<
+	[
+		ReturnType<PaymentHost["close"]>,
+		ReturnType<PaymentHost["resize"]>,
+		ReturnType<PaymentHost["onProps"]>,
+	],
+	[Promise<void>, Promise<void>, () => void]
+> = true;
+export const hostErrorPayload: IsEqual<
+	Parameters<Parameters<PaymentHost["on"]>[1]>[0],
+	Error
+> = true;
 const typedHost: Host<PaymentProps> | null = host;
 void typedHost;
 
@@ -115,6 +132,10 @@ const tagAgnosticHost = initHost({
 	consumerOrigins: ["https://app.example.com", /\.example\.com$/],
 	autoInit: false,
 });
+export const tagAgnosticReady: IsEqual<
+	Simplify<Awaited<NonNullable<typeof tagAgnosticHost>["ready"]>>,
+	{ label: string }
+> = true;
 const label: string | undefined = (await tagAgnosticHost?.ready)?.label;
 void label;
 const untypedHost: Host | null = initHost({ consumerOrigins: "*" });
@@ -169,6 +190,10 @@ void consumerProps;
 
 // @ts-expect-error a bare initHost() has no consumer allowlist.
 initHost();
+// @ts-expect-error consumerOrigins takes origin strings or patterns.
+initHost(PaymentForm, { consumerOrigins: 1 });
+// @ts-expect-error autoInit is a boolean.
+initHost(PaymentForm, { consumerOrigins: "*", autoInit: "no" });
 // @ts-expect-error consumerOrigins is required.
 initHost(PaymentForm, {});
 // @ts-expect-error consumerOrigins is required in the tag-agnostic form too.
@@ -228,14 +253,20 @@ type WithheldHostProps = {
 	token?: string;
 	sent: string;
 };
-const withheldHostProps: IsEquivalent<
-	HostPropsOf<typeof WithheldForm>,
+const withheldHostProps: IsEqual<
+	Simplify<HostPropsOf<typeof WithheldForm>>,
 	WithheldHostProps
 > = true;
 void withheldHostProps;
-const withheldConsumerProps: IsEquivalent<
-	PropsOf<typeof WithheldForm>,
-	WithheldHostProps & { onClose: () => void; secret: string; token: string }
+const withheldConsumerProps: IsEqual<
+	Simplify<PropsOf<typeof WithheldForm>>,
+	Simplify<
+		Omit<WithheldHostProps, "secret" | "token"> & {
+			onClose: () => void;
+			secret: string;
+			token: string;
+		}
+	>
 > = true;
 void withheldConsumerProps;
 
@@ -294,7 +325,7 @@ const agnosticWithheld = initHost({
 });
 if (agnosticWithheld) {
 	const props = await agnosticWithheld.ready;
-	const agnosticProps: IsEquivalent<
+	const agnosticProps: IsEqual<
 		typeof props,
 		{ label: string; scoped?: string }
 	> = true;
@@ -325,7 +356,7 @@ const AnnotatedCheckout = create({
 	url: "https://pay.example.com/checkout",
 	props: annotatedCheckoutEntries,
 });
-const satisfiedCheckoutHost: IsEquivalent<
+const satisfiedCheckoutHost: IsEqual<
 	HostPropsOf<typeof SatisfiedCheckout>,
 	{ amount: number }
 > = true;
@@ -335,7 +366,7 @@ type AnnotatedCheckoutHostProps = {
 	amount: number;
 	onClose: () => Promise<void>;
 };
-const annotatedCheckoutHost: IsEquivalent<
+const annotatedCheckoutHost: IsEqual<
 	HostPropsOf<typeof AnnotatedCheckout>,
 	AnnotatedCheckoutHostProps
 > = true;
@@ -351,7 +382,7 @@ const EntryForms = create({
 	url: "https://pay.example.com/entries",
 	props: { satisfied: satisfiedEntry, annotated: annotatedEntry },
 });
-const entryFormsHost: IsEquivalent<
+const entryFormsHost: IsEqual<
 	HostPropsOf<typeof EntryForms>,
 	{ annotated: string }
 > = true;
@@ -364,7 +395,7 @@ const annotatedAgnostic = initHost({
 });
 if (annotatedAgnostic) {
 	const props = await annotatedAgnostic.ready;
-	const annotatedAgnosticProps: IsEquivalent<
+	const annotatedAgnosticProps: IsEqual<
 		typeof props,
 		AnnotatedCheckoutHostProps
 	> = true;

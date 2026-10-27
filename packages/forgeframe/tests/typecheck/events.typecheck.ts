@@ -8,12 +8,40 @@ import {
 	type EventSubscriber,
 	type EventType,
 	prop,
+	type RemoteValue,
 } from "@/index";
+import type { IsEqual } from "./assert";
 
 type Props = { amount: number };
-type Exports = { submit: () => Promise<string> };
+// A synchronous method and a Date show whether the payload is the remote
+// view (RemoteValue) or the raw exports.
+type Exports = {
+	submit: () => Promise<string>;
+	count: () => number;
+	updatedAt: Date;
+};
 
 declare const instance: ComponentInstance<Props, Props, Exports>;
+
+/** The payload a handler for event `E` receives. */
+type PayloadOf<E extends EventType> = ComponentEvents<Props, Exports>[E];
+export const errorPayload: IsEqual<PayloadOf<"error">, Error> = true;
+export const propsPayload: IsEqual<PayloadOf<"props">, Props> = true;
+export const exportsPayload: IsEqual<
+	PayloadOf<"exports">,
+	RemoteValue<Exports>
+> = true;
+// The instance methods resolve to void, and subscriptions return an unsubscribe.
+export const instanceMethods: IsEqual<
+	[
+		ReturnType<typeof instance.updateProps<{ amount: number }>>,
+		ReturnType<typeof instance.render>,
+		ReturnType<typeof instance.close>,
+		ReturnType<typeof instance.event.on<"resize">>,
+	],
+	[Promise<void>, Promise<void>, Promise<void>, () => void]
+> = true;
+export const resizePayload: IsEqual<PayloadOf<"resize">, Dimensions> = true;
 
 const stopResize: () => void = instance.event.on("resize", (dimensions) => {
 	const size: Dimensions = dimensions;

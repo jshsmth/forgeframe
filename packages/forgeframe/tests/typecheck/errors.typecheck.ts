@@ -6,8 +6,24 @@ import {
 	type Host,
 	type OriginMatcher,
 } from "@/index";
+import type { IsEqual } from "./assert";
 
 declare const caught: unknown;
+
+// The code union is exactly the documented codes, and ForgeFrameError.code uses it.
+export const codeUnion: IsEqual<
+	ForgeFrameErrorCode,
+	| "POPUP_BLOCKED"
+	| "INIT_TIMEOUT"
+	| "VALIDATION"
+	| "VERSION_MISMATCH"
+	| "ORIGIN_REJECTED"
+	| "CANCELLED"
+	| "CLOSED"
+	| "CAPACITY"
+> = true;
+export const errorCode: IsEqual<ForgeFrameError["code"], ForgeFrameErrorCode> =
+	true;
 
 if (caught instanceof ForgeFrameError) {
 	const code: ForgeFrameErrorCode = caught.code;

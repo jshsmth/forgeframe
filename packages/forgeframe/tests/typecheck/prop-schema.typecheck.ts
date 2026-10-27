@@ -6,16 +6,10 @@
  */
 import { prop } from "@/props/prop";
 import type { StandardSchemaV1 } from "@/props/schema";
+import type { Assert, IsEqual } from "./assert";
 
 type InferInput<S extends StandardSchemaV1> = StandardSchemaV1.InferInput<S>;
 type InferOutput<S extends StandardSchemaV1> = StandardSchemaV1.InferOutput<S>;
-
-type IsEqual<A, B> =
-	(<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2
-		? true
-		: false;
-
-type Assert<T extends true> = T;
 
 const _unionSchema = prop.union(prop.string(), prop.number());
 const _optionalUnionSchema = _unionSchema.optional();

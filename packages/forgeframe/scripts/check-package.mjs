@@ -118,6 +118,14 @@ const remoteResult: Promise<number> = exports.nested.method();
 const started = initHost(Component, { consumerOrigins: '*' });
 const startedCount: number | undefined = (await started?.ready)?.count;
 void result; void remoteResult; void startedCount;
+// Exact checks against the published declarations, so none widens to any.
+type IsEqual<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
+type Simplify<T> = { [K in keyof T]: T[K] } & {};
+const exactProps: IsEqual<Simplify<PropsOf<typeof Component>>, { count: number; callback: (n: number) => string; defaultedCallback: () => number }> = true;
+const exactReady: IsEqual<Simplify<Awaited<NonNullable<typeof started>['ready']>>, { count: number; callback: (n: number) => Promise<string>; defaultedCallback: () => Promise<number> }> = true;
+void exactProps; void exactReady;
+// @ts-expect-error a required prop cannot be reset to undefined
+void instance.updateProps({ callback: undefined });
 `,
 	);
 	// A library exporting components emits declarations that must name every
