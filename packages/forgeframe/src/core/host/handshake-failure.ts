@@ -22,7 +22,7 @@ export function toHandshakeFailure(error: unknown): ForgeFrameError {
 	if (isAcknowledgementTimeout(error)) {
 		return new ForgeFrameError(
 			"INIT_TIMEOUT",
-			`The consumer did not complete the handshake: ${(error as Error).message}`,
+			`The consumer did not complete the handshake: ${error.message}`,
 			{ cause: error },
 		);
 	}

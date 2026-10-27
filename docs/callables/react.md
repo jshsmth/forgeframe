@@ -5,7 +5,7 @@ desc: React adapter callables for lifecycle and prop synchronization with their 
 tags: []
 sources: []
 created: 2026-10-27T21:30:00Z
-updated: 2026-10-27T21:30:00Z
+updated: 2026-10-27T22:13:25Z
 ---
 
 # React driver callables
@@ -35,8 +35,8 @@ Creating the mount state, sync state and the instance handle, selecting the curr
 - **I:** `createInstanceHandle.close`, `createInstanceHandle.focus`, `createInstanceHandle.resize`, `createInstanceHandle.show`, `createInstanceHandle.hide`, `clearRef`, `mountReactInstance`.
 - **M:** `publishHandle`, `unpublishHandle`, `retargetHandle`.
 - **Retained rationale —** `publishHandle`, `unpublishHandle`: each makes one transition of the published-handle state and writes the target through `assignRef` or `clearRef`, isolated by `callReactCallback`; splitting would separate a field write from the ref write it records. `retargetHandle`: it sequences `unpublishHandle` and `publishHandle` around the one `target` field write they depend on.
-- **O callbacks:** `mountReactInstance.callback@269.callback@271`.
-- **I callbacks:** `publishHandle.callback@147`, `unpublishHandle.callback@161` (each calls `assignRef` or `clearRef` for `callReactCallback`; the first records the returned cleanup), `mountReactInstance.callback@249`, `mountReactInstance.callback@242`, `mountReactInstance.callback@255`, `mountReactInstance.callback@261`, `mountReactInstance.callback@269`. Their single state writes (`reported.add`, `syncState.rendered`, releasing `syncState`) record where the sequence is; the error callback's record lets the render rejection skip a second report.
+- **O callbacks:** `mountReactInstance.callback@270.callback@271`.
+- **I callbacks:** `publishHandle.callback@148`, `unpublishHandle.callback@162` (each calls `assignRef` or `clearRef` for `callReactCallback`; the first records the returned cleanup), `mountReactInstance.callback@250`, `mountReactInstance.callback@243`, `mountReactInstance.callback@256`, `mountReactInstance.callback@262`, `mountReactInstance.callback@270`. Their single state writes (`reported.add`, `syncState.rendered`, releasing `syncState`) record where the sequence is; the error callback's record lets the render rejection skip a second report.
 
 Evidence: [react](_index.md#evidence-react); typecheck.
 
@@ -46,7 +46,7 @@ Comparison, shallow snapshots, omission resets, and queue acknowledgement and fa
 
 - **O:** `shallowEqualProps`, `deactivatePropSyncState`, `snapshotProps`, `buildPropUpdate`, `failPropUpdate`, `acknowledgePropUpdate`.
 - **I:** `drainPropUpdates`.
-- **O callbacks:** `snapshotProps.callback@75`.
+- **O callbacks:** `snapshotProps.callback@76`.
 - **M:** `enqueuePropSnapshot`.
 - **Retained rationale —** `enqueuePropSnapshot`: Comparison chooses either one pending retry flag or an appended prepared payload. This short queue adapter keeps equivalent-commit behavior readable; comparison, reset construction and failure transitions are separate operations.
 

@@ -78,6 +78,11 @@ function getHandler(transport: HostTransport, name: string) {
 	return undefined;
 }
 
+/**
+ * Lets pending promise callbacks run, for checks that nothing has happened
+ * yet. Each use is paired with a positive check of the same path, so an extra
+ * await in the source fails that check instead of passing silently.
+ */
 async function flushMicrotasks(): Promise<void> {
 	await Promise.resolve();
 	await Promise.resolve();
@@ -164,19 +169,18 @@ describe("HostTransport", () => {
 		expect(applySerializedProps).toHaveBeenCalledWith(payload);
 	});
 
-	it("runs peer callbacks only for calls from the consumer window at its origin", async () => {
+	it("admits peer calls only from the consumer window at its origin", async () => {
 		const { transport, consumerWindow } = createTransport();
-		const callback = vi.fn(() => "answered");
-		// Only a consumer's own peer call registers an inbound peer callback, so
-		// the test serializes one on the private peer bridge directly (bracket
-		// access keeps its real FunctionBridge type).
-		const peerBridge = transport["peerBridge"];
-		const { __id__: id } = peerBridge.serialize(callback);
 		const peerCall = requireValue(
 			getHandler(transport, MESSAGE_NAME.PEER_CALL),
 		);
+		// The source check runs before the callback lookup, so an unknown id
+		// shows which sources pass it: a rejected source gets ORIGIN_REJECTED,
+		// an admitted one reaches the lookup and gets CLOSED.
 		const call = (source: PropsHandlerSource) =>
-			Promise.resolve().then(() => peerCall({ id, args: [] }, source));
+			Promise.resolve().then(() =>
+				peerCall({ id: "unregistered", args: [] }, source),
+			);
 
 		await expect(
 			call({
@@ -202,16 +206,15 @@ describe("HostTransport", () => {
 				"Function call rejected from unexpected window",
 			),
 		);
-		expect(callback).not.toHaveBeenCalled();
-
 		await expect(
 			call({
 				uid: "consumer",
 				domain: "https://consumer.example.com",
 				window: consumerWindow,
 			}),
-		).resolves.toBe("answered");
-		expect(callback).toHaveBeenCalledOnce();
+		).rejects.toThrow(
+			forgeFrameError("CLOSED", 'Function with id "unregistered" not found'),
+		);
 	});
 
 	it("sends INIT once, after bootstrap settles, and never after destroy", async () => {
@@ -426,16 +429,12 @@ describe("HostTransport", () => {
 
 		const firstExport = transport.exportData({ first: () => "first" });
 		const secondExport = transport.exportData({ second: () => "second" });
-		await flushMicrotasks();
-
-		expect(sendSpy).toHaveBeenCalledTimes(1);
+		await vi.waitFor(() => expect(sendSpy).toHaveBeenCalledTimes(1));
 		expect(sendSpy.mock.calls[0]?.[2]).toBe(MESSAGE_NAME.EXPORT);
 
 		firstSend.resolve();
 		await firstExport;
-		await flushMicrotasks();
-
-		expect(sendSpy).toHaveBeenCalledTimes(2);
+		await vi.waitFor(() => expect(sendSpy).toHaveBeenCalledTimes(2));
 		expect(sendSpy.mock.calls[1]?.[2]).toBe(MESSAGE_NAME.EXPORT);
 
 		secondSend.resolve();

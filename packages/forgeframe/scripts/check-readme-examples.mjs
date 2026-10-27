@@ -47,13 +47,17 @@ function readPackageExports(directory) {
 }
 
 /**
- * The prelude line that declares a name a snippet uses without declaring:
- * an import for a package export or a schema library, otherwise `any`.
+ * The prelude line that declares a name a snippet uses without declaring: an
+ * import for a package export or a schema library, a `Host` for `host`,
+ * otherwise `any` as both a value and a type. A typed `host` keeps its
+ * callback parameters contextually typed, so `noImplicitAny` stays on.
  */
 function declareName(name, packageExports) {
 	if (packageExports.has(name)) return `import { ${name} } from 'forgeframe';`;
 	if (name === "z") return "import { z } from 'zod';";
 	if (name === "v") return "import * as v from 'valibot';";
+	if (name === "host")
+		return "declare const host: import('forgeframe').Host<Record<string, unknown>>;";
 	return `declare const ${name}: any; type ${name} = any;`;
 }
 
@@ -70,8 +74,8 @@ function moduleName(code) {
  * module for the others; other relative imports get stubs, typed
  * `AnyComponent` for capitalized names and `any` otherwise. A ForgeFrame
  * export a snippet uses without importing is imported; other undeclared
- * names, such as `instance` or `consumerOrigins`, are declared as `any`, so
- * the check catches wrong ForgeFrame API usage rather than snippet context.
+ * names are declared as in {@link declareName}, so the check catches wrong
+ * ForgeFrame API usage rather than snippet context.
  *
  * @param readme - The README text
  * @param directory - The directory with the installed package

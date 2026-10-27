@@ -274,11 +274,6 @@ void element; void total;
 			"--ignoreConfig",
 			"--noEmit",
 			"--strict",
-			// Snippet context is declared as any, so implicit any is expected.
-			"--noImplicitAny",
-			"false",
-			"--useUnknownInCatchVariables",
-			"false",
 			"--skipLibCheck",
 			"--module",
 			"ESNext",

@@ -1,4 +1,5 @@
 import type { ComponentInstance } from "../../types/runtime";
+import { normalizeError } from "../../utils/error";
 
 /**
  * Compares own enumerable string keys and their values using `Object.is`.
@@ -180,7 +181,7 @@ export async function drainPropUpdates(
 				}
 
 				failPropUpdate(state, update);
-				onError(err as Error);
+				onError(normalizeError(err));
 				continue;
 			}
 

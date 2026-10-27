@@ -390,6 +390,7 @@ describe("Messenger", () => {
 		it.each(["*", "/", "target.com", ""])(
 			'should reject the non-URL target "%s" before posting',
 			async (targetOrigin) => {
+				vi.useFakeTimers();
 				await expect(
 					messenger.send(targetWindow, targetOrigin, "invalidTarget"),
 				).rejects.toThrow(
@@ -400,14 +401,15 @@ describe("Messenger", () => {
 				);
 
 				expect(targetWindow.postMessage).not.toHaveBeenCalled();
-				// Bracket access reads the private map with its real type.
-				expect(messenger["pending"].size).toBe(0);
+				// No acknowledgement timeout was left behind for the refused send.
+				expect(vi.getTimerCount()).toBe(0);
 			},
 		);
 
 		it.each(["data:text/plain,hi", "about:blank"])(
 			'should reject the opaque-origin target "%s" before posting',
 			async (targetOrigin) => {
+				vi.useFakeTimers();
 				await expect(
 					messenger.send(targetWindow, targetOrigin, "opaqueTarget"),
 				).rejects.toThrow(
@@ -418,8 +420,8 @@ describe("Messenger", () => {
 				);
 
 				expect(targetWindow.postMessage).not.toHaveBeenCalled();
-				// Bracket access reads the private map with its real type.
-				expect(messenger["pending"].size).toBe(0);
+				// No acknowledgement timeout was left behind for the refused send.
+				expect(vi.getTimerCount()).toBe(0);
 			},
 		);
 
@@ -451,6 +453,7 @@ describe("Messenger", () => {
 		});
 
 		it("should cleanup pending request when postMessage throws", async () => {
+			vi.useFakeTimers();
 			const postMessageError = new Error("postMessage blocked");
 			targetWindow = Object.assign(createFrameWindow(), {
 				postMessage: vi.fn(() => {
@@ -462,7 +465,8 @@ describe("Messenger", () => {
 				messenger.send(targetWindow, "https://target.com", "throwing-send"),
 			).rejects.toThrow("postMessage blocked");
 
-			expect(messenger["pending"].size).toBe(0);
+			// The acknowledgement timeout armed for the send was cleared.
+			expect(vi.getTimerCount()).toBe(0);
 		});
 	});
 

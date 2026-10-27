@@ -114,11 +114,23 @@ function dispatchConsumerMessage(
 	);
 }
 
-async function flushMessages(): Promise<void> {
-	await Promise.resolve();
-	await Promise.resolve();
-	await Promise.resolve();
-	await Promise.resolve();
+/**
+ * Waits until `sourceWindow` receives the reply to the last dispatched
+ * request, so the host has finished handling it and a negative assertion
+ * that follows cannot pass only because the handler has not run yet. Polls
+ * microtasks rather than timers.
+ */
+async function waitForReply(sourceWindow: Window): Promise<void> {
+	const requestId = `req-${dispatchedMessageCount}`;
+	const replied = () =>
+		vi
+			.mocked(sourceWindow.postMessage)
+			.mock.calls.some(
+				([data]) =>
+					JSON.parse(String(data).slice("forgeframe:".length)).id === requestId,
+			);
+	for (let tick = 0; tick < 100 && !replied(); tick++) await Promise.resolve();
+	expect(replied()).toBe(true);
 }
 
 function readResponseData(sourceWindow: Window): unknown {
@@ -190,7 +202,7 @@ describe("Host security", () => {
 			},
 			claimedUid: "host-uid-reserved-sync",
 		});
-		await flushMessages();
+		await waitForReply(consumerWindow);
 
 		expect(readResponseData(consumerWindow)).toEqual({ success: true });
 
@@ -222,7 +234,7 @@ describe("Host security", () => {
 			data: { amount: 42 },
 			claimedUid: "host-uid-pinned-props",
 		});
-		await flushMessages();
+		await waitForReply(spoofedWindow);
 
 		expect(readResponseData(spoofedWindow)).toEqual({ success: false });
 		expect(await host.ready).toEqual({ amount: 10 });
@@ -233,7 +245,7 @@ describe("Host security", () => {
 			data: { amount: 42 },
 			claimedUid: "host-uid-pinned-props",
 		});
-		await flushMessages();
+		await waitForReply(consumerWindow);
 
 		expect(readResponseData(consumerWindow)).toEqual({ success: true });
 		expect(await host.ready).toEqual({ amount: 42 });
@@ -309,6 +321,24 @@ describe("Host security", () => {
 				"VALIDATION",
 				'initHost() consumerOrigins lists "https://Shop.example.com", which can never match because browsers report it as "https://shop.example.com"',
 			),
+		);
+		expect(getHost()).toBeNull();
+	});
+
+	it("rejects a consumer wildcard browsers never report, and a file: origin", () => {
+		expect(() =>
+			initHost({
+				props: {},
+				consumerOrigins: "https://*.shop.example.com:443",
+			}),
+		).toThrow(
+			forgeFrameError(
+				"VALIDATION",
+				'initHost() consumerOrigins lists "https://*.shop.example.com:443", which can never match because browsers report it as "https://*.shop.example.com"',
+			),
+		);
+		expect(() => initHost({ props: {}, consumerOrigins: "file://" })).toThrow(
+			forgeFrameError("VALIDATION", "is not a valid origin"),
 		);
 		expect(getHost()).toBeNull();
 	});

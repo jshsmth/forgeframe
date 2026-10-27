@@ -222,6 +222,8 @@ export class HostTransport {
 			{ options },
 		);
 
+		// The verified consumer built this list (consumer/peers.ts getPeerInstances);
+		// deserializing replaces function references and keeps its shape.
 		return deserializeFunctions(
 			response ?? [],
 			this.peerBridge,

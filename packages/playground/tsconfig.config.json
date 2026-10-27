@@ -1,0 +1,9 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"types": ["node"],
+		/* vite-plugin-mkcert's declarations import the untyped "debug" package. */
+		"skipLibCheck": true
+	},
+	"include": ["vite.config.consumer.ts", "vite.config.host.ts"]
+}

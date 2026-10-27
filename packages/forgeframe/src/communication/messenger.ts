@@ -80,7 +80,7 @@ function createAcknowledgementTimeout(name: string, timeout: number): Error {
  * opposed to a `CLOSED` error the other window sent back.
  * @internal
  */
-export function isAcknowledgementTimeout(error: unknown): boolean {
+export function isAcknowledgementTimeout(error: unknown): error is Error {
 	return error instanceof Error && acknowledgementTimeouts.has(error);
 }
 

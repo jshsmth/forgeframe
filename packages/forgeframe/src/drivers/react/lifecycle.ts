@@ -52,7 +52,8 @@ export function isHeldUpdateCancellation(
 	return (
 		!state.rendered &&
 		hasErrorCode(error, "CLOSED") &&
-		(error as Error).cause !== undefined
+		error instanceof Error &&
+		error.cause !== undefined
 	);
 }
 

@@ -2,6 +2,7 @@ import { createServer, type Server } from "node:http";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 import { build } from "vite";
+import { hostFrame } from "./host-frame";
 import { buildLibrary } from "./library-build";
 
 const servers: Server[] = [];
@@ -230,9 +231,7 @@ for (const context of ["iframe", "popup"] as const) {
 		const popup = await opened;
 		popup?.on("pageerror", (error) => pageErrors.push(error.message));
 		await state.evaluate((opened) => opened.outcome);
-		const host =
-			popup ??
-			page.frames().find((frame) => frame.url().startsWith(hostOrigin));
+		const host = popup ?? (await hostFrame(page, hostOrigin));
 		if (!host) throw new Error("Missing initialized playground host");
 		if (popup) {
 			// Window chrome differs by engine and OS; the content box stays close.
@@ -578,6 +577,9 @@ test("playground popup scenario runs from a user click and cleans up", async ({
 }) => {
 	const pageErrors: string[] = [];
 	page.on("pageerror", (error) => pageErrors.push(error.message));
+	// Like the other playground tests, keep the CDN syntax highlighter out: a
+	// slow or failed prism.min.js makes its TypeScript component throw.
+	await page.route("https://**/*", (route) => route.abort());
 	await page.goto(`${consumerOrigin}/tests/popup`);
 	await expect(page.locator("#scenario-summary")).toHaveText(
 		"Click Run scenario to allow the popup",
