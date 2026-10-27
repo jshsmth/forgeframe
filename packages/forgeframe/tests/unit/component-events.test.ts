@@ -8,6 +8,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { clearComponents, create } from "@/core/component";
+import { ConsumerRenderer } from "@/core/consumer/renderer";
 import { ForgeFrameError } from "@/errors";
 import type { Dimensions } from "@/types";
 import { forgeFrameError } from "../forgeframe-error";
@@ -30,10 +31,7 @@ function createInstance() {
  * mounted frame, because an instance with nothing mounted emits no `resize`.
  */
 function emitResize(instance: ReturnType<typeof createInstance>): void {
-	const { renderer } = instance as unknown as {
-		renderer: { resize(): "resized" | "unmounted" | "denied" };
-	};
-	vi.spyOn(renderer, "resize").mockReturnValue("resized");
+	vi.spyOn(ConsumerRenderer.prototype, "resize").mockReturnValue("resized");
 	instance.resize(SIZE);
 }
 
@@ -209,7 +207,7 @@ describe("instance.event", () => {
 		["prerendered", "render"],
 		["display", "rendered"],
 		["destroy", "closed"],
-	])(
+	] as const)(
 		"names the replacement when subscribing to the removed %s event",
 		(removed, replacement) => {
 			const instance = createInstance();

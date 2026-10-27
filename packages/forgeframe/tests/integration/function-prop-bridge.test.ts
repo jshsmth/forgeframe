@@ -5,9 +5,7 @@
  * bridge, including async results and thrown errors.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Messenger } from "@/communication/messenger";
 import { deserializeMessage } from "@/communication/protocol";
-import { getHost } from "@/core/host/bootstrap";
 import { create, prop } from "@/index";
 import type { PropsDefinition } from "@/types";
 import { forgeFrameError } from "../forgeframe-error";
@@ -114,9 +112,11 @@ describe("Function prop bridge integration", () => {
 		await activeHarness.flushMessages();
 
 		// A replaced document stops answering without running host teardown.
-		const { messenger } = getHost() as unknown as { messenger: Messenger };
-		vi.spyOn(messenger, "post").mockImplementation(() => {});
+		const silenced = vi
+			.spyOn(activeHarness.consumerWindow, "postMessage")
+			.mockImplementation(() => {});
 		activeHarness.withHostGlobals(() => host.destroy());
+		silenced.mockRestore();
 		const nextHost = activeHarness.bootstrapHost();
 		if (!nextHost) throw new Error("Expected host reinitialization");
 		await nextHost.ready;
@@ -146,15 +146,13 @@ describe("Function prop bridge integration", () => {
 		await rendering;
 
 		// A replaced document stops answering without running host teardown.
-		const { messenger } = getHost() as unknown as { messenger: Messenger };
-		vi.spyOn(messenger, "post").mockImplementation(() => {});
-		vi.spyOn(
-			messenger as unknown as { postResponse: () => void },
-			"postResponse",
-		).mockImplementation(() => {});
+		const silenced = vi
+			.spyOn(activeHarness.consumerWindow, "postMessage")
+			.mockImplementation(() => {});
 		const update = instance.updateProps({ title: "second" });
 		await activeHarness.flushMessages();
 		activeHarness.withHostGlobals(() => host.destroy());
+		silenced.mockRestore();
 		const nextHost = activeHarness.bootstrapHost(definitions);
 		if (!nextHost) throw new Error("Expected host reinitialization");
 		// The new session reads the current props instead of waiting 10 seconds.
@@ -193,8 +191,9 @@ describe("Function prop bridge integration", () => {
 		expect(outcome).toBe("pending");
 
 		// The document goes away without teardown, as after a navigation.
-		const { messenger } = getHost() as unknown as { messenger: Messenger };
-		vi.spyOn(messenger, "post").mockImplementation(() => {});
+		vi.spyOn(activeHarness.consumerWindow, "postMessage").mockImplementation(
+			() => {},
+		);
 		activeHarness.withHostGlobals(() => host.destroy());
 		await vi.advanceTimersByTimeAsync(20_001);
 		await pending;

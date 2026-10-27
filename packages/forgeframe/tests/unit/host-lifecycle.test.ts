@@ -4,7 +4,7 @@
  * Covers consumer control channels, props synchronization/subscriber behavior, and consumer window resolution rules.
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type MessageHandler, Messenger } from "@/communication/messenger";
 import { CONTEXT, EVENT, MESSAGE_NAME, PROTOCOL_VERSION } from "@/constants";
 import { ConsumerComponent } from "@/core/consumer";
@@ -16,6 +16,7 @@ import {
 	isHost,
 } from "@/core/host";
 import * as hostSecurity from "@/core/host/security";
+import type { HostPropDefinitions } from "@/core/host/types";
 import { prop } from "@/props/prop";
 import type { PropsDefinition } from "@/types";
 import { createDeferred } from "@/utils/promise";
@@ -28,7 +29,33 @@ import { requireValue } from "../require-value";
 const originalWindowName = window.name;
 const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
 type HandlerSource = Parameters<MessageHandler>[1];
-type DirectHandler = (data: unknown, source: HandlerSource) => unknown;
+
+beforeEach(() => {
+	// Passes through, recording the handlers each messenger registers.
+	vi.spyOn(Messenger.prototype, "on");
+});
+
+/**
+ * The PROPS handler the test's host registered, called as its messenger would.
+ * Only hosts register one, and each test creates one host.
+ */
+function hostPropsHandler(): MessageHandler {
+	const handlers = vi
+		.mocked(Messenger.prototype.on)
+		.mock.calls.filter(([name]) => name === MESSAGE_NAME.PROPS);
+	expect(handlers).toHaveLength(1);
+	return requireValue(handlers[0]?.[1]);
+}
+
+/** The test window, except for the members in `overrides`. */
+function windowWith(overrides: Partial<Window>): Window {
+	return new Proxy(window, {
+		get: (target, key) =>
+			Object.hasOwn(overrides, key)
+				? Reflect.get(overrides, key)
+				: Reflect.get(target, key),
+	});
+}
 
 /**
  * Builds current-protocol channel metadata for a host window.
@@ -64,7 +91,7 @@ function createHost({
 	payload?: WindowNamePayload;
 	autoInit?: boolean;
 	consumerWindow?: Window;
-	propDefinitions?: PropsDefinition<Record<string, unknown>>;
+	propDefinitions?: HostPropDefinitions<Record<string, unknown>>;
 } = {}): HostComponent<Record<string, unknown>> {
 	vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(
 		consumerWindow,
@@ -111,7 +138,7 @@ function createConsumer(
 		props = {},
 	}: {
 		url?: string;
-		props?: Record<string, unknown>;
+		props?: PropsDefinition<Record<string, unknown>>;
 	} = {},
 	inputProps: Record<string, unknown> = {},
 ): ConsumerComponent<Record<string, unknown>> {
@@ -120,7 +147,7 @@ function createConsumer(
 			tag: "host-lifecycle-consumer-component",
 			url,
 			props,
-		} as never,
+		},
 		inputProps,
 	);
 	createdConsumers.push(consumer);
@@ -162,13 +189,7 @@ describe("Host lifecycle behavior", () => {
 			},
 		});
 		try {
-			const propsHandler = requireValue(
-				(
-					host as unknown as {
-						messenger: { handlers: Map<string, DirectHandler> };
-					}
-				).messenger.handlers.get(MESSAGE_NAME.PROPS),
-			);
+			const propsHandler = hostPropsHandler();
 			expect(
 				propsHandler(
 					{ amount: 42, local: "new private" },
@@ -189,12 +210,10 @@ describe("Host lifecycle behavior", () => {
 			() => bootstrap.promise,
 		);
 		const host = createHost();
-		const propsHandler = (
-			host as unknown as { messenger: { handlers: Map<string, DirectHandler> } }
-		).messenger.handlers.get(MESSAGE_NAME.PROPS);
-		expect(propsHandler?.({ amount: 42 }, createMessageSource(window))).toEqual(
-			{ success: true },
-		);
+		const propsHandler = hostPropsHandler();
+		expect(propsHandler({ amount: 42 }, createMessageSource(window))).toEqual({
+			success: true,
+		});
 		expect(readLiveProps(host).amount).toBe(42);
 		bootstrap.resolve({ props: { amount: 10 } });
 		expect((await host.ready).amount).toBe(42);
@@ -205,7 +224,7 @@ describe("Host lifecycle behavior", () => {
 		const host = await createBootstrappedHost(
 			// biome-ignore lint/suspicious/noThenProperty: checks the reserved name
 			{ then: "not a promise", children: "jsx", amount: 2 },
-			{ propDefinitions: "unchecked" as never },
+			{ propDefinitions: "unchecked" },
 		);
 		try {
 			expect(await host.ready).toEqual({ amount: 2 });
@@ -225,13 +244,7 @@ describe("Host lifecycle behavior", () => {
 			host.onProps((props) => {
 				notifications.push(props.amount);
 			});
-			const propsHandler = requireValue(
-				(
-					host as unknown as {
-						messenger: { handlers: Map<string, DirectHandler> };
-					}
-				).messenger.handlers.get(MESSAGE_NAME.PROPS),
-			);
+			const propsHandler = hostPropsHandler();
 			expect(propsHandler({ amount: 42 }, createMessageSource(window))).toEqual(
 				{ success: true },
 			);
@@ -247,7 +260,7 @@ describe("Host lifecycle behavior", () => {
 		}
 	});
 
-	it("should withhold all props until the messaging bootstrap completes", () => {
+	it("should withhold all props until the messaging bootstrap completes", async () => {
 		const definitions = {
 			label: { schema: prop.string() },
 			secret: { schema: prop.string(), deliverTo: "same-origin" },
@@ -263,11 +276,16 @@ describe("Host lifecycle behavior", () => {
 			},
 		);
 
-		window.name = (
-			consumer as unknown as {
-				buildWindowName: () => string;
-			}
-		).buildWindowName();
+		// The window name the consumer gives its frame carries the payload.
+		const container = document.createElement("div");
+		document.body.append(container);
+		// The render cannot finish without a host; the file cleanup closes the
+		// consumer, which cancels it.
+		void consumer.render(container).catch(() => {});
+		const frame = await vi.waitFor(() =>
+			requireValue(container.querySelector("iframe")),
+		);
+		window.name = frame.name;
 
 		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockReturnValue(window);
 
@@ -279,6 +297,7 @@ describe("Host lifecycle behavior", () => {
 
 		expect(host).not.toBeNull();
 		expect(readLiveProps(requireValue(getHost()))).toEqual({});
+		container.remove();
 	});
 
 	it("keeps the channel metadata in window.name after host initialization", async () => {
@@ -350,10 +369,10 @@ describe("Host lifecycle behavior", () => {
 	});
 
 	it("neither expects nor accepts props withheld from a cross-origin host", async () => {
-		const crossOriginConsumerWindow = {
+		const crossOriginConsumerWindow = windowWith({
 			postMessage: vi.fn(),
-			location: { origin: "https://consumer.example.com" },
-		} as unknown as Window;
+			location: { ...window.location, origin: "https://consumer.example.com" },
+		});
 
 		const host = createBootstrappingHost(
 			{ label: "visible", secret: "stale", partner: "stale" },
@@ -379,9 +398,7 @@ describe("Host lifecycle behavior", () => {
 
 	it("should isolate failing props subscribers and continue notifying others", async () => {
 		const host = await createBootstrappedHost();
-		const propsHandler = (
-			host as unknown as { messenger: { handlers: Map<string, DirectHandler> } }
-		).messenger.handlers.get(MESSAGE_NAME.PROPS);
+		const propsHandler = hostPropsHandler();
 
 		const throwingSubscriber = vi.fn(() => {
 			throw new Error("subscriber failed");
@@ -392,10 +409,7 @@ describe("Host lifecycle behavior", () => {
 		host.onProps(throwingSubscriber);
 		host.onProps(healthySubscriber);
 
-		const result = requireValue(propsHandler)(
-			{ amount: 77 },
-			createMessageSource(window),
-		);
+		const result = propsHandler({ amount: 77 }, createMessageSource(window));
 
 		expect(result).toEqual({ success: true });
 		expect(throwingSubscriber).toHaveBeenCalled();
@@ -428,14 +442,10 @@ describe("Host lifecycle behavior", () => {
 			host.onProps(() => {
 				order.push("healthy");
 			});
-			const propsHandler = (
-				host as unknown as {
-					messenger: { handlers: Map<string, DirectHandler> };
-				}
-			).messenger.handlers.get(MESSAGE_NAME.PROPS);
-			expect(
-				propsHandler?.({ amount: 77 }, createMessageSource(window)),
-			).toEqual({ success: true });
+			const propsHandler = hostPropsHandler();
+			expect(propsHandler({ amount: 77 }, createMessageSource(window))).toEqual(
+				{ success: true },
+			);
 			expect(order).toEqual(["failing", "healthy"]);
 			expect((await host.ready).amount).toBe(77);
 			await vi.waitFor(() =>
@@ -459,12 +469,10 @@ describe("Host lifecycle behavior", () => {
 				}),
 		);
 		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-		const propsHandler = (
-			host as unknown as { messenger: { handlers: Map<string, DirectHandler> } }
-		).messenger.handlers.get(MESSAGE_NAME.PROPS);
-		expect(propsHandler?.({ amount: 78 }, createMessageSource(window))).toEqual(
-			{ success: true },
-		);
+		const propsHandler = hostPropsHandler();
+		expect(propsHandler({ amount: 78 }, createMessageSource(window))).toEqual({
+			success: true,
+		});
 		expect(cancelled).not.toHaveBeenCalled();
 		host.destroy();
 		const error = new Error("Observer settled after teardown");
@@ -485,12 +493,10 @@ describe("Host lifecycle behavior", () => {
 		);
 		const healthy = vi.fn();
 		host.onProps(healthy);
-		const propsHandler = (
-			host as unknown as { messenger: { handlers: Map<string, DirectHandler> } }
-		).messenger.handlers.get(MESSAGE_NAME.PROPS);
-		expect(propsHandler?.({ amount: 88 }, createMessageSource(window))).toEqual(
-			{ success: true },
-		);
+		const propsHandler = hostPropsHandler();
+		expect(propsHandler({ amount: 88 }, createMessageSource(window))).toEqual({
+			success: true,
+		});
 		expect(healthy).toHaveBeenCalledWith({ amount: 88 });
 		resolveObserver?.();
 	});
@@ -499,18 +505,13 @@ describe("Host lifecycle behavior", () => {
 		const host = createHost({
 			propDefinitions: { amount: prop.number().optional() },
 		});
-		const propsHandler = (
-			host as unknown as { messenger: { handlers: Map<string, DirectHandler> } }
-		).messenger.handlers.get(MESSAGE_NAME.PROPS);
+		const propsHandler = hostPropsHandler();
 
 		const emitSpy = vi.spyOn(host.event, "emit");
 		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
 		expect(() =>
-			requireValue(propsHandler)(
-				{ amount: "not a number" },
-				createMessageSource(window),
-			),
+			propsHandler({ amount: "not a number" }, createMessageSource(window)),
 		).toThrow(forgeFrameError("VALIDATION", "Validation failed: amount"));
 		expect(emitSpy).toHaveBeenCalledWith(EVENT.ERROR, expect.any(Error));
 		expect(consoleSpy).toHaveBeenCalledWith(
@@ -524,18 +525,11 @@ describe("Host lifecycle behavior", () => {
 			{ amount: 10 },
 			{ propDefinitions: { amount: { schema: prop.number() } } },
 		);
-		const propsHandler = (
-			typedHost as unknown as {
-				messenger: { handlers: Map<string, DirectHandler> };
-			}
-		).messenger.handlers.get(MESSAGE_NAME.PROPS);
+		const propsHandler = hostPropsHandler();
 		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
 		expect(() =>
-			requireValue(propsHandler)(
-				{ amount: "bad-update" },
-				createMessageSource(window),
-			),
+			propsHandler({ amount: "bad-update" }, createMessageSource(window)),
 		).toThrow(
 			forgeFrameError(
 				"VALIDATION",
@@ -551,7 +545,7 @@ describe("Host lifecycle behavior", () => {
 	});
 
 	it("should resolve consumer window from iframe consumer when available", () => {
-		const consumerWindow = { postMessage: vi.fn() } as unknown as Window;
+		const consumerWindow = windowWith({ postMessage: vi.fn() });
 		vi.spyOn(helpers, "isIframe").mockReturnValue(true);
 		vi.spyOn(helpers, "getConsumer").mockReturnValue(consumerWindow);
 		vi.spyOn(helpers, "isPopup").mockReturnValue(false);
@@ -560,7 +554,7 @@ describe("Host lifecycle behavior", () => {
 	});
 
 	it("should resolve consumer window from popup opener when available", () => {
-		const openerWindow = { postMessage: vi.fn() } as unknown as Window;
+		const openerWindow = windowWith({ postMessage: vi.fn() });
 		vi.spyOn(helpers, "isIframe").mockReturnValue(false);
 		vi.spyOn(helpers, "isPopup").mockReturnValue(true);
 		vi.spyOn(helpers, "getOpener").mockReturnValue(openerWindow);

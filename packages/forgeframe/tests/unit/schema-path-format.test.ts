@@ -41,14 +41,7 @@ describe("validateWithSchema path formatting", () => {
 					issues: [
 						{
 							message: "Invalid value",
-							path: [
-								{ key: "users" },
-								{ index: 1 },
-								{ invalid: true } as unknown as {
-									key?: PropertyKey;
-									index?: number;
-								},
-							],
+							path: [{ key: "users" }, { index: 1 }, { invalid: true }],
 						},
 					],
 				}),

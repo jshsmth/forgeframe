@@ -52,7 +52,8 @@ describe("Origin naming and error codes", () => {
 		expect(host.consumerOrigin).toBe(harness.consumerOrigin);
 		// Read-only at runtime too, not only in the types.
 		expect(() => {
-			(host as { consumerOrigin: string }).consumerOrigin = "https://x.test";
+			// @ts-expect-error consumerOrigin is read-only
+			host.consumerOrigin = "https://x.test";
 		}).toThrow(TypeError);
 		expect(host.consumerOrigin).toBe(harness.consumerOrigin);
 		expect(hostProps.id).toBe("a");
@@ -69,7 +70,7 @@ describe("Origin naming and error codes", () => {
 				create({
 					tag: `removed-option-${option.toLowerCase()}`,
 					url: HOST_URL,
-					...({ [option]: value } as object),
+					...{ [option]: value },
 				}),
 			).toThrow(
 				forgeFrameError(
@@ -83,7 +84,7 @@ describe("Origin naming and error codes", () => {
 	it("rejects initHost's removed allowedConsumerDomains option, naming consumerOrigins", () => {
 		expect(() =>
 			initHost({
-				...({ allowedConsumerDomains: "*" } as object),
+				...{ allowedConsumerDomains: "*" },
 				consumerOrigins: "*",
 			}),
 		).toThrow(forgeFrameError("VALIDATION", "renamed to consumerOrigins"));
@@ -97,7 +98,7 @@ describe("Origin naming and error codes", () => {
 			create({
 				tag: `bare-host-${option.toLowerCase()}`,
 				url: HOST_URL,
-				...({ [option]: value } as object),
+				...{ [option]: value },
 			}),
 		).toThrow(
 			forgeFrameError("VALIDATION", `"${value}", which is not an origin`),

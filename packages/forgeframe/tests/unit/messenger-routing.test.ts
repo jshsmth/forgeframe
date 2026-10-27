@@ -1,7 +1,7 @@
 /**
  * Multi-instance routing regressions for the shared ForgeFrame message channel.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, type MockInstance, vi } from "vitest";
 import { FunctionBridge } from "@/communication/bridge";
 import { Messenger } from "@/communication/messenger";
 import {
@@ -11,6 +11,8 @@ import {
 	serializeMessage,
 } from "@/communication/protocol";
 import type { Message } from "@/communication/types";
+import { createFrameWindow } from "../frame-window";
+import { requireValue } from "../require-value";
 
 const HOST_ORIGIN = "https://shared-host.example.com";
 const CONSUMER_ORIGIN = "https://consumer.example.com";
@@ -28,12 +30,17 @@ function dispatchRequest(
 	);
 }
 
-function readMessage(source: Window): Message {
-	const postMessage = (
-		source as unknown as { postMessage: ReturnType<typeof vi.fn> }
-	).postMessage;
-	const serialized = postMessage.mock.calls[0]?.[0] as string;
-	const response = deserializeMessage(serialized);
+type PostMessage = MockInstance<Window["postMessage"]>;
+
+/** A real window whose `postMessage` is recorded instead of delivered. */
+function createRecordingWindow(): { win: Window; postMessage: PostMessage } {
+	const win = createFrameWindow();
+	const postMessage = vi.spyOn(win, "postMessage").mockImplementation(() => {});
+	return { win, postMessage };
+}
+
+function readMessage(postMessage: PostMessage): Message {
+	const response = deserializeMessage(postMessage.mock.calls[0]?.[0]);
 	if (!response) {
 		throw new Error("Expected a ForgeFrame message");
 	}
@@ -46,7 +53,7 @@ function dispatchWindowMessage(
 	origin: string,
 	source: Window,
 ): void {
-	(target as unknown as EventTarget).dispatchEvent(
+	target.dispatchEvent(
 		new MessageEvent("message", {
 			data: serializeMessage(message),
 			origin,
@@ -57,21 +64,24 @@ function dispatchWindowMessage(
 
 function createLinkedWindows(): {
 	consumerWindow: Window;
+	consumerPostMessage: PostMessage;
 	hostWindow: Window;
+	hostPostMessage: PostMessage;
 } {
-	const consumerWindow = new EventTarget() as unknown as Window;
-	const hostWindow = new EventTarget() as unknown as Window;
+	const consumerWindow = createFrameWindow();
+	const hostWindow = createFrameWindow();
 
-	Object.defineProperty(consumerWindow, "postMessage", {
-		value: vi.fn((data: string) => {
+	const consumerPostMessage = vi
+		.spyOn(consumerWindow, "postMessage")
+		.mockImplementation((data: unknown) => {
 			const message = deserializeMessage(data);
 			if (message) {
 				dispatchWindowMessage(consumerWindow, message, HOST_ORIGIN, hostWindow);
 			}
-		}),
-	});
-	Object.defineProperty(hostWindow, "postMessage", {
-		value: vi.fn((data: string) => {
+		});
+	const hostPostMessage = vi
+		.spyOn(hostWindow, "postMessage")
+		.mockImplementation((data: unknown) => {
 			const message = deserializeMessage(data);
 			if (message) {
 				dispatchWindowMessage(
@@ -81,10 +91,9 @@ function createLinkedWindows(): {
 					consumerWindow,
 				);
 			}
-		}),
-	});
+		});
 
-	return { consumerWindow, hostWindow };
+	return { consumerWindow, consumerPostMessage, hostWindow, hostPostMessage };
 }
 
 describe("Messenger instance routing", () => {
@@ -115,11 +124,11 @@ describe("Messenger instance routing", () => {
 
 	it("should serialize the component channel UID on outgoing messages", () => {
 		const messenger = createMessenger("intended-instance");
-		const targetWindow = { postMessage: vi.fn() } as unknown as Window;
+		const { win: targetWindow, postMessage } = createRecordingWindow();
 
 		messenger.post(targetWindow, HOST_ORIGIN, "routed", {});
 
-		const request = readMessage(targetWindow);
+		const request = readMessage(postMessage);
 		expect(request.source).toEqual({
 			uid: "intended-instance",
 			domain: window.location.origin,
@@ -134,7 +143,7 @@ describe("Messenger instance routing", () => {
 		unrelatedMessenger.on("routed", unrelatedHandler);
 		intendedMessenger.on("routed", intendedHandler);
 
-		const sourceWindow = { postMessage: vi.fn() } as unknown as Window;
+		const { win: sourceWindow, postMessage } = createRecordingWindow();
 		dispatchRequest(
 			createRequestMessage(
 				"routed-request",
@@ -144,17 +153,16 @@ describe("Messenger instance routing", () => {
 			),
 			sourceWindow,
 		);
-		await vi.waitFor(() =>
-			expect(sourceWindow.postMessage).toHaveBeenCalledOnce(),
-		);
+		await vi.waitFor(() => expect(postMessage).toHaveBeenCalledOnce());
 
 		expect(intendedHandler).toHaveBeenCalledOnce();
 		expect(unrelatedHandler).not.toHaveBeenCalled();
-		expect(readMessage(sourceWindow).data).toEqual({ result: "intended" });
+		expect(readMessage(postMessage).data).toEqual({ result: "intended" });
 	});
 
 	it("should resolve one intended callback round trip when bridges share a window and origin", async () => {
-		const { consumerWindow, hostWindow } = createLinkedWindows();
+		const { consumerWindow, consumerPostMessage, hostWindow, hostPostMessage } =
+			createLinkedWindows();
 		const unrelatedMessenger = createMessenger(
 			"unrelated-instance",
 			consumerWindow,
@@ -184,7 +192,7 @@ describe("Messenger instance routing", () => {
 		const hostBridge = new FunctionBridge(hostMessenger, acceptAnySource);
 		bridges.push(unrelatedBridge, intendedBridge, hostBridge);
 
-		let resolveCallback!: (result: string) => void;
+		let resolveCallback: ((result: string) => void) | undefined;
 		const callback = vi.fn(
 			() =>
 				new Promise<string>((resolve) => {
@@ -199,7 +207,7 @@ describe("Messenger instance routing", () => {
 		);
 
 		const resultPromise = Promise.resolve(remoteCallback("payload"));
-		const request = readMessage(consumerWindow);
+		const request = readMessage(consumerPostMessage);
 		dispatchWindowMessage(
 			hostWindow,
 			createResponseMessage(request.id, "unrelated-result", {
@@ -217,11 +225,11 @@ describe("Messenger instance routing", () => {
 		await Promise.resolve();
 		expect(settled).toBe(false);
 
-		resolveCallback("intended-result");
+		requireValue(resolveCallback)("intended-result");
 
 		expect(callback).toHaveBeenCalledWith("payload");
 		await expect(resultPromise).resolves.toBe("intended-result");
-		expect(consumerWindow.postMessage).toHaveBeenCalledOnce();
-		expect(hostWindow.postMessage).toHaveBeenCalledOnce();
+		expect(consumerPostMessage).toHaveBeenCalledOnce();
+		expect(hostPostMessage).toHaveBeenCalledOnce();
 	});
 });

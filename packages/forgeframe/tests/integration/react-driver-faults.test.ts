@@ -19,24 +19,43 @@ import {
 	deleteRegisteredComponent,
 	registerComponent,
 } from "@/core/component-registry";
-import type { AnyComponent, ComponentOptions } from "@/types";
+import type {
+	AnyComponent,
+	ComponentEvents,
+	ComponentInstance,
+	ComponentOptions,
+	EventHandler,
+} from "@/types";
 import { createDeferred } from "@/utils/promise";
 
-type Listener = (payload?: unknown) => unknown;
+type Events = ComponentEvents;
+type Listeners = { [K in keyof Events]: Set<EventHandler<Events[K]>> };
 
 /** A stand-in instance with the members the wrapper uses. */
 function createFakeInstance(uid: string) {
-	const listeners = new Map<string, Set<Listener>>();
-	const subscribe = (name: string, listener: Listener) => {
-		const set = listeners.get(name) ?? new Set();
+	const listeners: Listeners = {
+		render: new Set(),
+		rendered: new Set(),
+		close: new Set(),
+		closed: new Set(),
+		error: new Set(),
+		props: new Set(),
+		resize: new Set(),
+		focus: new Set(),
+		exports: new Set(),
+	};
+	const subscribe = <K extends keyof Events>(
+		name: K,
+		listener: EventHandler<Events[K]>,
+	) => {
+		const set = listeners[name];
 		set.add(listener);
-		listeners.set(name, set);
 		return () => {
 			set.delete(listener);
 		};
 	};
-	const emit = (name: string, payload?: unknown) => {
-		for (const listener of [...(listeners.get(name) ?? [])]) listener(payload);
+	const emit = <K extends keyof Events>(name: K, payload: Events[K]) => {
+		for (const listener of [...listeners[name]]) listener(payload);
 	};
 	const render = createDeferred<void>();
 	return {
@@ -49,14 +68,17 @@ function createFakeInstance(uid: string) {
 		updateProps: vi
 			.fn<(props: Record<string, unknown>) => Promise<void>>()
 			.mockResolvedValue(undefined),
-		close: vi.fn(async () => emit("close")),
+		close: vi.fn(async () => emit("close", undefined)),
 		focus: vi.fn(),
 		resize: vi.fn(),
 		show: vi.fn(),
 		hide: vi.fn(),
 		event: {
 			on: subscribe,
-			once: (name: string, listener: Listener) => {
+			once: <K extends keyof Events>(
+				name: K,
+				listener: EventHandler<Events[K]>,
+			) => {
 				const unsubscribe = subscribe(name, (payload) => {
 					unsubscribe();
 					return listener(payload);
@@ -65,7 +87,7 @@ function createFakeInstance(uid: string) {
 			},
 		},
 		emit,
-	};
+	} satisfies ComponentInstance & Record<string, unknown>;
 }
 
 type FakeInstance = ReturnType<typeof createFakeInstance>;
@@ -83,18 +105,16 @@ describe("React driver fault injection", () => {
 		document.body.append(container);
 		root = createRoot(container);
 		instances = [];
-		const factory = vi.fn(() => {
-			const instance = createFakeInstance(`fake-${instances.length + 1}`);
-			instances.push(instance);
-			return instance;
-		});
-		registerComponent(
-			factory as unknown as AnyComponent,
-			{ tag, url: "https://host.example.com" } as ComponentOptions,
+		const factory: AnyComponent = Object.assign(
+			vi.fn(() => {
+				const instance = createFakeInstance(`fake-${instances.length + 1}`);
+				instances.push(instance);
+				return instance;
+			}),
+			{ instances: [] },
 		);
-		Wrapped = createReactComponent(
-			factory as unknown as AnyComponent,
-		) as unknown as React.ComponentType<Record<string, unknown>>;
+		registerComponent(factory, { tag, url: "https://host.example.com" });
+		Wrapped = createReactComponent(factory);
 	});
 
 	afterEach(async () => {
@@ -246,12 +266,14 @@ describe("React driver fault injection", () => {
 
 	it("treats a reserved name declared as undefined as omitted, as create() does", () => {
 		const reservedTag = "react-fault-reserved-undefined";
-		const factory = vi.fn() as unknown as AnyComponent;
-		registerComponent(factory, {
+		const factory: AnyComponent = Object.assign(vi.fn(), { instances: [] });
+		const options: ComponentOptions = {
 			tag: reservedTag,
 			url: "https://host.example.com",
+			// @ts-expect-error JavaScript callers can leave a definition undefined.
 			props: { onClose: undefined },
-		} as unknown as ComponentOptions);
+		};
+		registerComponent(factory, options);
 		try {
 			expect(() => createReactComponent(factory)).not.toThrow();
 		} finally {
@@ -275,7 +297,7 @@ describe("React driver fault injection", () => {
 		);
 		expect(onRendered).toHaveBeenCalledOnce();
 
-		await settle(() => instance(0).emit("close"));
+		await settle(() => instance(0).emit("close", undefined));
 		expect(instanceRef).toHaveBeenLastCalledWith(null);
 		expect(onClose).toHaveBeenCalledOnce();
 		expect(log.mock.calls).toEqual([

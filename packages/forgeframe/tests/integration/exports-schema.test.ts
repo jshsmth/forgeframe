@@ -140,9 +140,7 @@ describe("Exports schema integration", () => {
 			"component",
 		);
 		await expect(
-			activeHarness.withHostGlobalsAsync(() =>
-				host.export({ ready: "yes" } as never),
-			),
+			activeHarness.withHostGlobalsAsync(() => host.export({ ready: "yes" })),
 		).rejects.toThrow(
 			forgeFrameError("VALIDATION", "Validation failed: exports.ready"),
 		);

@@ -61,10 +61,10 @@ describe("Secure defaults integration", () => {
 	describe("function URLs", () => {
 		it("rejects a function URL without domain before registering the component", () => {
 			expect(() =>
+				// @ts-expect-error a function url requires hostOrigins; this checks the runtime error
 				create({
 					tag: "secure-function-url-no-domain",
-					// Invalid JavaScript configuration is rejected at runtime.
-					...({ url: () => HOST_URL } as unknown as { url: string }),
+					url: () => HOST_URL,
 				}),
 			).toThrow(
 				forgeFrameError(

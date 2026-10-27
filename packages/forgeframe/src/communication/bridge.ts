@@ -25,6 +25,12 @@ import type { MessageHandler, Messenger } from "./messenger";
 import type { FunctionRef } from "./types";
 
 /**
+ * The messenger operations a bridge uses.
+ * @internal
+ */
+type BridgeMessenger = Pick<Messenger, "send" | "on" | "rejectPending">;
+
+/**
  * Generic function type for cross-domain callable functions.
  * @internal
  */
@@ -135,7 +141,7 @@ export class FunctionBridge {
 	 * @param callMessageName - Internal call channel, separating peer relays from prop/export batches.
 	 */
 	constructor(
-		private messenger: Messenger,
+		private messenger: BridgeMessenger,
 		private isExpectedSource: (
 			source: Parameters<MessageHandler>[1],
 		) => boolean,

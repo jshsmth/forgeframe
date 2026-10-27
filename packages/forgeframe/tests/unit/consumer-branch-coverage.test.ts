@@ -9,6 +9,11 @@ import { ConsumerComponent } from "@/core/consumer";
 import { prop } from "@/props/prop";
 import * as iframeRender from "@/render/iframe";
 import * as popupRender from "@/render/popup";
+import type {
+	ComponentBaseOptions,
+	ComponentUrlOptions,
+} from "@/types/runtime";
+import { createDeferred } from "@/utils/promise";
 import {
 	callConsumerCallback,
 	HOST_ORIGIN,
@@ -16,62 +21,54 @@ import {
 	sentCallbackId,
 } from "../consumer-bridge";
 import { forgeFrameError } from "../forgeframe-error";
+import { createFrameWindow } from "../frame-window";
 
 const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
 
+type Consumer = ConsumerComponent<Record<string, unknown>>;
+type Transport = Consumer["transport"];
+
+/**
+ * Private consumer members these branch tests drive directly. Each one is read
+ * from the class, so a renamed or retyped internal fails to compile here. The
+ * messenger's trusted-origin sets are private and have no public reader.
+ */
 type ConsumerInternals = {
-	transport: {
-		hostWindow: Window | null;
-		attachHostWindow(hostWindow: Window | null, openedHostOrigin: string): void;
-		openedHostOrigin: string | null;
-		syncTrustedOriginForUrl(url: string): void;
-		messenger: {
+	transport: Omit<Transport, "messenger"> & {
+		messenger: Pick<Transport["messenger"], "send"> & {
 			allowedOrigins: Set<string>;
 			allowedOriginPatterns: RegExp[];
-			addTrustedOrigin: (origin: string) => void;
-			send: (...args: unknown[]) => Promise<unknown>;
 		};
 	};
-	renderer: {
-		context: string;
-		iframe: HTMLIFrameElement | null;
-		container: HTMLElement | null;
-		prerenderElement: HTMLElement | null;
-	};
-	propsPipeline: {
-		props: Record<string, unknown>;
-	};
-	cleanup: {
-		register: (cleanupFn: () => void) => void;
-	};
-	options: Record<string, unknown>;
-	resolveUrlOrigin: (url: string) => string | null;
-	resolveContainer: (container?: string | HTMLElement) => HTMLElement;
-	checkEligibility: () => void;
-	prerender: () => Promise<void>;
-	createIframeElement: (windowName: string) => HTMLIFrameElement;
-	open: (baseUrl: string) => Promise<void>;
-	submitBodyForm: (
-		target: string,
-		actionUrl: string,
-		params: URLSearchParams,
-	) => void;
-	buildUrl: (baseUrl?: string) => string;
-	getHostDomain: () => string;
-	destroy: () => Promise<void>;
+	renderer: Consumer["renderer"];
+	cleanup: Consumer["cleanup"];
+	resolveUrlOrigin: Consumer["resolveUrlOrigin"];
+	resolveContainer: Consumer["resolveContainer"];
+	resizeForHost: Consumer["resizeForHost"];
+	prerender: Consumer["prerender"];
+	createIframeElement: Consumer["createIframeElement"];
+	open: Consumer["open"];
+	submitBodyForm: Consumer["submitBodyForm"];
+	buildUrl: Consumer["buildUrl"];
+	destroy: Consumer["destroy"];
 };
 
-function getInternals(
-	component: ConsumerComponent<Record<string, unknown>>,
-): ConsumerInternals {
-	return component as unknown as ConsumerInternals;
+/**
+ * Reads private consumer members, which TypeScript only exposes through an
+ * assertion; widening to `object` first lets one assertion do it.
+ */
+function getInternals(component: Consumer): ConsumerInternals {
+	const members: object = component;
+	return members as ConsumerInternals;
 }
 
 /**
  * Creates a consumer instance and tracks it for teardown at the end of each test.
  */
 function createConsumer(
-	options: Record<string, unknown> = {},
+	options: Partial<
+		ComponentBaseOptions & Extract<ComponentUrlOptions, { url: string }>
+	> = {},
 	props: Record<string, unknown> = {},
 ): ConsumerComponent<Record<string, unknown>> {
 	const consumer = new ConsumerComponent<Record<string, unknown>>(
@@ -79,7 +76,7 @@ function createConsumer(
 			tag: "consumer-internal-branches-component",
 			url: "https://host.example.com/widget",
 			...options,
-		} as never,
+		},
 		props,
 	);
 	createdConsumers.push(consumer);
@@ -173,7 +170,7 @@ describe("Consumer branch coverage and edge paths", () => {
 		const consumer = createConsumer();
 		const internal = getInternals(consumer);
 		const iframe = document.createElement("iframe");
-		const popup = { closed: false, focus: vi.fn() } as unknown as Window;
+		const popup = createFrameWindow();
 		const focusIframeSpy = vi
 			.spyOn(iframeRender, "focusIframe")
 			.mockImplementation(() => {});
@@ -198,7 +195,7 @@ describe("Consumer branch coverage and edge paths", () => {
 		const consumer = createConsumer();
 		const internal = getInternals(consumer);
 		const iframe = document.createElement("iframe");
-		const popup = { closed: false } as unknown as Window;
+		const popup = createFrameWindow();
 
 		const resizeIframeSpy = vi
 			.spyOn(iframeRender, "resizeIframe")
@@ -248,9 +245,7 @@ describe("Consumer branch coverage and edge paths", () => {
 
 	it("emits resize for a host request only when something was resized", () => {
 		const consumer = createConsumer();
-		const internal = getInternals(consumer) as ConsumerInternals & {
-			resizeForHost(dimensions: { width: number; height: number }): void;
-		};
+		const internal = getInternals(consumer);
 		const resized = vi.fn();
 		consumer.event.on(EVENT.RESIZE, resized);
 
@@ -264,10 +259,7 @@ describe("Consumer branch coverage and edge paths", () => {
 		expect(resized).not.toHaveBeenCalled();
 
 		// An open popup host has already resized its own window.
-		internal.transport.attachHostWindow(
-			{ closed: false } as Window,
-			HOST_ORIGIN,
-		);
+		internal.transport.attachHostWindow(createFrameWindow(), HOST_ORIGIN);
 		internal.resizeForHost({ width: 320, height: 240 });
 		expect(resized).toHaveBeenCalledExactlyOnceWith({
 			width: 320,
@@ -391,19 +383,15 @@ describe("Consumer branch coverage and edge paths", () => {
 
 		getInternals(consumer).transport.attachHostWindow(window, HOST_ORIGIN);
 
-		let resolveFirstSend!: () => void;
-		let resolveSecondSend!: () => void;
-		const firstSend = new Promise<void>((resolve) => {
-			resolveFirstSend = resolve;
-		});
-		const secondSend = new Promise<void>((resolve) => {
-			resolveSecondSend = resolve;
-		});
+		const firstSend = createDeferred<void>();
+		const secondSend = createDeferred<void>();
 
 		const sendSpy = vi
 			.spyOn(getInternals(consumer).transport.messenger, "send")
 			.mockImplementation(async () => {
-				return sendSpy.mock.calls.length === 1 ? firstSend : secondSend;
+				return sendSpy.mock.calls.length === 1
+					? firstSend.promise
+					: secondSend.promise;
 			});
 
 		const firstUpdate = consumer.updateProps({ onSubmit: () => "first" });
@@ -412,19 +400,13 @@ describe("Consumer branch coverage and edge paths", () => {
 		await Promise.resolve();
 		expect(sendSpy).toHaveBeenCalledTimes(1);
 
-		if (!resolveFirstSend) {
-			throw new Error("Expected first send resolver to be initialized");
-		}
-		resolveFirstSend();
+		firstSend.resolve();
 		await firstUpdate;
 
 		await Promise.resolve();
 		expect(sendSpy).toHaveBeenCalledTimes(2);
 
-		if (!resolveSecondSend) {
-			throw new Error("Expected second send resolver to be initialized");
-		}
-		resolveSecondSend();
+		secondSend.resolve();
 
 		await expect(secondUpdate).resolves.toBeUndefined();
 		await expect(
@@ -441,33 +423,25 @@ describe("Consumer branch coverage and edge paths", () => {
 		container.id = "resolve-container-target";
 		document.body.appendChild(container);
 
-		const resolved = (
-			consumer as unknown as {
-				resolveContainer: (container?: string | HTMLElement) => HTMLElement;
-			}
-		).resolveContainer("#resolve-container-target");
+		const resolved = getInternals(consumer).resolveContainer(
+			"#resolve-container-target",
+		);
 
 		expect(resolved).toBe(container);
 	});
 
 	it("should invoke close/focus callbacks exposed to prerender and container templates", async () => {
 		const closeSpy = vi.fn().mockResolvedValue(undefined);
-		const focusSpy = vi.fn().mockResolvedValue(undefined);
+		const focusSpy = vi.fn();
 		const consumer = createConsumer({
-			prerenderTemplate: (ctx: {
-				close: () => Promise<void>;
-				focus: () => Promise<void>;
-			}) => {
+			prerenderTemplate: (ctx) => {
 				void ctx.close();
-				void ctx.focus();
+				ctx.focus();
 				return document.createElement("div");
 			},
-			containerTemplate: (ctx: {
-				close: () => Promise<void>;
-				focus: () => Promise<void>;
-			}) => {
+			containerTemplate: (ctx) => {
 				void ctx.close();
-				void ctx.focus();
+				ctx.focus();
 				return document.createElement("div");
 			},
 		});
@@ -477,11 +451,7 @@ describe("Consumer branch coverage and edge paths", () => {
 
 		getInternals(consumer).renderer.container = document.createElement("div");
 
-		await (
-			consumer as unknown as {
-				prerender: () => Promise<void>;
-			}
-		).prerender();
+		await getInternals(consumer).prerender();
 
 		expect(closeSpy).toHaveBeenCalled();
 		expect(focusSpy).toHaveBeenCalled();
@@ -502,11 +472,7 @@ describe("Consumer branch coverage and edge paths", () => {
 			{},
 		);
 
-		const iframe = (
-			consumer as unknown as {
-				createIframeElement: (windowName: string) => HTMLIFrameElement;
-			}
-		).createIframeElement("window-name");
+		const iframe = getInternals(consumer).createIframeElement("window-name");
 
 		expect(iframe.hasAttribute("allowfullscreen")).toBe(true);
 		expect(iframe.getAttribute("title")).toBe("Hosted iframe");
@@ -517,11 +483,7 @@ describe("Consumer branch coverage and edge paths", () => {
 	it("should apply default sandbox when creating iframe element without a sandbox attribute", () => {
 		const consumer = createConsumer();
 
-		const iframe = (
-			consumer as unknown as {
-				createIframeElement: (windowName: string) => HTMLIFrameElement;
-			}
-		).createIframeElement("window-name");
+		const iframe = getInternals(consumer).createIframeElement("window-name");
 
 		expect(iframe.getAttribute("sandbox")).toBe(
 			"allow-scripts allow-same-origin allow-forms allow-popups",
@@ -545,11 +507,7 @@ describe("Consumer branch coverage and edge paths", () => {
 		(_label, sandbox, expected) => {
 			const consumer = createConsumer(sandbox === undefined ? {} : { sandbox });
 
-			const iframe = (
-				consumer as unknown as {
-					createIframeElement: (windowName: string) => HTMLIFrameElement;
-				}
-			).createIframeElement("window-name");
+			const iframe = getInternals(consumer).createIframeElement("window-name");
 
 			expect(iframe.getAttribute("sandbox")).toBe(expected);
 		},
@@ -558,16 +516,11 @@ describe("Consumer branch coverage and edge paths", () => {
 	it("rejects a computed sandbox attribute before creating the iframe", () => {
 		const createElement = vi.spyOn(document, "createElement");
 		const consumer = createConsumer({
-			attributes: () =>
-				({ SandBox: "allow-scripts" }) as Record<string, string>,
+			attributes: () => ({ SandBox: "allow-scripts" }),
 		});
 
 		expect(() =>
-			(
-				consumer as unknown as {
-					createIframeElement: (windowName: string) => HTMLIFrameElement;
-				}
-			).createIframeElement("window-name"),
+			getInternals(consumer).createIframeElement("window-name"),
 		).toThrow(
 			forgeFrameError(
 				"VALIDATION",
@@ -582,7 +535,7 @@ describe("Consumer branch coverage and edge paths", () => {
 			dimensions: { width: 460, height: 320 },
 		});
 		const internal = getInternals(consumer);
-		const popupWindow = { closed: false } as unknown as Window;
+		const popupWindow = createFrameWindow();
 		const stopWatching = vi.fn();
 		const openPopupSpy = vi
 			.spyOn(popupRender, "openPopup")
@@ -621,16 +574,7 @@ describe("Consumer branch coverage and edge paths", () => {
 		internal.renderer.iframe = iframe;
 
 		const submitBodyFormSpy = vi
-			.spyOn(
-				consumer as unknown as {
-					submitBodyForm: (
-						target: string,
-						actionUrl: string,
-						params: URLSearchParams,
-					) => void;
-				},
-				"submitBodyForm",
-			)
+			.spyOn(getInternals(consumer), "submitBodyForm")
 			.mockImplementation(() => {});
 
 		await getInternals(consumer).open("https://host.example.com/widget");
@@ -655,7 +599,7 @@ describe("Consumer branch coverage and edge paths", () => {
 			{ token: "abc123", mode: "embedded" },
 		);
 
-		const popupWindow = { closed: false } as unknown as Window;
+		const popupWindow = createFrameWindow();
 		const stopWatching = vi.fn();
 		const openPopupSpy = vi
 			.spyOn(popupRender, "openPopup")
@@ -664,16 +608,7 @@ describe("Consumer branch coverage and edge paths", () => {
 		getInternals(consumer).renderer.context = CONTEXT.POPUP;
 
 		const submitBodyFormSpy = vi
-			.spyOn(
-				consumer as unknown as {
-					submitBodyForm: (
-						target: string,
-						actionUrl: string,
-						params: URLSearchParams,
-					) => void;
-				},
-				"submitBodyForm",
-			)
+			.spyOn(getInternals(consumer), "submitBodyForm")
 			.mockImplementation(() => {});
 
 		await getInternals(consumer).open("https://host.example.com/widget");
@@ -702,11 +637,9 @@ describe("Consumer branch coverage and edge paths", () => {
 			{ token: "abc123" },
 		);
 
-		const url = (
-			consumer as unknown as {
-				buildUrl: (baseUrl?: string) => string;
-			}
-		).buildUrl("https://host.example.com/path?mode=embedded");
+		const url = getInternals(consumer).buildUrl(
+			"https://host.example.com/path?mode=embedded",
+		);
 
 		expect(url).toContain("mode=embedded&token=abc123");
 	});
@@ -714,7 +647,7 @@ describe("Consumer branch coverage and edge paths", () => {
 	it("should close popup windows and remove prerender elements during destroy", async () => {
 		const consumer = createConsumer();
 		const internal = getInternals(consumer);
-		const popupWindow = { closed: false, close: vi.fn() } as unknown as Window;
+		const popupWindow = createFrameWindow();
 		const prerenderElement = document.createElement("div");
 		const removeSpy = vi.spyOn(prerenderElement, "remove");
 		const closePopupSpy = vi
@@ -725,11 +658,7 @@ describe("Consumer branch coverage and edge paths", () => {
 		internal.transport.attachHostWindow(popupWindow, HOST_ORIGIN);
 		internal.renderer.prerenderElement = prerenderElement;
 
-		await (
-			consumer as unknown as {
-				destroy: () => Promise<void>;
-			}
-		).destroy();
+		await getInternals(consumer).destroy();
 
 		expect(closePopupSpy).toHaveBeenCalledWith(popupWindow);
 		expect(removeSpy).toHaveBeenCalledTimes(1);

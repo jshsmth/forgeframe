@@ -5,7 +5,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type MessageHandler, Messenger } from "@/communication/messenger";
+import { Messenger } from "@/communication/messenger";
 import {
 	createRequestMessage,
 	serializeMessage,
@@ -27,11 +27,6 @@ import { requireValue } from "../require-value";
 
 const originalWindowName = window.name;
 let dispatchedMessageCount = 0;
-type HandlerSource = Parameters<MessageHandler>[1];
-type DirectHandler = (
-	data: Record<string, unknown>,
-	source: HandlerSource,
-) => unknown;
 
 /** Builds current-protocol channel metadata for a host window. */
 function createPayload(
@@ -123,9 +118,7 @@ async function flushMessages(): Promise<void> {
 }
 
 function readResponseData(sourceWindow: Window): unknown {
-	const calls = (
-		sourceWindow as unknown as { postMessage: ReturnType<typeof vi.fn> }
-	).postMessage.mock.calls;
+	const calls = vi.mocked(sourceWindow.postMessage).mock.calls;
 	const lastCall = calls.at(-1);
 
 	if (!lastCall) {
@@ -133,17 +126,6 @@ function readResponseData(sourceWindow: Window): unknown {
 	}
 
 	return JSON.parse(lastCall[0].slice("forgeframe:".length)).data;
-}
-
-function createMessageSource(
-	windowRef: Window,
-	domain = "https://trusted.example.com",
-): HandlerSource {
-	return {
-		uid: "consumer-source",
-		domain,
-		window: windowRef,
-	};
 }
 
 afterEach(() => {
@@ -156,7 +138,7 @@ afterEach(() => {
 
 describe("Host security", () => {
 	it("keeps host controls when bootstrap props reuse control names", async () => {
-		const consumerWindow = { postMessage: vi.fn() } as unknown as Window;
+		const consumerWindow = createInaccessibleConsumerWindow();
 		const { host } = await startBootstrappedHost(
 			consumerWindow,
 			createPayload({
@@ -180,7 +162,7 @@ describe("Host security", () => {
 	});
 
 	it("ignores undeclared control names during prop sync", async () => {
-		const consumerWindow = { postMessage: vi.fn() } as unknown as Window;
+		const consumerWindow = createInaccessibleConsumerWindow();
 		const { host } = await startBootstrappedHost(
 			consumerWindow,
 			createPayload({
@@ -195,21 +177,18 @@ describe("Host security", () => {
 		);
 		expect((await host.ready).amount).toBe(10);
 
-		const propsHandler = (
-			host as unknown as {
-				messenger: { handlers: Map<string, DirectHandler> };
-			}
-		).messenger.handlers.get(MESSAGE_NAME.PROPS);
-
-		requireValue(propsHandler)(
-			{
+		dispatchConsumerMessage(MESSAGE_NAME.PROPS, consumerWindow, {
+			data: {
 				uid: "spoofed-uid",
 				close: "spoofed-close",
 				consumer: "spoofed-consumer",
 				status: "updated",
 			},
-			createMessageSource(consumerWindow),
-		);
+			claimedUid: "host-uid-reserved-sync",
+		});
+		await flushMessages();
+
+		expect(readResponseData(consumerWindow)).toEqual({ success: true });
 
 		expect((await host.ready).amount).toBeUndefined();
 		expect(host.uid).toBe("host-uid-reserved-sync");
@@ -218,8 +197,8 @@ describe("Host security", () => {
 	});
 
 	it("should ignore spoofed PROPS from a different trusted window and accept the resolved consumer window", async () => {
-		const consumerWindow = { postMessage: vi.fn() } as unknown as Window;
-		const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
+		const consumerWindow = createInaccessibleConsumerWindow();
+		const spoofedWindow = createInaccessibleConsumerWindow();
 		const { host } = await startBootstrappedHost(
 			consumerWindow,
 			createPayload({

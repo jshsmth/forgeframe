@@ -5,7 +5,7 @@ desc: Runtime callable responsibilities, IOSP classifications, and boundary test
 tags: []
 sources: []
 created: 2026-10-01T01:55:30Z
-updated: 2026-10-27T03:07:53Z
+updated: 2026-10-27T09:09:52Z
 ---
 
 # ForgeFrame callable reference
@@ -54,10 +54,10 @@ Local callback admission rejects snapshots over 500 functions without evicting. 
 - **O:** `isSafeObjectKey`, `FunctionBridge.retainLocalFunction`, `FunctionBridge.findRemoteWrapper`, `FunctionBridge.evictOldestRemote`, `FunctionBridge.assertLocalCapacity`, `FunctionBridge.clearBatch`, `FunctionBridge.createRemoteWrapper`, `FunctionBridge.isFunctionRef`, `FunctionBridge.removeLocal`, `FunctionBridge.startBatch`, `FunctionBridge.staleLocalIds`, `FunctionBridge.resumeRemoteSession`, `FunctionBridge.livenessMessageName`, `FunctionBridge.clearRemote`, `serializeFunctions`, `enterStack`, `serializeConvertedValue`, `serializeArray`, `serializeRecord`, `deserializeFunctions`, `createFunctionRef`.
 - **I:** `FunctionBridge.constructor`, `FunctionBridge.serialize`, `FunctionBridge.rejectRemoteCalls`, `FunctionBridge.endRemoteSession`, `FunctionBridge.scheduleLivenessCheck`, `FunctionBridge.deserialize`, `FunctionBridge.createRemoteWrapper.wrapper`, `FunctionBridge.setupCallHandler`, `FunctionBridge.finishBatch`, `FunctionBridge.abortBatch`, `FunctionBridge.clearLocal`, `FunctionBridge.destroy`.
 - **M:** `FunctionBridge.watchRemoteCall`.
-- **O callbacks:** `FunctionBridge.setupCallHandler.callback@377`, `FunctionBridge.setupCallHandler.callback@403`, `FunctionBridge.watchRemoteCall.callback@305`, `FunctionBridge.staleLocalIds.callback@497`.
-- **I callbacks:** `deserializeFunctions.callback@720`, `FunctionBridge.scheduleLivenessCheck.callback@319`.
-- **M callbacks:** `FunctionBridge.scheduleLivenessCheck.callback@319.callback@329`, `FunctionBridge.scheduleLivenessCheck.callback@319.callback@333`.
-- **Retained rationale —** `FunctionBridge.scheduleLivenessCheck.callback@319.callback@329`, `FunctionBridge.scheduleLivenessCheck.callback@319.callback@333`: Each settles one check with one guard that its watch is still current and one call, rescheduling or rejecting, so a check from a finished watch neither continues the loop nor rejects calls a newer watch tracks.
+- **O callbacks:** `FunctionBridge.setupCallHandler.callback@383`, `FunctionBridge.setupCallHandler.callback@409`, `FunctionBridge.watchRemoteCall.callback@311`, `FunctionBridge.staleLocalIds.callback@503`.
+- **I callbacks:** `deserializeFunctions.callback@726`, `FunctionBridge.scheduleLivenessCheck.callback@325`.
+- **M callbacks:** `FunctionBridge.scheduleLivenessCheck.callback@325.callback@335`, `FunctionBridge.scheduleLivenessCheck.callback@325.callback@339`.
+- **Retained rationale —** `FunctionBridge.scheduleLivenessCheck.callback@325.callback@335`, `FunctionBridge.scheduleLivenessCheck.callback@325.callback@339`: Each settles one check with one guard that its watch is still current and one call, rescheduling or rejecting, so a check from a finished watch neither continues the loop nor rejects calls a newer watch tracks.
 - **Retained rationale —** `FunctionBridge.watchRemoteCall`: It creates a window's watch and schedules its first liveness check when none exists, counts the call, and returns the release closure; the watch entry, the counter and the first schedule are one transition.
 
 Evidence: [messaging](#evidence-messaging); typecheck.
@@ -402,10 +402,10 @@ The wrapper imports React's own APIs; its type parameter is the component, its p
 - **M:** `assertReactComponentArguments`, `createContainerRefCache`.
 - **Retained rationale —** `createContainerRefCache`: the memo is the operation, and calling the `createContainerRef` factory is what it memoizes; its returned lookup callback is the same mix.
 - **Retained rationale —** `assertReactComponentArguments`: It reads the registry's options once and applies three short call-shape rules to them; a separate lookup step would only pass the options through.
-- **I:** `reportReactError`, `createReactComponent`, `createReactComponent.ForgeFrameComponent`, `createReactComponent.ForgeFrameComponent.callback@374.onError`.
-- **O callbacks:** `createReactComponent.ForgeFrameComponent.callback@374.onRendered`, `createReactComponent.ForgeFrameComponent.callback@374.onClose`, `assertReactComponentArguments.callback@183`, `assertReactComponentArguments.callback@189`, `reportReactError.callback@284`, `createContainerRef.callback@268.callback@272`, `createReactComponent.ForgeFrameComponent.callback@367`.
+- **I:** `reportReactError`, `createReactComponent`, `createReactComponent.ForgeFrameComponent`, `createReactComponent.ForgeFrameComponent.callback@373.onError`.
+- **O callbacks:** `createReactComponent.ForgeFrameComponent.callback@373.onRendered`, `createReactComponent.ForgeFrameComponent.callback@373.onClose`, `assertReactComponentArguments.callback@183`, `assertReactComponentArguments.callback@189`, `reportReactError.callback@284`, `createContainerRef.callback@268.callback@272`, `createReactComponent.ForgeFrameComponent.callback@366`.
 - **M callbacks:** `createContainerRefCache.callback@244`.
-- **I callbacks:** `createContainerRef.callback@268`, `createReactComponent.ForgeFrameComponent.callback@374`, `createReactComponent.ForgeFrameComponent.callback@395`, `createReactComponent.ForgeFrameComponent.callback@399`, `createReactComponent.ForgeFrameComponent.callback@399.callback@405`, `createReactComponent.ForgeFrameComponent.callback@399.callback@406`.
+- **I callbacks:** `createContainerRef.callback@268`, `createReactComponent.ForgeFrameComponent.callback@373`, `createReactComponent.ForgeFrameComponent.callback@393`, `createReactComponent.ForgeFrameComponent.callback@397`, `createReactComponent.ForgeFrameComponent.callback@397.callback@403`, `createReactComponent.ForgeFrameComponent.callback@397.callback@404`.
 
 Evidence: [react](#evidence-react); typecheck.
 

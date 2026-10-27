@@ -190,11 +190,13 @@ for (const context of ["iframe", "popup"] as const) {
 		const pageErrors: string[] = [];
 		page.on("pageerror", (error) => pageErrors.push(error.message));
 		await page.goto(consumerOrigin);
-		await page.evaluate(
+		const state = await page.evaluateHandle(
 			async ({ hostOrigin, context, markup, key }) => {
 				const libraryUrl = "/library.js";
 				const loggerUrl = "/logger.js";
-				const { create, prop } = await import(libraryUrl);
+				const { create, prop }: typeof import("../../src/index") = await import(
+					libraryUrl
+				);
 				const { log } = await import(loggerUrl);
 				const instance = create({
 					tag: "browser-playground-text",
@@ -211,16 +213,14 @@ for (const context of ["iframe", "popup"] as const) {
 					[key]: markup,
 					onGreet: (message: string) => log(message, "success"),
 				});
-				const state = window as unknown as {
-					instance: import("../../src/types").ComponentInstance<
-						Record<string, unknown>
-					>;
-					outcome: Promise<void>;
-				};
-				state.instance = instance;
+				const state: {
+					instance: typeof instance;
+					outcome?: Promise<void>;
+				} = { instance };
 				document.getElementById("open")?.addEventListener("click", () => {
 					state.outcome = instance.render("#mount", context);
 				});
+				return state;
 			},
 			{ hostOrigin, context, markup, key },
 		);
@@ -228,9 +228,7 @@ for (const context of ["iframe", "popup"] as const) {
 		await page.locator("#open").click();
 		const popup = await opened;
 		popup?.on("pageerror", (error) => pageErrors.push(error.message));
-		await page.evaluate(
-			() => (window as unknown as { outcome: Promise<void> }).outcome,
-		);
+		await state.evaluate((opened) => opened.outcome);
 		const host =
 			popup ??
 			page.frames().find((frame) => frame.url().startsWith(hostOrigin));
@@ -260,15 +258,9 @@ for (const context of ["iframe", "popup"] as const) {
 		);
 		// Injected nodes must never exist, even briefly, so count once.
 		expect(await page.locator("[data-injected], img, svg").count()).toBe(0);
-		await page.evaluate(async () => {
-			await (
-				window as unknown as {
-					instance: import("../../src/types").ComponentInstance<
-						Record<string, unknown>
-					>;
-				}
-			).instance.updateProps({ name: '<b data-injected="update">updated</b>' });
-		});
+		await state.evaluate(({ instance }) =>
+			instance.updateProps({ name: '<b data-injected="update">updated</b>' }),
+		);
 		await expect(host.locator("#prop-name")).toHaveText(
 			'<b data-injected="update">updated</b>',
 		);
@@ -276,17 +268,8 @@ for (const context of ["iframe", "popup"] as const) {
 		expect(await host.locator("[data-injected]").count()).toBe(0);
 		await host.locator("#btn-export").click();
 		await expect
-			.poll(() =>
-				page.evaluate(
-					() =>
-						(
-							window as unknown as {
-								instance: { exports?: { data?: { count: number } } };
-							}
-						).instance.exports?.data?.count,
-				),
-			)
-			.toBe(7);
+			.poll(() => state.evaluate(({ instance }) => instance.exports))
+			.toMatchObject({ data: { count: 7 } });
 		await host.locator("#btn-close").click();
 		await expect(page.locator("#mount iframe")).toHaveCount(0);
 		if (popup) await expect.poll(() => popup.isClosed()).toBe(true);

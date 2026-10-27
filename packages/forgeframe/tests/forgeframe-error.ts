@@ -28,12 +28,15 @@ expect.extend({
 /** Vitest's own asymmetric matchers are typed this way. */
 type AsymmetricMatcher = ReturnType<typeof expect.objectContaining>;
 
-const asymmetric = expect as unknown as {
-	toBeForgeFrameError(
-		code: ForgeFrameErrorCode,
-		message?: MessageMatch,
-	): AsymmetricMatcher;
-};
+declare module "vitest" {
+	/** `expect.extend` above registers the asymmetric form too. */
+	interface AsymmetricMatchersContaining {
+		toBeForgeFrameError(
+			code: ForgeFrameErrorCode,
+			message?: MessageMatch,
+		): AsymmetricMatcher;
+	}
+}
 
 /**
  * Matches a `ForgeFrameError` instance by its `code`, the contract callers
@@ -47,6 +50,6 @@ export function forgeFrameError(
 ): AsymmetricMatcher {
 	// Omit an absent message so failure output reads toBeForgeFrameError<"CODE">.
 	return message === undefined
-		? asymmetric.toBeForgeFrameError(code)
-		: asymmetric.toBeForgeFrameError(code, message);
+		? expect.toBeForgeFrameError(code)
+		: expect.toBeForgeFrameError(code, message);
 }

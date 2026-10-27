@@ -231,6 +231,15 @@ if (host) {
 	void props.then;
 }
 
+initHost({
+	consumerOrigins: "*",
+	props: {
+		// @ts-expect-error a prop named then is reserved.
+		// biome-ignore lint/suspicious/noThenProperty: checks the reserved name
+		then: prop.string(),
+	},
+});
+
 // The host type matches what the host receives: sendToHost: false props are
 // left out, and deliverTo props are optional; the consumer view keeps both.
 const WithheldForm = create({

@@ -158,11 +158,13 @@ describe("Component.instances", () => {
 		expect(snapshot).toEqual([first, second]);
 		expect(Object.isFrozen(snapshot)).toBe(true);
 		expect(Component.instances).not.toBe(snapshot);
-		const mutable = snapshot as unknown as unknown[];
-		expect(() => mutable.push(first)).toThrow(TypeError);
-		expect(() => mutable.splice(0)).toThrow(TypeError);
+		// @ts-expect-error the snapshot is read-only; this checks it is frozen
+		expect(() => snapshot.push(first)).toThrow(TypeError);
+		// @ts-expect-error the snapshot is read-only; this checks it is frozen
+		expect(() => snapshot.splice(0)).toThrow(TypeError);
 		expect(() => {
-			(Component as unknown as { instances: unknown[] }).instances = [];
+			// @ts-expect-error instances is read-only; this checks the runtime guard
+			Component.instances = [];
 		}).toThrow(TypeError);
 		expect(Component.instances).toEqual([first, second]);
 		await expect(

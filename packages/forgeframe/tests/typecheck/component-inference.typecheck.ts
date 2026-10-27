@@ -348,9 +348,9 @@ const removedPropOptions: PropDefinition<string>[] = [
 	// @ts-expect-error value was removed; compute the value before passing it
 	{ schema: prop.string(), value: () => "computed" },
 	// @ts-expect-error decorate was removed; use a schema transform
-	{ schema: prop.string(), decorate: ({ value }) => value },
+	{ schema: prop.string(), decorate: (value: string) => value },
 	// @ts-expect-error hostDecorate was removed; transform on the host
-	{ schema: prop.string(), hostDecorate: ({ value }) => value },
+	{ schema: prop.string(), hostDecorate: (value: string) => value },
 	// @ts-expect-error validate was removed; use a schema refinement
 	{ schema: prop.string(), validate: () => undefined },
 	// @ts-expect-error alias was removed; rename inputs before the factory call
@@ -362,9 +362,9 @@ const removedPropOptions: PropDefinition<string>[] = [
 	// @ts-expect-error a wrapped definition needs a schema
 	{ queryParam: true },
 	// @ts-expect-error queryParam no longer accepts an encoder function
-	{ schema: prop.string(), queryParam: ({ value }) => value },
+	{ schema: prop.string(), queryParam: (value: string) => value },
 	// @ts-expect-error bodyParam no longer accepts an encoder function
-	{ schema: prop.string(), bodyParam: ({ value }) => value },
+	{ schema: prop.string(), bodyParam: (value: string) => value },
 	// @ts-expect-error deliverTo takes 'same-origin' or an origin matcher
 	{ schema: prop.string(), deliverTo: 42 },
 ];

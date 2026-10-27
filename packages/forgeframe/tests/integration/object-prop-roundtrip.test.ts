@@ -173,9 +173,11 @@ describe("Ordinary object prop round trips", () => {
 		[
 			"native",
 			(text: string): object => {
-				const { rawJSON } = JSON as unknown as {
+				// The ES2022 typings predate JSON.rawJSON, so it may be missing.
+				const json: Pick<JSON, "parse"> & {
 					rawJSON?: (text: string) => object;
-				};
+				} = JSON;
+				const { rawJSON } = json;
 				if (typeof rawJSON !== "function") {
 					throw new Error("The test runtime must support native raw JSON");
 				}

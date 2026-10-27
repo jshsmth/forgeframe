@@ -340,9 +340,8 @@ export function createReactComponent(
 	...extraArguments: unknown[]
 ): ReactComponentOf<AnyComponent> {
 	const tag = assertReactComponentArguments(Component, extraArguments);
-	const createInstance = Component as unknown as (
-		props: Record<string, unknown>,
-	) => ComponentInstance;
+	const createInstance: (props: Record<string, unknown>) => ComponentInstance =
+		Component;
 
 	const ReactComponent = forwardRef<HTMLDivElement, WrapperProps>(
 		function ForgeFrameComponent(props, ref): ReactElement {
@@ -370,7 +369,7 @@ export function createReactComponent(
 				onCloseRef.current = onClose;
 			}, [onRendered, onError, onClose]);
 
-			// biome-ignore lint/correctness/useExhaustiveDependencies: an instance mounts with its first committed props and remounts only for a new context; later props sync through the queue, and mountState is created once.
+			// biome-ignore lint/correctness/useExhaustiveDependencies: an instance mounts with its first committed props and remounts only for a new context; later props sync through the queue.
 			useEffect(() => {
 				const container = containerRef.current;
 				if (!container) return;
@@ -389,12 +388,11 @@ export function createReactComponent(
 						setError,
 					},
 				);
-			}, [context]);
+			}, [context, mountState]);
 
-			// biome-ignore lint/correctness/useExhaustiveDependencies: mountState is created once per wrapper and never replaced.
 			useEffect(() => {
 				retargetHandle(mountState, instanceRef);
-			}, [instanceRef]);
+			}, [instanceRef, mountState]);
 
 			useEffect(() => {
 				const state = mountState.syncState;
@@ -430,5 +428,5 @@ export function createReactComponent(
 
 	ReactComponent.displayName = `ForgeFrame(${tag})`;
 
-	return ReactComponent as unknown as ReactComponentOf<AnyComponent>;
+	return ReactComponent;
 }

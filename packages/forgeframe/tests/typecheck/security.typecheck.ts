@@ -1,7 +1,7 @@
 /**
  * Type-level assertions for v2's secure defaults.
  *
- * Pins the required host allowlist, the `domain` a function URL needs, the
+ * Pins the required host allowlist, the `hostOrigins` a function URL needs, the
  * opt-in `peers` option, the top-level `sandbox` option and the peer types.
  */
 
@@ -33,17 +33,17 @@ initHost({ props: { label: prop.string() } });
 initHost(Widget, { consumerOrigins: "*" });
 initHost(Widget, { consumerOrigins: ["https://shop.example.com", /\.test$/] });
 
-// A static URL may omit domain.
+// A static URL may omit hostOrigins.
 create({ tag: "typed-static-url", url: "https://widgets.example.com/static" });
 
-// @ts-expect-error a function URL requires domain.
+// @ts-expect-error a function URL requires hostOrigins.
 create({
-	tag: "typed-function-url-without-domain",
+	tag: "typed-function-url-without-host-origins",
 	url: () => "https://widgets.example.com/dynamic",
 });
 
 create({
-	tag: "typed-function-url-with-domain",
+	tag: "typed-function-url-with-host-origins",
 	url: (props) => `https://widgets.example.com/${props.path}`,
 	hostOrigins: "https://widgets.example.com",
 	props: { path: prop.string() },

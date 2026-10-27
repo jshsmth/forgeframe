@@ -5,7 +5,16 @@
  * init failure normalization, props handler filtering, and idempotent teardown.
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	type MockInstance,
+	vi,
+} from "vitest";
+import { Messenger } from "@/communication/messenger";
 import { CONTEXT, MESSAGE_NAME } from "@/constants";
 import { HostTransport } from "@/core/host/transport";
 import type { HostTransportOptions } from "@/core/host/types";
@@ -14,6 +23,7 @@ import { EventEmitter } from "@/events/emitter";
 import type { HostEvents } from "@/types";
 import { createDeferred } from "@/utils/promise";
 import { forgeFrameError } from "../forgeframe-error";
+import { createFrameWindow } from "../frame-window";
 import { requireValue } from "../require-value";
 
 type PropsHandlerSource = {
@@ -23,6 +33,14 @@ type PropsHandlerSource = {
 };
 
 const createdTransports: HostTransport[] = [];
+let messengerOn: MockInstance<Messenger["on"]>;
+
+/** Creates a real window whose posted messages are recorded, not delivered. */
+function createWindow(): Window {
+	const frameWindow = createFrameWindow();
+	vi.spyOn(frameWindow, "postMessage").mockImplementation(() => {});
+	return frameWindow;
+}
 
 function createTransport({
 	uid = "host-transport-uid",
@@ -30,7 +48,7 @@ function createTransport({
 	consumerOrigin = "https://consumer.example.com",
 	getConsumerOrigin,
 	beforeInit = () => Promise.resolve(),
-	consumerWindow = { postMessage: vi.fn() } as unknown as Window,
+	consumerWindow = createWindow(),
 }: Partial<HostTransportOptions> = {}) {
 	const event = new EventEmitter<HostEvents>();
 	const options: HostTransportOptions = {
@@ -49,15 +67,15 @@ function createTransport({
 	return { transport, event, consumerWindow };
 }
 
+/** Returns the handler the transport last registered on its messenger for `name`. */
 function getHandler(transport: HostTransport, name: string) {
-	return (
-		transport.messenger as unknown as {
-			handlers: Map<
-				string,
-				(data: unknown, source: PropsHandlerSource) => unknown
-			>;
-		}
-	).handlers.get(name);
+	const { calls, contexts } = messengerOn.mock;
+	for (let index = calls.length - 1; index >= 0; index -= 1) {
+		const [registeredName, handler] = requireValue(calls[index]);
+		if (contexts[index] === transport.messenger && registeredName === name)
+			return handler;
+	}
+	return undefined;
 }
 
 async function flushMicrotasks(): Promise<void> {
@@ -65,10 +83,15 @@ async function flushMicrotasks(): Promise<void> {
 	await Promise.resolve();
 }
 
+beforeEach(() => {
+	messengerOn = vi.spyOn(Messenger.prototype, "on");
+});
+
 afterEach(() => {
 	while (createdTransports.length > 0) {
 		requireValue(createdTransports.pop()).destroy();
 	}
+	document.body.replaceChildren();
 	vi.restoreAllMocks();
 });
 
@@ -111,7 +134,7 @@ describe("HostTransport", () => {
 		});
 
 		const handler = getHandler(transport, MESSAGE_NAME.PROPS);
-		const foreignWindow = { postMessage: vi.fn() } as unknown as Window;
+		const foreignWindow = createWindow();
 		const payload = { amount: 42 };
 
 		expect(
@@ -162,7 +185,7 @@ describe("HostTransport", () => {
 			call({
 				uid: "foreign",
 				domain: "https://consumer.example.com",
-				window: { postMessage: vi.fn() } as unknown as Window,
+				window: createWindow(),
 			}),
 		).rejects.toThrow(
 			forgeFrameError(
@@ -370,7 +393,8 @@ describe("HostTransport", () => {
 			const sendSpy = vi.spyOn(transport.messenger, "send");
 
 			await expect(
-				transport.getPeerInstances(options as never),
+				// @ts-expect-error Invalid JavaScript options are rejected at runtime.
+				transport.getPeerInstances(options),
 			).rejects.toThrow(message);
 			expect(sendSpy).not.toHaveBeenCalled();
 		},

@@ -1,5 +1,6 @@
 import { createServer, type Server } from "node:http";
 import { expect, type Page, test } from "@playwright/test";
+import type { ComponentInstance } from "../../src/types";
 import { buildLibrary } from "./library-build";
 
 /**
@@ -12,6 +13,18 @@ let consumerOrigin: string;
 let hostOrigin: string;
 let attackerOrigin: string;
 const servers: Server[] = [];
+
+/** What the consumer page keeps between `page.evaluate` calls. */
+interface GuaranteeState {
+	instance: ComponentInstance<Record<string, unknown>>;
+	events: string[];
+	probes: string[];
+	forgerDone: boolean;
+}
+
+/** The consumer page's state, declared for this module only. */
+declare const window: Window &
+	typeof globalThis & { v2Guarantees?: GuaranteeState };
 
 function serve(
 	routes: (url: string) => string | undefined,
@@ -103,27 +116,24 @@ async function renderHost(
 		async ({ hostOrigin, path, context, sandbox }) => {
 			const libraryUrl = "/library.js";
 			const { create, prop } = await import(libraryUrl);
-			const state = window as unknown as {
-				instance: import("../../src/types").ComponentInstance<
-					Record<string, unknown>
-				>;
-				events: string[];
+			const state: GuaranteeState = {
+				instance: create({
+					tag: "browser-v2-guarantees",
+					url: `${hostOrigin}${path}`,
+					props: { label: prop.string() },
+					initTimeout: 5000,
+					...(sandbox === undefined ? {} : { sandbox }),
+				})({ label: "guarded" }),
+				events: [],
+				probes: [],
+				forgerDone: false,
 			};
-			state.events = [];
-			(window as unknown as { probes: string[] }).probes = [];
+			window.v2Guarantees = state;
 			window.addEventListener("message", (event) => {
 				const probe = (event.data as { sandboxProbe?: string } | null)
 					?.sandboxProbe;
-				if (probe)
-					(window as unknown as { probes: string[] }).probes.push(probe);
+				if (probe) state.probes.push(probe);
 			});
-			state.instance = create({
-				tag: "browser-v2-guarantees",
-				url: `${hostOrigin}${path}`,
-				props: { label: prop.string() },
-				initTimeout: 5000,
-				...(sandbox === undefined ? {} : { sandbox }),
-			})({ label: "guarded" });
 			for (const name of ["exports", "close", "closed"] as const)
 				state.instance.event.on(name, () => {
 					state.events.push(name);
@@ -159,9 +169,7 @@ for (const [label, sandbox, popups, forms] of [
 		);
 		// The probe reports window.open, then whether form.submit() returned.
 		await expect
-			.poll(() =>
-				page.evaluate(() => (window as unknown as { probes: string[] }).probes),
-			)
+			.poll(() => page.evaluate(() => window.v2Guarantees?.probes))
 			.toEqual([popups, "submitted"]);
 		if (forms) await expect.poll(() => submissions).toEqual(["POST"]);
 		else {
@@ -179,21 +187,18 @@ test("a well-formed message from another origin is ignored", async ({
 }) => {
 	expect(await renderHost(page, { path: "/plain-host" })).toBe("rendered");
 	await expect
-		.poll(() =>
-			page.evaluate(
-				() =>
-					(window as unknown as { instance: { exports?: unknown } }).instance
-						.exports,
-			),
-		)
+		.poll(() => page.evaluate(() => window.v2Guarantees?.instance.exports))
 		.toEqual({ ready: true });
-	const uid = await page.evaluate(
-		() => (window as unknown as { instance: { uid: string } }).instance.uid,
-	);
+	const uid = await page.evaluate(() => {
+		const state = window.v2Guarantees;
+		if (!state) throw new Error("Missing consumer state");
+		return state.instance.uid;
+	});
 
 	await page.evaluate(
 		({ attackerOrigin, uid }) => {
-			const state = window as unknown as { forgerDone: boolean };
+			const state = window.v2Guarantees;
+			if (!state) throw new Error("Missing consumer state");
 			state.forgerDone = false;
 			window.addEventListener("message", (event) => {
 				if ((event.data as { forgerDone?: boolean } | null)?.forgerDone)
@@ -207,22 +212,15 @@ test("a well-formed message from another origin is ignored", async ({
 		{ attackerOrigin, uid },
 	);
 	await expect
-		.poll(() =>
-			page.evaluate(
-				() => (window as unknown as { forgerDone: boolean }).forgerDone,
-			),
-		)
+		.poll(() => page.evaluate(() => window.v2Guarantees?.forgerDone))
 		.toBe(true);
 
 	// The forged export neither replaces the exports nor emits a second event.
 	expect(
-		await page.evaluate(() => {
-			const state = window as unknown as {
-				instance: { exports?: unknown };
-				events: string[];
-			};
-			return { exports: state.instance.exports, events: state.events };
-		}),
+		await page.evaluate(() => ({
+			exports: window.v2Guarantees?.instance.exports,
+			events: window.v2Guarantees?.events,
+		})),
 	).toEqual({ exports: { ready: true }, events: ["exports"] });
 });
 
@@ -232,17 +230,13 @@ test("a popup the user closes ends the instance", async ({ page }) => {
 	const popup = await popupOpened;
 	expect(await rendering).toBe("rendered");
 	await expect
-		.poll(() =>
-			page.evaluate(() => (window as unknown as { events: string[] }).events),
-		)
+		.poll(() => page.evaluate(() => window.v2Guarantees?.events))
 		.toEqual(["exports"]);
 
 	await popup.close();
 
 	await expect
-		.poll(() =>
-			page.evaluate(() => (window as unknown as { events: string[] }).events),
-		)
+		.poll(() => page.evaluate(() => window.v2Guarantees?.events))
 		.toEqual(["exports", "close", "closed"]);
 });
 
@@ -257,15 +251,11 @@ test("a blocked popup rejects with POPUP_BLOCKED and leaves the instance usable"
 		await renderHost(page, { path: "/plain-host", context: "popup" }),
 	).toMatch(/^POPUP_BLOCKED: /);
 	expect(
-		await page.evaluate(() =>
-			(
-				window as unknown as {
-					instance: { render: (container: string) => Promise<void> };
-				}
-			).instance
-				.render("#mount")
-				.then(() => "rendered"),
-		),
+		await page.evaluate(() => {
+			const state = window.v2Guarantees;
+			if (!state) throw new Error("Missing consumer state");
+			return state.instance.render("#mount").then(() => "rendered");
+		}),
 	).toBe("rendered");
 	await expect(page.locator("#mount iframe")).toHaveCount(1);
 });

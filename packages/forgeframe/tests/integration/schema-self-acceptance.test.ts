@@ -143,15 +143,15 @@ describe("One schema per prop", () => {
 		"rejects a wrapped type-changing %s schema at render without creating an iframe",
 		async (_label, options) => {
 			const container = mountContainer();
-			// A JavaScript caller, or a cast, bypasses the compile-time rule.
 			const Component = create({
 				tag: `type-changing-${options.sendToHost ? "delivered" : "local"}`,
 				url: "https://host.example.com/widget",
 				props: {
+					// @ts-expect-error a JavaScript caller bypasses the self-acceptance rule
 					amount: { schema: z.string().transform(Number), ...options },
-				} as never,
+				},
 			});
-			const instance = Component({ amount: "42" } as never);
+			const instance = Component({ amount: "42" });
 
 			await expect(instance.render(container)).rejects.toThrow(
 				forgeFrameError(
@@ -170,8 +170,9 @@ describe("One schema per prop", () => {
 				tag: "removed-output-schema-consumer",
 				url: "https://host.example.com/widget",
 				props: {
+					// @ts-expect-error outputSchema was removed; this checks the runtime error
 					amount: { schema: z.number(), outputSchema: z.number() },
-				} as never,
+				},
 			}),
 		).toThrow(
 			forgeFrameError(
@@ -196,7 +197,7 @@ describe("One schema per prop", () => {
 		expect(() =>
 			harness?.bootstrapHost({
 				amount: { schema: z.number(), outputSchema: z.number() },
-			} as never),
+			}),
 		).toThrow(
 			forgeFrameError(
 				"VALIDATION",
@@ -265,13 +266,15 @@ describe("One schema per prop", () => {
 				url: "https://host.example.com/widget",
 				props: { title: entry },
 			});
-			const instance = Component({} as never);
+			// @ts-expect-error the required title is omitted on purpose
+			const instance = Component({});
 
 			await expect(instance.render(container)).rejects.toThrow(
 				forgeFrameError("VALIDATION", "Validation failed: title: Required"),
 			);
 			await expect(
-				instance.updateProps({ title: undefined } as never),
+				// @ts-expect-error a required prop cannot be reset to undefined
+				instance.updateProps({ title: undefined }),
 			).rejects.toThrow(
 				forgeFrameError("VALIDATION", "Validation failed: title: Required"),
 			);

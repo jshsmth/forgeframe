@@ -15,15 +15,11 @@ function setBase(href: string): HTMLBaseElement {
 
 function mount(consumer: ConsumerComponent<Record<string, unknown>>) {
 	consumers.push(consumer);
-	const internals = consumer as unknown as {
-		waitForHost: () => Promise<void>;
-		renderer: { iframe: HTMLIFrameElement };
-		transport: { openedHostOrigin: string };
-	};
-	vi.spyOn(internals, "waitForHost").mockResolvedValue();
+	// No host page answers in jsdom, so render() skips the private handshake wait.
+	vi.spyOn(consumer, "waitForHost").mockResolvedValue();
 	const container = document.createElement("div");
 	document.body.appendChild(container);
-	return { container, internals };
+	return { container };
 }
 
 afterEach(async () => {
@@ -92,12 +88,12 @@ describe("Consumer navigation admission", () => {
 		consumer.event.once("render", () => {
 			base.href = "https://untrusted.example/";
 		});
-		const { container, internals } = mount(consumer);
+		const { container } = mount(consumer);
 		await consumer.render(container);
-		expect(internals.renderer.iframe.src).toBe(
+		expect(container.querySelector("iframe")?.src).toBe(
 			"https://host.example/nested/widget?order=order-123#checkout?step=2",
 		);
-		expect(internals.transport.openedHostOrigin).toBe("https://host.example");
+		expect(consumer.getOpenedHostOrigin()).toBe("https://host.example");
 		await expect(
 			consumer.updateProps({ order: "changed-order" }),
 		).rejects.toThrow(

@@ -23,7 +23,7 @@ import {
 	UnionSchema,
 } from "@/props/prop";
 import { isStandardSchema } from "@/props/schema";
-import type { PropsDefinition } from "@/types";
+import type { InferPropsInput, PropsDefinition } from "@/types";
 import { forgeFrameError } from "../forgeframe-error";
 
 // ============================================================================
@@ -665,29 +665,29 @@ describe("composite schema construction", () => {
 	it.each([undefined, "string", { "~standard": {} }])(
 		"rejects a missing nested schema (%j) when the composite is built",
 		(nested) => {
-			const build = prop as unknown as Record<
-				string,
-				(...args: unknown[]) => unknown
-			>;
-			expect(() => build.object({ name: nested })).toThrow(
+			// @ts-expect-error JavaScript callers can pass a value that is not a schema.
+			expect(() => prop.object({ name: nested })).toThrow(
 				forgeFrameError(
 					"VALIDATION",
 					'prop.object(shape) requires a schema for "name". Use prop.any() for a field that is deliberately unchecked.',
 				),
 			);
-			expect(() => build.record(nested)).toThrow(
+			// @ts-expect-error JavaScript callers can pass a value that is not a schema.
+			expect(() => prop.record(nested)).toThrow(
 				forgeFrameError(
 					"VALIDATION",
 					"prop.record(value) requires a value schema. Use prop.any<Record<string, T>>() for a record whose values are deliberately unchecked.",
 				),
 			);
-			expect(() => build.tuple(prop.string(), nested)).toThrow(
+			// @ts-expect-error JavaScript callers can pass a value that is not a schema.
+			expect(() => prop.tuple(prop.string(), nested)).toThrow(
 				forgeFrameError(
 					"VALIDATION",
 					"prop.tuple() requires a schema at position 1. Use prop.any() for a value that is deliberately unchecked.",
 				),
 			);
-			expect(() => build.union(prop.string(), nested)).toThrow(
+			// @ts-expect-error JavaScript callers can pass a value that is not a schema.
+			expect(() => prop.union(prop.string(), nested)).toThrow(
 				forgeFrameError(
 					"VALIDATION",
 					"prop.union() requires a schema at position 1",
@@ -699,9 +699,9 @@ describe("composite schema construction", () => {
 
 describe("prop.array(item)", () => {
 	it("requires an item schema at runtime", () => {
-		const array = prop.array as unknown as (item?: unknown) => unknown;
 		for (const item of [undefined, "string", { "~standard": {} }]) {
-			expect(() => array(item)).toThrow(
+			// @ts-expect-error JavaScript callers can pass a value that is not a schema.
+			expect(() => prop.array(item)).toThrow(
 				forgeFrameError(
 					"VALIDATION",
 					"prop.array(item) requires an item schema. Use prop.any<T[]>() for an array whose items are deliberately unchecked.",
@@ -820,8 +820,9 @@ describe("prop.array(item)", () => {
 
 	it("keeps a shared Date shared and array holes empty when copying a default", () => {
 		const startsAt = new Date(0);
-		// biome-ignore lint/suspicious/noSparseArray: the hole is the case under test.
-		const sparse = [1, , 3];
+		// Index 1 stays a hole, the case under test.
+		const sparse: unknown[] = [1];
+		sparse[2] = 3;
 		const schema = prop
 			.any<{ start: Date; end: Date; sparse: unknown[] }>()
 			.default({ start: startsAt, end: startsAt, sparse });
@@ -933,9 +934,9 @@ describe("prop.tuple()", () => {
 
 describe("prop.object(shape)", () => {
 	it("requires a shape at runtime", () => {
-		const object = prop.object as unknown as (shape?: unknown) => unknown;
 		for (const shape of [undefined, null, [], "shape"]) {
-			expect(() => object(shape)).toThrow(
+			// @ts-expect-error JavaScript callers can pass a value that is not a shape.
+			expect(() => prop.object(shape)).toThrow(
 				forgeFrameError(
 					"VALIDATION",
 					"prop.object(shape) requires a shape. Use prop.record(value) for dictionaries, or prop.any<T>() for an object that is deliberately unchecked.",
@@ -1127,8 +1128,8 @@ describe("prop.record()", () => {
 	it("should preserve hostile keys as safe own properties", () => {
 		const schema = prop.record(prop.string());
 		const input = Object.create(null) as Record<string, unknown>;
-		// biome-ignore lint/suspicious/noProto: Exercise an own __proto__ data property to verify prototype-safe handling.
-		input.__proto__ = "proto-value";
+		// Without a prototype there is no __proto__ setter, so this is an own data property.
+		Reflect.set(input, "__proto__", "proto-value");
 		Reflect.set(input, "constructor", "ctor-value");
 		input.prototype = "prototype-value";
 
@@ -1140,8 +1141,7 @@ describe("prop.record()", () => {
 		expect(Object.hasOwn(validated, "__proto__")).toBe(true);
 		expect(Object.hasOwn(validated, "constructor")).toBe(true);
 		expect(Object.hasOwn(validated, "prototype")).toBe(true);
-		// biome-ignore lint/suspicious/noProto: Exercise an own __proto__ data property to verify prototype-safe handling.
-		expect(validated.__proto__).toBe("proto-value");
+		expect(Reflect.get(validated, "__proto__")).toBe("proto-value");
 		expect(validated.constructor).toBe("ctor-value");
 		expect(validated.prototype).toBe("prototype-value");
 	});
@@ -1499,13 +1499,8 @@ describe("schema chaining and immutability", () => {
 function validateProps<P extends Record<string, unknown>>(
 	props: P,
 	definitions: PropsDefinition<P>,
-): void;
-function validateProps(props: object, definitions: object): void;
-function validateProps(props: object, definitions: object): void {
-	Object.assign(
-		props,
-		normalizeProps(props as Record<string, unknown>, definitions),
-	);
+): void {
+	Object.assign(props, normalizeProps(props, definitions));
 }
 
 describe("integration with normalizeProps", () => {
@@ -1577,9 +1572,9 @@ describe("integration with normalizeProps", () => {
 	])(
 		"$schema accepts a valid component prop and rejects an invalid one",
 		({ definition, valid, invalid, message }) => {
-			const definitions = { value: definition } as PropsDefinition<{
-				value: unknown;
-			}>;
+			const definitions: PropsDefinition<{ value: unknown }> = {
+				value: definition,
+			};
 
 			expect(() => validateProps({ value: valid }, definitions)).not.toThrow();
 			expect(() => validateProps({ value: invalid }, definitions)).toThrow(
@@ -1589,11 +1584,11 @@ describe("integration with normalizeProps", () => {
 	);
 
 	it("should work with prop.number().default() in component props", () => {
-		const definitions: PropsDefinition<{ count: number }> = {
+		const definitions = {
 			count: prop.number().default(0),
-		};
+		} satisfies PropsDefinition<{ count: number }>;
 
-		const props = { count: undefined } as unknown as { count: number };
+		const props: InferPropsInput<typeof definitions> = { count: undefined };
 		validateProps(props, definitions);
 		expect(props.count).toBe(0);
 	});
@@ -1606,14 +1601,14 @@ describe("integration with normalizeProps", () => {
 			};
 		};
 
-		const definitions: PropsDefinition<UserConfig> = {
+		const definitions = {
 			config: prop.object({
 				theme: prop.string().default("light"),
 				debug: prop.boolean().default(false),
 			}),
-		};
+		} satisfies PropsDefinition<UserConfig>;
 
-		const props = { config: {} } as unknown as UserConfig;
+		const props: InferPropsInput<typeof definitions> = { config: {} };
 		validateProps(props, definitions);
 		expect(props.config).toEqual({ theme: "light", debug: false });
 	});
@@ -1627,16 +1622,16 @@ describe("integration with normalizeProps", () => {
 			status: "active" | "inactive";
 		};
 
-		const definitions: PropsDefinition<MyProps> = {
+		const definitions = {
 			name: prop.string().min(1),
 			count: prop.number().default(0),
 			email: prop.string().email().optional(),
 			tags: prop.array(prop.string()).default([]),
 			status: prop.enum(["active", "inactive"] as const).default("active"),
-		};
+		} satisfies PropsDefinition<MyProps>;
 
-		const props: Partial<MyProps> = { name: "Test" };
-		validateProps(props as MyProps, definitions);
+		const props: InferPropsInput<typeof definitions> = { name: "Test" };
+		validateProps(props, definitions);
 
 		expect(props.count).toBe(0);
 		expect(props.tags).toEqual([]);

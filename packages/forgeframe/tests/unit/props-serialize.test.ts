@@ -6,19 +6,21 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FunctionBridge } from "@/communication/bridge";
-import type { Messenger } from "@/communication/messenger";
+import { Messenger } from "@/communication/messenger";
 import { deserializeProps, serializeProps } from "@/props/serialize";
 import type { SerializedProps } from "@/props/types";
 
 /**
- * Creates a bridge backed by an inert messenger mock.
+ * Creates a bridge backed by an inert messenger that never listens.
  */
 function createBridgeWithMessenger() {
-	const messenger = {
-		send: vi.fn().mockResolvedValue(undefined),
-		on: vi.fn(() => () => undefined),
-		destroy: vi.fn(),
-	} as unknown as Messenger;
+	const messenger = new Messenger(
+		"props-serialize",
+		window,
+		window.location.origin,
+		undefined,
+		false,
+	);
 
 	return {
 		// These codec tests admit every caller; they check decoding, not sources.

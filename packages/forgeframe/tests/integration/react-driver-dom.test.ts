@@ -33,7 +33,7 @@ describe("React driver with React DOM", () => {
 		});
 		const FailingComponent = Object.assign(() => {
 			throw failure;
-		}, Component) as unknown as typeof Component;
+		}, Component);
 		const Wrapped = createReactComponent(FailingComponent);
 		const onError = vi.fn();
 

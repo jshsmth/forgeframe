@@ -67,7 +67,7 @@ function createPropSchema(
 	}
 
 	if (defaultValue !== undefined) {
-		schema = schema.default(defaultValue as never);
+		schema = schema.default(defaultValue);
 	}
 
 	if (!required) {

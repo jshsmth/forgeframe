@@ -75,15 +75,13 @@ describe("Standard Schema interoperability", () => {
 
 		for (const definitions of [direct, wrapped]) {
 			expect(() => normalizeProps({ name: "ok" }, definitions)).not.toThrow();
-			expect(() =>
-				normalizeProps({ name: 42 as unknown as string }, definitions),
-			).toThrow(
+			expect(() => normalizeProps({ name: 42 }, definitions)).toThrow(
 				forgeFrameError(
 					"VALIDATION",
 					"Validation failed: name: Expected string",
 				),
 			);
-			expect(() => normalizeProps({} as { name: string }, definitions)).toThrow(
+			expect(() => normalizeProps({}, definitions)).toThrow(
 				forgeFrameError("VALIDATION", "Validation failed: name"),
 			);
 		}
@@ -97,7 +95,7 @@ describe("Standard Schema interoperability", () => {
 		});
 		const container = document.createElement("div");
 		document.body.append(container);
-		const instance = Component({ name: 42 as unknown as string });
+		const instance = Component({ name: 42 });
 
 		await expect(instance.render(container)).rejects.toThrow(
 			forgeFrameError("VALIDATION", "Validation failed: name: Expected string"),

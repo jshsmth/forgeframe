@@ -303,7 +303,6 @@ function validateProps<P extends Record<string, unknown>>(
 	props: P,
 	definitions: PropsDefinition<P>,
 ): void;
-function validateProps(props: object, definitions: object): void;
 function validateProps(props: object, definitions: object): void {
 	Object.assign(
 		props,
@@ -359,16 +358,20 @@ describe("normalizeProps with schema", () => {
 		const lenient = createMockSchema<string>((v) => ({ value: String(v) }));
 
 		expect(() =>
-			validateProps({ name: undefined } as unknown as { name: string }, {
-				name: { schema: required },
-			}),
+			validateProps<{ name: string }>(
+				// @ts-expect-error A required prop is passed as undefined.
+				{ name: undefined },
+				{ name: { schema: required } },
+			),
 		).toThrow(
 			forgeFrameError("VALIDATION", "Validation failed: name: Required"),
 		);
 		expect(() =>
-			validateProps({ name: undefined } as unknown as { name: string }, {
-				name: { schema: lenient },
-			}),
+			validateProps<{ name: string }>(
+				// @ts-expect-error A required prop is passed as undefined.
+				{ name: undefined },
+				{ name: { schema: lenient } },
+			),
 		).not.toThrow();
 	});
 
@@ -429,7 +432,11 @@ describe("prop schema API", () => {
 
 		// Invalid type
 		expect(() =>
-			validateProps({ name: 123 as unknown as string, age: 25 }, definitions),
+			validateProps(
+				// @ts-expect-error A number is passed for a string prop.
+				{ name: 123, age: 25 },
+				definitions,
+			),
 		).toThrow(forgeFrameError("VALIDATION", "Expected string"));
 	});
 
@@ -440,7 +447,8 @@ describe("prop schema API", () => {
 
 		expect(() =>
 			validateProps(
-				{ name: undefined } as unknown as { name: string },
+				// @ts-expect-error A required prop is passed as undefined.
+				{ name: undefined },
 				definitions,
 			),
 		).toThrow(

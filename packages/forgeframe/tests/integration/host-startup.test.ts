@@ -379,7 +379,7 @@ describe("Explicit host start-up", () => {
 			});
 			const errors: string[] = [];
 			instance.event.on("error", (error) => {
-				errors.push((error as Error).message);
+				errors.push(error.message);
 			});
 			vi.spyOn(console, "error").mockImplementation(() => {});
 			deleteRegisteredComponent(tag);
@@ -601,10 +601,8 @@ describe("Explicit host start-up", () => {
 				expect(internal in host).toBe(false);
 			}
 			expect(() =>
-				(host.on as (event: string, handler: () => void) => unknown)(
-					"resize",
-					() => {},
-				),
+				// @ts-expect-error JavaScript callers can pass any event name.
+				host.on("resize", () => {}),
 			).toThrow(
 				new ForgeFrameError(
 					"VALIDATION",
@@ -613,10 +611,8 @@ describe("Explicit host start-up", () => {
 			);
 			for (const method of ["on", "once"] as const) {
 				expect(() =>
-					(host[method] as (event: string, handler: () => void) => unknown)(
-						"props",
-						() => {},
-					),
+					// @ts-expect-error JavaScript callers can still pass the removed name.
+					host[method]("props", () => {}),
 				).toThrow(
 					new ForgeFrameError(
 						"VALIDATION",
