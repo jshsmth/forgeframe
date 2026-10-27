@@ -1574,11 +1574,16 @@ test("legacy hosts cannot bypass the verified bootstrap handshake", async ({
 	page,
 }) => {
 	await mount(page, "/legacy");
+	// An INIT outside the bootstrap session is ignored, so the render times out
+	// with the hint that both sides must run the same major version. A real
+	// 1.x host sends nothing at all and reaches the same timeout.
 	expect(
 		await page.evaluate(
 			() => (window as unknown as { outcome: Promise<string> }).outcome,
 		),
-	).toContain("did not initialize");
+	).toMatch(
+		/^INIT_TIMEOUT: Host component "browser-navigation-review" \(uid: [^)]+\) did not initialize within 1500ms\. Check that the host page loads correctly and calls the initialization code, and that consumer and host run the same ForgeFrame major version\.$/,
+	);
 });
 
 test("a v2 host refuses a 1.x consumer's payload without contacting it", async ({
