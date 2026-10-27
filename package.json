@@ -12,7 +12,7 @@
 		"dev:host": "npm run dev:host -w @forgeframe/playground",
 		"build": "npm run build -w forgeframe",
 		"build:playground": "npm run build -w @forgeframe/playground",
-		"typecheck": "npm run typecheck -w forgeframe && npm run typecheck -w @forgeframe/playground",
+		"typecheck": "tsc -p tsconfig.config.json && npm run typecheck -w forgeframe && npm run typecheck -w @forgeframe/playground",
 		"lint": "biome check --error-on-warnings .",
 		"lint:fix": "biome check --write .",
 		"test": "npm run test -w forgeframe",
@@ -36,6 +36,7 @@
 	"devDependencies": {
 		"@biomejs/biome": "2.6.3",
 		"@playwright/test": "1.64.1",
+		"@types/debug": "4.1.13",
 		"@types/jsdom": "30.0.0",
 		"@types/node": "26.6.5",
 		"@vitest/coverage-v8": "^5.0.5",
