@@ -1734,11 +1734,11 @@ The wiki CLI is a contributor tool, separate from the npm package and its releas
 
 ### Checks
 
-Development uses TypeScript 7 and Biome with default formatting and recommended lint rules. `npm ci` installs the pinned tools, and npm scripts run the local `tsc` and `biome`. Biome skips generated builds, coverage, and the npm lockfile, and does not format Markdown, YAML, or TOML.
+Development uses TypeScript 7 and Biome with default formatting and recommended lint rules. `npm ci` installs the pinned tools, and npm scripts run the local `tsc` and `biome`. TypeScript runs in strict mode with `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitOverride`, and `noImplicitReturns`, and checks library declarations. The compile-time API contracts also run without the two optional-property flags, so the public types work under both settings. Biome fails on warnings, skips generated builds, coverage, and the npm lockfile, and leaves Markdown unformatted so it cannot rewrite the wiki's `***` and `[[` syntax.
 
 In VS Code, use the Biome extension (`biomejs.biome`) and the TypeScript 7 language service (`TypeScriptTeam.native-preview`); in other editors, use their Biome and TypeScript 7 LSP integrations. Consumers of the package do not need TypeScript 7.
 
-Tests and playground bindings use explicit value guards, so a missing fixture or element fails instead of silently skipping an assertion or action. Intentional React effect signatures, prototype-safety fixtures, and CSS precedence overrides have local Biome suppressions with explanations.
+Tests and playground bindings use explicit value guards, so a missing fixture or element fails instead of silently skipping an assertion or action. `@ts-expect-error` appears only where a test asserts that the types reject an input: in the compile-time contracts, and in runtime tests that pass a JavaScript caller's invalid input. A local Biome suppression, with its reason, remains only where the code must break a rule: the React effect that mounts once per context, the variadic `any` bound callback types need, the type test that proves `IsEqual` rejects `any`, and fixtures that define a `then` prop to check that the name is reserved.
 
 | Command | What it checks |
 |---------|----------------|

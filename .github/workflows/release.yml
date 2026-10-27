@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - "v*.*.*"
   workflow_dispatch:
 
 permissions:
@@ -95,7 +95,7 @@ jobs:
         with:
           node-version: 24
           check-latest: true
-          registry-url: 'https://registry.npmjs.org'
+          registry-url: "https://registry.npmjs.org"
 
       - name: Use an npm version that supports trusted publishing
         run: npm install -g npm@11.21.1

@@ -553,9 +553,14 @@ for (const context of ["iframe", "popup"] as const) {
 		await provider
 			.getByRole("button", { name: "Pay $176.00", exact: true })
 			.click();
+		// The clock belongs to the browser context, so resuming it while the
+		// popup is still closing races the popup's teardown.
+		const closed =
+			"waitForEvent" in provider ? provider.waitForEvent("close") : null;
 		await provider
 			.getByRole("button", { name: "Cancel payment", exact: true })
 			.click();
+		await closed;
 		await page.clock.resume();
 		await expect(page.locator("#demo-notice")).toContainText(
 			"Payment cancelled",

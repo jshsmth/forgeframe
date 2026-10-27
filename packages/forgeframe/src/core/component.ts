@@ -349,8 +349,8 @@ export function create(
 	 * @param props - Props to pass to the component instance
 	 * @returns A new component instance
 	 */
-	// A named regular function keeps the factory's name and `new` behavior for JavaScript callers.
-	const factory = function Component(
+	// A named regular function keeps a stable factory name and `new` behavior for JavaScript callers.
+	const factory = function component(
 		props?: RuntimeProps,
 	): ComponentInstance<RuntimeProps> {
 		return createTrackedInstance(props);
