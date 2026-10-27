@@ -13,6 +13,7 @@ import { create, isHost, prop } from "@/index";
 import { forgeFrameError } from "../forgeframe-error";
 import {
 	createIframeIntegrationHarness,
+	dispatchForgeFrameRequest,
 	type IframeIntegrationHarness,
 } from "./helpers";
 
@@ -41,11 +42,13 @@ describe("Bootstrap protocol version", () => {
 	let listeners = new AbortController();
 
 	afterEach(async () => {
+		vi.useRealTimers();
 		listeners.abort();
 		listeners = new AbortController();
+		// Restore spies first, so cleanup's own restores are not overwritten.
+		vi.restoreAllMocks();
 		await harness?.cleanup();
 		harness = null;
-		vi.restoreAllMocks();
 	});
 
 	it("writes only channel metadata and sends INIT and GET_PEERS without claimed identity", async () => {
@@ -236,6 +239,93 @@ describe("Bootstrap protocol version", () => {
 			activeHarness.hostWindow.name = name;
 
 			expect(activeHarness.withHostGlobals(() => isHost())).toBe(false);
+		});
+	});
+
+	describe("requests from a newer ForgeFrame", () => {
+		const unknownRequest = "forgeframe_future_request";
+
+		/** Decodes the last message posted through `postMessage`. */
+		function lastReply(postMessage: { mock: { calls: unknown[][] } }) {
+			return deserializeMessage(postMessage.mock.calls.at(-1)?.[0]);
+		}
+
+		it.each(["consumer", "host"] as const)(
+			"the %s answers a request it does not know with VERSION_MISMATCH",
+			async (receiver) => {
+				const activeHarness = createIframeIntegrationHarness();
+				harness = activeHarness;
+				const container = document.createElement("div");
+				document.body.append(container);
+				const instance = create({
+					tag: "protocol-version-unknown-request",
+					url: "https://host.example.com/widget",
+				})();
+				const rendering = instance.render(container);
+				await activeHarness.bootstrapIframeHost(container);
+				await rendering;
+				const [target, source, origin] =
+					receiver === "consumer"
+						? [
+								activeHarness.consumerWindow,
+								activeHarness.hostWindow,
+								activeHarness.hostOrigin,
+							]
+						: [
+								activeHarness.hostWindow,
+								activeHarness.consumerWindow,
+								activeHarness.consumerOrigin,
+							];
+				const replies = vi.spyOn(source, "postMessage");
+
+				dispatchForgeFrameRequest({
+					targetWindow: target,
+					sourceWindow: source,
+					origin,
+					name: unknownRequest,
+					claimedUid: instance.uid,
+				});
+
+				await vi.waitFor(() => expect(replies).toHaveBeenCalledOnce());
+				expect(lastReply(replies)).toMatchObject({
+					type: "response",
+					error: {
+						code: "VERSION_MISMATCH",
+						message: `This window's ForgeFrame does not support the "${unknownRequest}" request; run the same ForgeFrame version in both windows`,
+					},
+				});
+				await instance.close();
+			},
+		);
+	});
+
+	describe("a 1.x host, which never answers a v2 consumer", () => {
+		it("emits error before closed when no v2 host answers within initTimeout", async () => {
+			harness = createIframeIntegrationHarness();
+			const container = document.createElement("div");
+			document.body.append(container);
+			const instance = create({
+				tag: "protocol-version-silent-host",
+				url: "https://host.example.com/widget",
+				initTimeout: 30,
+			})();
+			const events: string[] = [];
+			for (const name of ["error", "close", "closed"] as const)
+				instance.event.on(name, () => {
+					events.push(name);
+				});
+
+			vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+			const rendering = expect(instance.render(container)).rejects.toThrow(
+				forgeFrameError(
+					"INIT_TIMEOUT",
+					"consumer and host run the same ForgeFrame major version",
+				),
+			);
+			await vi.advanceTimersByTimeAsync(30);
+			await rendering;
+
+			expect(events).toEqual(["error", "closed"]);
 		});
 	});
 });

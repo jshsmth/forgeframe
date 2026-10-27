@@ -437,8 +437,11 @@ describe("ConsumerTransport", () => {
 		const secondRejection = second.catch((caught: unknown) => caught);
 		await vi.advanceTimersByTimeAsync(25);
 		const secondError = await secondRejection;
-		expect((secondError as Error).message).toContain(
-			"within 25ms. Check that the host page loads correctly and calls the initialization code, and that consumer and host run the same ForgeFrame major version.",
+		expect(secondError).toEqual(
+			forgeFrameError(
+				"INIT_TIMEOUT",
+				/^Host component "consumer-transport-component" \(uid: consumer-transport-uid\) did not initialize within 25ms\. Check that the host page loads correctly and calls the initialization code, and that consumer and host run the same ForgeFrame major version\.$/,
+			),
 		);
 		// Without a host failure there is no cause, not an own `cause: undefined`.
 		expect(Object.hasOwn(secondError as Error, "cause")).toBe(false);
