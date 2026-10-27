@@ -16,10 +16,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ matrix.node-version }}
           check-latest: true
@@ -49,6 +49,19 @@ jobs:
         if: matrix.node-version == 24
         run: npm run test:browser
 
+      # Traces, screenshots and videos of failed browser tests, kept for a week.
+      - name: Upload browser test report
+        if: matrix.node-version == 24 && !cancelled()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: playwright-report
+          path: |
+            packages/forgeframe/playwright-report
+            packages/forgeframe/test-results
+          if-no-files-found: ignore
+          retention-days: 7
+          overwrite: true
+
       - name: Build library
         run: npm run build
 
@@ -71,7 +84,7 @@ jobs:
         run: npm pack --dry-run -w forgeframe
 
       - name: Upload coverage reports
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
         if: matrix.node-version == 24
         with:
           fail_ci_if_error: false

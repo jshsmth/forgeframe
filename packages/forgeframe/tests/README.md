@@ -105,7 +105,7 @@ What each test file covers, how to run it, and how to choose new tests. Paths ar
 
 ## Browser tests (`browser/`)
 
-Each suite runs in Chromium, Firefox, and WebKit against separate local origins. Install the engines with `npx playwright install chromium firefox webkit`, then run `npm run test:browser` from the repository root. CI installs browser system dependencies and runs on Node 24. WebKit covers the Safari engine; it does not replace testing on physical Safari or devices.
+Each suite runs in Chromium, Firefox, and WebKit against separate local origins. Install the engines with `npx playwright install chromium firefox webkit`, then run `npm run test:browser` from the repository root. CI installs browser system dependencies and runs on Node 24 with `CI` set, which forbids `test.only`, retries a failed test once and still fails the run if it then passes, and uploads failure traces, screenshots and videos as the `playwright-report` artifact. Open a trace locally with `npx playwright show-trace <trace.zip>`. WebKit covers the Safari engine; it does not replace testing on physical Safari or devices.
 
 - `library-build.ts`: Builds the production library in memory and maps each entry and shared chunk to the path it is served at (`/library.js` for the root entry), so specs serve every chunk the entries import.
 - `navigation.spec.ts`: Builds the production library and covers:

@@ -302,4 +302,19 @@ describe("package contract", () => {
 			expect(ref).toMatch(/^[0-9a-f]{40}$/);
 		}
 	});
+
+	it.each(["release.yml", "test.yml"])(
+		"should pin every action in %s to a commit and keep browser failure reports",
+		(name) => {
+			const workflow = readText(resolve(repoRoot, ".github/workflows", name));
+			const refs = [...workflow.matchAll(/uses: [^@\s]+@(\S+)/g)].map(
+				([, ref]) => ref,
+			);
+			expect(refs).not.toHaveLength(0);
+			for (const ref of refs) expect(ref).toMatch(/^[0-9a-f]{40}$/);
+			expect(workflow).toContain("name: playwright-report");
+			expect(workflow).toContain("packages/forgeframe/playwright-report");
+			expect(workflow).toContain("packages/forgeframe/test-results");
+		},
+	);
 });
