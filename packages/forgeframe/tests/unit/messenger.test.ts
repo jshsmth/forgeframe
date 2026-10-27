@@ -13,6 +13,7 @@ import {
 } from "@/communication/protocol";
 import { MESSAGE_TYPE } from "@/constants";
 import { forgeFrameError } from "../forgeframe-error";
+import { createFrameWindow } from "../frame-window";
 
 type SourceWindow = Window & { postMessage: ReturnType<typeof vi.fn> };
 
@@ -24,7 +25,7 @@ describe("Messenger", () => {
 	beforeEach(() => {
 		messageListeners = new Set();
 
-		mockWindow = {
+		mockWindow = Object.assign(createFrameWindow(), {
 			addEventListener: vi.fn(
 				(event: string, listener: (event: MessageEvent) => void) => {
 					if (event === "message") {
@@ -40,8 +41,7 @@ describe("Messenger", () => {
 				},
 			),
 			postMessage: vi.fn(),
-			location: { origin: "https://consumer.com" },
-		} as unknown as Window;
+		});
 
 		// Create messenger with trusted domains for testing
 		messenger = new Messenger("test-uid", mockWindow, "https://consumer.com", [
@@ -66,12 +66,12 @@ describe("Messenger", () => {
 	 * so assert it with `vi.waitFor`.
 	 */
 	function createSourceWindow(): SourceWindow {
-		return { postMessage: vi.fn() } as unknown as SourceWindow;
+		return Object.assign(createFrameWindow(), { postMessage: vi.fn() });
 	}
 
 	function dispatchMessage(
 		data: unknown,
-		source: Window,
+		source: Window | null,
 		origin = "https://host.com",
 	) {
 		const event = new MessageEvent("message", {
@@ -170,10 +170,10 @@ describe("Messenger", () => {
 		);
 
 		it("defers its listener until listen() and attaches it once", () => {
-			const deferredWindow = {
+			const deferredWindow = Object.assign(createFrameWindow(), {
 				addEventListener: vi.fn(),
 				removeEventListener: vi.fn(),
-			} as unknown as Window;
+			});
 			const deferred = new Messenger(
 				"deferred-uid",
 				deferredWindow,
@@ -455,11 +455,11 @@ describe("Messenger", () => {
 
 		it("should cleanup pending request when postMessage throws", async () => {
 			const postMessageError = new Error("postMessage blocked");
-			targetWindow = {
+			targetWindow = Object.assign(createFrameWindow(), {
 				postMessage: vi.fn(() => {
 					throw postMessageError;
 				}),
-			} as unknown as Window;
+			});
 
 			await expect(
 				messenger.send(targetWindow, "https://target.com", "throwing-send"),
@@ -724,8 +724,8 @@ describe("Messenger", () => {
 				throw new Error("sync failure");
 			});
 			messenger.on("syncResult", () => 42);
-			const postMessage = vi.fn();
-			const sourceWindow = { postMessage } as unknown as Window;
+			const sourceWindow = createSourceWindow();
+			const { postMessage } = sourceWindow;
 			const source = { uid: "test-uid", domain: "https://sender.com" };
 			dispatchMessage(
 				serializeMessage(
@@ -854,7 +854,7 @@ describe("Messenger", () => {
 				),
 			);
 
-			dispatchMessage(request, null as unknown as Window);
+			dispatchMessage(request, null);
 			dispatchMessage(request, {} as Window);
 			expect(handler).not.toHaveBeenCalled();
 

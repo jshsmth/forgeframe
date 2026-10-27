@@ -9,6 +9,7 @@ import { MESSAGE_NAME } from "@/constants";
 import { create, prop } from "@/index";
 import type { Dimensions, PropsDefinition } from "@/types";
 import { forgeFrameError } from "../forgeframe-error";
+import { createFrameWindow } from "../frame-window";
 import {
 	getVerifiedHostOrigin,
 	setVerifiedHostOrigin,
@@ -27,6 +28,13 @@ type ControlProps = {
 const CONTROL_PROP_DEFINITIONS: PropsDefinition<ControlProps> = {
 	label: { schema: prop.string() },
 };
+
+/** A real window outside the session, whose postMessage replies are recorded. */
+function createRecordingWindow(): Window {
+	const recording = createFrameWindow();
+	vi.spyOn(recording, "postMessage").mockImplementation(() => {});
+	return recording;
+}
 
 describe("Host controls and routing integration", () => {
 	let harness: IframeIntegrationHarness | null = null;
@@ -416,7 +424,8 @@ describe("Host controls and routing integration", () => {
 
 		await expect(
 			harness.withHostGlobalsAsync(() =>
-				host.getPeerInstances({ anyConsumer: true } as never),
+				// @ts-expect-error anyConsumer is a removed option.
+				host.getPeerInstances({ anyConsumer: true }),
 			),
 		).rejects.toThrow(
 			forgeFrameError(
@@ -460,7 +469,11 @@ describe("Host controls and routing integration", () => {
 			cause: expect.any(TypeError),
 		});
 		await expect(
-			host.resize({ width: 1n as unknown as number, height: 10 }),
+			host.resize({
+				// @ts-expect-error A BigInt cannot be encoded in a message.
+				width: 1n,
+				height: 10,
+			}),
 		).rejects.toMatchObject({
 			code: "VALIDATION",
 			cause: expect.any(TypeError),
@@ -646,7 +659,7 @@ describe("Host controls and routing integration", () => {
 
 		await expect(renderPromise).resolves.toBeUndefined();
 
-		const evilHostWindow = { postMessage: vi.fn() } as unknown as Window;
+		const evilHostWindow = createRecordingWindow();
 		dispatchForgeFrameRequest({
 			targetWindow: harness.consumerWindow,
 			sourceWindow: evilHostWindow,
@@ -659,14 +672,9 @@ describe("Host controls and routing integration", () => {
 		await harness.flushMessages();
 
 		expect(instance.exports).toBeUndefined();
-		expect(
-			(evilHostWindow as unknown as { postMessage: ReturnType<typeof vi.fn> })
-				.postMessage,
-		).not.toHaveBeenCalled();
+		expect(evilHostWindow.postMessage).not.toHaveBeenCalled();
 
-		const spoofedTrustedHostWindow = {
-			postMessage: vi.fn(),
-		} as unknown as Window;
+		const spoofedTrustedHostWindow = createRecordingWindow();
 		dispatchForgeFrameRequest({
 			targetWindow: harness.consumerWindow,
 			sourceWindow: spoofedTrustedHostWindow,
@@ -685,7 +693,7 @@ describe("Host controls and routing integration", () => {
 
 		const serializedProps = { label: "Spoofed" };
 
-		const evilConsumerWindow = { postMessage: vi.fn() } as unknown as Window;
+		const evilConsumerWindow = createRecordingWindow();
 		dispatchForgeFrameRequest({
 			targetWindow: harness.hostWindow,
 			sourceWindow: evilConsumerWindow,
@@ -698,17 +706,9 @@ describe("Host controls and routing integration", () => {
 		await harness.flushMessages();
 
 		expect(hostProps.label).toBe("Original");
-		expect(
-			(
-				evilConsumerWindow as unknown as {
-					postMessage: ReturnType<typeof vi.fn>;
-				}
-			).postMessage,
-		).not.toHaveBeenCalled();
+		expect(evilConsumerWindow.postMessage).not.toHaveBeenCalled();
 
-		const spoofedTrustedConsumerWindow = {
-			postMessage: vi.fn(),
-		} as unknown as Window;
+		const spoofedTrustedConsumerWindow = createRecordingWindow();
 		dispatchForgeFrameRequest({
 			targetWindow: harness.hostWindow,
 			sourceWindow: spoofedTrustedConsumerWindow,

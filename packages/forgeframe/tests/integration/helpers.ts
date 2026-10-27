@@ -24,6 +24,7 @@ import type {
 	PropsOf,
 	RemoteValue,
 } from "@/types";
+import { requireValue } from "../require-value";
 
 const DEFAULT_HOST_URL = "https://host.example.com/widget";
 const GLOBAL_BINDINGS = ["window", "document", "self"] as const;
@@ -198,17 +199,13 @@ export function dispatchForgeFrameRequest(options: {
 }
 
 export function readLastPostedMessageData(sourceWindow: Window): unknown {
-	const calls = (
-		sourceWindow as unknown as {
-			postMessage?: Window["postMessage"] & { mock?: { calls: unknown[][] } };
-		}
-	).postMessage;
+	const { postMessage } = sourceWindow;
 
-	if (!calls || typeof calls !== "function" || !calls.mock) {
+	if (!vi.isMockFunction(postMessage)) {
 		return undefined;
 	}
 
-	const lastCall = calls.mock.calls.at(-1);
+	const lastCall = postMessage.mock.calls.at(-1);
 	if (!lastCall || typeof lastCall[0] !== "string") {
 		return undefined;
 	}
@@ -266,14 +263,16 @@ function createBaseIntegrationHarness(options?: {
 	bootstrapIframeHost: IframeIntegrationHarness["bootstrapIframeHost"];
 	bootstrapPopupHost: PopupIntegrationHarness["bootstrapPopupHost"];
 } {
-	const consumerWindow = window as Window & typeof globalThis;
+	const consumerWindow = window;
 	const consumerOrigin = consumerWindow.location.origin;
 
 	const hostDom = new JSDOM("<!doctype html><html><body></body></html>", {
 		url: options?.hostUrl ?? DEFAULT_HOST_URL,
 		pretendToBeVisual: true,
 	});
-	const hostWindow = hostDom.window as unknown as Window & typeof globalThis;
+	// @types/jsdom types `window` as its own DOMWindow; the document's
+	// defaultView is the same window, typed as lib.dom's.
+	const hostWindow = requireValue(hostDom.window.document.defaultView);
 	const hostOrigin = hostWindow.location.origin;
 
 	const originalConsumerPostMessage =

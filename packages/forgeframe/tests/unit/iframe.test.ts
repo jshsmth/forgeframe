@@ -166,7 +166,7 @@ describe("createIframeElement", () => {
 			dimensions: { width: 100, height: 100 },
 			sandbox: null,
 			attributes: {
-				title: undefined as unknown as string,
+				title: undefined,
 			},
 		});
 

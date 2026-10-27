@@ -34,6 +34,13 @@ function foreignValues(
 	})`);
 }
 
+/** `JSON` with native raw JSON, which the TypeScript lib does not declare yet. */
+type RawJSONSupport = JSON & { rawJSON(text: string): object };
+
+function hasRawJSON(json: JSON): json is RawJSONSupport {
+	return "rawJSON" in json && typeof json.rawJSON === "function";
+}
+
 describe("Cross-realm prop and export delivery", () => {
 	let harness: IframeIntegrationHarness | null = null;
 	afterEach(async () => {
@@ -189,7 +196,8 @@ describe("Cross-realm prop and export delivery", () => {
 
 	it("delivers native and foreign raw JSON as the values their text represents", async () => {
 		harness = createIframeIntegrationHarness();
-		if (!("rawJSON" in JSON) || typeof JSON.rawJSON !== "function") {
+		const hostJSON = harness.hostWindow.JSON;
+		if (!hasRawJSON(JSON) || !hasRawJSON(hostJSON)) {
 			throw new Error("The test runtime must support native raw JSON");
 		}
 		const { rawJSON } = JSON;
@@ -237,10 +245,7 @@ describe("Cross-realm prop and export delivery", () => {
 		expect(hostProps.nested).toEqual({ count: 2, label: "updated" });
 		expect(encodings).toBe(2);
 
-		const hostRealm = harness.hostWindow as unknown as {
-			JSON: { rawJSON: typeof rawJSON };
-		};
-		const hostRawValue = hostRealm.JSON.rawJSON("3");
+		const hostRawValue = hostJSON.rawJSON("3");
 		await harness.withHostGlobalsAsync(() =>
 			host.export({
 				custom: new RawValues("exported"),

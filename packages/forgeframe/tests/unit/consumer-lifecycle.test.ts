@@ -14,14 +14,21 @@ import { CONTEXT, EVENT, MESSAGE_NAME } from "@/constants";
 import { clearComponents, closeAll, create } from "@/core/component";
 import { ConsumerComponent } from "@/core/consumer";
 import { getPeerInstances } from "@/core/consumer/peers";
+import type { ConsumerRenderer } from "@/core/consumer/renderer";
 import { prop } from "@/props/prop";
 import * as popupRender from "@/render/popup";
+import type {
+	ComponentBaseOptions,
+	ComponentInstance,
+	OriginMatcher,
+} from "@/types";
 import { CleanupManager } from "@/utils/cleanup";
 import { forgeFrameError } from "../forgeframe-error";
+import { createFrameWindow } from "../frame-window";
 import { PEER_HOST_ORIGIN, setVerifiedHostOrigin } from "../peer-host-origin";
 import { requireValue } from "../require-value";
 
-const createdConsumers: Array<ConsumerComponent<Record<string, unknown>>> = [];
+const createdConsumers: Array<{ close(): Promise<void> }> = [];
 let dispatchedMessageCount = 0;
 
 type HandlerSource = Parameters<MessageHandler>[1];
@@ -45,6 +52,7 @@ type ConsumerInternals = {
 		context: string;
 		container: HTMLElement | null;
 		iframe: HTMLIFrameElement | null;
+		resize: ConsumerRenderer<Record<string, unknown>>["resize"];
 	};
 	propsPipeline: {
 		props: Record<string, unknown>;
@@ -62,17 +70,27 @@ type ConsumerInternals = {
 	rendered: boolean;
 };
 
-function getInternals(
-	component: ConsumerComponent<Record<string, unknown>>,
-): ConsumerInternals {
-	return component as unknown as ConsumerInternals;
+/** A consumer, or a factory instance, which is one. */
+type Component = ConsumerComponent<Record<string, unknown>> | ComponentInstance;
+
+/**
+ * Reads the private members of a consumer. The class declares them private,
+ * so only an assertion can name them; widening to `object` first lets one
+ * assertion do it.
+ */
+function getInternals(component: Component): ConsumerInternals {
+	const members: object = component;
+	return members as ConsumerInternals;
 }
 
 /**
  * Creates a consumer instance and tracks it for deterministic lifecycle cleanup.
  */
 function createConsumer(
-	options: Record<string, unknown> = {},
+	options: Partial<ComponentBaseOptions> & {
+		url?: string;
+		hostOrigins?: OriginMatcher;
+	} = {},
 	props: Record<string, unknown> = {},
 ): ConsumerComponent<Record<string, unknown>> {
 	const consumer = new ConsumerComponent<Record<string, unknown>>(
@@ -80,7 +98,7 @@ function createConsumer(
 			tag: "consumer-lifecycle-component",
 			url: "https://host.example.com/widget",
 			...options,
-		} as never,
+		},
 		props,
 	);
 	createdConsumers.push(consumer);
@@ -91,12 +109,10 @@ function createConsumer(
  * Tracks factory-created instances so the file's cleanup closes them, even
  * when an assertion fails before the end of a test.
  */
-function trackInstances<T extends object>(...instances: T[]): T[] {
-	createdConsumers.push(
-		...(instances as unknown as Array<
-			ConsumerComponent<Record<string, unknown>>
-		>),
-	);
+function trackInstances<T extends { close(): Promise<void> }>(
+	...instances: T[]
+): T[] {
+	createdConsumers.push(...instances);
 	return instances;
 }
 
@@ -114,13 +130,30 @@ function attachOpenedHost(
 	);
 }
 
+function spyOnPostMessage(hostWindow: Window) {
+	return vi.spyOn(hostWindow, "postMessage").mockReturnValue(undefined);
+}
+
+/** Posted-message spies of the windows {@link createHostWindow} created. */
+const postMessageSpies = new WeakMap<
+	Window,
+	ReturnType<typeof spyOnPostMessage>
+>();
+
+/**
+ * Creates a real window to stand in for host content. It records the messages
+ * posted to it instead of delivering them.
+ */
+function createHostWindow(): Window {
+	const hostWindow = createFrameWindow();
+	postMessageSpies.set(hostWindow, spyOnPostMessage(hostWindow));
+	return hostWindow;
+}
+
 /** Connects a host window to an instance so its host-control handlers accept messages. */
-function connectHostWindow(instance: object): Window {
-	const hostWindow = { postMessage: vi.fn() } as unknown as Window;
-	attachOpenedHost(
-		getInternals(instance as ConsumerComponent<Record<string, unknown>>),
-		hostWindow,
-	);
+function connectHostWindow(instance: Component): Window {
+	const hostWindow = createHostWindow();
+	attachOpenedHost(getInternals(instance), hostWindow);
 	return hostWindow;
 }
 
@@ -141,9 +174,7 @@ async function bootstrapHost(
 /**
  * Reads the component's messenger handler map for direct handler invocation tests.
  */
-function getHandlers(
-	component: ConsumerComponent<Record<string, unknown>>,
-): Map<string, DirectHandler> {
+function getHandlers(component: Component): Map<string, DirectHandler> {
 	return getInternals(component).transport.messenger.handlers;
 }
 
@@ -195,17 +226,19 @@ async function flushMessages(): Promise<void> {
 	await Promise.resolve();
 }
 
+/** Reads the messages posted to a window from {@link createHostWindow}. */
+function getPostedMessages(sourceWindow: Window): unknown[][] {
+	return requireValue(postMessageSpies.get(sourceWindow)).mock.calls;
+}
+
 function readResponseData(sourceWindow: Window): unknown {
-	const calls = (
-		sourceWindow as unknown as { postMessage: ReturnType<typeof vi.fn> }
-	).postMessage.mock.calls;
-	const lastCall = calls.at(-1);
+	const lastCall = getPostedMessages(sourceWindow).at(-1);
 
 	if (!lastCall) {
 		return undefined;
 	}
 
-	return JSON.parse(lastCall[0].slice("forgeframe:".length)).data;
+	return JSON.parse(String(lastCall[0]).slice("forgeframe:".length)).data;
 }
 
 afterEach(async () => {
@@ -224,11 +257,7 @@ describe("Consumer lifecycle behavior", () => {
 		const onError = vi.fn();
 		const consumer = createConsumer({ initTimeout: 5 });
 		consumer.event.on("error", onError);
-		const waitForHost = (
-			consumer as unknown as {
-				waitForHost: () => Promise<void>;
-			}
-		).waitForHost;
+		const waitForHost = getInternals(consumer).waitForHost;
 
 		const waitPromise = waitForHost.call(consumer);
 		const timeoutExpectation = expect(waitPromise).rejects.toThrow(
@@ -247,7 +276,7 @@ describe("Consumer lifecycle behavior", () => {
 		const consumer = createConsumer({ initTimeout: 50 });
 		const internal = getInternals(consumer);
 		const waitForHost = internal.waitForHost;
-		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+		const hostWindow = createHostWindow();
 		attachOpenedHost(internal, hostWindow);
 		const session = await bootstrapHost(consumer, hostWindow);
 
@@ -267,7 +296,7 @@ describe("Consumer lifecycle behavior", () => {
 		const consumer = createConsumer({ initTimeout: 50 });
 		const internal = getInternals(consumer);
 		const waitForHost = internal.waitForHost;
-		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+		const hostWindow = createHostWindow();
 		attachOpenedHost(internal, hostWindow);
 		const session = await bootstrapHost(consumer, hostWindow);
 		const initHandler = getHandlers(consumer).get(MESSAGE_NAME.INIT);
@@ -289,11 +318,7 @@ describe("Consumer lifecycle behavior", () => {
 			{ secret: "same-origin-only" },
 		);
 		const internal = getInternals(consumer);
-		const hostWindow = {
-			closed: false,
-			postMessage: vi.fn(),
-			location: { origin: window.location.origin },
-		} as unknown as Window;
+		const hostWindow = createHostWindow();
 		attachOpenedHost(internal, hostWindow);
 		const bootstrap = getHandlers(consumer).get(MESSAGE_NAME.BOOTSTRAP);
 		await expect(
@@ -319,10 +344,7 @@ describe("Consumer lifecycle behavior", () => {
 			{ amount: 1 },
 		);
 		const internal = getInternals(consumer);
-		const hostWindow = {
-			closed: false,
-			postMessage: vi.fn(),
-		} as unknown as Window;
+		const hostWindow = createHostWindow();
 		const sendSpy = vi
 			.spyOn(internal.transport.messenger, "send")
 			.mockResolvedValue(undefined);
@@ -363,11 +385,7 @@ describe("Consumer lifecycle behavior", () => {
 		const initHandler = handlers.get(MESSAGE_NAME.INIT);
 
 		const internal = getInternals(consumer);
-		const hostWindow = {
-			closed: false,
-			postMessage: vi.fn(),
-			location: { origin: "https://host.example.com" },
-		} as unknown as Window;
+		const hostWindow = createHostWindow();
 		attachOpenedHost(internal, hostWindow);
 		const session = await bootstrapHost(consumer, hostWindow);
 
@@ -412,13 +430,9 @@ describe("Consumer lifecycle behavior", () => {
 		const callHandler = handlers.get(MESSAGE_NAME.CALL);
 
 		const internal = getInternals(consumer);
-		attachOpenedHost(internal, {
-			closed: false,
-			postMessage: vi.fn(),
-			location: { origin: window.location.origin },
-		} as unknown as Window);
+		attachOpenedHost(internal, createHostWindow());
 
-		let releaseFirstSend!: () => void;
+		let releaseFirstSend: (() => void) | undefined;
 		const firstSendInFlight = new Promise<void>((resolve) => {
 			releaseFirstSend = resolve;
 		});
@@ -485,8 +499,8 @@ describe("Consumer lifecycle behavior", () => {
 		vi.useFakeTimers();
 		const consumer = createConsumer({ initTimeout: 50 });
 		const internal = getInternals(consumer);
-		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
-		const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
+		const hostWindow = createHostWindow();
+		const spoofedWindow = createHostWindow();
 		attachOpenedHost(internal, hostWindow);
 		const session = await bootstrapHost(consumer, hostWindow);
 
@@ -513,8 +527,8 @@ describe("Consumer lifecycle behavior", () => {
 	it("should ignore spoofed CLOSE from a different trusted window and accept the opened host window", async () => {
 		const consumer = createConsumer();
 		const internal = getInternals(consumer);
-		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
-		const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
+		const hostWindow = createHostWindow();
+		const spoofedWindow = createHostWindow();
 		const originalClose = consumer.close.bind(consumer);
 		const closeSpy = vi.spyOn(consumer, "close").mockResolvedValue(undefined);
 		attachOpenedHost(internal, hostWindow);
@@ -543,17 +557,16 @@ describe("Consumer lifecycle behavior", () => {
 		const consumer = createConsumer();
 		const handlers = getHandlers(consumer);
 		const internal = getInternals(consumer);
-		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+		const hostWindow = createHostWindow();
 		attachOpenedHost(internal, hostWindow);
 
 		const closeSpy = vi.spyOn(consumer, "close").mockResolvedValue(undefined);
 		const resized = vi.fn();
 		consumer.event.on(EVENT.RESIZE, resized);
 		// Stand in for a mounted frame; with nothing mounted a host resize emits nothing.
-		vi.spyOn(
-			(consumer as unknown as { renderer: { resize(): string } }).renderer,
-			"resize",
-		).mockReturnValue("resized");
+		vi.spyOn(getInternals(consumer).renderer, "resize").mockReturnValue(
+			"resized",
+		);
 		const focusSpy = vi.spyOn(consumer, "focus").mockResolvedValue(undefined);
 		const showSpy = vi.spyOn(consumer, "show").mockResolvedValue(undefined);
 		const hideSpy = vi.spyOn(consumer, "hide").mockResolvedValue(undefined);
@@ -601,8 +614,8 @@ describe("Consumer lifecycle behavior", () => {
 		const consumer = createConsumer();
 		consumer.event.on("error", onError);
 		const internal = getInternals(consumer);
-		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
-		const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
+		const hostWindow = createHostWindow();
+		const spoofedWindow = createHostWindow();
 		attachOpenedHost(internal, hostWindow);
 
 		dispatchHostMessage(MESSAGE_NAME.ERROR, spoofedWindow, {
@@ -629,8 +642,8 @@ describe("Consumer lifecycle behavior", () => {
 	it("should ignore spoofed EXPORT from a different trusted window and accept the opened host window", async () => {
 		const consumer = createConsumer();
 		const internal = getInternals(consumer);
-		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
-		const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
+		const hostWindow = createHostWindow();
+		const spoofedWindow = createHostWindow();
 		attachOpenedHost(internal, hostWindow);
 
 		dispatchHostMessage(MESSAGE_NAME.EXPORT, spoofedWindow, {
@@ -671,7 +684,7 @@ describe("Consumer lifecycle behavior", () => {
 		setVerifiedHostOrigin("https://host.example.com", requester, sibling);
 
 		const hostWindow = connectHostWindow(requester);
-		const spoofedWindow = { postMessage: vi.fn() } as unknown as Window;
+		const spoofedWindow = createHostWindow();
 
 		dispatchHostMessage(MESSAGE_NAME.GET_PEERS, spoofedWindow, {
 			data: {
@@ -819,11 +832,10 @@ describe("Consumer lifecycle behavior", () => {
 		});
 		await flushMessages();
 
-		const calls = (
-			hostWindow as unknown as { postMessage: ReturnType<typeof vi.fn> }
-		).postMessage.mock.calls;
 		const response = JSON.parse(
-			String(calls.at(-1)?.[0]).slice("forgeframe:".length),
+			String(getPostedMessages(hostWindow).at(-1)?.[0]).slice(
+				"forgeframe:".length,
+			),
 		);
 		expect(response.data).toBeUndefined();
 		expect(response.error.message).toBe(
@@ -858,9 +870,7 @@ describe("Consumer lifecycle behavior", () => {
 
 		const hostWindow = connectHostWindow(requester);
 		const handler = requireValue(
-			getHandlers(
-				requester as unknown as ConsumerComponent<Record<string, unknown>>,
-			).get(MESSAGE_NAME.GET_PEERS),
+			getHandlers(requester).get(MESSAGE_NAME.GET_PEERS),
 		);
 
 		for (const data of [
@@ -899,35 +909,26 @@ describe("Consumer lifecycle behavior", () => {
 		document.body.appendChild(container);
 
 		const openFailure = createConsumer();
-		vi.spyOn(
-			openFailure as unknown as { prerender: () => Promise<void> },
-			"prerender",
-		).mockResolvedValue(undefined);
+		vi.spyOn(getInternals(openFailure), "prerender").mockResolvedValue(
+			undefined,
+		);
 		vi.spyOn(getInternals(openFailure), "open").mockRejectedValue(
 			new Error("open failed"),
 		);
-		const openDestroySpy = vi.spyOn(
-			openFailure as unknown as { destroy: () => Promise<void> },
-			"destroy",
-		);
+		const openDestroySpy = vi.spyOn(getInternals(openFailure), "destroy");
 
 		await expect(openFailure.render(container)).rejects.toThrow("open failed");
 		expect(openDestroySpy).toHaveBeenCalledTimes(1);
 
 		const waitFailure = createConsumer();
-		vi.spyOn(
-			waitFailure as unknown as { prerender: () => Promise<void> },
-			"prerender",
-		).mockResolvedValue(undefined);
-		vi.spyOn(getInternals(waitFailure), "open").mockResolvedValue(undefined);
-		vi.spyOn(
-			waitFailure as unknown as { waitForHost: () => Promise<void> },
-			"waitForHost",
-		).mockRejectedValue(new Error("init failed"));
-		const waitDestroySpy = vi.spyOn(
-			waitFailure as unknown as { destroy: () => Promise<void> },
-			"destroy",
+		vi.spyOn(getInternals(waitFailure), "prerender").mockResolvedValue(
+			undefined,
 		);
+		vi.spyOn(getInternals(waitFailure), "open").mockResolvedValue(undefined);
+		vi.spyOn(getInternals(waitFailure), "waitForHost").mockRejectedValue(
+			new Error("init failed"),
+		);
+		const waitDestroySpy = vi.spyOn(getInternals(waitFailure), "destroy");
 
 		await expect(waitFailure.render(container)).rejects.toThrow("init failed");
 		expect(waitDestroySpy).toHaveBeenCalledTimes(1);
@@ -942,10 +943,9 @@ describe("Consumer lifecycle behavior", () => {
 		});
 
 		vi.spyOn(getInternals(consumer), "open").mockResolvedValue(undefined);
-		vi.spyOn(
-			consumer as unknown as { waitForHost: () => Promise<void> },
-			"waitForHost",
-		).mockResolvedValue(undefined);
+		vi.spyOn(getInternals(consumer), "waitForHost").mockResolvedValue(
+			undefined,
+		);
 
 		await consumer.render(container);
 
@@ -954,11 +954,8 @@ describe("Consumer lifecycle behavior", () => {
 	});
 
 	it("should route popup close watcher through close()", async () => {
-		const hostWindow = {
-			closed: false,
-			focus: vi.fn(),
-			close: vi.fn(),
-		} as unknown as Window;
+		const hostWindow = createHostWindow();
+		vi.spyOn(hostWindow, "close").mockReturnValue(undefined);
 
 		const closeCallbackRef: { current: (() => void) | null } = {
 			current: null,
@@ -980,18 +977,15 @@ describe("Consumer lifecycle behavior", () => {
 		internal.renderer.context = CONTEXT.POPUP;
 		internal.renderer.container = document.createElement("div");
 
-		vi.spyOn(
-			consumer as unknown as { buildWindowName: () => string },
-			"buildWindowName",
-		).mockReturnValue("forgeframe-test-window");
-		vi.spyOn(
-			consumer as unknown as { buildUrl: () => string },
-			"buildUrl",
-		).mockReturnValue("https://host.example.com/widget");
-		vi.spyOn(
-			consumer as unknown as { buildBodyParams: () => URLSearchParams },
-			"buildBodyParams",
-		).mockReturnValue(new URLSearchParams());
+		vi.spyOn(getInternals(consumer), "buildWindowName").mockReturnValue(
+			"forgeframe-test-window",
+		);
+		vi.spyOn(getInternals(consumer), "buildUrl").mockReturnValue(
+			"https://host.example.com/widget",
+		);
+		vi.spyOn(getInternals(consumer), "buildBodyParams").mockReturnValue(
+			new URLSearchParams(),
+		);
 
 		await getInternals(consumer).open("https://host.example.com/widget");
 
@@ -1020,11 +1014,7 @@ describe("Consumer lifecycle behavior", () => {
 		document.body.appendChild(container);
 
 		const destroyedInstance = createConsumer();
-		await (
-			destroyedInstance as unknown as {
-				destroy: () => Promise<void>;
-			}
-		).destroy();
+		await getInternals(destroyedInstance).destroy();
 		await expect(destroyedInstance.render(container)).rejects.toThrow(
 			forgeFrameError("CLOSED", "Component has been destroyed"),
 		);
@@ -1296,10 +1286,10 @@ describe("Consumer lifecycle behavior", () => {
 	it("should tear down a popup returned after close has already begun", async () => {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
-		const popupWindow = {
-			closed: false,
-			close: vi.fn(),
-		} as unknown as Window;
+		const popupWindow = createHostWindow();
+		const closePopup = vi
+			.spyOn(popupWindow, "close")
+			.mockReturnValue(undefined);
 		const consumer = createConsumer({ context: CONTEXT.POPUP });
 
 		vi.spyOn(popupRender, "openPopup").mockImplementation(() => {
@@ -1318,7 +1308,7 @@ describe("Consumer lifecycle behavior", () => {
 			),
 		);
 		await vi.waitFor(() => {
-			expect(popupWindow.close).toHaveBeenCalledTimes(1);
+			expect(closePopup).toHaveBeenCalledTimes(1);
 		});
 
 		expect(waitForHostSpy).not.toHaveBeenCalled();
@@ -1399,11 +1389,7 @@ describe("Consumer lifecycle behavior", () => {
 			{ amount: 1 },
 		);
 
-		const hostWindow = {
-			closed: false,
-			postMessage: vi.fn(),
-			location: { origin: "https://host.example.com" },
-		} as unknown as Window;
+		const hostWindow = createHostWindow();
 		const internal = getInternals(consumer);
 		attachOpenedHost(internal, hostWindow);
 		internal.transport.openedHostOrigin = "https://host.example.com";
@@ -1432,11 +1418,7 @@ describe("Consumer lifecycle behavior", () => {
 			{ amount: 1 },
 		);
 
-		const hostWindow = {
-			closed: false,
-			postMessage: vi.fn(),
-			location: { origin: "https://host.example.com" },
-		} as unknown as Window;
+		const hostWindow = createHostWindow();
 		const internal = getInternals(consumer);
 		attachOpenedHost(internal, hostWindow);
 		internal.transport.openedHostOrigin = "https://host.example.com";
@@ -1468,7 +1450,9 @@ describe("Consumer lifecycle behavior", () => {
 		);
 
 		const internal = getInternals(consumer);
-		attachOpenedHost(internal, { closed: true } as unknown as Window);
+		const closedWindow = createHostWindow();
+		Object.defineProperty(closedWindow, "closed", { value: true });
+		attachOpenedHost(internal, closedWindow);
 		internal.transport.openedHostOrigin = "https://host.example.com";
 
 		const sendSpy = vi
@@ -1502,10 +1486,9 @@ describe("Factory instance close and teardown", () => {
 		};
 		instance.event.once("resize", rearm);
 		// Stand in for a mounted frame; with nothing mounted resize emits nothing.
-		vi.spyOn(
-			(instance as unknown as { renderer: { resize(): string } }).renderer,
-			"resize",
-		).mockReturnValue("resized");
+		vi.spyOn(getInternals(instance).renderer, "resize").mockReturnValue(
+			"resized",
+		);
 
 		instance.resize({ width: 401 });
 		expect(sizes).toEqual([{ width: 401 }]);

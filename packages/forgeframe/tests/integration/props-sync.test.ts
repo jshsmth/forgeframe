@@ -9,7 +9,7 @@ import { z } from "zod";
 import { unregisterComponent } from "@/core/component";
 import { getHost } from "@/core/host/bootstrap";
 import { create, prop } from "@/index";
-import type { PropsDefinition } from "@/types";
+import type { InferPropsInput, PropsDefinition } from "@/types";
 import { forgeFrameError } from "../forgeframe-error";
 import {
 	createIframeIntegrationHarness,
@@ -542,11 +542,12 @@ describe("Props sync integration", () => {
 
 	it("treats explicitly undefined definitions as omitted through creation, bootstrap and updates", async () => {
 		harness = createIframeIntegrationHarness();
-		// JavaScript callers may leave an entry undefined, as conditional definitions do.
-		const definitions = {
+		const definitions: PropsDefinition<{ title: string; message: string }> = {
+			// @ts-expect-error JavaScript callers may leave an entry undefined, as
+			// conditional definitions do
 			title: undefined,
 			message: prop.string(),
-		} as unknown as PropsDefinition<{ title: string; message: string }>;
+		};
 		const Component = create({
 			tag: "integration-undefined-definition",
 			url: "https://host.example.com/widget",
@@ -573,10 +574,11 @@ describe("Props sync integration", () => {
 	it("drops a delivered value whose host definition entry is undefined, like an undeclared one", async () => {
 		harness = createIframeIntegrationHarness();
 		const consumerDefinitions = { beta: prop.string(), title: prop.string() };
-		const hostDefinitions = {
+		const hostDefinitions: PropsDefinition<{ beta: string; title: string }> = {
+			// @ts-expect-error JavaScript hosts may leave an entry undefined
 			beta: undefined,
 			title: prop.string(),
-		} as unknown as PropsDefinition<{ beta: string; title: string }>;
+		};
 		const Component = create({
 			tag: "integration-host-undefined-definition",
 			url: "https://host.example.com/widget",
@@ -805,7 +807,7 @@ describe("undefined in factory input and updates", () => {
 		empty: prop.string().nullable().optional(),
 	};
 
-	async function renderWith(input: Record<string, unknown>) {
+	async function renderWith(input: InferPropsInput<typeof definitions>) {
 		harness = createIframeIntegrationHarness();
 		const container = document.createElement("div");
 		document.body.append(container);
@@ -814,7 +816,7 @@ describe("undefined in factory input and updates", () => {
 			url: "https://host.example.com/widget",
 			props: definitions,
 		});
-		const instance = Component(input as never);
+		const instance = Component(input);
 		const committed: Record<string, unknown>[] = [];
 		instance.event.on("props", (props) => {
 			committed.push({ ...props });

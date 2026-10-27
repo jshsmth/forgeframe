@@ -3,7 +3,15 @@
  *
  * Covers popup open/focus/close/resize utilities, popup-block detection through `openPopup`, and close watcher polling behavior.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	type Mock,
+	vi,
+} from "vitest";
 import {
 	closePopup,
 	focusPopup,
@@ -12,15 +20,36 @@ import {
 	watchPopupClose,
 } from "@/render/popup";
 import { forgeFrameError } from "../forgeframe-error";
+import { createFrameWindow } from "../frame-window";
+
+/** A real window whose `closed` reads `closed()`, open by default. */
+function popupWindow(closed: () => boolean = () => false): Window {
+	const win = createFrameWindow();
+	Object.defineProperty(win, "closed", { get: closed });
+	return win;
+}
+
+/** An open popup with a 400x300 outer size and a recorded `resizeTo`. */
+function resizablePopup(): {
+	win: Window;
+	resizeTo: Mock<Window["resizeTo"]>;
+} {
+	const win = popupWindow();
+	vi.spyOn(win, "outerWidth", "get").mockReturnValue(400);
+	vi.spyOn(win, "outerHeight", "get").mockReturnValue(300);
+	const resizeTo = vi.fn<Window["resizeTo"]>();
+	win.resizeTo = resizeTo;
+	return { win, resizeTo };
+}
+
+function throwAccessDenied(): never {
+	throw new Error("Access denied");
+}
 
 describe("openPopup", () => {
 	// vi.spyOn(window, "open") is restored by restoreMocks.
 	it("should open popup with correct features", () => {
-		const mockWin = {
-			closed: false,
-			innerWidth: 500,
-			innerHeight: 600,
-		} as Window;
+		const mockWin = popupWindow();
 
 		vi.spyOn(window, "open").mockReturnValue(mockWin);
 
@@ -44,13 +73,7 @@ describe("openPopup", () => {
 	});
 
 	it("should include security features", () => {
-		const mockWin = {
-			closed: false,
-			innerWidth: 500,
-			innerHeight: 600,
-		} as Window;
-
-		vi.spyOn(window, "open").mockReturnValue(mockWin);
+		vi.spyOn(window, "open").mockReturnValue(popupWindow());
 
 		openPopup({
 			url: "https://example.com",
@@ -79,20 +102,22 @@ describe("openPopup", () => {
 	});
 
 	it.each([
-		["closed", { closed: true }],
-		["zero-dimension", { closed: false, innerWidth: 0, innerHeight: 0 }],
+		["closed", () => popupWindow(() => true)],
 		[
-			"inaccessible",
-			{
-				get closed(): boolean {
-					throw new Error("Access denied");
-				},
+			"zero-dimension",
+			() => {
+				const win = popupWindow();
+				vi.spyOn(win, "innerWidth", "get").mockReturnValue(0);
+				vi.spyOn(win, "innerHeight", "get").mockReturnValue(0);
+				return win;
 			},
 		],
-	])("should throw POPUP_BLOCKED for a %s popup window", (label, mockWin) => {
-		vi.spyOn(window, "open").mockReturnValue(mockWin as unknown as Window);
-		const close = vi.fn();
-		Object.defineProperty(mockWin, "close", { value: close });
+		["inaccessible", () => popupWindow(throwAccessDenied)],
+	])("should throw POPUP_BLOCKED for a %s popup window", (label, createWin) => {
+		const mockWin = createWin();
+		vi.spyOn(window, "open").mockReturnValue(mockWin);
+		const close = vi.fn<Window["close"]>();
+		mockWin.close = close;
 
 		expect(() =>
 			openPopup({
@@ -106,13 +131,7 @@ describe("openPopup", () => {
 	});
 
 	it("should handle string dimensions", () => {
-		const mockWin = {
-			closed: false,
-			innerWidth: 500,
-			innerHeight: 600,
-		} as Window;
-
-		vi.spyOn(window, "open").mockReturnValue(mockWin);
+		vi.spyOn(window, "open").mockReturnValue(popupWindow());
 
 		openPopup({
 			url: "https://example.com",
@@ -128,13 +147,7 @@ describe("openPopup", () => {
 	});
 
 	it("should use fallback for invalid dimensions", () => {
-		const mockWin = {
-			closed: false,
-			innerWidth: 500,
-			innerHeight: 500,
-		} as Window;
-
-		vi.spyOn(window, "open").mockReturnValue(mockWin);
+		vi.spyOn(window, "open").mockReturnValue(popupWindow());
 
 		openPopup({
 			url: "https://example.com",
@@ -153,34 +166,28 @@ describe("openPopup", () => {
 
 describe("closePopup", () => {
 	it("should close open popup", () => {
-		const mockWin = {
-			closed: false,
-			close: vi.fn(),
-		} as unknown as Window;
+		const mockWin = popupWindow();
+		const close = vi.fn<Window["close"]>();
+		mockWin.close = close;
 
 		closePopup(mockWin);
 
-		expect(mockWin.close).toHaveBeenCalled();
+		expect(close).toHaveBeenCalled();
 	});
 
 	it("should not call close on already closed popup", () => {
-		const mockWin = {
-			closed: true,
-			close: vi.fn(),
-		} as unknown as Window;
+		const mockWin = popupWindow(() => true);
+		const close = vi.fn<Window["close"]>();
+		mockWin.close = close;
 
 		closePopup(mockWin);
 
-		expect(mockWin.close).not.toHaveBeenCalled();
+		expect(close).not.toHaveBeenCalled();
 	});
 
 	it("should not throw when popup.close() throws due to access errors", () => {
-		const mockWin = {
-			closed: false,
-			close: vi.fn().mockImplementation(() => {
-				throw new Error("Access denied");
-			}),
-		} as unknown as Window;
+		const mockWin = popupWindow();
+		mockWin.close = throwAccessDenied;
 
 		expect(() => closePopup(mockWin)).not.toThrow();
 	});
@@ -188,34 +195,28 @@ describe("closePopup", () => {
 
 describe("focusPopup", () => {
 	it("should focus open popup", () => {
-		const mockWin = {
-			closed: false,
-			focus: vi.fn(),
-		} as unknown as Window;
+		const mockWin = popupWindow();
+		const focus = vi.fn<Window["focus"]>();
+		mockWin.focus = focus;
 
 		focusPopup(mockWin);
 
-		expect(mockWin.focus).toHaveBeenCalled();
+		expect(focus).toHaveBeenCalled();
 	});
 
 	it("should not focus closed popup", () => {
-		const mockWin = {
-			closed: true,
-			focus: vi.fn(),
-		} as unknown as Window;
+		const mockWin = popupWindow(() => true);
+		const focus = vi.fn<Window["focus"]>();
+		mockWin.focus = focus;
 
 		focusPopup(mockWin);
 
-		expect(mockWin.focus).not.toHaveBeenCalled();
+		expect(focus).not.toHaveBeenCalled();
 	});
 
 	it("should not throw when popup.focus() throws due to access errors", () => {
-		const mockWin = {
-			closed: false,
-			focus: vi.fn().mockImplementation(() => {
-				throw new Error("Access denied");
-			}),
-		} as unknown as Window;
+		const mockWin = popupWindow();
+		mockWin.focus = throwAccessDenied;
 
 		expect(() => focusPopup(mockWin)).not.toThrow();
 	});
@@ -233,11 +234,7 @@ describe("watchPopupClose", () => {
 	it("should call callback when popup closes", () => {
 		const callback = vi.fn();
 		let isClosed = false;
-		const mockWin = {
-			get closed() {
-				return isClosed;
-			},
-		} as Window;
+		const mockWin = popupWindow(() => isClosed);
 
 		watchPopupClose(mockWin, callback, {
 			initialInterval: 100,
@@ -258,7 +255,7 @@ describe("watchPopupClose", () => {
 
 	it("should return cleanup function", () => {
 		const callback = vi.fn();
-		const mockWin = { closed: false } as Window;
+		const mockWin = popupWindow();
 
 		const cleanup = watchPopupClose(mockWin, callback, {
 			initialInterval: 100,
@@ -275,11 +272,9 @@ describe("watchPopupClose", () => {
 
 	it("should call callback on access error (window inaccessible)", () => {
 		const callback = vi.fn();
-		const mockWin = {
-			get closed() {
-				throw new Error("Cross-origin");
-			},
-		} as unknown as Window;
+		const mockWin = popupWindow(() => {
+			throw new Error("Cross-origin");
+		});
 
 		watchPopupClose(mockWin, callback, {
 			initialInterval: 100,
@@ -297,7 +292,7 @@ describe("watchPopupClose", () => {
 		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
 		watchPopupClose(
-			{ closed: true } as Window,
+			popupWindow(() => true),
 			() => {
 				throw failure;
 			},
@@ -314,11 +309,7 @@ describe("watchPopupClose", () => {
 	it("should use default interval of 100ms (with exponential backoff)", () => {
 		const callback = vi.fn();
 		let isClosed = false;
-		const mockWin = {
-			get closed() {
-				return isClosed;
-			},
-		} as Window;
+		const mockWin = popupWindow(() => isClosed);
 
 		watchPopupClose(mockWin, callback);
 
@@ -335,83 +326,57 @@ describe("watchPopupClose", () => {
 
 describe("resizePopup", () => {
 	it("should resize popup to new dimensions", () => {
-		const mockWin = {
-			outerWidth: 400,
-			outerHeight: 300,
-			resizeTo: vi.fn(),
-		} as unknown as Window;
+		const { win, resizeTo } = resizablePopup();
 
-		resizePopup(mockWin, { width: 600, height: 500 });
+		resizePopup(win, { width: 600, height: 500 });
 
-		expect(mockWin.resizeTo).toHaveBeenCalledWith(600, 500);
+		expect(resizeTo).toHaveBeenCalledWith(600, 500);
 	});
 
 	it("should use current dimensions as fallback", () => {
-		const mockWin = {
-			outerWidth: 400,
-			outerHeight: 300,
-			resizeTo: vi.fn(),
-		} as unknown as Window;
+		const { win, resizeTo } = resizablePopup();
 
-		resizePopup(mockWin, {});
+		resizePopup(win, {});
 
-		expect(mockWin.resizeTo).toHaveBeenCalledWith(400, 300);
+		expect(resizeTo).toHaveBeenCalledWith(400, 300);
 	});
 
 	it("keeps current dimensions when resize uses nonpixel CSS units", () => {
-		const mockWin = {
-			outerWidth: 400,
-			outerHeight: 300,
-			resizeTo: vi.fn(),
-		} as unknown as Window;
-		resizePopup(mockWin, { width: "100%", height: "50vh" });
-		expect(mockWin.resizeTo).toHaveBeenCalledWith(400, 300);
+		const { win, resizeTo } = resizablePopup();
+		resizePopup(win, { width: "100%", height: "50vh" });
+		expect(resizeTo).toHaveBeenCalledWith(400, 300);
 	});
 
 	it("should handle string dimensions", () => {
-		const mockWin = {
-			outerWidth: 400,
-			outerHeight: 300,
-			resizeTo: vi.fn(),
-		} as unknown as Window;
+		const { win, resizeTo } = resizablePopup();
 
-		resizePopup(mockWin, { width: "800px", height: "600px" });
+		resizePopup(win, { width: "800px", height: "600px" });
 
-		expect(mockWin.resizeTo).toHaveBeenCalledWith(800, 600);
+		expect(resizeTo).toHaveBeenCalledWith(800, 600);
 	});
 
 	it("reports a denied resize without throwing", () => {
-		const mockWin = {
-			outerWidth: 400,
-			outerHeight: 300,
-			resizeTo: vi.fn().mockImplementation(() => {
-				throw new Error("Resize blocked");
-			}),
-		} as unknown as Window;
+		const { win } = resizablePopup();
+		win.resizeTo = () => {
+			throw new Error("Resize blocked");
+		};
 
-		expect(resizePopup(mockWin, { width: 600, height: 500 })).toBe(false);
+		expect(resizePopup(win, { width: 600, height: 500 })).toBe(false);
 	});
 
 	it("reports cross-origin windows whose outer size cannot be read", () => {
-		const resizeTo = vi.fn();
-		const crossOrigin = {
-			get outerWidth(): number {
-				throw new DOMException("Blocked", "SecurityError");
-			},
-			resizeTo,
-		} as unknown as Window;
+		const { win: crossOrigin, resizeTo } = resizablePopup();
+		vi.spyOn(crossOrigin, "outerWidth", "get").mockImplementation(() => {
+			throw new DOMException("Blocked", "SecurityError");
+		});
 
 		expect(resizePopup(crossOrigin, { height: 500 })).toBe(false);
 		expect(resizeTo).not.toHaveBeenCalled();
 	});
 
 	it("reports an allowed resize", () => {
-		const mockWin = {
-			outerWidth: 400,
-			outerHeight: 300,
-			resizeTo: vi.fn(),
-		} as unknown as Window;
+		const { win } = resizablePopup();
 
-		expect(resizePopup(mockWin, { width: 600 })).toBe(true);
+		expect(resizePopup(win, { width: 600 })).toBe(true);
 	});
 });

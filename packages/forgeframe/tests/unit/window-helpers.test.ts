@@ -13,6 +13,25 @@ import {
 	isWindowClosed,
 	matchOrigin,
 } from "@/window/helpers";
+import { createFrameWindow } from "../frame-window";
+
+/** The test window, except that reading `key` calls `read`. */
+function windowWith<K extends keyof Window>(
+	key: K,
+	read: () => Window[K],
+): Window {
+	return new Proxy(window, {
+		get: (target, property) =>
+			property === key ? read() : Reflect.get(target, property),
+	});
+}
+
+/** A window whose `key` throws on read, as it does across origins. */
+function crossOriginWindow(key: keyof Window): Window {
+	return windowWith(key, () => {
+		throw new Error("Cross-origin access denied");
+	});
+}
 
 describe("getOrigin", () => {
 	it("should return current window origin", () => {
@@ -21,11 +40,7 @@ describe("getOrigin", () => {
 	});
 
 	it("should return empty string for cross-origin window", () => {
-		const crossOriginWin = {
-			get location() {
-				throw new Error("Cross-origin access denied");
-			},
-		} as unknown as Window;
+		const crossOriginWin = crossOriginWindow("location");
 
 		expect(getOrigin(crossOriginWin)).toBe("");
 	});
@@ -93,9 +108,8 @@ describe("matchOrigin", () => {
 	});
 
 	it("should return false for invalid pattern type", () => {
-		expect(matchOrigin(123 as unknown as string, "https://example.com")).toBe(
-			false,
-		);
+		// @ts-expect-error JavaScript callers can pass any pattern.
+		expect(matchOrigin(123, "https://example.com")).toBe(false);
 	});
 });
 
@@ -115,11 +129,7 @@ describe("isWindowClosed", () => {
 	});
 
 	it("should return true when accessing closed throws", () => {
-		const errorWin = {
-			get closed() {
-				throw new Error("Access denied");
-			},
-		} as unknown as Window;
+		const errorWin = crossOriginWindow("closed");
 
 		expect(isWindowClosed(errorWin)).toBe(true);
 	});
@@ -138,11 +148,7 @@ describe("getOpener", () => {
 	});
 
 	it("should return null on cross-origin error", () => {
-		const win = {
-			get opener() {
-				throw new Error("Cross-origin");
-			},
-		} as unknown as Window;
+		const win = crossOriginWindow("opener");
 
 		expect(getOpener(win)).toBeNull();
 	});
@@ -150,7 +156,9 @@ describe("getOpener", () => {
 
 describe("getConsumer", () => {
 	it("should return null for top-level window", () => {
-		const win = { parent: null } as unknown as Window;
+		const win = createFrameWindow();
+		// A detached window's parent is null, which lib.dom's type omits.
+		Object.defineProperty(win, "parent", { value: null });
 		expect(getConsumer(win)).toBeNull();
 	});
 
@@ -167,11 +175,7 @@ describe("getConsumer", () => {
 	});
 
 	it("should return null on cross-origin error", () => {
-		const win = {
-			get parent() {
-				throw new Error("Cross-origin");
-			},
-		} as unknown as Window;
+		const win = crossOriginWindow("parent");
 
 		expect(getConsumer(win)).toBeNull();
 	});
@@ -191,11 +195,7 @@ describe("isIframe", () => {
 	});
 
 	it("should return true on cross-origin error (conservative)", () => {
-		const win = {
-			get parent() {
-				throw new Error("Cross-origin");
-			},
-		} as unknown as Window;
+		const win = crossOriginWindow("parent");
 
 		expect(isIframe(win)).toBe(true);
 	});
@@ -214,11 +214,7 @@ describe("isPopup", () => {
 	});
 
 	it("should return false on cross-origin error", () => {
-		const win = {
-			get opener() {
-				throw new Error("Cross-origin");
-			},
-		} as unknown as Window;
+		const win = crossOriginWindow("opener");
 
 		expect(isPopup(win)).toBe(false);
 	});

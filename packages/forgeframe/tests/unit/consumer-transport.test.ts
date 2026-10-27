@@ -7,11 +7,11 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { MessageHandler } from "@/communication/messenger";
 import { CONTEXT, MESSAGE_NAME } from "@/constants";
 import type { ConsumerTransportHandlers } from "@/core/consumer/transport";
 import { ConsumerTransport } from "@/core/consumer/transport";
 import type { NormalizedOptions } from "@/core/consumer/types";
-import { ForgeFrameError } from "@/errors";
 import { prop } from "@/props/prop";
 import type { Dimensions, PeerInfo } from "@/types";
 import { createDeferred } from "@/utils/promise";
@@ -22,6 +22,7 @@ import {
 	sentCallbackId,
 } from "../consumer-bridge";
 import { forgeFrameError } from "../forgeframe-error";
+import { createFrameWindow } from "../frame-window";
 import { requireValue } from "../require-value";
 
 type TestProps = {
@@ -34,8 +35,6 @@ type HandlerSource = {
 	domain: string;
 	window: Window;
 };
-
-type DirectHandler = (data: unknown, source: HandlerSource) => unknown;
 
 const createdTransports: Array<
 	ConsumerTransport<TestProps, { ready: boolean }>
@@ -75,15 +74,17 @@ function createTransport({
 	return transport;
 }
 
-function getHandler(
+/**
+ * Sets up the transport's message handlers and returns them by message name,
+ * as registered with the messenger, which calls them for a verified sender.
+ */
+function setupHandlers(
 	transport: ConsumerTransport<TestProps, { ready: boolean }>,
-	name: string,
-): DirectHandler | undefined {
-	return (
-		transport.messenger as unknown as {
-			handlers: Map<string, DirectHandler>;
-		}
-	).handlers.get(name);
+	handlers: ConsumerTransportHandlers<{ ready: boolean }>,
+): Map<string, MessageHandler> {
+	const on = vi.spyOn(transport.messenger, "on");
+	transport.setupMessageHandlers(handlers);
+	return new Map(on.mock.calls);
 }
 
 /** A replace batch that cannot admit a new callback means the recovery pool is full. */
@@ -118,16 +119,19 @@ afterEach(() => {
 	}
 	vi.useRealTimers();
 	vi.restoreAllMocks();
+	document.body.replaceChildren();
 });
 
 describe("ConsumerTransport", () => {
 	it("withholds bootstrap from other windows and origins, including the consumer's own origin", async () => {
 		const transport = createTransport();
-		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+		const hostWindow = createFrameWindow();
 		transport.attachHostWindow(hostWindow, HOST_ORIGIN);
 		const onBootstrap = vi.fn(async () => ({ props: { secret: "private" } }));
-		transport.setupMessageHandlers({ ...createHandlers(), onBootstrap });
-		const handler = getHandler(transport, MESSAGE_NAME.BOOTSTRAP);
+		const handler = setupHandlers(transport, {
+			...createHandlers(),
+			onBootstrap,
+		}).get(MESSAGE_NAME.BOOTSTRAP);
 		if (!handler) throw new Error("Missing bootstrap handler");
 		const request = { sessionId: "session" };
 		expect(
@@ -156,7 +160,7 @@ describe("ConsumerTransport", () => {
 
 	it("releases a full recovery pool only for a verified new bootstrap session", async () => {
 		const transport = createTransport();
-		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+		const hostWindow = createFrameWindow();
 		transport.attachHostWindow(hostWindow, HOST_ORIGIN);
 		let rejectBootstrap = false;
 		const onBootstrap = async (
@@ -178,8 +182,10 @@ describe("ConsumerTransport", () => {
 				),
 			};
 		};
-		transport.setupMessageHandlers({ ...createHandlers(), onBootstrap });
-		const bootstrap = getHandler(transport, MESSAGE_NAME.BOOTSTRAP);
+		const bootstrap = setupHandlers(transport, {
+			...createHandlers(),
+			onBootstrap,
+		}).get(MESSAGE_NAME.BOOTSTRAP);
 		if (!bootstrap) throw new Error("Missing bootstrap handler");
 		const source = {
 			uid: "consumer-transport-uid",
@@ -223,12 +229,13 @@ describe("ConsumerTransport", () => {
 		"rejects a bootstrap request with %s from the verified host",
 		async (_label, request) => {
 			const transport = createTransport();
-			const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+			const hostWindow = createFrameWindow();
 			transport.attachHostWindow(hostWindow, HOST_ORIGIN);
 			const onBootstrap = vi.fn(async () => ({ props: {} }));
-			transport.setupMessageHandlers({ ...createHandlers(), onBootstrap });
 			const bootstrap = requireValue(
-				getHandler(transport, MESSAGE_NAME.BOOTSTRAP),
+				setupHandlers(transport, { ...createHandlers(), onBootstrap }).get(
+					MESSAGE_NAME.BOOTSTRAP,
+				),
 			);
 
 			await expect(
@@ -248,9 +255,9 @@ describe("ConsumerTransport", () => {
 
 	it("requires INIT to match the latest verified bootstrap session", async () => {
 		const transport = createTransport();
-		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+		const hostWindow = createFrameWindow();
 		transport.attachHostWindow(hostWindow, HOST_ORIGIN);
-		transport.setupMessageHandlers({
+		const handlers = setupHandlers(transport, {
 			...createHandlers(),
 			onBootstrap: async () => ({ props: {} }),
 		});
@@ -259,8 +266,8 @@ describe("ConsumerTransport", () => {
 			domain: "https://host.example.com",
 			window: hostWindow,
 		};
-		const init = getHandler(transport, MESSAGE_NAME.INIT);
-		const bootstrap = getHandler(transport, MESSAGE_NAME.BOOTSTRAP);
+		const init = handlers.get(MESSAGE_NAME.INIT);
+		const bootstrap = handlers.get(MESSAGE_NAME.BOOTSTRAP);
 		if (!init || !bootstrap) throw new Error("Missing handshake handlers");
 		expect(await init({}, source)).toEqual({ success: false });
 		await bootstrap({ sessionId: "first" }, source);
@@ -402,10 +409,7 @@ describe("ConsumerTransport", () => {
 
 	it("sends nothing when the host window has closed", async () => {
 		const transport = createTransport();
-		const closedHost = {
-			postMessage: vi.fn(),
-			closed: true,
-		} as unknown as Window;
+		const closedHost = createFrameWindow({ closed: true });
 		transport.attachHostWindow(closedHost, HOST_ORIGIN);
 		const sendSpy = vi.spyOn(transport.messenger, "send");
 
@@ -495,24 +499,41 @@ describe("ConsumerTransport", () => {
 	it("reports a host's initialization failure only in the handshake that received it, and otherwise hints at a version mismatch", async () => {
 		vi.useFakeTimers();
 		const transport = createTransport();
+		const hostWindow = createFrameWindow();
+		transport.attachHostWindow(hostWindow, HOST_ORIGIN);
+		const handlers = createHandlers();
+		const reportError = requireValue(
+			setupHandlers(transport, handlers).get(MESSAGE_NAME.ERROR),
+		);
 		const first = transport.waitForHost(
 			25,
 			"consumer-transport-component",
 			vi.fn(),
 		);
-		const hostFailure = new ForgeFrameError(
-			"VALIDATION",
-			"Host initialization failed: bad props",
+		await reportError(
+			{
+				message: "Host initialization failed: bad props",
+				initFailed: true,
+				code: "VALIDATION",
+			},
+			{
+				uid: "consumer-transport-uid",
+				domain: HOST_ORIGIN,
+				window: hostWindow,
+			},
 		);
-		(transport as unknown as { hostInitFailure: Error }).hostInitFailure =
-			hostFailure;
+		// A pending handshake keeps the reason for its timeout.
+		expect(handlers.onError).not.toHaveBeenCalled();
 		const firstRejection = expect(first).rejects.toMatchObject({
 			name: "ForgeFrameError",
 			code: "INIT_TIMEOUT",
 			message: expect.stringMatching(
 				/within 25ms\. Host initialization failed: bad props$/,
 			),
-			cause: hostFailure,
+			cause: forgeFrameError(
+				"VALIDATION",
+				"Host initialization failed: bad props",
+			),
 		});
 		await vi.advanceTimersByTimeAsync(25);
 		await firstRejection;
@@ -545,16 +566,16 @@ describe("ConsumerTransport", () => {
 			}),
 		});
 		const handlers = createHandlers();
-		const hostWindow = { postMessage: vi.fn() } as unknown as Window;
+		const hostWindow = createFrameWindow();
 		const sendSpy = vi
 			.spyOn(transport.messenger, "send")
 			.mockResolvedValue("callback-result");
 
 		transport.attachHostWindow(hostWindow, HOST_ORIGIN);
 		transport.openedHostOrigin = configuredOrigin;
-		transport.setupMessageHandlers(handlers);
-
-		const exportHandler = getHandler(transport, MESSAGE_NAME.EXPORT);
+		const exportHandler = setupHandlers(transport, handlers).get(
+			MESSAGE_NAME.EXPORT,
+		);
 		const exportedFunction = {
 			__type__: "function",
 			__id__: "shared-host-ping",

@@ -5,6 +5,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { FunctionBridge } from "@/communication/bridge";
 import { type MessageHandler, Messenger } from "@/communication/messenger";
 import { CONTEXT, MESSAGE_NAME, PROTOCOL_VERSION } from "@/constants";
 import {
@@ -22,7 +23,6 @@ import { forgeFrameError } from "../forgeframe-error";
 import { requireValue } from "../require-value";
 
 type HandlerSource = Parameters<MessageHandler>[1];
-type DirectHandler = (data: unknown, source: HandlerSource) => unknown;
 
 const originalWindowName = window.name;
 
@@ -257,30 +257,33 @@ describe("Host branch coverage and edge paths", () => {
 	});
 
 	it("should unsubscribe onProps handlers through the returned function", async () => {
+		const on = vi.spyOn(Messenger.prototype, "on");
 		const host = await createBootstrappedHost();
-		const propsHandler = (
-			host as unknown as { messenger: { handlers: Map<string, DirectHandler> } }
-		).messenger.handlers.get(MESSAGE_NAME.PROPS);
+		const propsHandler = requireValue(
+			on.mock.calls.find(([name]) => name === MESSAGE_NAME.PROPS),
+		)[1];
 		const onPropsSpy = vi.fn();
+		const subscribed = vi.fn();
+		host.onProps(subscribed);
 
 		const unsubscribe = host.onProps(onPropsSpy);
 		unsubscribe();
-		requireValue(propsHandler)({ amount: 50 }, createMessageSource(window));
+		await propsHandler(
+			{ amount: 50 },
+			createMessageSource(window, window.location.origin),
+		);
 
+		// The update reached the subscriber that stayed.
+		expect(subscribed).toHaveBeenCalledWith(
+			expect.objectContaining({ amount: 50 }),
+		);
 		expect(onPropsSpy).not.toHaveBeenCalled();
 	});
 
 	it("should return an empty siblings array when messenger responds with undefined", async () => {
 		const host = createHost();
 		const sendSpy = vi
-			.spyOn(
-				(
-					host as unknown as {
-						messenger: { send: (...args: unknown[]) => Promise<unknown> };
-					}
-				).messenger,
-				"send",
-			)
+			.spyOn(Messenger.prototype, "send")
 			.mockResolvedValue(undefined);
 
 		const siblings = await host.getPeerInstances({
@@ -298,28 +301,16 @@ describe("Host branch coverage and edge paths", () => {
 
 	it("should ignore repeated destroy calls after first cleanup", () => {
 		const host = createHost();
-		const messengerDestroySpy = vi.spyOn(
-			(
-				host as unknown as {
-					messenger: { destroy: () => void };
-				}
-			).messenger,
-			"destroy",
-		);
-		const bridgeDestroySpy = vi.spyOn(
-			(
-				host as unknown as {
-					bridge: { destroy: () => void };
-				}
-			).bridge,
-			"destroy",
-		);
+		const messengerDestroySpy = vi.spyOn(Messenger.prototype, "destroy");
+		const bridgeDestroySpy = vi.spyOn(FunctionBridge.prototype, "destroy");
 
 		host.destroy();
 		host.destroy();
 
 		expect(messengerDestroySpy).toHaveBeenCalledTimes(1);
-		expect(bridgeDestroySpy).toHaveBeenCalledTimes(1);
+		// The host's function bridge and its peer bridge, each destroyed once.
+		expect(bridgeDestroySpy).toHaveBeenCalledTimes(2);
+		expect(new Set(bridgeDestroySpy.mock.contexts).size).toBe(2);
 	});
 
 	it("should return null when initHost is called outside ForgeFrame context", () => {
@@ -334,10 +325,10 @@ describe("Host branch coverage and edge paths", () => {
 		window.name = buildWindowName(createPayload());
 		const addEventListenerSpy = vi.spyOn(window, "addEventListener");
 		const removeEventListenerSpy = vi.spyOn(window, "removeEventListener");
-		const resolveConsumerWindow = hostSecurity.resolveConsumerWindow;
-		// A window with neither a parent nor an opener has no consumer.
-		vi.spyOn(hostSecurity, "resolveConsumerWindow").mockImplementation(() =>
-			resolveConsumerWindow({} as Window),
+		// The test page has neither a parent nor an opener, so it has no consumer.
+		const resolveConsumerWindow = vi.spyOn(
+			hostSecurity,
+			"resolveConsumerWindow",
 		);
 
 		const host = initHost({ consumerOrigins: "*" });
@@ -348,6 +339,9 @@ describe("Host branch coverage and edge paths", () => {
 			([eventName]) => eventName === "message",
 		).length;
 
+		expect(resolveConsumerWindow.mock.results).toEqual([
+			{ type: "throw", value: forgeFrameError("CLOSED") },
+		]);
 		expect(host).toBeNull();
 		expect(getHost()).toBeNull();
 		expect(messageAddCount).toBe(0);

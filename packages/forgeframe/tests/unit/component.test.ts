@@ -54,30 +54,29 @@ function getConsumerInternals(instance: unknown): ConsumerInternals {
 	return instance as ConsumerInternals;
 }
 
+/**
+ * Returns a component option patch that the types reject, typed as `object` so
+ * it can reach create() as an untyped caller's would. A patch the types accept
+ * fails to compile here, so each invalid-input row stays invalid.
+ */
+function rejectedByTypes<T extends object>(
+	patch: T &
+		([T] extends [Partial<ComponentOptions<Record<string, unknown>>>]
+			? never
+			: unknown),
+): object {
+	return patch;
+}
+
 describe("Component Creation", () => {
 	const initTimeoutRange =
 		"Component initTimeout must be a finite number between 0 and 2147483647 milliseconds";
+	// Values the types accept, or spread past the excess property check, but
+	// the runtime rejects.
 	it.each([
-		{
-			patch: { url: 123 },
-			message: "Component url must be a string or a function",
-		},
-		{
-			patch: { url: {} },
-			message: "Component url must be a string or a function",
-		},
-		{
-			patch: { tag: ["valid-tag"] },
-			message: 'Invalid component tag "valid-tag"',
-		},
-		{
-			patch: { context: "unsupported" },
-			message: 'Component context must be "iframe" or "popup"',
-		},
 		{ patch: { initTimeout: Infinity }, message: initTimeoutRange },
 		{ patch: { initTimeout: NaN }, message: initTimeoutRange },
 		{ patch: { initTimeout: -1 }, message: initTimeoutRange },
-		{ patch: { initTimeout: "1000" }, message: initTimeoutRange },
 		{ patch: { initTimeout: 2147483648 }, message: initTimeoutRange },
 		{
 			patch: { timeout: 1 },
@@ -90,14 +89,49 @@ describe("Component Creation", () => {
 	])(
 		"rejects invalid JavaScript configuration before registration: $patch",
 		({ patch, message }) => {
+			expect(() =>
+				create({
+					tag: "invalid-runtime-options",
+					url: "https://example.com",
+					...patch,
+				}),
+			).toThrow(forgeFrameError("VALIDATION", message));
+			expect(getComponent("invalid-runtime-options")).toBeUndefined();
+		},
+	);
+	// Values the types reject too, as untyped JavaScript callers can pass them.
+	it.each([
+		{
+			patch: rejectedByTypes({ url: 123 }),
+			message: "Component url must be a string or a function",
+		},
+		{
+			patch: rejectedByTypes({ url: {} }),
+			message: "Component url must be a string or a function",
+		},
+		{
+			patch: rejectedByTypes({ tag: ["valid-tag"] }),
+			message: 'Invalid component tag "valid-tag"',
+		},
+		{
+			patch: rejectedByTypes({ context: "unsupported" }),
+			message: 'Component context must be "iframe" or "popup"',
+		},
+		{
+			patch: rejectedByTypes({ initTimeout: "1000" }),
+			message: initTimeoutRange,
+		},
+	])(
+		"rejects invalid JavaScript configuration before registration: $patch",
+		({ patch, message }) => {
 			const options = {
 				tag: "invalid-runtime-options",
 				url: "https://example.com",
 				...patch,
 			};
-			expect(() =>
-				create(options as unknown as ComponentOptions<Record<string, unknown>>),
-			).toThrow(forgeFrameError("VALIDATION", message));
+			expect(() => create(options)).toThrow(
+				forgeFrameError("VALIDATION", message),
+			);
 			expect(getComponent("invalid-runtime-options")).toBeUndefined();
 		},
 	);
@@ -124,7 +158,8 @@ describe("Component Creation", () => {
 		await expect(
 			instance.render(
 				container,
-				"unsupported" as unknown as typeof CONTEXT.IFRAME,
+				// @ts-expect-error An unsupported render context.
+				"unsupported",
 			),
 		).rejects.toThrow(forgeFrameError("VALIDATION", "Render context"));
 		expect(container.children).toHaveLength(0);
@@ -440,12 +475,10 @@ describe("Component Creation", () => {
 
 	it("requires domain when url is a function", () => {
 		expect(() =>
+			// @ts-expect-error A function url requires hostOrigins.
 			create({
 				tag: "function-url-without-domain",
-				// Invalid JavaScript configuration is rejected at runtime.
-				...({ url: () => "https://host.example.com/widget" } as unknown as {
-					url: string;
-				}),
+				url: () => "https://host.example.com/widget",
 			}),
 		).toThrow(
 			forgeFrameError(
@@ -465,8 +498,8 @@ describe("Component Creation", () => {
 			create({
 				tag: "invalid-exports-schema",
 				url: "https://host.example.com/widget",
-				// Invalid JavaScript configuration is rejected at runtime.
-				exports: exports as never,
+				// @ts-expect-error None of these is a Standard Schema.
+				exports,
 			}),
 		).toThrow(
 			forgeFrameError(
@@ -565,8 +598,8 @@ describe("Component Creation", () => {
 			const Component = create({
 				tag: `undefined-reserved-${key.toLowerCase()}`,
 				url: "https://example.com",
-				// JavaScript callers may leave an entry undefined.
-				props: { [key]: undefined } as unknown as Record<string, never>,
+				// @ts-expect-error JavaScript callers may leave an entry undefined.
+				props: { [key]: undefined },
 			});
 			expect(() => Component()).not.toThrow();
 		},
@@ -670,7 +703,8 @@ describe("Component Creation", () => {
 					tag,
 					url: "https://example.com",
 					props: {
-						theme: { schema: prop.string(), [option]: value } as never,
+						// @ts-expect-error removed options are unknown wrapped fields
+						theme: { schema: prop.string(), [option]: value },
 					},
 				}),
 			).toThrow(
@@ -688,7 +722,8 @@ describe("Component Creation", () => {
 			create({
 				tag: "malformed-wrapped-definition",
 				url: "https://example.com",
-				props: { theme: theme as never },
+				// @ts-expect-error Each call passes a malformed definition.
+				props: { theme },
 			});
 
 		expect(define({ queryParam: true })).toThrow(
@@ -843,11 +878,8 @@ describe("Component Creation", () => {
 			dimensions: { width: 400, height: 300 },
 		});
 		const instance = MyComponent({});
-		const resolvedDimensions = (
-			instance as unknown as {
-				resolveDimensions: () => { width: number; height: number };
-			}
-		).resolveDimensions();
+		const resolvedDimensions =
+			getConsumerInternals(instance).resolveDimensions();
 
 		expect(resolvedDimensions).toEqual({ width: 400, height: 300 });
 	});
@@ -1375,11 +1407,8 @@ describe("Component Instance", () => {
 			targetUrl: "https://origin-b.example.com/widget",
 		});
 
-		const resolvedUrlAfterUpdateCall = (
-			instance as unknown as {
-				resolveUrl: () => string;
-			}
-		).resolveUrl();
+		const resolvedUrlAfterUpdateCall =
+			getConsumerInternals(instance).resolveUrl();
 
 		expect(resolvedUrlAfterUpdateCall).toBe(
 			"https://origin-b.example.com/widget",
@@ -1426,11 +1455,7 @@ describe("Component Instance", () => {
 		instanceInternal.transport.hostWindow = null;
 		await expect(instance.updateProps({})).resolves.toBeUndefined();
 
-		const resolvedUrlAfterFailedUpdate = (
-			instance as unknown as {
-				resolveUrl: () => string;
-			}
-		).resolveUrl();
+		const resolvedUrlAfterFailedUpdate = instanceInternal.resolveUrl();
 		expect(resolvedUrlAfterFailedUpdate).toBe(
 			"https://origin-a.example.com/widget",
 		);

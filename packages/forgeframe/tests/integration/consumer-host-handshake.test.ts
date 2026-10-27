@@ -10,11 +10,11 @@ import { getHost } from "@/core/host/bootstrap";
 import { create, prop } from "@/index";
 import type {
 	ComponentBaseOptions,
-	ComponentOptions,
 	ComponentUrlOptions,
 	PropsDefinition,
 } from "@/types";
 import { forgeFrameError } from "../forgeframe-error";
+import { requireValue } from "../require-value";
 import {
 	createIframeIntegrationHarness,
 	type IframeIntegrationHarness,
@@ -150,7 +150,7 @@ describe("Consumer/host handshake integration", () => {
 		const instance = Component({ amount: 5 });
 		const errors: string[] = [];
 		instance.event.on("error", (error) => {
-			errors.push((error as Error).message);
+			errors.push(error.message);
 		});
 		vi.spyOn(console, "error").mockImplementation(() => {});
 		const rendering = instance.render(container);
@@ -375,7 +375,7 @@ describe("Prop updates requested during render", () => {
 		container: ParentNode,
 		options?: { autoInit?: boolean },
 	) {
-		const activeHarness = harness as IframeIntegrationHarness;
+		const activeHarness = requireValue(harness);
 		const iframe = await activeHarness.waitForIframe(container);
 		activeHarness.attachHostToIframe(iframe);
 		const host = activeHarness.bootstrapHost(definitions, options);
@@ -387,7 +387,10 @@ describe("Prop updates requested during render", () => {
 
 	function setup(
 		options: Partial<ComponentBaseOptions<Props>> &
-			Partial<ComponentUrlOptions<Props>> = {},
+			(
+				| Partial<Extract<ComponentUrlOptions<Props>, { url: string }>>
+				| Extract<ComponentUrlOptions<Props>, { url: (props: Props) => string }>
+			) = {},
 	) {
 		harness = createIframeIntegrationHarness();
 		const container = document.createElement("div");
@@ -396,8 +399,8 @@ describe("Prop updates requested during render", () => {
 			tag: `render-hold-${Math.random().toString(36).slice(2)}`,
 			url: "https://host.example.com/widget",
 			props: definitions,
-			...(options as Partial<ComponentBaseOptions<Props>>),
-		} as ComponentOptions<Props>);
+			...options,
+		});
 		return { Component, container };
 	}
 
@@ -465,7 +468,8 @@ describe("Prop updates requested during render", () => {
 		const { Component, container } = setup();
 		const instance = Component({ amount: 1 });
 		const rendering = instance.render(container);
-		const invalid = instance.updateProps({ amount: "two" as never });
+		// @ts-expect-error JavaScript callers can pass a value of the wrong type.
+		const invalid = instance.updateProps({ amount: "two" });
 		const valid = instance.updateProps({ amount: 3 });
 		const { host, notifications } = await startRecordingHost(container);
 		await expect(rendering).resolves.toBeUndefined();

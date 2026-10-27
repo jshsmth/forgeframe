@@ -9,16 +9,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Messenger } from "@/communication/messenger";
 import { toHandshakeFailure } from "@/core/host/handshake-failure";
 import { ForgeFrameError } from "@/errors";
+import { createFrameWindow } from "../frame-window";
 
 afterEach(() => {
 	vi.useRealTimers();
+	document.body.replaceChildren();
 });
 
 describe("toHandshakeFailure", () => {
 	it("turns the messenger's own acknowledgement timeout into INIT_TIMEOUT", async () => {
 		vi.useFakeTimers();
 		const messenger = new Messenger("handshake-failure", window);
-		const target = { postMessage: vi.fn() } as unknown as Window;
+		const target = createFrameWindow();
 		const timedOut = messenger
 			.send(target, "https://consumer.example.com", "forgeframe_init", {}, 5)
 			.catch((error: unknown) => error);

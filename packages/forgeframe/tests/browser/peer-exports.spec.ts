@@ -1,5 +1,5 @@
 import { createServer, type Server } from "node:http";
-import { expect, type Frame, type Page, test } from "@playwright/test";
+import { expect, type JSHandle, type Page, test } from "@playwright/test";
 import { buildLibrary } from "./library-build";
 
 let consumerOrigin: string;
@@ -87,11 +87,70 @@ test.afterAll(async () => {
 	);
 });
 
+/** The exports each `/host` page publishes to its peers. */
+interface PeerExports {
+	ready: boolean;
+	date: Date;
+	nested: { run(value: string): Promise<string> };
+	fail(): Promise<void>;
+}
+
+/** The part of a `/host` page's host this file calls. */
+interface PeerHost {
+	export(data: unknown): Promise<void>;
+	getPeerInstances(options?: {
+		allTags: boolean;
+	}): Promise<Array<{ tag: string; exports?: PeerExports }>>;
+}
+
+/**
+ * The globals the `/host` and `/capacity` pages' inline module scripts put on
+ * `window`. Declared for this module only, so they stay out of the other
+ * browser specs.
+ */
+interface PeerPageGlobals {
+	ready?: boolean;
+	host: PeerHost;
+	props: {
+		callbacks: Record<string, () => Promise<number>>;
+		onDefault: () => Promise<number>;
+	};
+}
+
+declare const window: Window & typeof globalThis & PeerPageGlobals;
+
+/** Returns the host of a rendered `/host` frame once its page has initialized. */
+async function readyHost(
+	page: Page,
+	selector: string,
+): Promise<JSHandle<PeerHost>> {
+	const frame = await (
+		await page.locator(`${selector} iframe`).elementHandle()
+	)?.contentFrame();
+	if (!frame) throw new Error(`Missing ${selector} frame`);
+	await frame.waitForFunction(() => window.ready === true);
+	return frame.evaluateHandle(() => window.host);
+}
+
+/** Discovers every peer of `host` and calls each peer's export. */
+function discoverAllTagPeers(host: JSHandle<PeerHost>) {
+	return host.evaluate((host) =>
+		host.getPeerInstances({ allTags: true }).then((peers) =>
+			Promise.all(
+				peers.map(async (peer) => ({
+					tag: peer.tag,
+					result: await peer.exports?.nested.run("probe"),
+				})),
+			),
+		),
+	);
+}
+
 test("peer exports retain callable methods and dates across independent prop updates", async ({
 	page,
 }) => {
 	await page.goto(consumerOrigin);
-	await page.evaluate(
+	const consumers = await page.evaluateHandle(
 		async ({ hostOrigin }) => {
 			const libraryUrl = "/library.js";
 			const library: typeof import("../../src/index") = await import(
@@ -107,16 +166,11 @@ test("peer exports retain callable methods and dates across independent prop upd
 					onRun: prop.function<(value: string) => string>(),
 				},
 			});
-			const state = window as unknown as {
-				requester: ReturnType<typeof Component>;
-				sibling: ReturnType<typeof Component>;
-				other: ReturnType<typeof Component>;
-			};
-			state.requester = Component({
+			const requester = Component({
 				label: "requester",
 				onRun: (value: string) => `requester:${value}`,
 			});
-			state.sibling = Component({
+			const sibling = Component({
 				label: "sibling",
 				onRun: (value: string) => `sibling:${value}`,
 			});
@@ -129,109 +183,66 @@ test("peer exports retain callable methods and dates across independent prop upd
 					onRun: prop.function<(value: string) => string>(),
 				},
 			});
-			state.other = Other({
+			const other = Other({
 				label: "other",
 				onRun: (value: string) => `other:${value}`,
 			});
 			await Promise.all([
-				state.requester.render("#requester"),
-				state.sibling.render("#sibling"),
-				state.other.render("#other"),
+				requester.render("#requester"),
+				sibling.render("#sibling"),
+				other.render("#other"),
 			]);
+			return { requester, sibling };
 		},
 		{ hostOrigin },
 	);
-	const requesterElement = await page
-		.locator("#requester iframe")
-		.elementHandle();
-	const siblingElement = await page.locator("#sibling iframe").elementHandle();
-	const requester = await requesterElement?.contentFrame();
-	const sibling = await siblingElement?.contentFrame();
-	const otherElement = await page.locator("#other iframe").elementHandle();
-	const other = await otherElement?.contentFrame();
-	if (!requester || !sibling || !other) throw new Error("Missing peer frames");
-	await requester.waitForFunction(
-		() => (window as unknown as { ready: boolean }).ready,
-	);
-	await sibling.waitForFunction(
-		() => (window as unknown as { ready: boolean }).ready,
-	);
-	await other.waitForFunction(
-		() => (window as unknown as { ready: boolean }).ready,
-	);
-	const first = await requester.evaluate(async () => {
-		const state = window as unknown as {
-			host: { getPeerInstances(): Promise<Array<{ exports?: unknown }>> };
-			peer: {
-				ready: boolean;
-				date: Date;
-				nested: { run(value: string): Promise<string> };
-				fail(): Promise<void>;
-			};
-		};
-		const peers = await state.host.getPeerInstances();
-		state.peer = peers[0]?.exports as typeof state.peer;
-		return {
-			peers: peers.length,
-			ready: state.peer.ready,
-			result: await state.peer.nested.run("first"),
-			date: state.peer.date.toISOString(),
-		};
+	const requester = await readyHost(page, "#requester");
+	const sibling = await readyHost(page, "#sibling");
+	await readyHost(page, "#other");
+	const discovery = await requester.evaluateHandle(async (host) => {
+		const peers = await host.getPeerInstances();
+		return { count: peers.length, peer: peers[0]?.exports };
 	});
+	const first = await discovery.evaluate(async ({ count, peer }) => ({
+		peers: count,
+		ready: peer?.ready,
+		result: await peer?.nested.run("first"),
+		date: peer?.date.toISOString(),
+	}));
 	expect(first).toEqual({
 		peers: 1,
 		ready: true,
 		date: "2026-01-02T03:04:05.678Z",
 		result: "sibling:first",
 	});
-	await page.evaluate(async () => {
-		const state = window as unknown as {
-			requester: { updateProps(props: object): Promise<void> };
-			sibling: { updateProps(props: object): Promise<void> };
-		};
-		await state.requester.updateProps({ label: "updated requester" });
-		await state.sibling.updateProps({
+	await consumers.evaluate(async ({ requester, sibling }) => {
+		await requester.updateProps({ label: "updated requester" });
+		await sibling.updateProps({
 			onRun: (value: string) => `updated sibling:${value}`,
 		});
 	});
 	expect(
-		await requester.evaluate(() =>
-			(
-				window as unknown as {
-					peer: { nested: { run(value: string): Promise<string> } };
-				}
-			).peer.nested.run("after updates"),
-		),
+		await discovery.evaluate(({ peer }) => peer?.nested.run("after updates")),
 	).toBe("updated sibling:after updates");
 	expect(
-		await requester.evaluate(async () => {
+		await discovery.evaluate(async ({ peer }) => {
 			try {
-				await (
-					window as unknown as { peer: { fail(): Promise<void> } }
-				).peer.fail();
+				await peer?.fail();
 			} catch (error) {
 				return error instanceof Error ? error.message : String(error);
 			}
 			return "unexpected success";
 		}),
 	).toBe("peer method failed");
-	await sibling.evaluate(async () => {
-		await (
-			window as unknown as {
-				host: { export(data: unknown): Promise<void> };
-			}
-		).host.export({
+	await sibling.evaluate(async (host) => {
+		await host.export({
 			nested: { run: (value: string) => `replacement:${value}` },
 		});
 	});
 	expect(
-		await requester.evaluate(async () => {
+		await discovery.evaluate(async ({ peer }) => {
 			try {
-				await (
-					window as unknown as {
-						peer: { nested: { run(value: string): Promise<string> } };
-					}
-				).peer.nested.run("stale");
+				await peer?.nested.run("stale");
 			} catch (error) {
 				return error instanceof Error ? error.message : String(error);
 			}
@@ -239,21 +250,12 @@ test("peer exports retain callable methods and dates across independent prop upd
 		}),
 	).toMatch(/Function with id ".+" not found/);
 	expect(
-		await requester.evaluate(async () => {
-			const state = window as unknown as {
-				host: {
-					getPeerInstances(options?: {
-						allTags: boolean;
-					}): Promise<Array<{ tag: string; exports?: unknown }>>;
-				};
-			};
-			const peers = await state.host.getPeerInstances({ allTags: true });
+		await requester.evaluate(async (host) => {
+			const peers = await host.getPeerInstances({ allTags: true });
 			return Promise.all(
 				peers.map(async (peer) => ({
 					tag: peer.tag,
-					result: await (
-						peer.exports as { nested: { run(value: string): Promise<string> } }
-					).nested.run("fresh"),
+					result: await peer.exports?.nested.run("fresh"),
 				})),
 			);
 		}),
@@ -262,43 +264,6 @@ test("peer exports retain callable methods and dates across independent prop upd
 		{ tag: "browser-other-peer", result: "other:fresh" },
 	]);
 });
-
-/** Returns a rendered host frame once its page has finished initializing. */
-async function readyFrame(page: Page, selector: string): Promise<Frame> {
-	const frame = await (
-		await page.locator(`${selector} iframe`).elementHandle()
-	)?.contentFrame();
-	if (!frame) throw new Error(`Missing ${selector} frame`);
-	await frame.waitForFunction(
-		() => (window as unknown as { ready: boolean }).ready,
-	);
-	return frame;
-}
-
-/** Runs inside a host frame: discovers every peer and calls each peer's export. */
-function discoverAllTagPeers() {
-	return (
-		window as unknown as {
-			host: {
-				getPeerInstances(options?: { allTags: boolean }): Promise<
-					Array<{
-						tag: string;
-						exports?: { nested: { run(value: string): Promise<string> } };
-					}>
-				>;
-			};
-		}
-	).host
-		.getPeerInstances({ allTags: true })
-		.then((peers) =>
-			Promise.all(
-				peers.map(async (peer) => ({
-					tag: peer.tag,
-					result: await peer.exports?.nested.run("probe"),
-				})),
-			),
-		);
-}
 
 test("peer discovery does not expose exports across host origins", async ({
 	page,
@@ -344,14 +309,14 @@ test("peer discovery does not expose exports across host origins", async ({
 		},
 		{ hostOrigin, foreignHostOrigin },
 	);
-	const requester = await readyFrame(page, "#requester");
-	await readyFrame(page, "#sibling");
-	const foreign = await readyFrame(page, "#other");
+	const requester = await readyHost(page, "#requester");
+	await readyHost(page, "#sibling");
+	const foreign = await readyHost(page, "#other");
 
-	expect(await requester.evaluate(discoverAllTagPeers)).toEqual([
+	expect(await discoverAllTagPeers(requester)).toEqual([
 		{ tag: "browser-origin-local", result: "sibling:probe" },
 	]);
-	expect(await foreign.evaluate(discoverAllTagPeers)).toEqual([]);
+	expect(await discoverAllTagPeers(foreign)).toEqual([]);
 });
 
 test("a peers matcher admits a named host origin to discover a component's peers", async ({
@@ -404,16 +369,16 @@ test("a peers matcher admits a named host origin to discover a component's peers
 		},
 		{ hostOrigin, foreignHostOrigin },
 	);
-	const local = await readyFrame(page, "#requester");
-	await readyFrame(page, "#sibling");
-	const partner = await readyFrame(page, "#other");
+	const local = await readyHost(page, "#requester");
+	await readyHost(page, "#sibling");
+	const partner = await readyHost(page, "#other");
 
 	// Only the partner admits the local origin; the private component does not.
-	expect(await local.evaluate(discoverAllTagPeers)).toEqual([
+	expect(await discoverAllTagPeers(local)).toEqual([
 		{ tag: "browser-peer-domains-partner", result: "partner:probe" },
 	]);
 	// The opt-in is one-way: the partner sees its same-origin peer, not the local host.
-	expect(await partner.evaluate(discoverAllTagPeers)).toEqual([
+	expect(await discoverAllTagPeers(partner)).toEqual([
 		{ tag: "browser-peer-domains-private", result: "private:probe" },
 	]);
 });
@@ -461,21 +426,17 @@ test("components without peers neither discover nor appear to others", async ({
 		},
 		{ hostOrigin },
 	);
-	const requester = await readyFrame(page, "#requester");
-	await readyFrame(page, "#sibling");
-	const privateHost = await readyFrame(page, "#other");
+	const requester = await readyHost(page, "#requester");
+	await readyHost(page, "#sibling");
+	const privateHost = await readyHost(page, "#other");
 
-	expect(await requester.evaluate(discoverAllTagPeers)).toEqual([
+	expect(await discoverAllTagPeers(requester)).toEqual([
 		{ tag: "browser-peers-opted-in", result: "shared:probe" },
 	]);
 	expect(
-		await privateHost.evaluate(async () => {
+		await privateHost.evaluate(async (host) => {
 			try {
-				await (
-					window as unknown as {
-						host: { getPeerInstances(): Promise<unknown[]> };
-					}
-				).host.getPeerInstances();
+				await host.getPeerInstances();
 			} catch (error) {
 				return error instanceof Error ? error.message : String(error);
 			}
@@ -488,7 +449,7 @@ test("components without peers neither discover nor appear to others", async ({
 
 test("callback defaults and atomic capacity recovery", async ({ page }) => {
 	await page.goto(consumerOrigin);
-	await page.evaluate(
+	const capacityInstance = await page.evaluateHandle(
 		async ({ hostOrigin }) => {
 			const libraryUrl = "/library.js";
 			const library: typeof import("../../src/index") = await import(
@@ -509,10 +470,8 @@ test("callback defaults and atomic capacity recovery", async ({ page }) => {
 				Array.from({ length: 499 }, (_, index) => [`c${index}`, () => index]),
 			);
 			const instance = Component({ callbacks });
-			(
-				window as unknown as { capacityInstance: typeof instance }
-			).capacityInstance = instance;
 			await instance.render("#requester");
+			return instance;
 		},
 		{ hostOrigin },
 	);
@@ -520,34 +479,24 @@ test("callback defaults and atomic capacity recovery", async ({ page }) => {
 		await page.locator("#requester iframe").elementHandle()
 	)?.contentFrame();
 	if (!frame) throw new Error("Missing capacity frame");
-	const initial = await frame.evaluate(async () => {
-		const state = window as unknown as {
-			props: {
-				callbacks: Record<string, () => Promise<number>>;
-				onDefault: () => Promise<number>;
-			};
-			held: () => Promise<number>;
-		};
-		const held = state.props.callbacks.c0;
+	const hostProps = await frame.evaluateHandle(() => window.props);
+	const held = await hostProps.evaluateHandle((props) => {
+		const held = props.callbacks.c0;
 		if (!held) throw new Error("Missing callback");
-		state.held = held;
-		return [
-			await held(),
-			await state.props.callbacks.c498?.(),
-			await state.props.onDefault(),
-		];
+		return held;
 	});
+	const initial = await hostProps.evaluate(
+		async (props, held) => [
+			await held(),
+			await props.callbacks.c498?.(),
+			await props.onDefault(),
+		],
+		held,
+	);
 	expect(initial).toEqual([0, 498, -1]);
-	const error = await page.evaluate(async () => {
-		const state = window as unknown as {
-			capacityInstance: {
-				updateProps: (props: {
-					callbacks: Record<string, () => number>;
-				}) => Promise<void>;
-			};
-		};
+	const error = await capacityInstance.evaluate(async (instance) => {
 		try {
-			await state.capacityInstance.updateProps({
+			await instance.updateProps({
 				callbacks: Object.fromEntries(
 					Array.from({ length: 500 }, (_, index) => [
 						`c${index}`,
@@ -561,20 +510,9 @@ test("callback defaults and atomic capacity recovery", async ({ page }) => {
 		}
 	});
 	expect(error).toContain("500 distinct callback limit");
-	expect(
-		await frame.evaluate(() =>
-			(window as unknown as { held: () => Promise<number> }).held(),
-		),
-	).toBe(0);
-	await page.evaluate(async () => {
-		const state = window as unknown as {
-			capacityInstance: {
-				updateProps: (props: {
-					callbacks: Record<string, () => number>;
-				}) => Promise<void>;
-			};
-		};
-		await state.capacityInstance.updateProps({
+	expect(await held.evaluate((held) => held())).toBe(0);
+	await capacityInstance.evaluate(async (instance) => {
+		await instance.updateProps({
 			callbacks: Object.fromEntries(
 				Array.from({ length: 499 }, (_, index) => [
 					`c${index}`,
@@ -583,27 +521,20 @@ test("callback defaults and atomic capacity recovery", async ({ page }) => {
 			),
 		});
 	});
-	const result = await frame.evaluate(async () => {
-		const state = window as unknown as {
-			props: {
-				callbacks: Record<string, () => Promise<number>>;
-				onDefault: () => Promise<number>;
-			};
-			held: () => Promise<number>;
-		};
+	const result = await hostProps.evaluate(async (props, held) => {
 		let retired = "unexpected success";
 		try {
-			await state.held();
+			await held();
 		} catch (error) {
 			retired = error instanceof Error ? error.message : String(error);
 		}
 		return {
-			first: await state.props.callbacks.c0?.(),
-			last: await state.props.callbacks.c498?.(),
-			defaulted: await state.props.onDefault(),
+			first: await props.callbacks.c0?.(),
+			last: await props.callbacks.c498?.(),
+			defaulted: await props.onDefault(),
 			retired,
 		};
-	});
+	}, held);
 	expect(result).toMatchObject({ first: 500, last: 998, defaulted: -1 });
 	expect(result.retired).toContain("not found");
 });

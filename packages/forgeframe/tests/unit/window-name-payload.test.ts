@@ -15,6 +15,7 @@ import {
 } from "@/window/name-payload";
 import type { WindowNamePayload } from "@/window/types";
 import { forgeFrameError } from "../forgeframe-error";
+import { createFrameWindow } from "../frame-window";
 
 function createPayload(
 	overrides: Partial<WindowNamePayload> = {},
@@ -34,9 +35,23 @@ function encodeWindowName(value: unknown): string {
 	return `${WINDOW_NAME_PREFIX}${btoa(encodeURIComponent(JSON.stringify(value)))}`;
 }
 
+/** A real window with the given name. */
+function namedWindow(name: string): Window {
+	const win = createFrameWindow();
+	win.name = name;
+	return win;
+}
+
+/** A real window whose name reads `name()`, as a guarded window's might. */
+function windowWithNameGetter(name: () => string): Window {
+	const win = createFrameWindow();
+	Object.defineProperty(win, "name", { get: name });
+	return win;
+}
+
 /** Reads a window name through the host's payload reader. */
 function readWindowName(name: string) {
-	return readWindowNamePayload({ name } as Window);
+	return readWindowNamePayload(namedWindow(name));
 }
 
 describe("buildWindowName", () => {
@@ -117,15 +132,15 @@ describe("readWindowNamePayload", () => {
 	it("should return null for non-ForgeFrame names", () => {
 		expect(readWindowName("some-other-name")).toBeNull();
 		expect(readWindowName("")).toBeNull();
-		expect(readWindowNamePayload({ name: 42 } as unknown as Window)).toBeNull();
+		const unusualWindow = createFrameWindow();
+		Object.defineProperty(unusualWindow, "name", { value: 42 });
+		expect(readWindowNamePayload(unusualWindow)).toBeNull();
 	});
 
 	it("should return null when reading the window name throws", () => {
-		const win = {
-			get name(): string {
-				throw new DOMException("Blocked", "SecurityError");
-			},
-		} as Window;
+		const win = windowWithNameGetter(() => {
+			throw new DOMException("Blocked", "SecurityError");
+		});
 
 		expect(readWindowNamePayload(win)).toBeNull();
 	});
@@ -144,14 +159,11 @@ describe("readWindowNamePayload", () => {
 	it("should never write the window name", () => {
 		const name = buildWindowName(createPayload());
 		const setName = vi.fn();
-		const win = {
-			get name() {
-				return name;
-			},
-			set name(value: string) {
-				setName(value);
-			},
-		} as unknown as Window;
+		const win = createFrameWindow();
+		Object.defineProperty(win, "name", {
+			get: () => name,
+			set: setName,
+		});
 
 		expect(readWindowNamePayload(win)?.kind).toBe("current");
 		expect(setName).not.toHaveBeenCalled();
@@ -275,18 +287,18 @@ describe("classifyWindowNamePayload", () => {
 
 describe("isForgeFrameWindow", () => {
 	it("should return true for ForgeFrame window", () => {
-		const win = { name: buildWindowName(createPayload()) } as Window;
+		const win = namedWindow(buildWindowName(createPayload()));
 
 		expect(isForgeFrameWindow(win)).toBe(true);
 	});
 
 	it("should return true for a ForgeFrame window from another protocol", () => {
-		const win = {
-			name: encodeWindowName({
+		const win = namedWindow(
+			encodeWindowName({
 				...createPayload({ protocolVersion: 2 }),
 				version: "1.1.0",
 			}),
-		} as Window;
+		);
 
 		expect(isForgeFrameWindow(win)).toBe(true);
 	});
@@ -296,25 +308,23 @@ describe("isForgeFrameWindow", () => {
 		["a payload without channel metadata", encodeWindowName({ tag: "x" })],
 		["a prefix with no payload", WINDOW_NAME_PREFIX],
 	])("should return false for %s after the prefix", (_label, name) => {
-		expect(isForgeFrameWindow({ name } as Window)).toBe(false);
+		expect(isForgeFrameWindow(namedWindow(name))).toBe(false);
 	});
 
 	it("should return false for non-ForgeFrame window", () => {
-		const win = { name: "regular-window" } as Window;
+		const win = namedWindow("regular-window");
 		expect(isForgeFrameWindow(win)).toBe(false);
 	});
 
 	it("should return false for window with empty name", () => {
-		const win = { name: "" } as Window;
+		const win = namedWindow("");
 		expect(isForgeFrameWindow(win)).toBe(false);
 	});
 
 	it("should return false on cross-origin error", () => {
-		const win = {
-			get name() {
-				throw new Error("Cross-origin");
-			},
-		} as unknown as Window;
+		const win = windowWithNameGetter(() => {
+			throw new Error("Cross-origin");
+		});
 
 		expect(isForgeFrameWindow(win)).toBe(false);
 	});

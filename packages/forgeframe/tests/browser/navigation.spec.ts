@@ -1,6 +1,92 @@
 import { createServer, type Server } from "node:http";
 import { expect, test } from "@playwright/test";
+import type { ComponentInstance, Host, RemoteValue } from "../../src/types";
 import { buildLibrary } from "./library-build";
+
+type WidgetProps = {
+	count: number;
+	secret: string;
+	onComplete: () => number;
+};
+
+/**
+ * The props the host fixtures below declare, merged: a test reads only the
+ * props its fixture's schemas declare.
+ */
+type FixtureProps = {
+	count: number;
+	secret?: string;
+	allowed: string;
+	restricted?: string;
+	hidden?: string;
+	onComplete: () => number;
+	createdAt: Date;
+	record: Record<string, unknown>;
+	config: {
+		onComplete: () => number;
+		list: Array<() => number>;
+		date: Date;
+		nested: { createdAt: Date };
+	};
+};
+
+/** The exports the host fixtures send, merged as {@link FixtureProps} is. */
+type FixtureExports = {
+	createdAt: Date;
+	record: Record<string, string>;
+	destroy(): Promise<void>;
+	value(): Promise<number>;
+};
+
+/**
+ * The globals that the consumer scripts in these tests and the untyped host
+ * fixtures below put on `window`. Declared for this module only, rather than
+ * with `declare global`, so they stay out of the other browser specs.
+ */
+interface NavigationGlobals {
+	// Consumer page.
+	instance: ComponentInstance<
+		Record<string, unknown>,
+		Record<string, unknown>,
+		FixtureExports
+	>;
+	/** The `/record-props` tests' instance, whose exports are untyped. */
+	recordInstance: ComponentInstance<{ record: unknown }>;
+	first: ComponentInstance<WidgetProps>;
+	second: ComponentInstance<WidgetProps>;
+	/** A render promise, settled to a status string where a test reads it. */
+	outcome: Promise<unknown> | string;
+	updates: Promise<void>[];
+	earlyUpdate?: Promise<void>;
+	updated?: Promise<void>;
+	armed: boolean;
+	resizes: unknown[];
+	errors: string[];
+	messages: unknown[];
+	// Host fixtures; `calls` and `outcome` are set on both sides.
+	calls: number;
+	received: RemoteValue<FixtureProps>;
+	host: Host;
+	ready: boolean;
+	captured: object;
+	unhandled: string[];
+	notifications: number[];
+	rejection: string;
+	firstError: string;
+	reusedFailedHost: boolean;
+	sameHostProps: boolean;
+	freshHostProps: boolean;
+	resizeCalls: unknown[];
+	consumerOrigin?: string;
+	label?: string;
+	/**
+	 * JSON.rawJSON, from the JSON.parse source text access proposal, which the
+	 * browsers under test ship but TypeScript's libs do not declare yet.
+	 */
+	JSON: JSON & { rawJSON(text: string): object };
+}
+
+declare const window: Window & typeof globalThis & NavigationGlobals;
 
 /** The only fields a v2 consumer writes into window.name. */
 const CHANNEL_METADATA_KEYS = [
@@ -346,15 +432,8 @@ async function mount(
 		async ({ hostOrigin, attackerOrigin, path, context, allowRedirect }) => {
 			const libraryUrl = "/library.js";
 			const { create, prop } = await import(libraryUrl);
-			const reviewWindow = window as unknown as {
-				instance: import("../../src/types").ComponentInstance<
-					Record<string, unknown>
-				>;
-				outcome: Promise<string>;
-				calls: number;
-			};
-			reviewWindow.calls = 0;
-			reviewWindow.instance = create({
+			window.calls = 0;
+			window.instance = create({
 				tag: "browser-navigation-review",
 				url: hostOrigin + path,
 				hostOrigins: allowRedirect ? [hostOrigin, attackerOrigin] : hostOrigin,
@@ -368,15 +447,13 @@ async function mount(
 			})({
 				count: 1,
 				secret: "browser-secret-sentinel",
-				onComplete: () => ++reviewWindow.calls,
+				onComplete: () => ++window.calls,
 			});
-			reviewWindow.outcome = reviewWindow.instance
-				.render("#mount", context)
-				.then(
-					() => "ready",
-					(error: Error) =>
-						`${(error as { code?: string }).code}: ${error.message}`,
-				);
+			window.outcome = window.instance.render("#mount", context).then(
+				() => "ready",
+				(error: Error) =>
+					`${(error as { code?: string }).code}: ${error.message}`,
+			);
 		},
 		{ hostOrigin, attackerOrigin, path, context, allowRedirect },
 	);
@@ -403,17 +480,10 @@ async function prepareDelivery(
 				const base = document.createElement("base");
 				base.href = `${scenario === "base" ? attackerOrigin : hostOrigin}/nested/`;
 				document.head.appendChild(base);
-				const reviewWindow = window as unknown as {
-					instance: import("../../src/types").ComponentInstance<
-						Record<string, unknown>
-					>;
-					outcome: Promise<string>;
-					updates: Promise<void>[];
-				};
-				reviewWindow.updates = [];
+				window.updates = [];
 				const parameter = method === "GET" ? "queryParam" : "bodyParam";
 				let queuedFollowUp = false;
-				reviewWindow.instance = create({
+				window.instance = create({
 					tag: "browser-delivery-regression",
 					url: "delivery?existing=a%20b#checkout?step=2",
 					hostOrigins: [hostOrigin, attackerOrigin],
@@ -421,9 +491,7 @@ async function prepareDelivery(
 					validate: ({ props }: { props: { count: number } }) => {
 						if (scenario === "queued" && props.count === 2 && !queuedFollowUp) {
 							queuedFollowUp = true;
-							reviewWindow.updates.push(
-								reviewWindow.instance.updateProps({ count: 3 }),
-							);
+							window.updates.push(window.instance.updateProps({ count: 3 }));
 						}
 					},
 					props: {
@@ -452,7 +520,7 @@ async function prepareDelivery(
 					hidden: "hidden-sentinel",
 					sameOrigin: "same-origin-sentinel",
 				});
-				reviewWindow.instance.event.once("render", () => {
+				window.instance.event.once("render", () => {
 					if (scenario === "lifecycle")
 						base.href = `${attackerOrigin}/changed/`;
 				});
@@ -461,15 +529,11 @@ async function prepareDelivery(
 				button.textContent = "Open widget";
 				button.onclick = () => {
 					if (scenario === "queued")
-						reviewWindow.updates.push(
-							reviewWindow.instance.updateProps({ count: 2 }),
-						);
-					reviewWindow.outcome = reviewWindow.instance
-						.render("#mount", context)
-						.then(
-							() => "ready",
-							(error: Error) => error.message,
-						);
+						window.updates.push(window.instance.updateProps({ count: 2 }));
+					window.outcome = window.instance.render("#mount", context).then(
+						() => "ready",
+						(error: Error) => error.message,
+					);
 				};
 				document.body.appendChild(button);
 			});
@@ -574,8 +638,7 @@ for (const loading of [undefined, "eager"] as const) {
 					},
 					props: { count: prop.number(), allowed: prop.string() },
 				})({ count: 7, allowed: "eager-value" });
-				(window as unknown as { outcome: Promise<void> }).outcome =
-					instance.render("#mount");
+				window.outcome = instance.render("#mount");
 			},
 			{ hostOrigin, loading },
 		);
@@ -588,9 +651,7 @@ for (const loading of [undefined, "eager"] as const) {
 			await page.locator("#following-content").boundingBox()
 		)?.y;
 		releaseNavigation();
-		await page.evaluate(
-			() => (window as unknown as { outcome: Promise<void> }).outcome,
-		);
+		await page.evaluate(() => window.outcome);
 		await expect(page.locator("#custom-loader")).toHaveCount(0);
 		await expect(iframe).toBeVisible();
 		await expect(iframe).toHaveCSS("display", "block");
@@ -649,12 +710,10 @@ for (const method of ["GET", "POST"] as const) {
 							allowed: { schema: prop.string(), [parameter]: true },
 						},
 					})({ count: 7, allowed: "lazy-value" });
-					(window as unknown as { outcome: Promise<string> }).outcome = instance
-						.render("#mount")
-						.then(
-							() => "ready",
-							(error: Error) => error.message,
-						);
+					window.outcome = instance.render("#mount").then(
+						() => "ready",
+						(error: Error) => error.message,
+					);
 				},
 				{ hostOrigin, method, display },
 			);
@@ -666,11 +725,7 @@ for (const method of ["GET", "POST"] as const) {
 			);
 			await expect.poll(() => navigationRequested).toBe(true);
 			releaseNavigation();
-			expect(
-				await page.evaluate(
-					() => (window as unknown as { outcome: Promise<string> }).outcome,
-				),
-			).toBe("ready");
+			expect(await page.evaluate(() => window.outcome)).toBe("ready");
 			await expect(iframe).toHaveCSS("visibility", "hidden");
 			await expect(iframe).toHaveCSS("display", display);
 			await expect(iframe).toHaveCSS("opacity", "0.25");
@@ -679,7 +734,7 @@ for (const method of ["GET", "POST"] as const) {
 			expect(
 				await iframe.evaluate((frame) =>
 					["display", "visibility", "opacity", "transition"].map((property) =>
-						(frame as HTMLIFrameElement).style.getPropertyPriority(property),
+						frame.style.getPropertyPriority(property),
 					),
 				),
 			).toEqual(Array(4).fill(method === "GET" ? "important" : ""));
@@ -929,10 +984,9 @@ test("preserves foreign-window dates and ordinary records", async ({
 			const { create, prop } = await import(libraryUrl);
 			const realm = document.createElement("iframe");
 			document.body.append(realm);
-			const foreign = realm.contentWindow as unknown as {
-				Date: DateConstructor;
-				Object: ObjectConstructor;
-			};
+			// defaultView, unlike contentWindow, is typed with the realm's globals.
+			const foreign = realm.contentDocument?.defaultView;
+			if (!foreign) throw new Error("Missing foreign realm");
 			const createdAt = new foreign.Date("2026-01-02T03:04:05.678Z");
 			const record = foreign.Object.assign(new foreign.Object(), {
 				name: "initial",
@@ -949,15 +1003,7 @@ test("preserves foreign-window dates and ordinary records", async ({
 					record: prop.record(prop.string()),
 				},
 			})({ createdAt, config, record });
-			(
-				window as unknown as {
-					instance: import("../../src/types").ComponentInstance<
-						Record<string, unknown>,
-						Record<string, unknown>,
-						{ createdAt: Date; record: Record<string, string> }
-					>;
-				}
-			).instance = instance;
+			window.instance = instance;
 			await instance.render("#mount");
 		},
 		{ hostOrigin },
@@ -968,15 +1014,7 @@ test("preserves foreign-window dates and ordinary records", async ({
 	if (!hostFrame) throw new Error("Missing host frame");
 	expect(
 		await hostFrame.evaluate(() => {
-			const props = (
-				window as unknown as {
-					received: import("../../src/types").RemoteValue<{
-						createdAt: Date;
-						config: { nested: { createdAt: Date } };
-						record: Record<string, string>;
-					}>;
-				}
-			).received;
+			const props = window.received;
 			return {
 				date: props.createdAt instanceof Date,
 				nested: props.config.nested.createdAt instanceof Date,
@@ -993,13 +1031,10 @@ test("preserves foreign-window dates and ordinary records", async ({
 	await hostFrame.evaluate(async () => {
 		const realm = document.createElement("iframe");
 		document.body.append(realm);
-		const foreign = realm.contentWindow as unknown as {
-			Date: DateConstructor;
-			Object: ObjectConstructor;
-		};
-		const { host } = window as unknown as {
-			host: import("../../src/types").Host;
-		};
+		// defaultView, unlike contentWindow, is typed with the realm's globals.
+		const foreign = realm.contentDocument?.defaultView;
+		if (!foreign) throw new Error("Missing foreign realm");
+		const { host } = window;
 		await host.export({
 			createdAt: new foreign.Date("2026-02-03T04:05:06.789Z"),
 			record: foreign.Object.assign(new foreign.Object(), {
@@ -1009,15 +1044,7 @@ test("preserves foreign-window dates and ordinary records", async ({
 	});
 	expect(
 		await page.evaluate(() => {
-			const exported = (
-				window as unknown as {
-					instance: import("../../src/types").ComponentInstance<
-						Record<string, unknown>,
-						Record<string, unknown>,
-						{ createdAt: Date; record: Record<string, string> }
-					>;
-				}
-			).instance.exports;
+			const exported = window.instance.exports;
 			if (!exported) throw new Error("Missing exports");
 			return {
 				date: exported.createdAt instanceof Date,
@@ -1069,12 +1096,10 @@ for (const context of ["iframe", "popup"] as const) {
 				button.id = "open-post";
 				button.textContent = "Open";
 				button.onclick = () => {
-					(window as unknown as { outcome: Promise<string> }).outcome = instance
-						.render("#mount", context)
-						.then(
-							() => "ready",
-							(error: Error) => error.message,
-						);
+					window.outcome = instance.render("#mount", context).then(
+						() => "ready",
+						(error: Error) => error.message,
+					);
 				};
 				document.body.appendChild(button);
 			},
@@ -1083,11 +1108,7 @@ for (const context of ["iframe", "popup"] as const) {
 		const opened = context === "popup" ? page.waitForEvent("popup") : null;
 		await page.locator("#open-post").click();
 		const popup = await opened;
-		expect(
-			await page.evaluate(
-				() => (window as unknown as { outcome: Promise<string> }).outcome,
-			),
-		).toBe("ready");
+		expect(await page.evaluate(() => window.outcome)).toBe("ready");
 		expect(deliveryRequests).toHaveLength(1);
 		expect(deliveryRequests[0]?.method).toBe("POST");
 		expect(
@@ -1107,11 +1128,7 @@ for (const context of ["iframe", "popup"] as const) {
 		if (!target) throw new Error("Missing POST host");
 		expect(
 			await target.evaluate(() => {
-				const props = (
-					window as unknown as {
-						received: { count: number; allowed: string; hidden?: string };
-					}
-				).received;
+				const props = window.received;
 				return {
 					count: props.count,
 					allowed: props.allowed,
@@ -1145,18 +1162,12 @@ for (const context of ["iframe", "popup"] as const) {
 						date: new Date("2026-01-02T03:04:05.678Z"),
 					},
 				});
-				const review = window as unknown as {
-					instance: import("../../src/types").ComponentInstance<
-						Record<string, unknown>
-					>;
-					outcome: Promise<string>;
-				};
-				review.instance = instance;
+				window.instance = instance;
 				const button = document.createElement("button");
 				button.id = "open-encoded";
 				button.textContent = "Open";
 				button.onclick = () => {
-					review.outcome = instance.render("#mount", context).then(
+					window.outcome = instance.render("#mount", context).then(
 						() => "ready",
 						(error: Error) => error.message,
 					);
@@ -1168,11 +1179,7 @@ for (const context of ["iframe", "popup"] as const) {
 		const opened = context === "popup" ? page.waitForEvent("popup") : null;
 		await page.locator("#open-encoded").click();
 		const popup = await opened;
-		expect(
-			await page.evaluate(
-				() => (window as unknown as { outcome: Promise<string> }).outcome,
-			),
-		).toBe("ready");
+		expect(await page.evaluate(() => window.outcome)).toBe("ready");
 		const target =
 			popup ??
 			page
@@ -1181,17 +1188,7 @@ for (const context of ["iframe", "popup"] as const) {
 		if (!target) throw new Error("Missing encoded host");
 		const read = () =>
 			target.evaluate(async () => {
-				const config = (
-					window as unknown as {
-						received: {
-							config: {
-								onComplete: () => Promise<number>;
-								list: Array<() => Promise<number>>;
-								date: Date;
-							};
-						};
-					}
-				).received.config;
+				const config = window.received.config;
 				return {
 					callback: await config.onComplete(),
 					list: await config.list[0]?.(),
@@ -1204,13 +1201,7 @@ for (const context of ["iframe", "popup"] as const) {
 			date: "2026-01-02T03:04:05.678Z",
 		});
 		await page.evaluate(() =>
-			(
-				window as unknown as {
-					instance: import("../../src/types").ComponentInstance<
-						Record<string, unknown>
-					>;
-				}
-			).instance.updateProps({ label: "unrelated" }),
+			window.instance.updateProps({ label: "unrelated" }),
 		);
 		expect(await read()).toEqual({
 			callback: 42,
@@ -1218,13 +1209,7 @@ for (const context of ["iframe", "popup"] as const) {
 			date: "2026-01-02T03:04:05.678Z",
 		});
 		await page.evaluate(() =>
-			(
-				window as unknown as {
-					instance: import("../../src/types").ComponentInstance<
-						Record<string, unknown>
-					>;
-				}
-			).instance.updateProps({
+			window.instance.updateProps({
 				config: {
 					onComplete: () => 84,
 					list: [() => 14],
@@ -1249,9 +1234,7 @@ for (const context of ["iframe", "popup"] as const) {
 				const opened = context === "popup" ? page.waitForEvent("popup") : null;
 				await page.locator("#open-delivery").click();
 				const popup = await opened;
-				const outcome = await page.evaluate(
-					() => (window as unknown as { outcome: Promise<string> }).outcome,
-				);
+				const outcome = await page.evaluate(() => window.outcome);
 				expect(outcome).toBe("ready");
 				const destination = scenario === "base" ? attackerOrigin : hostOrigin;
 				const target =
@@ -1281,15 +1264,7 @@ for (const context of ["iframe", "popup"] as const) {
 				expect(params.has("sameOrigin")).toBe(false);
 				expect(
 					await target.evaluate(() => {
-						const props = (
-							window as unknown as {
-								received: {
-									count: number;
-									allowed: string;
-									restricted?: string;
-								};
-							}
-						).received;
+						const props = window.received;
 						return {
 							count: props.count,
 							allowed: props.allowed,
@@ -1316,35 +1291,13 @@ for (const context of ["iframe", "popup"] as const) {
 					const base = document.querySelector("base");
 					if (base) base.href = `${destination}/nested/`;
 				}, destination);
-				await page.evaluate(() =>
-					(
-						window as unknown as {
-							instance: {
-								updateProps: (props: { count: number }) => Promise<void>;
-							};
-						}
-					).instance.updateProps({ count: 4 }),
-				);
+				await page.evaluate(() => window.instance.updateProps({ count: 4 }));
 				await expect
-					.poll(() =>
-						target.evaluate(
-							() =>
-								(window as unknown as { notifications: number[] })
-									.notifications,
-						),
-					)
+					.poll(() => target.evaluate(() => window.notifications))
 					.toEqual([4]);
-				expect(
-					await target.evaluate(
-						() => (window as unknown as { unhandled: string[] }).unhandled,
-					),
-				).toEqual([]);
+				expect(await target.evaluate(() => window.unhandled)).toEqual([]);
 				expect(errors).toEqual([]);
-				await page.evaluate(() =>
-					(
-						window as unknown as { instance: { close: () => Promise<void> } }
-					).instance.close(),
-				);
+				await page.evaluate(() => window.instance.close());
 			});
 		}
 	}
@@ -1399,15 +1352,6 @@ for (const context of ["iframe", "popup"] as const) {
 test("concurrent widgets isolate props and callbacks and survive a peer closing", async ({
 	page,
 }) => {
-	type WidgetProps = {
-		count: number;
-		secret: string;
-		onComplete: () => number;
-	};
-	type Widgets = {
-		first: import("../../src/types").ComponentInstance<WidgetProps>;
-		second: import("../../src/types").ComponentInstance<WidgetProps>;
-	};
 	await page.goto(consumerOrigin);
 	await page.evaluate(async (hostOrigin) => {
 		const libraryUrl = "/library.js";
@@ -1426,20 +1370,19 @@ test("concurrent widgets isolate props and callbacks and survive a peer closing"
 			mount.id = id;
 			document.body.append(mount);
 		}
-		const widgets = window as unknown as Widgets;
-		widgets.first = Component({
+		window.first = Component({
 			count: 1,
 			secret: "first-secret",
 			onComplete: () => 100,
 		});
-		widgets.second = Component({
+		window.second = Component({
 			count: 2,
 			secret: "second-secret",
 			onComplete: () => 200,
 		});
 		await Promise.all([
-			widgets.first.render("#first"),
-			widgets.second.render("#second"),
+			window.first.render("#first"),
+			window.second.render("#second"),
 		]);
 	}, hostOrigin);
 	const firstElement = await page.locator("#first iframe").elementHandle();
@@ -1451,9 +1394,7 @@ test("concurrent widgets isolate props and callbacks and survive a peer closing"
 	const readWidget = (frame: import("@playwright/test").Frame) =>
 		frame.evaluate(async () => {
 			// The fixture stores the value of host.ready.
-			const { received: hostProps } = window as unknown as {
-				received: import("../../src/types").RemoteValue<WidgetProps>;
-			};
+			const { received: hostProps } = window;
 			return {
 				count: hostProps.count,
 				secret: hostProps.secret,
@@ -1465,8 +1406,7 @@ test("concurrent widgets isolate props and callbacks and survive a peer closing"
 		{ count: 2, secret: "second-secret", result: 200 },
 	]);
 	await page.evaluate(async () => {
-		const widgets = window as unknown as Widgets;
-		await widgets.first.updateProps({
+		await window.first.updateProps({
 			count: 11,
 			secret: "updated-first",
 			onComplete: () => 101,
@@ -1477,9 +1417,8 @@ test("concurrent widgets isolate props and callbacks and survive a peer closing"
 		{ count: 2, secret: "second-secret", result: 200 },
 	]);
 	await page.evaluate(async () => {
-		const widgets = window as unknown as Widgets;
-		await widgets.first.close();
-		await widgets.second.updateProps({ count: 22 });
+		await window.first.close();
+		await window.second.updateProps({ count: 22 });
 	});
 	await expect(page.locator("#first iframe")).toHaveCount(0);
 	await expect(page.locator("#second iframe")).toHaveCount(1);
@@ -1499,75 +1438,40 @@ test("redirected pages cannot read restricted props or complete initialization",
 	await mount(page, "/redirect");
 	const attacker = await navigation;
 	await attacker.waitForFunction(() => "captured" in window);
-	const captured = await attacker.evaluate(
-		() => (window as unknown as { captured: object }).captured,
-	);
+	const captured = await attacker.evaluate(() => window.captured);
 	expect(Object.keys(captured).sort()).toEqual(CHANNEL_METADATA_KEYS);
 	expect(JSON.stringify(captured)).not.toContain("browser-secret-sentinel");
-	expect(
-		await page.evaluate(
-			() => (window as unknown as { outcome: Promise<string> }).outcome,
-		),
-	).toMatch(/^INIT_TIMEOUT: .*did not initialize/);
+	expect(await page.evaluate(() => window.outcome)).toMatch(
+		/^INIT_TIMEOUT: .*did not initialize/,
+	);
 });
 
 test("filters initial props against the verified redirect destination", async ({
 	page,
 }) => {
 	await mount(page, "/allowed-redirect", "iframe", true);
-	expect(
-		await page.evaluate(
-			() => (window as unknown as { outcome: Promise<string> }).outcome,
-		),
-	).toBe("ready");
+	expect(await page.evaluate(() => window.outcome)).toBe("ready");
 	const host = page
 		.frames()
 		.find((frame) => frame.url().startsWith(attackerOrigin));
 	if (!host) throw new Error("Missing redirected host");
-	await host.waitForFunction(
-		() => (window as unknown as { ready: boolean }).ready === true,
-	);
-	expect(
-		await host.evaluate(
-			() =>
-				(window as unknown as { received: { count: number; secret?: string } })
-					.received.count,
-		),
-	).toBe(1);
-	expect(
-		await host.evaluate(
-			() =>
-				(window as unknown as { received: { secret?: string } }).received
-					.secret,
-		),
-	).toBeUndefined();
-	expect(
-		await host.evaluate(() =>
-			(
-				window as unknown as { received: { onComplete(): Promise<number> } }
-			).received.onComplete(),
-		),
-	).toBe(1);
+	await host.waitForFunction(() => window.ready === true);
+	expect(await host.evaluate(() => window.received.count)).toBe(1);
+	expect(await host.evaluate(() => window.received.secret)).toBeUndefined();
+	expect(await host.evaluate(() => window.received.onComplete())).toBe(1);
 });
 
 test("verifies the consumer without referrer information", async ({ page }) => {
 	await mount(page, "/host");
-	expect(
-		await page.evaluate(
-			() => (window as unknown as { outcome: Promise<string> }).outcome,
-		),
-	).toBe("ready");
+	expect(await page.evaluate(() => window.outcome)).toBe("ready");
 	const host = page
 		.frames()
 		.find((frame) => frame.url().startsWith(hostOrigin));
 	if (!host) throw new Error("Missing host");
 	expect(await host.evaluate(() => document.referrer)).toBe("");
-	expect(
-		await host.evaluate(
-			() =>
-				(window as unknown as { received: { secret: string } }).received.secret,
-		),
-	).toBe("browser-secret-sentinel");
+	expect(await host.evaluate(() => window.received.secret)).toBe(
+		"browser-secret-sentinel",
+	);
 });
 
 test("legacy hosts cannot bypass the verified bootstrap handshake", async ({
@@ -1577,11 +1481,7 @@ test("legacy hosts cannot bypass the verified bootstrap handshake", async ({
 	// An INIT outside the bootstrap session is ignored, so the render times out
 	// with the hint that both sides must run the same major version. A real
 	// 1.x host sends nothing at all and reaches the same timeout.
-	expect(
-		await page.evaluate(
-			() => (window as unknown as { outcome: Promise<string> }).outcome,
-		),
-	).toMatch(
+	expect(await page.evaluate(() => window.outcome)).toMatch(
 		/^INIT_TIMEOUT: Host component "browser-navigation-review" \(uid: [^)]+\) did not initialize within 1500ms\. Check that the host page loads correctly and calls the initialization code, and that consumer and host run the same ForgeFrame major version\.$/,
 	);
 });
@@ -1595,9 +1495,9 @@ test("a v2 host refuses a 1.x consumer's payload without contacting it", async (
 	});
 	await page.evaluate(
 		({ hostOrigin, consumerOrigin }) => {
-			const received: unknown[] = [];
-			(window as unknown as { received: unknown[] }).received = received;
-			window.addEventListener("message", (event) => received.push(event.data));
+			const messages: unknown[] = [];
+			window.messages = messages;
+			window.addEventListener("message", (event) => messages.push(event.data));
 			// A ForgeFrame 1.x consumer wrote protocol 2 with props and exports.
 			const payload = {
 				uid: "v1-consumer-uid",
@@ -1627,22 +1527,14 @@ test("a v2 host refuses a 1.x consumer's payload without contacting it", async (
 	);
 	const host = await loaded;
 	await page.waitForFunction(() =>
-		(window as unknown as { received: unknown[] }).received.includes(
-			"v2-host-finished",
-		),
+		window.messages.includes("v2-host-finished"),
 	);
-	expect(
-		await host.evaluate(
-			() => (window as unknown as { outcome: string }).outcome,
-		),
-	).toBe(
+	expect(await host.evaluate(() => window.outcome)).toBe(
 		'ForgeFrame host for "v1-consumer-widget" cannot start: the consumer uses ForgeFrame 1.x (protocol 2, package 1.1.0). Upgrade the consumer and host to ForgeFrame 2 together.',
 	);
-	expect(
-		await page.evaluate(
-			() => (window as unknown as { received: unknown[] }).received,
-		),
-	).toEqual(["v2-host-finished"]);
+	expect(await page.evaluate(() => window.messages)).toEqual([
+		"v2-host-finished",
+	]);
 });
 
 test("a host started for another component's tag throws and leaves the consumer to time out", async ({
@@ -1655,34 +1547,22 @@ test("a host started for another component's tag throws and leaves the consumer 
 			page
 				.frames()
 				.find((frame) => frame.url().startsWith(hostOrigin))
-				?.evaluate(() => (window as unknown as { outcome?: string }).outcome)
+				?.evaluate(() => window.outcome)
 				.catch(() => undefined),
 		)
 		.toBe(
 			'initHost() received component "browser-navigation-other", but this window was opened for "browser-navigation-review"',
 		);
-	expect(
-		await page.evaluate(
-			() => (window as unknown as { outcome: Promise<string> }).outcome,
-		),
-	).toContain("did not initialize within 1500ms");
+	expect(await page.evaluate(() => window.outcome)).toContain(
+		"did not initialize within 1500ms",
+	);
 });
 
 test("growing a widget also grows its clipping container", async ({ page }) => {
 	await mount(page, "/host");
-	expect(
-		await page.evaluate(
-			() => (window as unknown as { outcome: Promise<string> }).outcome,
-		),
-	).toBe("ready");
+	expect(await page.evaluate(() => window.outcome)).toBe("ready");
 	await page.evaluate(() =>
-		(
-			window as unknown as {
-				instance: {
-					resize(dimensions: { width: number; height: number }): void;
-				};
-			}
-		).instance.resize({ width: 600, height: 500 }),
+		window.instance.resize({ width: 600, height: 500 }),
 	);
 	const sizes = await page.locator("iframe").evaluate((iframe) => ({
 		frameHeight: iframe.getBoundingClientRect().height,
@@ -1702,30 +1582,16 @@ test("a cross-origin popup host resizes itself and consumer resizing reports the
 	const popupEvent = page.waitForEvent("popup");
 	await mount(page, "/popup-resize", "popup");
 	const popup = await popupEvent;
-	expect(
-		await page.evaluate(
-			() => (window as unknown as { outcome: Promise<string> }).outcome,
-		),
-	).toBe("ready");
-	await popup.waitForFunction(
-		() => (window as unknown as { ready: boolean }).ready === true,
-	);
-	type ResizeWindow = {
-		resizes: unknown[];
-		instance: {
-			event: { on(event: string, handler: (data: unknown) => void): void };
-			resize(dimensions: { width: number; height: number }): void;
-		};
-	};
+	expect(await page.evaluate(() => window.outcome)).toBe("ready");
+	await popup.waitForFunction(() => window.ready === true);
 	const consumerResult = await page.evaluate(() => {
-		const state = window as unknown as ResizeWindow;
-		state.resizes = [];
-		state.instance.event.on("resize", (dimensions) => {
-			state.resizes.push(dimensions);
+		window.resizes = [];
+		window.instance.event.on("resize", (dimensions) => {
+			window.resizes.push(dimensions);
 		});
 		// The refusal throws synchronously, at the call.
 		try {
-			state.instance.resize({ width: 600, height: 500 });
+			window.instance.resize({ width: 600, height: 500 });
 			return "returned";
 		} catch (error) {
 			return `${(error as { code?: string }).code}: ${(error as Error).message}`;
@@ -1734,62 +1600,32 @@ test("a cross-origin popup host resizes itself and consumer resizing reports the
 	expect(consumerResult).toContain(
 		'VALIDATION: Cannot resize the popup for component "browser-navigation-review"',
 	);
-	expect(
-		await page.evaluate(() => (window as unknown as ResizeWindow).resizes),
-	).toEqual([]);
+	expect(await page.evaluate(() => window.resizes)).toEqual([]);
 
-	await popup.evaluate(() =>
-		(
-			window as unknown as {
-				host: {
-					resize(dimensions: { width: number; height: number }): Promise<void>;
-				};
-			}
-		).host.resize({ width: 640, height: 480 }),
-	);
-	expect(
-		await popup.evaluate(
-			() => (window as unknown as { resizeCalls: unknown[] }).resizeCalls,
-		),
-	).toEqual([[640, 480]]);
-	expect(
-		await page.evaluate(() => (window as unknown as ResizeWindow).resizes),
-	).toEqual([{ width: 640, height: 480 }]);
+	await popup.evaluate(() => window.host.resize({ width: 640, height: 480 }));
+	expect(await popup.evaluate(() => window.resizeCalls)).toEqual([[640, 480]]);
+	expect(await page.evaluate(() => window.resizes)).toEqual([
+		{ width: 640, height: 480 },
+	]);
 });
 
 test("calls queued behind host teardown reject instead of waiting forever", async ({
 	page,
 }) => {
 	await mount(page, "/destroy-host");
-	expect(
-		await page.evaluate(
-			() => (window as unknown as { outcome: Promise<string> }).outcome,
-		),
-	).toBe("ready");
+	expect(await page.evaluate(() => window.outcome)).toBe("ready");
 	const frame = page
 		.frames()
 		.find((entry) => entry.url().startsWith(hostOrigin));
 	if (!frame) throw new Error("Missing host frame");
-	await frame.waitForFunction(
-		() => (window as unknown as { ready: boolean }).ready === true,
-	);
+	await frame.waitForFunction(() => window.ready === true);
 	await page.waitForFunction(
-		() =>
-			typeof (
-				window as unknown as {
-					instance: { exports?: { value?: unknown } };
-				}
-			).instance.exports?.value === "function",
+		() => typeof window.instance.exports?.value === "function",
 	);
 
 	const results = await page.evaluate(async () => {
-		type HostExports = {
-			destroy(): Promise<void>;
-			value(): Promise<number>;
-		};
-		const { exports } = (
-			window as unknown as { instance: { exports: HostExports } }
-		).instance;
+		const { exports } = window.instance;
+		if (!exports) throw new Error("Missing exports");
 		const settled = (promise: Promise<unknown>) =>
 			promise.then(
 				(value) => `resolved ${String(value)}`,
@@ -1809,9 +1645,7 @@ test("calls queued behind host teardown reject instead of waiting forever", asyn
 		outcomes: [destroyed, destroyed],
 		later: destroyed,
 	});
-	expect(
-		await frame.evaluate(() => (window as unknown as { calls: number }).calls),
-	).toBe(1);
+	expect(await frame.evaluate(() => window.calls)).toBe(1);
 });
 
 for (const context of ["iframe", "popup"] as const) {
@@ -1826,11 +1660,7 @@ for (const context of ["iframe", "popup"] as const) {
 						event.data !== "forgeframe-test-host-started"
 					)
 						return;
-					const reviewWindow = window as unknown as {
-						instance: { updateProps(props: object): Promise<void> };
-						earlyUpdate?: Promise<void>;
-					};
-					reviewWindow.earlyUpdate = reviewWindow.instance.updateProps({
+					window.earlyUpdate = window.instance.updateProps({
 						count: 2,
 						onComplete: () => 2,
 					});
@@ -1841,11 +1671,7 @@ for (const context of ["iframe", "popup"] as const) {
 		const popup = context === "popup" ? page.waitForEvent("popup") : null;
 		await mount(page, "/host", context);
 		const hostPage = popup ? await popup : page;
-		expect(
-			await page.evaluate(
-				() => (window as unknown as { outcome: Promise<string> }).outcome,
-			),
-		).toBe("ready");
+		expect(await page.evaluate(() => window.outcome)).toBe("ready");
 		const host =
 			context === "popup"
 				? hostPage
@@ -1858,30 +1684,11 @@ for (const context of ["iframe", "popup"] as const) {
 			location.href = "/early-update";
 		});
 		await loaded;
-		await host.waitForFunction(
-			() => (window as unknown as { ready: boolean }).ready === true,
-		);
-		await page.waitForFunction(
-			() =>
-				(window as unknown as { earlyUpdate?: Promise<void> }).earlyUpdate !==
-				undefined,
-		);
-		await page.evaluate(
-			() => (window as unknown as { earlyUpdate: Promise<void> }).earlyUpdate,
-		);
-		expect(
-			await host.evaluate(
-				() =>
-					(window as unknown as { received: { count: number } }).received.count,
-			),
-		).toBe(2);
-		expect(
-			await host.evaluate(() =>
-				(
-					window as unknown as { received: { onComplete(): Promise<number> } }
-				).received.onComplete(),
-			),
-		).toBe(2);
+		await host.waitForFunction(() => window.ready === true);
+		await page.waitForFunction(() => window.earlyUpdate !== undefined);
+		await page.evaluate(() => window.earlyUpdate);
+		expect(await host.evaluate(() => window.received.count)).toBe(2);
+		expect(await host.evaluate(() => window.received.onComplete())).toBe(2);
 	});
 
 	test(`${context} can retry after asynchronous bootstrap validation fails`, async ({
@@ -1890,43 +1697,19 @@ for (const context of ["iframe", "popup"] as const) {
 		const popup = context === "popup" ? page.waitForEvent("popup") : null;
 		await mount(page, "/retry", context);
 		const hostPage = popup ? await popup : page;
-		expect(
-			await page.evaluate(
-				() => (window as unknown as { outcome: Promise<string> }).outcome,
-			),
-		).toBe("ready");
+		expect(await page.evaluate(() => window.outcome)).toBe("ready");
 		const host =
 			context === "popup"
 				? hostPage
 				: page.frames().find((frame) => frame.url().startsWith(hostOrigin));
 		if (!host) throw new Error("Missing host window");
-		await host.waitForFunction(
-			() => (window as unknown as { ready: boolean }).ready === true,
+		await host.waitForFunction(() => window.ready === true);
+		expect(await host.evaluate(() => window.firstError)).toContain(
+			"Expected string, got number",
 		);
-		expect(
-			await host.evaluate(
-				() => (window as unknown as { firstError: string }).firstError,
-			),
-		).toContain("Expected string, got number");
-		expect(
-			await host.evaluate(
-				() =>
-					(window as unknown as { reusedFailedHost: boolean }).reusedFailedHost,
-			),
-		).toBe(false);
-		expect(
-			await host.evaluate(
-				() =>
-					(window as unknown as { received: { count: number } }).received.count,
-			),
-		).toBe(1);
-		expect(
-			await host.evaluate(() =>
-				(
-					window as unknown as { received: { onComplete(): Promise<number> } }
-				).received.onComplete(),
-			),
-		).toBe(1);
+		expect(await host.evaluate(() => window.reusedFailedHost)).toBe(false);
+		expect(await host.evaluate(() => window.received.count)).toBe(1);
+		expect(await host.evaluate(() => window.received.onComplete())).toBe(1);
 	});
 
 	test(`${context} component-form host retries after a failed start`, async ({
@@ -1935,48 +1718,27 @@ for (const context of ["iframe", "popup"] as const) {
 		const popup = context === "popup" ? page.waitForEvent("popup") : null;
 		await mount(page, "/factory-retry", context);
 		const hostPage = popup ? await popup : page;
-		expect(
-			await page.evaluate(
-				() => (window as unknown as { outcome: Promise<string> }).outcome,
-			),
-		).toBe("ready");
+		expect(await page.evaluate(() => window.outcome)).toBe("ready");
 		const host =
 			context === "popup"
 				? hostPage
 				: page.frames().find((frame) => frame.url().startsWith(hostOrigin));
 		if (!host) throw new Error("Missing host window");
-		await host.waitForFunction(
-			() => (window as unknown as { ready: boolean }).ready === true,
-		);
+		await host.waitForFunction(() => window.ready === true);
 		expect(
 			await host.evaluate(() => {
-				const state = window as unknown as {
-					firstError: string;
-					sameHostProps: boolean;
-					freshHostProps: boolean;
-					received: { count: number };
-				};
 				return {
-					error: state.firstError.includes("temporary rejection"),
-					same: state.sameHostProps,
-					fresh: state.freshHostProps,
-					count: state.received.count,
+					error: window.firstError.includes("temporary rejection"),
+					same: window.sameHostProps,
+					fresh: window.freshHostProps,
+					count: window.received.count,
 				};
 			}),
 		).toEqual({ error: true, same: true, fresh: true, count: 1 });
-		await page.evaluate(() =>
-			(
-				window as unknown as {
-					instance: { updateProps(props: object): Promise<void> };
-				}
-			).instance.updateProps({ count: 2 }),
-		);
+		await page.evaluate(() => window.instance.updateProps({ count: 2 }));
 		expect(
 			await host.evaluate(async () => {
-				const { received: props, host } = window as unknown as {
-					received: { count: number; onComplete(): Promise<number> };
-					host: { resize(dimensions: { width: number }): Promise<void> };
-				};
+				const { received: props, host } = window;
 				await host.resize({ width: 360 });
 				return { count: props.count, callback: await props.onComplete() };
 			}),
@@ -1992,15 +1754,8 @@ for (const context of ["iframe", "popup"] as const) {
 			async ({ hostOrigin, context }) => {
 				const libraryUrl = "/library.js";
 				const { create, prop } = await import(libraryUrl);
-				const reviewWindow = window as unknown as {
-					instance: import("../../src/types").ComponentInstance<
-						Record<string, unknown>
-					>;
-					armed: boolean;
-					updated?: Promise<void>;
-				};
-				reviewWindow.armed = false;
-				reviewWindow.instance = create({
+				window.armed = false;
+				window.instance = create({
 					tag: "reconnect-queued-update",
 					url: `${hostOrigin}/host`,
 					hostOrigins: hostOrigin,
@@ -2016,10 +1771,10 @@ for (const context of ["iframe", "popup"] as const) {
 					count: 1,
 					trigger: {
 						toJSON: () => {
-							if (reviewWindow.armed) {
-								reviewWindow.armed = false;
+							if (window.armed) {
+								window.armed = false;
 								queueMicrotask(() => {
-									reviewWindow.updated = reviewWindow.instance.updateProps({
+									window.updated = window.instance.updateProps({
 										count: 2,
 										onComplete: () => 2,
 									});
@@ -2031,8 +1786,8 @@ for (const context of ["iframe", "popup"] as const) {
 					secret: "sentinel",
 					onComplete: () => 1,
 				});
-				await reviewWindow.instance.render("#mount", context);
-				reviewWindow.armed = true;
+				await window.instance.render("#mount", context);
+				window.armed = true;
 			},
 			{ hostOrigin, context },
 		);
@@ -2047,30 +1802,11 @@ for (const context of ["iframe", "popup"] as const) {
 		});
 		await host.evaluate(() => location.reload());
 		await loaded;
-		await host.waitForFunction(
-			() => (window as unknown as { ready: boolean }).ready === true,
-		);
-		await page.waitForFunction(
-			() =>
-				(window as unknown as { updated?: Promise<void> }).updated !==
-				undefined,
-		);
-		await page.evaluate(
-			() => (window as unknown as { updated: Promise<void> }).updated,
-		);
-		expect(
-			await host.evaluate(
-				() =>
-					(window as unknown as { received: { count: number } }).received.count,
-			),
-		).toBe(2);
-		expect(
-			await host.evaluate(() =>
-				(
-					window as unknown as { received: { onComplete(): Promise<number> } }
-				).received.onComplete(),
-			),
-		).toBe(2);
+		await host.waitForFunction(() => window.ready === true);
+		await page.waitForFunction(() => window.updated !== undefined);
+		await page.evaluate(() => window.updated);
+		expect(await host.evaluate(() => window.received.count)).toBe(2);
+		expect(await host.evaluate(() => window.received.onComplete())).toBe(2);
 	});
 
 	test(`${context} reconnects after reload and full-page navigation with current props and callbacks`, async ({
@@ -2079,29 +1815,15 @@ for (const context of ["iframe", "popup"] as const) {
 		const popup = context === "popup" ? page.waitForEvent("popup") : null;
 		await mount(page, "/host", context);
 		const hostPage = popup ? await popup : page;
-		expect(
-			await page.evaluate(
-				() => (window as unknown as { outcome: Promise<string> }).outcome,
-			),
-		).toBe("ready");
+		expect(await page.evaluate(() => window.outcome)).toBe("ready");
 		const host =
 			context === "popup"
 				? hostPage
 				: page.frames().find((frame) => frame.url().startsWith(hostOrigin));
 		expect(host).toBeDefined();
 		if (!host) throw new Error("Missing host window");
-		expect(
-			await page.evaluate(
-				() => (window as unknown as { outcome: Promise<string> }).outcome,
-			),
-		).toBe("ready");
-		await page.evaluate(() =>
-			(
-				window as unknown as {
-					instance: { updateProps(props: object): Promise<void> };
-				}
-			).instance.updateProps({ count: 2 }),
-		);
+		expect(await page.evaluate(() => window.outcome)).toBe("ready");
+		await page.evaluate(() => window.instance.updateProps({ count: 2 }));
 		for (const navigation of ["reload", "next"] as const) {
 			const loaded = hostPage.waitForEvent("framenavigated", {
 				predicate: (frame) =>
@@ -2115,23 +1837,11 @@ for (const context of ["iframe", "popup"] as const) {
 				else location.href = "/host?next=1";
 			}, navigation);
 			await loaded;
-			await host.waitForFunction(
-				() => (window as unknown as { ready: boolean }).ready === true,
+			await host.waitForFunction(() => window.ready === true);
+			expect(await host.evaluate(() => window.received.count)).toBe(2);
+			expect(await host.evaluate(() => window.received.onComplete())).toBe(
+				navigation === "reload" ? 1 : 2,
 			);
-			expect(
-				await host.evaluate(
-					() =>
-						(window as unknown as { received: { count: number } }).received
-							.count,
-				),
-			).toBe(2);
-			expect(
-				await host.evaluate(() =>
-					(
-						window as unknown as { received: { onComplete(): Promise<number> } }
-					).received.onComplete(),
-				),
-			).toBe(navigation === "reload" ? 1 : 2);
 			expect(
 				await host.evaluate(() =>
 					Object.keys(
@@ -2183,17 +1893,11 @@ for (const context of ["iframe", "popup"] as const) {
 						.find((frame) => frame.url() === `${hostOrigin}/rejected-export`);
 		if (!host) throw new Error("Missing host");
 		await host.waitForFunction(() => "ready" in window);
-		const rejection = await host.evaluate(
-			() => (window as unknown as { rejection: string }).rejection,
-		);
+		const rejection = await host.evaluate(() => window.rejection);
 		expect(rejection).toContain("Validation failed: exports.ready");
 		expect(
 			await page.evaluate(() => {
-				const state = window as unknown as {
-					instance: { exports: unknown };
-					errors: string[];
-				};
-				return { exports: state.instance.exports, errors: state.errors };
+				return { exports: window.instance.exports, errors: window.errors };
 			}),
 		).toEqual({ exports: { ready: true }, errors: [rejection] });
 	});
@@ -2215,8 +1919,10 @@ for (const context of ["iframe", "popup"] as const) {
 					url: `${hostOrigin}/record-props`,
 					props: { record: prop.any() },
 					cspNonce: "consumer-nonce",
-				})({ record: { label: "sent" }, cspNonce: "prop-nonce" } as {
-					record: Record<string, unknown>;
+				})({
+					record: { label: "sent" },
+					// @ts-expect-error cspNonce is a component option, not a prop; one passed as a prop must not reach the host.
+					cspNonce: "prop-nonce",
 				});
 				const payload = new Promise((resolve) => {
 					instance.event.once("exports", (exports) => {
@@ -2251,7 +1957,7 @@ for (const context of ["iframe", "popup"] as const) {
 		});
 		expect(
 			await host.evaluate(() => {
-				const { received } = window as unknown as { received: object };
+				const { received } = window;
 				return {
 					hostProps: "cspNonce" in received,
 					consumerProps: { ...received },
@@ -2286,8 +1992,7 @@ for (const context of ["iframe", "popup"] as const) {
 				});
 				const values = Object.setPrototypeOf(["initial"], null);
 				const instance = Component({ record: { values } });
-				(window as unknown as { instance: typeof instance }).instance =
-					instance;
+				window.recordInstance = instance;
 				await instance.render("#mount", context);
 			},
 			{ hostOrigin, context },
@@ -2300,50 +2005,30 @@ for (const context of ["iframe", "popup"] as const) {
 						.frames()
 						.find((frame) => frame.url() === `${hostOrigin}/record-props`);
 		if (!host) throw new Error("Missing host");
-		await host.waitForFunction(
-			() => (window as unknown as { ready: boolean }).ready === true,
-		);
-		const read = () =>
-			host.evaluate(
-				() =>
-					(window as unknown as { received: { record: object } }).received
-						.record,
-			);
+		await host.waitForFunction(() => window.ready === true);
+		const read = () => host.evaluate(() => window.received.record);
 		expect(await read()).toEqual({ values: ["initial"] });
 		await page.evaluate(async () => {
 			const values = ["updated"];
 			Object.defineProperty(values, "map", { value: () => ["corrupted"] });
-			await (
-				window as unknown as {
-					instance: { updateProps(props: object): Promise<void> };
-				}
-			).instance.updateProps({ record: { values } });
+			await window.recordInstance.updateProps({ record: { values } });
 		});
 		expect(await read()).toEqual({ values: ["updated"] });
 		await host.evaluate(async () => {
 			const values = ["exported"];
 			Object.defineProperty(values, "map", { value: () => ["corrupted"] });
-			await (
-				window as unknown as { host: import("../../src/types").Host }
-			).host.export({
+			await window.host.export({
 				values,
 				nested: Object.setPrototypeOf(["nested"], null),
 			});
 		});
-		expect(
-			await page.evaluate(
-				() =>
-					(window as unknown as { instance: { exports: object } }).instance
-						.exports,
-			),
-		).toEqual({ values: ["exported"], nested: ["nested"] });
+		expect(await page.evaluate(() => window.recordInstance.exports)).toEqual({
+			values: ["exported"],
+			nested: ["nested"],
+		});
 		expect(
 			await page.evaluate(async () => {
-				const instance = (
-					window as unknown as {
-						instance: import("../../src/types").ComponentInstance;
-					}
-				).instance;
+				const instance = window.recordInstance;
 				let destroyed = false;
 				instance.event.on("closed", () => {
 					destroyed = true;
@@ -2373,9 +2058,7 @@ for (const context of ["iframe", "popup"] as const) {
 					url: `${hostOrigin}/record-props`,
 					props: { record: prop.any() },
 				});
-				const { rawJSON } = JSON as unknown as {
-					rawJSON: (text: string) => object;
-				};
+				const { rawJSON } = window.JSON;
 				const record = {
 					callback: {
 						__type__: "function",
@@ -2412,8 +2095,7 @@ for (const context of ["iframe", "popup"] as const) {
 					},
 				};
 				const instance = Component({ record });
-				(window as unknown as { instance: typeof instance }).instance =
-					instance;
+				window.recordInstance = instance;
 				await instance.render("#mount", context);
 			},
 			{ hostOrigin, context },
@@ -2426,9 +2108,7 @@ for (const context of ["iframe", "popup"] as const) {
 						.frames()
 						.find((frame) => frame.url() === `${hostOrigin}/record-props`);
 		if (!host) throw new Error("Missing host");
-		await host.waitForFunction(
-			() => (window as unknown as { ready: boolean }).ready === true,
-		);
+		await host.waitForFunction(() => window.ready === true);
 		const expected = {
 			callback: {
 				__type__: "function",
@@ -2461,25 +2141,11 @@ for (const context of ["iframe", "popup"] as const) {
 				__forgeframe_wire_value__: { original: true },
 			},
 		};
-		expect(
-			await host.evaluate(
-				() =>
-					(window as unknown as { received: { record: object } }).received
-						.record,
-			),
-		).toEqual(expected);
-		expect(
-			await page.evaluate(
-				() =>
-					(window as unknown as { instance: { exports: object } }).instance
-						.exports,
-			),
-		).toEqual({ record: expected });
-		await page.evaluate(() =>
-			(
-				window as unknown as { instance: { close(): Promise<void> } }
-			).instance.close(),
-		);
+		expect(await host.evaluate(() => window.received.record)).toEqual(expected);
+		expect(await page.evaluate(() => window.recordInstance.exports)).toEqual({
+			record: expected,
+		});
+		await page.evaluate(() => window.recordInstance.close());
 	});
 }
 
@@ -2506,11 +2172,11 @@ test("a host with '*' admits a real cross-origin consumer and binds its exact or
 		await page.locator("#mount iframe").elementHandle()
 	)?.contentFrame();
 	if (!frame) throw new Error("Missing host frame");
-	await frame.waitForFunction(() => (window as { ready?: boolean }).ready);
+	await frame.waitForFunction(() => window.ready);
 	expect(
 		await frame.evaluate(() => ({
-			consumerOrigin: (window as { consumerOrigin?: string }).consumerOrigin,
-			label: (window as { label?: string }).label,
+			consumerOrigin: window.consumerOrigin,
+			label: window.label,
 		})),
 	).toEqual({ consumerOrigin, label: "public" });
 });

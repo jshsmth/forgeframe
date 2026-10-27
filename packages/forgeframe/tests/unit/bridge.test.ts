@@ -16,38 +16,47 @@ import { createDeferred } from "@/utils/promise";
 import { forgeFrameError } from "../forgeframe-error";
 import { requireValue } from "../require-value";
 
-type GenericFunction = (...args: unknown[]) => unknown;
-
-/**
- * Creates a messenger test double with handler storage and a `CALL` trigger helper.
- */
 /** Admits every caller where a test exercises serialization rather than source checks. */
 const acceptAnySource = () => true;
 
+/**
+ * Creates a messenger test double with handler lookup and a `CALL` trigger helper.
+ */
 const createMockMessenger = () => {
-	const handlers = new Map<string, GenericFunction>();
-
-	return {
+	const unsubscribed = new WeakSet<object>();
+	// A spy keeps on()'s generic signature, which a vi.fn() mock type drops.
+	const on: Messenger["on"] = (_name, handler) => () => {
+		unsubscribed.add(handler);
+	};
+	const messenger = {
 		send: vi.fn().mockResolvedValue(undefined),
 		post: vi.fn(),
 		rejectPending: vi.fn(),
-		on: vi.fn((name: string, handler: GenericFunction) => {
-			handlers.set(name, handler);
-			return () => handlers.delete(name);
-		}),
+		on,
 		destroy: vi.fn(),
-		handlers,
+	};
+	const onSpy = vi.spyOn(messenger, "on");
+	/**
+	 * The latest handler registered for a message name, as a messenger keeps
+	 * it, until it is unsubscribed.
+	 */
+	const getHandler = (name: string) => {
+		const handler = onSpy.mock.calls
+			.filter(([registered]) => registered === name)
+			.at(-1)?.[1];
+		return handler && !unsubscribed.has(handler) ? handler : undefined;
+	};
+
+	return {
+		...messenger,
+		getHandler,
 		// Helper to simulate incoming call
 		simulateCall: async (id: string, args: unknown[]) => {
-			const handler = handlers.get(MESSAGE_NAME.CALL);
+			const handler = getHandler(MESSAGE_NAME.CALL);
 			if (handler) {
 				return handler(
 					{ id, args },
-					{
-						uid: "test",
-						domain: "https://test.com",
-						window: { postMessage: vi.fn() } as unknown as Window,
-					},
+					{ uid: "test", domain: "https://test.com", window },
 				);
 			}
 			throw new Error("No handler registered");
@@ -61,10 +70,7 @@ describe("FunctionBridge", () => {
 
 	beforeEach(() => {
 		messenger = createMockMessenger();
-		bridge = new FunctionBridge(
-			messenger as unknown as Messenger,
-			acceptAnySource,
-		);
+		bridge = new FunctionBridge(messenger, acceptAnySource);
 	});
 
 	afterEach(() => {
@@ -121,10 +127,7 @@ describe("FunctionBridge", () => {
 		});
 
 		it("should reject calls from an unexpected peer window", async () => {
-			const guardedBridge = new FunctionBridge(
-				messenger as unknown as Messenger,
-				() => false,
-			);
+			const guardedBridge = new FunctionBridge(messenger, () => false);
 			const ref = guardedBridge.serialize(() => "private");
 
 			await expect(messenger.simulateCall(ref.__id__, [])).rejects.toThrow(
@@ -138,17 +141,17 @@ describe("FunctionBridge", () => {
 
 		it("answers liveness checks only from the expected peer window", () => {
 			const guardedBridge = new FunctionBridge(
-				messenger as unknown as Messenger,
+				messenger,
 				(source) => source.domain === "https://expected.example",
 			);
 			// The mock keeps the latest registration: the guarded bridge's handler.
 			const liveness = requireValue(
-				messenger.handlers.get(`${MESSAGE_NAME.CALL}_liveness`),
+				messenger.getHandler(`${MESSAGE_NAME.CALL}_liveness`),
 			);
 			const source = (domain: string) => ({
 				uid: "test",
 				domain,
-				window: { postMessage: vi.fn() } as unknown as Window,
+				window,
 			});
 
 			expect(() => liveness({}, source("https://other.example"))).toThrow(
@@ -665,10 +668,7 @@ describe("serializeFunctions", () => {
 
 	beforeEach(() => {
 		messenger = createMockMessenger();
-		bridge = new FunctionBridge(
-			messenger as unknown as Messenger,
-			acceptAnySource,
-		);
+		bridge = new FunctionBridge(messenger, acceptAnySource);
 	});
 
 	afterEach(() => {
@@ -783,10 +783,11 @@ describe("serializeFunctions", () => {
 			unknown
 		>;
 		value.safe = 42;
-		// biome-ignore lint/suspicious/noProto: Exercise an own __proto__ data property to verify prototype-safe handling.
-		value.__proto__ = {
+		// An own __proto__ data property (the kind JSON.parse creates), set on a
+		// null-prototype object so it is not the prototype accessor.
+		Reflect.set(value, "__proto__", {
 			leaked: true,
-		};
+		});
 		Reflect.set(value, "constructor", {
 			prototype: {
 				ignored: true,
@@ -816,10 +817,7 @@ describe("deserializeFunctions", () => {
 
 	beforeEach(() => {
 		messenger = createMockMessenger();
-		bridge = new FunctionBridge(
-			messenger as unknown as Messenger,
-			acceptAnySource,
-		);
+		bridge = new FunctionBridge(messenger, acceptAnySource);
 	});
 
 	afterEach(() => {
@@ -938,10 +936,11 @@ describe("deserializeFunctions", () => {
 			unknown
 		>;
 		value.safe = 42;
-		// biome-ignore lint/suspicious/noProto: Exercise an own __proto__ data property to verify prototype-safe handling.
-		value.__proto__ = {
+		// An own __proto__ data property (the kind JSON.parse creates), set on a
+		// null-prototype object so it is not the prototype accessor.
+		Reflect.set(value, "__proto__", {
 			leaked: true,
-		};
+		});
 		Reflect.set(value, "constructor", {
 			prototype: {
 				ignored: true,
@@ -974,13 +973,10 @@ describe("round-trip serialization", () => {
 		const hostMessenger = createMockMessenger();
 
 		const consumerBridge = new FunctionBridge(
-			consumerMessenger as unknown as Messenger,
+			consumerMessenger,
 			acceptAnySource,
 		);
-		const hostBridge = new FunctionBridge(
-			hostMessenger as unknown as Messenger,
-			acceptAnySource,
-		);
+		const hostBridge = new FunctionBridge(hostMessenger, acceptAnySource);
 
 		const targetWin = {} as Window;
 		const targetOrigin = "https://host.com";

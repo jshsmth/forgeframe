@@ -1,10 +1,12 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { ConsumerComponent } from "@/core/consumer";
 import { ConsumerPropsPipeline } from "@/core/consumer/props-pipeline";
+import { ConsumerTransport } from "@/core/consumer/transport";
 import { prop } from "@/props/prop";
 import type { ComponentBaseOptions } from "@/types";
 import { forgeFrameError } from "../forgeframe-error";
+import { requireValue } from "../require-value";
 
 const consumers: ConsumerComponent<Record<string, unknown>>[] = [];
 function consumerWith(
@@ -22,15 +24,23 @@ function consumerWith(
 	consumers.push(consumer);
 	return consumer;
 }
-function internals(consumer: ConsumerComponent<Record<string, unknown>>) {
-	return consumer as unknown as {
-		propsPipeline: {
-			props: Record<string, unknown>;
-		};
-		renderer: { iframe: HTMLIFrameElement };
-		waitForHost: () => Promise<void>;
-	};
+/** The props the consumer's pipeline holds, read from the pipeline it updated. */
+function committedProps(
+	consumer: ConsumerComponent<Record<string, unknown>>,
+): Record<string, unknown> {
+	const updated = vi.mocked(ConsumerPropsPipeline.prototype.updateProps);
+	const pipelines = new Set(updated.mock.contexts);
+	// Each test updates one consumer, so its pipeline is the only one updated.
+	expect(consumers).toEqual([consumer]);
+	expect(pipelines.size).toBe(1);
+	const [pipeline] = pipelines;
+	if (!(pipeline instanceof ConsumerPropsPipeline))
+		throw new Error("The consumer did not update its props pipeline");
+	return pipeline.props;
 }
+beforeEach(() => {
+	vi.spyOn(ConsumerPropsPipeline.prototype, "updateProps");
+});
 afterEach(async () => {
 	for (const consumer of consumers.splice(0)) await consumer.close();
 	document.body.innerHTML = "";
@@ -67,7 +77,7 @@ describe("Disconnected consumer prop queue", () => {
 			await consumer.updateProps({ first: 1 });
 			await nested;
 			expect(nested).toBeDefined();
-			expect(internals(consumer).propsPipeline.props).toMatchObject({
+			expect(committedProps(consumer)).toMatchObject({
 				first: 1,
 				second: 2,
 			});
@@ -94,7 +104,7 @@ describe("Disconnected consumer prop queue", () => {
 			expect.objectContaining({ count: 1 }),
 			expect.objectContaining({ count: 3 }),
 		]);
-		expect(internals(consumer).propsPipeline.props.count).toBe(3);
+		expect(committedProps(consumer).count).toBe(3);
 	});
 
 	it.each(["outer", "nested"])(
@@ -124,11 +134,11 @@ describe("Disconnected consumer prop queue", () => {
 				.catch((error: unknown) => error);
 			const inner = await nested;
 			expect(failure === "outer" ? outer : inner).toBeInstanceOf(Error);
-			expect(internals(consumer).propsPipeline.props).toMatchObject(
+			expect(committedProps(consumer)).toMatchObject(
 				failure === "outer" ? { first: 0, second: 2 } : { first: 1, second: 0 },
 			);
 			await consumer.updateProps({ first: 3, second: 3 });
-			expect(internals(consumer).propsPipeline.props).toMatchObject({
+			expect(committedProps(consumer)).toMatchObject({
 				first: 3,
 				second: 3,
 			});
@@ -150,11 +160,11 @@ describe("Disconnected consumer prop queue", () => {
 			},
 			{ count: 0 },
 		);
-		vi.spyOn(internals(consumer), "waitForHost").mockResolvedValue();
+		vi.spyOn(ConsumerTransport.prototype, "waitForHost").mockResolvedValue();
 		await consumer.updateProps({ count: 1 });
 		await rendering;
 		expect(rendering).toBeDefined();
-		expect(internals(consumer).renderer.iframe.src).toBe(
+		expect(requireValue(container.querySelector("iframe")).src).toBe(
 			"https://host.example/widget?count=1",
 		);
 	});

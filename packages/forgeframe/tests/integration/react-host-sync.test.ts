@@ -890,13 +890,12 @@ describe("React commits across the host boundary", () => {
 			tag: "react-factory-arguments",
 			url: "https://host.example.com/widget",
 		});
-		const call = createReactComponent as unknown as (
-			...args: unknown[]
-		) => unknown;
-		expect(() => call(Component, { React })).toThrow(
+		// @ts-expect-error the v1 second argument was removed; this checks the runtime error
+		expect(() => createReactComponent(Component, { React })).toThrow(
 			forgeFrameError("VALIDATION", "`react` peer dependency"),
 		);
-		expect(() => call(() => null)).toThrow(
+		// @ts-expect-error a plain function is not a component; this checks the runtime error
+		expect(() => createReactComponent(() => null)).toThrow(
 			forgeFrameError("VALIDATION", "component returned by create()"),
 		);
 		const Reserved = create({

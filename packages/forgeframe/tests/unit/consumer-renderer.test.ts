@@ -382,15 +382,9 @@ describe("ConsumerRenderer submitBodyForm", () => {
 
 	it("should throw when no document root is available for form submission", () => {
 		const renderer = createRenderer();
-		const fakeDocument = {
-			body: null,
-			documentElement: null,
-			createElement: document.createElement.bind(document),
-		} as unknown as Document;
-
-		renderer.container = {
-			ownerDocument: fakeDocument,
-		} as HTMLElement;
+		const rootless = document.implementation.createHTMLDocument();
+		rootless.documentElement.remove();
+		renderer.container = rootless.createElement("div");
 
 		expect(() =>
 			renderer.submitBodyForm(

@@ -6,8 +6,6 @@
  * and the `cspNonce` option staying on the consumer.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Messenger } from "@/communication/messenger";
-import { getHost } from "@/core/host/bootstrap";
 import { create, prop } from "@/index";
 import {
 	createIframeIntegrationHarness,
@@ -108,9 +106,11 @@ describe("Lifecycle events integration", () => {
 		]);
 
 		// A replaced document reconnects without running host teardown.
-		const { messenger } = getHost() as unknown as { messenger: Messenger };
-		vi.spyOn(messenger, "post").mockImplementation(() => {});
+		const silenced = vi
+			.spyOn(iframeHarness.consumerWindow, "postMessage")
+			.mockImplementation(() => {});
 		iframeHarness.withHostGlobals(() => host.destroy());
+		silenced.mockRestore();
 		const nextHost = iframeHarness.bootstrapHost();
 		if (!nextHost) throw new Error("Expected host reinitialization");
 		await nextHost.ready;
