@@ -5,19 +5,19 @@ desc: Current architecture, state ownership, callable responsibilities, and test
 tags: []
 sources: []
 created: 2026-10-01T01:55:30Z
-updated: 2026-10-01T07:49:42Z
+updated: 2026-10-28T00:03:58Z
 ---
 
 # ForgeFrame development wiki
 
-[[architecture|architecture]]: Consumer and host state ownership, transport contracts, and lifecycle flows.
+[[architecture/_index|architecture/]]: Consumer and host state ownership, transport contracts, and lifecycle flows.
 
 [[callables/_index|callables/]]: Runtime callable responsibilities, IOSP classifications, and boundary test evidence.
 
 ***
 
-Use [architecture](architecture.md) for subsystem ownership and render/bootstrap,
-props, callback, and React flows. Use the [callable reference](callables/_index.md)
+Use [architecture](architecture/_index.md) for subsystem ownership and render/bootstrap,
+props, callback, and React flows; it also links one page per flow. Use the [callable reference](callables/_index.md)
 when changing individual runtime operations or selecting their boundary tests;
 it links one page per subsystem, so open only the one you need.
 

@@ -5,7 +5,7 @@ desc: React adapter callables for lifecycle and prop synchronization with their 
 tags: []
 sources: []
 created: 2026-10-27T21:30:00Z
-updated: 2026-10-27T22:13:25Z
+updated: 2026-10-28T00:03:58Z
 ---
 
 # React driver callables
@@ -20,10 +20,10 @@ The wrapper imports React's own APIs; its type parameter is the component, its p
 - **M:** `assertReactComponentArguments`, `createContainerRefCache`.
 - **Retained rationale —** `createContainerRefCache`: the memo is the operation, and calling the `createContainerRef` factory is what it memoizes; its returned lookup callback is the same mix.
 - **Retained rationale —** `assertReactComponentArguments`: It reads the registry's options once and applies three short call-shape rules to them; a separate lookup step would only pass the options through.
-- **I:** `reportReactError`, `createReactComponent`, `createReactComponent.ForgeFrameComponent`, `createReactComponent.ForgeFrameComponent.callback@373.onError`.
-- **O callbacks:** `createReactComponent.ForgeFrameComponent.callback@373.onRendered`, `createReactComponent.ForgeFrameComponent.callback@373.onClose`, `assertReactComponentArguments.callback@183`, `assertReactComponentArguments.callback@189`, `reportReactError.callback@284`, `createContainerRef.callback@268.callback@272`, `createReactComponent.ForgeFrameComponent.callback@366`.
+- **I:** `reportReactError`, `createReactComponent`, `createReactComponent.ForgeFrameComponent`, `createReactComponent.ForgeFrameComponent.callback@380.onError`.
+- **O callbacks:** `createReactComponent.ForgeFrameComponent.callback@380.onRendered`, `createReactComponent.ForgeFrameComponent.callback@380.onClose`, `assertReactComponentArguments.callback@183`, `assertReactComponentArguments.callback@189`, `reportReactError.callback@284`, `createContainerRef.callback@268.callback@272`, `createReactComponent.ForgeFrameComponent.callback@367`, `createReactComponent.ForgeFrameComponent.callback@374`.
 - **M callbacks:** `createContainerRefCache.callback@244`.
-- **I callbacks:** `createContainerRef.callback@268`, `createReactComponent.ForgeFrameComponent.callback@373`, `createReactComponent.ForgeFrameComponent.callback@393`, `createReactComponent.ForgeFrameComponent.callback@397`, `createReactComponent.ForgeFrameComponent.callback@397.callback@403`, `createReactComponent.ForgeFrameComponent.callback@397.callback@404`.
+- **I callbacks:** `createContainerRef.callback@268`, `createReactComponent.ForgeFrameComponent.callback@380`, `createReactComponent.ForgeFrameComponent.callback@400`, `createReactComponent.ForgeFrameComponent.callback@404`, `createReactComponent.ForgeFrameComponent.callback@404.callback@410`, `createReactComponent.ForgeFrameComponent.callback@404.callback@411`.
 
 Evidence: [react](_index.md#evidence-react); typecheck.
 

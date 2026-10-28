@@ -240,3 +240,13 @@ const invalidCallbackResult: number = callbackOutput.callback(1);
 void callbackInput;
 void callbackResult;
 void invalidCallbackResult;
+
+// An untyped prop.function() keeps its documented default: any arguments and
+// any result. Narrowing the default (to unknown or never parameters) breaks
+// callers that call it with arguments or use its result, so it fails here.
+const untypedCallbackSchema = prop.function();
+declare const untypedCallback: InferOutput<typeof untypedCallbackSchema>;
+const untypedResultAsNumber: number = untypedCallback(1, "two", { three: 3 });
+const untypedResultAsString: string = untypedCallback();
+void untypedResultAsNumber;
+void untypedResultAsString;

@@ -6,14 +6,15 @@ import { gzipSync } from "node:zlib";
 
 /**
  * Size budgets for each published ESM entry, counted together with the
- * chunks it statically imports: the size measured for 2.0.0 plus about 4%,
- * rounded up to a whole KiB. "raw" is the bytes as published; the build
- * shortens identifiers but keeps whitespace, so it is not fully minified.
+ * chunks it statically imports: the measured size plus about 4%, rounded up
+ * to a whole KiB (forgeframe.js measured at 2.1.0, react.js at 2.0.0). "raw"
+ * is the bytes as published; the build shortens identifiers but keeps
+ * whitespace, so it is not fully minified.
  * Raise a budget only in the change that needs the extra bytes, and say why
  * in its description.
  */
 const budgets = {
-	"forgeframe.js": { raw: 111 * 1024, gzip: 29 * 1024 },
+	"forgeframe.js": { raw: 114 * 1024, gzip: 30 * 1024 },
 	"react.js": { raw: 8 * 1024, gzip: 4 * 1024 },
 };
 

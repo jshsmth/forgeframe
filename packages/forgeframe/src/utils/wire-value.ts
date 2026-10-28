@@ -75,7 +75,7 @@ export function assertDefinedArrayEntry(value: unknown, path: string[]): void {
 export function assertDefinedArrayEntries(
 	value: unknown,
 	path: string[] = [],
-	seen = new WeakSet<object>(),
+	seen: WeakSet<object> = new WeakSet<object>(),
 ): void {
 	if (typeof value !== "object" || value === null || seen.has(value)) return;
 	if (isDate(value)) return;

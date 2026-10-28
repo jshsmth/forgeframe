@@ -1,3 +1,4 @@
 # Plasma Wiki merges the generated part of wiki indexes once `npm run docs:setup`
-# has registered its merge driver in the clone; without it, git merges them as text.
+# has registered its merge driver in the clone. Without that setup, or without
+# the wiki CLI on PATH, git merges them as text.
 **/_index.md merge=wiki

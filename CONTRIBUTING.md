@@ -7,7 +7,7 @@ described in [SECURITY.md](SECURITY.md), not in public issues.
 
 - Open an issue to discuss behavior changes before sending a large pull request.
 - Read [Developing ForgeFrame](README.md#developing-forgeframe) for setup, the
-  playground, and the project wiki. The [architecture guide](docs/architecture.md)
+  playground, and the project wiki. The [architecture guide](docs/architecture/_index.md)
   and [test index](packages/forgeframe/tests/README.md) explain where code and
   tests belong.
 

@@ -30,3 +30,6 @@ test-results
 
 # Local design review captures
 packages/playground/.impeccable/review/
+
+# TypeScript build info (tsc -b)
+*.tsbuildinfo
