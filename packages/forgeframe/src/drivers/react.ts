@@ -354,6 +354,7 @@ export function createReactComponent(
 			const onRenderedRef = useRef(onRendered);
 			const onErrorRef = useRef(onError);
 			const onCloseRef = useRef(onClose);
+			const componentPropsRef = useRef(componentProps);
 			const containerRefCache =
 				useRef<ReturnType<typeof createContainerRefCache>>(null);
 			const [error, setError] = useState<Error | null>(null);
@@ -369,7 +370,13 @@ export function createReactComponent(
 				onCloseRef.current = onClose;
 			}, [onRendered, onError, onClose]);
 
-			// biome-ignore lint/correctness/useExhaustiveDependencies: an instance mounts with its first committed props and remounts only for a new context; later props sync through the queue.
+			// Declared before the mount effect, so a mount reads the props committed with it.
+			useEffect(() => {
+				componentPropsRef.current = componentProps;
+			});
+
+			// An instance mounts with its committed props and remounts only for a new
+			// context; later props sync through the queue below.
 			useEffect(() => {
 				const container = containerRef.current;
 				if (!container) return;
@@ -377,7 +384,7 @@ export function createReactComponent(
 				setError(null);
 				return mountReactInstance(
 					createInstance,
-					snapshotProps(componentProps),
+					snapshotProps(componentPropsRef.current),
 					container,
 					context,
 					mountState,

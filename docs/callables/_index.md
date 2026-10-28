@@ -5,7 +5,7 @@ desc: Runtime callable responsibilities, IOSP classifications, and boundary test
 tags: []
 sources: []
 created: 2026-10-01T01:55:30Z
-updated: 2026-10-27T21:31:52Z
+updated: 2026-10-28T00:03:58Z
 ---
 
 # ForgeFrame callable reference
@@ -34,7 +34,7 @@ updated: 2026-10-27T21:31:52Z
 
 ***
 
-Runtime callables in `packages/forgeframe/src`, their IOSP classification, and the tests that exercise their boundaries. Use [architecture](../architecture.md) to follow a workflow. Open the page for the module you are changing: update its classification and run its evidence suites.
+Runtime callables in `packages/forgeframe/src`, their IOSP classification, and the tests that exercise their boundaries. Use [architecture](../architecture/_index.md) to follow a workflow. Open the page for the module you are changing: update its classification and run its evidence suites.
 
 Type-only declarations, overload signatures, and abstract methods have no runtime body and are not listed; modules without runtime callables are marked **Contract only**. Repeated accessors and fluent builders share one rationale.
 

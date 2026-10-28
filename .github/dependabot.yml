@@ -10,3 +10,22 @@ updates:
       actions:
         patterns:
           - "*"
+
+  # npm dev tooling across the workspaces: one grouped pull request a week for
+  # minor and patch updates, with majors on their own.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      # Its own pull request: the browser job's Playwright container tag in
+      # test.yml must move to the same version before it goes green.
+      playwright:
+        patterns:
+          - "@playwright/test"
+      npm:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch

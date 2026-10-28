@@ -4,6 +4,7 @@
 		"noEmit": true,
 		"rootDir": ".",
 		"declaration": false,
+		"isolatedDeclarations": false,
 		"emitDeclarationOnly": false,
 		"types": ["node"]
 	},

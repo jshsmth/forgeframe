@@ -19,7 +19,9 @@ export const CONTEXT = {
 	IFRAME: "iframe",
 	/** Render component in a popup window */
 	POPUP: "popup",
-} as const satisfies Record<string, ContextType>;
+} as const;
+// Checked apart from the declaration, which keeps its type declarable.
+CONTEXT satisfies Record<string, ContextType>;
 
 /**
  * Consumer lifecycle event names used internally; `EventType` is the public
@@ -45,7 +47,8 @@ export const EVENT = {
 	FOCUS: "focus",
 	/** Emitted when host exports arrive */
 	EXPORTS: "exports",
-} as const satisfies Record<string, EventType>;
+} as const;
+EVENT satisfies Record<string, EventType>;
 
 /**
  * Internal message types for the cross-domain communication protocol.
@@ -127,7 +130,7 @@ declare const __FORGEFRAME_VERSION__: string | undefined;
  * Current library version.
  * @public
  */
-export const VERSION = (() => {
+export const VERSION: string = (() => {
 	if (
 		typeof __FORGEFRAME_VERSION__ !== "string" ||
 		__FORGEFRAME_VERSION__.trim().length === 0
