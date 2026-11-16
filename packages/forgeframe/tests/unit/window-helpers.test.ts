@@ -111,6 +111,13 @@ describe("matchOrigin", () => {
 		// @ts-expect-error a non-pattern value reaching the matcher must deny, not match.
 		expect(matchOrigin(123, "https://example.com")).toBe(false);
 	});
+
+	it("never matches the opaque origin, even with match-all patterns", () => {
+		expect(matchOrigin("*", "null")).toBe(false);
+		expect(matchOrigin(/.*/, "null")).toBe(false);
+		expect(matchOrigin("null", "null")).toBe(false);
+		expect(matchOrigin(["*", /^null$/], "null")).toBe(false);
+	});
 });
 
 describe("isWindowClosed", () => {

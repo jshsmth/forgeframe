@@ -323,6 +323,43 @@ describe("FunctionBridge", () => {
 				bridge.deserialize(refAt(0), targetWin, "https://target.com"),
 			).not.toBe(wrappers[0]);
 		});
+
+		it("keeps a reused remote wrapper when newer callbacks fill the cache", () => {
+			const targetWin = {} as Window;
+			const stableRef = {
+				__type__: "function" as const,
+				__id__: "fn-stable",
+				__name__: "onSuccess",
+			};
+			const stableWrapper = bridge.deserialize(
+				stableRef,
+				targetWin,
+				"https://target.com",
+			);
+			const refAt = (update: number, index: number) => ({
+				__type__: "function" as const,
+				__id__: `fn-${update}-${index}`,
+				__name__: `inline-${index}`,
+			});
+
+			// Each update reuses the stable callback, then adds 499 fresh ones.
+			for (let update = 0; update < 3; update++) {
+				expect(
+					bridge.deserialize(stableRef, targetWin, "https://target.com"),
+				).toBe(stableWrapper);
+				for (let index = 0; index < 499; index++) {
+					bridge.deserialize(
+						refAt(update, index),
+						targetWin,
+						"https://target.com",
+					);
+				}
+			}
+
+			expect(
+				bridge.deserialize(stableRef, targetWin, "https://target.com"),
+			).toBe(stableWrapper);
+		});
 	});
 
 	describe("isFunctionRef", () => {

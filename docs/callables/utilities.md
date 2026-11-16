@@ -5,7 +5,7 @@ desc: Utility and window-name callables with their IOSP classifications and boun
 tags: []
 sources: []
 created: 2026-10-27T21:30:00Z
-updated: 2026-10-27T22:13:25Z
+updated: 2026-11-16T02:29:33Z
 ---
 
 # Utility and window callables
@@ -72,7 +72,7 @@ Evidence: [error.test](../../packages/forgeframe/tests/unit/error.test.ts), [mes
 
 ### [utils/origin.ts](../../packages/forgeframe/src/utils/origin.ts)
 
-Origins are serialized strings: the JavaScript `null` means no origin is known yet, and the string `"null"` is the serialization every opaque origin shares. `isOpaqueOrigin` is the one check for the second meaning; messenger trust and peer selection use it so `"null"` never identifies a peer.
+Origins are serialized strings: the JavaScript `null` means no origin is known yet, and the string `"null"` is the serialization every opaque origin shares. `isOpaqueOrigin` is the one check for the second meaning; messenger trust, peer selection and `matchOrigin` use it so `"null"` never identifies a peer and no matcher, `'*'` included, admits it.
 
 - **O:** `isOpaqueOrigin`.
 
@@ -134,7 +134,7 @@ Evidence: [utilities](_index.md#evidence-utilities); typecheck.
 Browser observations and defensive window reads are operations. Recursive origin matching is a cohesive algorithm; security exceptions are part of the browser boundary.
 
 - **O:** `getOrigin`, `matchOrigin`, `isWindowClosed`, `getOpener`, `getConsumer`, `isIframe`, `isPopup`, `waitForWindowFocus`.
-- **O callbacks:** `matchOrigin.callback@87`, `waitForWindowFocus.callback@259`, `waitForWindowFocus.callback@259.done`.
+- **O callbacks:** `matchOrigin.callback@90`, `waitForWindowFocus.callback@262`, `waitForWindowFocus.callback@262.done`.
 
 Evidence: [utilities](_index.md#evidence-utilities); typecheck.
 

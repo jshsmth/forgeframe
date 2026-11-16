@@ -228,10 +228,12 @@ export class FunctionBridge {
 		targetOrigin: string,
 	): CallableFunction {
 		const cacheKey = `${ref.__id__}`;
-		const cached = this.findRemoteWrapper(cacheKey, targetWin, targetOrigin);
-		if (cached) return cached;
-		this.evictOldestRemote(cacheKey);
-		const wrapper = this.createRemoteWrapper(ref, targetWin, targetOrigin);
+		const wrapper =
+			this.findRemoteWrapper(cacheKey, targetWin, targetOrigin) ??
+			this.createRemoteWrapper(ref, targetWin, targetOrigin);
+		// Re-inserting moves the entry to the newest end, so eviction is least recently used.
+		this.remoteFunctions.delete(cacheKey);
+		this.evictOldestRemote();
 		this.remoteFunctions.set(cacheKey, { wrapper, targetWin, targetOrigin });
 		return wrapper;
 	}
@@ -250,12 +252,9 @@ export class FunctionBridge {
 			: undefined;
 	}
 
-	private evictOldestRemote(cacheKey: string): void {
-		if (
-			this.remoteFunctions.has(cacheKey) ||
-			this.remoteFunctions.size < MAX_FUNCTIONS
-		)
-			return;
+	/** Frees one slot by dropping the least recently used remote wrapper. */
+	private evictOldestRemote(): void {
+		if (this.remoteFunctions.size < MAX_FUNCTIONS) return;
 		const oldestKey = this.remoteFunctions.keys().next().value;
 		if (oldestKey) this.remoteFunctions.delete(oldestKey);
 	}

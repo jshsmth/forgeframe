@@ -617,4 +617,31 @@ describe("ConsumerTransport", () => {
 			null,
 		);
 	});
+
+	it("rejects peer exports JSON cannot encode with a VALIDATION error", async () => {
+		const transport = createTransport();
+		const hostWindow = createFrameWindow();
+		transport.attachHostWindow(hostWindow, HOST_ORIGIN);
+		const handlers = createHandlers();
+		// A schema transform can leave a BigInt in a peer's validated exports.
+		handlers.onGetPeers.mockResolvedValue([
+			{ uid: "peer-uid", tag: "peer", exports: { total: 1n } },
+		]);
+		const getPeers = requireValue(
+			setupHandlers(transport, handlers).get(MESSAGE_NAME.GET_PEERS),
+		);
+
+		await expect(
+			getPeers(undefined, {
+				uid: "consumer-transport-uid",
+				domain: HOST_ORIGIN,
+				window: hostWindow,
+			}),
+		).rejects.toMatchObject({
+			name: "ForgeFrameError",
+			code: "VALIDATION",
+			message: expect.stringMatching(/^Cannot send the peer instances: /),
+			cause: expect.any(TypeError),
+		});
+	});
 });
