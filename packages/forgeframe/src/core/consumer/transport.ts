@@ -490,8 +490,9 @@ export class ConsumerTransport<
 				this.peerBridge.startBatch("append");
 				try {
 					const serialized = serializeFunctions(peers, this.peerBridge);
-					// Native response encoding must succeed before retaining new relay IDs.
-					JSON.stringify(serialized);
+					// The response must encode as JSON before new relay IDs are retained;
+					// a value it cannot encode rejects with a VALIDATION error.
+					stringifyForWire(serialized, "the peer instances");
 					// Repeated discovery and prop updates must preserve held peer snapshots.
 					this.peerBridge.finishBatch(true);
 					return serialized;

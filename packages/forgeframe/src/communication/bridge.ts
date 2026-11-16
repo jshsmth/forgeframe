@@ -228,11 +228,10 @@ export class FunctionBridge {
 		targetOrigin: string,
 	): CallableFunction {
 		const cacheKey = `${ref.__id__}`;
-		const cached = this.findRemoteWrapper(cacheKey, targetWin, targetOrigin);
-		if (cached) return cached;
-		this.evictOldestRemote(cacheKey);
-		const wrapper = this.createRemoteWrapper(ref, targetWin, targetOrigin);
-		this.remoteFunctions.set(cacheKey, { wrapper, targetWin, targetOrigin });
+		const wrapper =
+			this.findRemoteWrapper(cacheKey, targetWin, targetOrigin) ??
+			this.createRemoteWrapper(ref, targetWin, targetOrigin);
+		this.storeRemote(cacheKey, { wrapper, targetWin, targetOrigin });
 		return wrapper;
 	}
 
@@ -250,14 +249,18 @@ export class FunctionBridge {
 			: undefined;
 	}
 
-	private evictOldestRemote(cacheKey: string): void {
-		if (
-			this.remoteFunctions.has(cacheKey) ||
-			this.remoteFunctions.size < MAX_FUNCTIONS
-		)
-			return;
-		const oldestKey = this.remoteFunctions.keys().next().value;
-		if (oldestKey) this.remoteFunctions.delete(oldestKey);
+	/**
+	 * Stores a wrapper as the most recently used entry. Map order is insertion
+	 * order, so removing and re-adding the key moves it to the newest end, and a
+	 * full cache drops its first, least recently used, entry.
+	 */
+	private storeRemote(cacheKey: string, entry: RemoteFunctionEntry): void {
+		this.remoteFunctions.delete(cacheKey);
+		if (this.remoteFunctions.size >= MAX_FUNCTIONS) {
+			const oldestKey = this.remoteFunctions.keys().next().value;
+			if (oldestKey !== undefined) this.remoteFunctions.delete(oldestKey);
+		}
+		this.remoteFunctions.set(cacheKey, entry);
 	}
 
 	/**

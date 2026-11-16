@@ -14,7 +14,8 @@ type OriginPattern = string | RegExp;
  * string, a RegExp pattern, or an array of string/RegExp patterns. A string
  * is an exact origin or `'*'`, which matches any origin; the only wildcard is
  * a leading `*.` in the host, which stands for one or more labels, as in
- * `'https://*.example.com'`. Use a `RegExp` for anything else. Write an
+ * `'https://*.example.com'`. Use a `RegExp` for anything else, anchored
+ * with `^` and `$` so it cannot match a longer origin. Write an
  * exact origin as browsers report it: lowercase host, no default port.
  *
  * @example

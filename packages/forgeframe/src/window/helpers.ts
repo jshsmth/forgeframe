@@ -1,4 +1,5 @@
 import type { OriginMatcher } from "../types/utility";
+import { isOpaqueOrigin } from "../utils/origin";
 import {
 	compileWildcardOriginPattern,
 	testOriginRegExpStateless,
@@ -43,7 +44,8 @@ export function getOrigin(win: Window = window): string {
  *
  * @remarks
  * Pattern matching rules:
- * - `"*"` matches any origin
+ * - No pattern matches an opaque (`"null"`) origin, because every opaque document serializes the same way
+ * - `"*"` matches any other origin
  * - String patterns without wildcards require exact match
  * - String patterns with `*` use wildcard matching (for example, `'https://*.example.com'`)
  * - RegExp patterns are evaluated statelessly so global/sticky flags do not leak `lastIndex` across calls
@@ -60,8 +62,8 @@ export function getOrigin(win: Window = window): string {
  * // Wildcard string match
  * matchOrigin('https://*.example.com', 'https://sub.example.com'); // true
  *
- * // RegExp match
- * matchOrigin(/\.example\.com$/, 'https://sub.example.com'); // true
+ * // RegExp match, anchored at both ends
+ * matchOrigin(/^https:\/\/[a-z0-9-]+\.example\.com$/, 'https://sub.example.com'); // true
  *
  * // Array of patterns
  * matchOrigin(['https://a.com', 'https://b.com'], 'https://b.com'); // true
@@ -70,6 +72,7 @@ export function getOrigin(win: Window = window): string {
  * @internal
  */
 export function matchOrigin(pattern: OriginMatcher, origin: string): boolean {
+	if (isOpaqueOrigin(origin)) return false;
 	if (typeof pattern === "string") {
 		if (pattern === "*") return true;
 		const wildcardPattern = compileWildcardOriginPattern(pattern);

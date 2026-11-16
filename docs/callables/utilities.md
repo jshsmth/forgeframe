@@ -5,7 +5,7 @@ desc: Utility and window-name callables with their IOSP classifications and boun
 tags: []
 sources: []
 created: 2026-10-27T21:30:00Z
-updated: 2026-10-27T22:13:25Z
+updated: 2026-11-16T02:57:35Z
 ---
 
 # Utility and window callables
@@ -40,7 +40,7 @@ Evidence: [utilities](_index.md#evidence-utilities), [dimension.test](../../pack
 
 ### [utils/json.ts](../../packages/forgeframe/src/utils/json.ts)
 
-`stringifyForWire` is the one JSON encoder for values that cross windows: the message envelope, primitive unboxing and URL or body parameters. A value JSON cannot encode, such as a `BigInt` or a cycle, makes the encoder throw a `TypeError`, which becomes a `VALIDATION` `ForgeFrameError` with that `TypeError` as `cause`; any other error, such as one a caller's own `toJSON()` throws, passes through unchanged.
+`stringifyForWire` is the one JSON encoder for values that cross windows: the message envelope, primitive unboxing, URL or body parameters, consumer prop snapshots and the consumer's peer relay responses. A value JSON cannot encode, such as a `BigInt` or a cycle, makes the encoder throw a `TypeError`, which becomes a `VALIDATION` `ForgeFrameError` with that `TypeError` as `cause`; any other error, such as one a caller's own `toJSON()` throws, passes through unchanged.
 
 - **O:** `stringifyForWire`.
 
@@ -72,7 +72,7 @@ Evidence: [error.test](../../packages/forgeframe/tests/unit/error.test.ts), [mes
 
 ### [utils/origin.ts](../../packages/forgeframe/src/utils/origin.ts)
 
-Origins are serialized strings: the JavaScript `null` means no origin is known yet, and the string `"null"` is the serialization every opaque origin shares. `isOpaqueOrigin` is the one check for the second meaning; messenger trust and peer selection use it so `"null"` never identifies a peer.
+Origins are serialized strings: the JavaScript `null` means no origin is known yet, and the string `"null"` is the serialization every opaque origin shares. `isOpaqueOrigin` is the one check for the second meaning; messenger trust, peer selection and `matchOrigin` use it so `"null"` never identifies a peer and no matcher, `'*'` included, admits it.
 
 - **O:** `isOpaqueOrigin`.
 
@@ -134,7 +134,7 @@ Evidence: [utilities](_index.md#evidence-utilities); typecheck.
 Browser observations and defensive window reads are operations. Recursive origin matching is a cohesive algorithm; security exceptions are part of the browser boundary.
 
 - **O:** `getOrigin`, `matchOrigin`, `isWindowClosed`, `getOpener`, `getConsumer`, `isIframe`, `isPopup`, `waitForWindowFocus`.
-- **O callbacks:** `matchOrigin.callback@87`, `waitForWindowFocus.callback@259`, `waitForWindowFocus.callback@259.done`.
+- **O callbacks:** `matchOrigin.callback@90`, `waitForWindowFocus.callback@262`, `waitForWindowFocus.callback@262.done`.
 
 Evidence: [utilities](_index.md#evidence-utilities); typecheck.
 
