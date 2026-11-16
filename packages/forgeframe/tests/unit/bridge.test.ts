@@ -285,80 +285,47 @@ describe("FunctionBridge", () => {
 			expect(wrapper.name).toBe("myFunction");
 		});
 
+		/** A remote function reference with the given ID, as the wire carries it. */
+		const remoteRef = (id: string, name = id) => ({
+			__type__: "function" as const,
+			__id__: id,
+			__name__: name,
+		});
+		const TARGET_ORIGIN = "https://target.com";
+
 		it("should evict the oldest cached remote wrapper when capacity is exceeded", () => {
 			const targetWin = {} as Window;
-			const firstRef = {
-				__type__: "function" as const,
-				__id__: "fn-first",
-				__name__: "first",
-			};
-			const firstWrapper = bridge.deserialize(
-				firstRef,
-				targetWin,
-				"https://target.com",
-			);
-
-			const refAt = (index: number) => ({
-				__type__: "function" as const,
-				__id__: `fn-${index}`,
-				__name__: `wrapped-${index}`,
-			});
+			const deserialize = (id: string, name?: string) =>
+				bridge.deserialize(remoteRef(id, name), targetWin, TARGET_ORIGIN);
+			const firstWrapper = deserialize("fn-first", "first");
 			const wrappers = Array.from({ length: 500 }, (_, index) =>
-				bridge.deserialize(refAt(index), targetWin, "https://target.com"),
+				deserialize(`fn-${index}`),
 			);
 
-			const recreatedWrapper = bridge.deserialize(
-				firstRef,
-				targetWin,
-				"https://target.com",
-			);
+			const recreatedWrapper = deserialize("fn-first", "first");
 
 			expect(recreatedWrapper).not.toBe(firstWrapper);
 			expect(recreatedWrapper.name).toBe("first");
 			// The newest wrapper stays cached; re-adding the first evicted the next oldest.
-			expect(
-				bridge.deserialize(refAt(499), targetWin, "https://target.com"),
-			).toBe(wrappers[499]);
-			expect(
-				bridge.deserialize(refAt(0), targetWin, "https://target.com"),
-			).not.toBe(wrappers[0]);
+			expect(deserialize("fn-499")).toBe(wrappers[499]);
+			expect(deserialize("fn-0")).not.toBe(wrappers[0]);
 		});
 
 		it("keeps a reused remote wrapper when newer callbacks fill the cache", () => {
 			const targetWin = {} as Window;
-			const stableRef = {
-				__type__: "function" as const,
-				__id__: "fn-stable",
-				__name__: "onSuccess",
-			};
-			const stableWrapper = bridge.deserialize(
-				stableRef,
-				targetWin,
-				"https://target.com",
-			);
-			const refAt = (update: number, index: number) => ({
-				__type__: "function" as const,
-				__id__: `fn-${update}-${index}`,
-				__name__: `inline-${index}`,
-			});
+			const deserialize = (id: string) =>
+				bridge.deserialize(remoteRef(id), targetWin, TARGET_ORIGIN);
+			const stableWrapper = deserialize("fn-stable");
 
 			// Each update reuses the stable callback, then adds 499 fresh ones.
 			for (let update = 0; update < 3; update++) {
-				expect(
-					bridge.deserialize(stableRef, targetWin, "https://target.com"),
-				).toBe(stableWrapper);
+				expect(deserialize("fn-stable")).toBe(stableWrapper);
 				for (let index = 0; index < 499; index++) {
-					bridge.deserialize(
-						refAt(update, index),
-						targetWin,
-						"https://target.com",
-					);
+					deserialize(`fn-${update}-${index}`);
 				}
 			}
 
-			expect(
-				bridge.deserialize(stableRef, targetWin, "https://target.com"),
-			).toBe(stableWrapper);
+			expect(deserialize("fn-stable")).toBe(stableWrapper);
 		});
 	});
 

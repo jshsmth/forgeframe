@@ -62,8 +62,8 @@ export function getOrigin(win: Window = window): string {
  * // Wildcard string match
  * matchOrigin('https://*.example.com', 'https://sub.example.com'); // true
  *
- * // RegExp match
- * matchOrigin(/\.example\.com$/, 'https://sub.example.com'); // true
+ * // RegExp match, anchored at both ends
+ * matchOrigin(/^https:\/\/[a-z0-9-]+\.example\.com$/, 'https://sub.example.com'); // true
  *
  * // Array of patterns
  * matchOrigin(['https://a.com', 'https://b.com'], 'https://b.com'); // true

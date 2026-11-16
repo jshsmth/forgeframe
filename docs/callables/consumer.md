@@ -5,7 +5,7 @@ desc: Consumer runtime callables for rendering, props, peers, and transport with
 tags: []
 sources: []
 created: 2026-10-27T21:30:00Z
-updated: 2026-10-27T22:13:25Z
+updated: 2026-11-16T02:57:35Z
 ---
 
 # Consumer runtime callables
@@ -109,7 +109,7 @@ A peer append commits only after the response passes native JSON encoding. If fi
 - **O:** `readHostError`, `staticTrustedUrl`, `selectInitialTrustedOrigins`, `ConsumerTransport.failPendingHandshake`, `ConsumerTransport.getHostOrigin`, `ConsumerTransport.isHostConnected`, `ConsumerTransport.isHostControlSource`, `ConsumerTransport.resetHostWindow`, `ConsumerTransport.rejectPendingInit`.
 - **I:** `ConsumerTransport.constructor`, `ConsumerTransport.attachHostWindow`, `ConsumerTransport.resolveStaticUrlOrigin`, `ConsumerTransport.syncTrustedOriginForUrl`, `ConsumerTransport.serializePropsForHost`, `ConsumerTransport.readBootstrapSnapshot`, `ConsumerTransport.sendPropsUpdateToHost`, `ConsumerTransport.buildWindowName`, `ConsumerTransport.waitForHost`, `ConsumerTransport.setupMessageHandlers`, `ConsumerTransport.onHostControl`, `ConsumerTransport.destroy`.
 - **O callbacks:** `ConsumerTransport.waitForHost.callback@314`, `ConsumerTransport.sendPropsUpdateToHost.callback@265`.
-- **I callbacks:** `ConsumerTransport.constructor.callback@129`, `ConsumerTransport.constructor.callback@134`, `ConsumerTransport.setupMessageHandlers.callback@342`, `ConsumerTransport.setupMessageHandlers.callback@388`, `ConsumerTransport.setupMessageHandlers.callback@418`, `ConsumerTransport.setupMessageHandlers.callback@409`, `ConsumerTransport.setupMessageHandlers.callback@423`, `ConsumerTransport.setupMessageHandlers.callback@428`, `ConsumerTransport.setupMessageHandlers.callback@434`, `ConsumerTransport.setupMessageHandlers.callback@448`, `ConsumerTransport.setupMessageHandlers.callback@439`, `ConsumerTransport.setupMessageHandlers.callback@463`, `ConsumerTransport.setupMessageHandlers.callback@479`, `ConsumerTransport.onHostControl.callback@513`.
+- **I callbacks:** `ConsumerTransport.constructor.callback@129`, `ConsumerTransport.constructor.callback@134`, `ConsumerTransport.setupMessageHandlers.callback@342`, `ConsumerTransport.setupMessageHandlers.callback@388`, `ConsumerTransport.setupMessageHandlers.callback@418`, `ConsumerTransport.setupMessageHandlers.callback@409`, `ConsumerTransport.setupMessageHandlers.callback@423`, `ConsumerTransport.setupMessageHandlers.callback@428`, `ConsumerTransport.setupMessageHandlers.callback@434`, `ConsumerTransport.setupMessageHandlers.callback@448`, `ConsumerTransport.setupMessageHandlers.callback@439`, `ConsumerTransport.setupMessageHandlers.callback@463`, `ConsumerTransport.setupMessageHandlers.callback@479`, `ConsumerTransport.onHostControl.callback@514`.
 
 Evidence: [consumer](_index.md#evidence-consumer); typecheck.
 

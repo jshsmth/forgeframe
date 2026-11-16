@@ -5,7 +5,7 @@ desc: Utility and window-name callables with their IOSP classifications and boun
 tags: []
 sources: []
 created: 2026-10-27T21:30:00Z
-updated: 2026-11-16T02:29:33Z
+updated: 2026-11-16T02:57:35Z
 ---
 
 # Utility and window callables
@@ -40,7 +40,7 @@ Evidence: [utilities](_index.md#evidence-utilities), [dimension.test](../../pack
 
 ### [utils/json.ts](../../packages/forgeframe/src/utils/json.ts)
 
-`stringifyForWire` is the one JSON encoder for values that cross windows: the message envelope, primitive unboxing and URL or body parameters. A value JSON cannot encode, such as a `BigInt` or a cycle, makes the encoder throw a `TypeError`, which becomes a `VALIDATION` `ForgeFrameError` with that `TypeError` as `cause`; any other error, such as one a caller's own `toJSON()` throws, passes through unchanged.
+`stringifyForWire` is the one JSON encoder for values that cross windows: the message envelope, primitive unboxing, URL or body parameters, consumer prop snapshots and the consumer's peer relay responses. A value JSON cannot encode, such as a `BigInt` or a cycle, makes the encoder throw a `TypeError`, which becomes a `VALIDATION` `ForgeFrameError` with that `TypeError` as `cause`; any other error, such as one a caller's own `toJSON()` throws, passes through unchanged.
 
 - **O:** `stringifyForWire`.
 
