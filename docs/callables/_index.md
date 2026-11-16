@@ -5,7 +5,7 @@ desc: Runtime callable responsibilities, IOSP classifications, and boundary test
 tags: []
 sources: []
 created: 2026-10-01T01:55:30Z
-updated: 2026-10-28T00:03:58Z
+updated: 2026-11-16T03:15:39Z
 ---
 
 # ForgeFrame callable reference
@@ -59,4 +59,4 @@ Pure policy consumes observed facts; integrations and adapters obtain browser ev
 | <a id="evidence-utilities"></a>utilities | [utils.test](../../packages/forgeframe/tests/unit/utils.test.ts), [origin-pattern.test](../../packages/forgeframe/tests/unit/origin-pattern.test.ts), [window-helpers.test](../../packages/forgeframe/tests/unit/window-helpers.test.ts), [window-name-payload.test](../../packages/forgeframe/tests/unit/window-name-payload.test.ts), [props-serialize.test](../../packages/forgeframe/tests/unit/props-serialize.test.ts), [protocol.test](../../packages/forgeframe/tests/unit/protocol.test.ts) |
 | <a id="evidence-contract"></a>contract | [package-contract.test](../../packages/forgeframe/tests/unit/package-contract.test.ts), [index-node-smoke.test](../../packages/forgeframe/tests/unit/index-node-smoke.test.ts), [index-side-effect-free.test](../../packages/forgeframe/tests/unit/index-side-effect-free.test.ts), [component-node-runtime-transition.test](../../packages/forgeframe/tests/unit/component-node-runtime-transition.test.ts), [version.test](../../packages/forgeframe/tests/unit/version.test.ts) |
 
-The [test index](../../packages/forgeframe/tests/README.md) describes compile-time and browser suites; the [root README](../../README.md) lists validation commands.
+The [test index](../../packages/forgeframe/tests/README.md) describes compile-time and browser suites; [Developing ForgeFrame](../developing.md) lists validation commands.
