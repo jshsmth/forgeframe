@@ -10,7 +10,10 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { checkReadmeExamples } from "./check-readme-examples.mjs";
+import {
+	checkDocumentExamples,
+	readExampleDocuments,
+} from "./check-document-examples.mjs";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const { version } = JSON.parse(
@@ -165,7 +168,8 @@ export const agnosticHost = initHost({ props: { n: prop.number() }, consumerOrig
 		"ES2022",
 		"library.mts",
 	]);
-	const readme = readFileSync(resolve(repoRoot, "README.md"), "utf8");
+	const documents = readExampleDocuments(repoRoot);
+	const readme = documents[0].text;
 	const componentSection = readme.split("### 1. Define a Component")[1];
 	const readmeExample = componentSection?.match(
 		/```typescript\r?\n([\s\S]*?)```/,
@@ -259,8 +263,9 @@ void element; void total;
 	);
 	typecheck("readme-react.tsx", "react-consumer.tsx");
 
-	// Every README example outside the v1 migration guide compiles against the
-	// installed package; schema libraries come from the repository.
+	// Every example in the README and the wiki pages, except the v1 migration
+	// guide, compiles against the installed package; schema libraries come
+	// from the repository.
 	for (const dependency of ["zod", "valibot"]) {
 		symlinkSync(
 			resolve(repoRoot, "node_modules", dependency),
@@ -268,27 +273,35 @@ void element; void total;
 			"dir",
 		);
 	}
-	const checkedExamples = checkReadmeExamples(readme, directory, (...files) =>
-		run(process.execPath, [
-			resolve(repoRoot, "node_modules/typescript/bin/tsc"),
-			"--ignoreConfig",
-			"--noEmit",
-			"--strict",
-			"--skipLibCheck",
-			"--module",
-			"ESNext",
-			"--moduleResolution",
-			"bundler",
-			"--moduleDetection",
-			"force",
-			"--target",
-			"ES2022",
-			"--jsx",
-			"react-jsx",
-			...files,
-		]),
+	const checkedExamples = checkDocumentExamples(
+		documents,
+		directory,
+		(...files) =>
+			run(process.execPath, [
+				resolve(repoRoot, "node_modules/typescript/bin/tsc"),
+				"--ignoreConfig",
+				"--noEmit",
+				"--strict",
+				"--skipLibCheck",
+				"--module",
+				"ESNext",
+				"--moduleResolution",
+				"bundler",
+				"--moduleDetection",
+				"force",
+				"--target",
+				"ES2022",
+				"--jsx",
+				"react-jsx",
+				...files,
+			]),
 	);
-	console.log(`README: ${checkedExamples} TypeScript examples compile`);
+	let totalExamples = 0;
+	for (const [path, count] of checkedExamples) {
+		totalExamples += count;
+		console.log(`${path}: ${count} TypeScript examples compile`);
+	}
+	console.log(`Documentation: ${totalExamples} TypeScript examples compile`);
 	console.log(
 		`Installed forgeframe@${version}: ESM runtime and NodeNext consumer types passed`,
 	);

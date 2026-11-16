@@ -10,7 +10,10 @@ Project knowledge lives in the Plasma Wiki under `docs/`. Run
 unavailable. Open only the pages the task needs with `wiki search --path docs`
 and `wiki read --path docs`; use `wiki match --path docs` for regex searches.
 
-- Public API, usage, setup, and release commands: [README.md](README.md).
+- Public API overview and quick start: [README.md](README.md). Usage reference
+  (props, host API, templates, React, security, TypeScript, migration):
+  [user guide](docs/guide/_index.md).
+- Setup, checks, and release commands: [docs/developing.md](docs/developing.md).
 - Subsystem changes, state ownership, and lifecycle ordering:
   [architecture](docs/architecture/_index.md).
 - IOSP review or callable changes: [callable reference](docs/callables/_index.md).
@@ -50,8 +53,10 @@ the user requests it.
 
 For documentation changes, validate links and run `npm run docs:check`.
 Edit the root README and run `npm run build` to refresh the package README
-mirror. Build outputs, declarations, coverage, and generated wiki surfaces
-belong to their generators.
+mirror. Reference topics live on their `docs/guide/` page, not in the README;
+README links into `docs/` are absolute GitHub URLs. `npm run test:package`
+compiles the README and wiki examples. Build outputs, declarations, coverage,
+and generated wiki surfaces belong to their generators.
 
 ## Maintain the wiki
 
@@ -60,5 +65,6 @@ Author page bodies and descriptive metadata; let `wiki update --path docs` own
 `name`, timestamps, headings, and index link blocks above `***`. After changing
 pages or their locations, run `npm run docs:update`, then `npm run docs:check`.
 Rename with `git mv` and fix authored links. Setup and the pinned CLI version
-are documented in the README's **Project Wiki** section. This repo uses the CLI
+are documented in the **Project Wiki** section of
+[docs/developing.md](docs/developing.md). This repo uses the CLI
 and Markdown directly; it needs no Obsidian configuration or executable wiki hooks.

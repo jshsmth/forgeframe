@@ -13,8 +13,8 @@ any way to bypass them privately.
 | 0.x     | No        |
 
 Fixes are released for the latest 2.x version. 1.x stops receiving fixes when
-2.0.0 is released; upgrade with the README's
-[migration guide](https://github.com/jshsmth/forgeframe#migrating-from-v1-to-v2).
+2.0.0 is released; upgrade with the
+[migration guide](https://github.com/jshsmth/forgeframe/blob/main/docs/guide/migrating-v1-to-v2.md).
 
 ## Reporting a vulnerability
 
